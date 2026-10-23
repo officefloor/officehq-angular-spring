@@ -1,0 +1,66 @@
+{
+  "checkpoint": 155,
+  "checkpoint_id": "cp155_review-state",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "c081acef182d265546c3e2d6cd032580ffed2405",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T09:41:33",
+  "seconds": 110,
+  "build_log_file": "cp155.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp155_review-state.spec.ts::review state": true,
+      "cp155_review-state.spec.ts::review state scenario 1": true,
+      "cp155_review-state.spec.ts::review state scenario 2": true,
+      "cp155_review-state.spec.ts::review state scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp155_review-state.spec.ts::review state",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16736,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21568,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12305,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 11186,
+        "failure": "Error: audit lines for smvkb2sq2enra:\nROLE_SET sheet=smvkb2sq2enra by=uma user=vic role=steward\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=clerk-limit value=3.00\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=proof-threshold value=1.00\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=note-threshold value=1.00\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=entry-date value=2026-03-05\nHOLIDAY_ADDED sheet=smvkb2sq2enra by=uma date=2026-04-03\nHOLIDAY_ADDED sheet=smvkb2sq2enra by=uma date=2026-03-13\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=pot value=100.00\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=fiscal-start-month value=4\nSETTING_CHANGED sheet=smvkb2sq2enra by=uma key=alert-threshold value=1.00\nRATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=12.50\nRATE_SET sheet=smvkb2sq2enra by=uma grade=B rate=7.50\nRATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=5.00 from=2026-03-01\nPERIOD_ADDED sheet=smvkb2sq2enra by=uma period=P1 from=2026-03-01 to=2026-03-15\nPERIOD_ADDED sheet=smvkb2sq2enra by=uma period=P2 from=2026-03-16 to=2026-03-31\nPERSON_ADDED sheet=smvkb2sq2enra by=uma name=Cam grade=B terms=3\nROLLUP sheet=smvkb2sq2enra by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvkb2sq2enra by=uma name=Ben grade=B\nROLLUP sheet=smvkb2sq2enra by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00\nPOOL_ADDED sheet=smvkb2sq2enra by=uma name=P1\nPOOL_MEMBER_ADDED sheet=smvkb2sq2enra by=uma pool=P1 name=Cam share=50.00\nPOOL_MEMBER_ADDED sheet=smvkb2sq2enra by=uma pool=P1 name=Ben share=50.00\nPERSON_EDITED sheet=smvkb2sq2enra by=uma name=Cam grade=B\nPERSON_EDITED sheet=smvkb2sq2enra by=uma name=Ben grade=B\nSNAPSHOT sheet=smvkb2sq2enra by=uma name=Cam due-total=0.00\nSNAPSHOT sheet=smvkb2sq2enra by=uma name=Ben due-total=0.00\nRATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=5.00\nDELEGATED sheet=smvkb2sq2enra by=vic user=wes from=2026-03-15 to=2026-03-20\nSTATEMENT sheet=smvkb2sq2enra by=uma name=Cam due-total=0.00 claims=0\nCLAIM_ADDED"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

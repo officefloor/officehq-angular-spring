@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp101-t7st45nd
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp101_audit-viewer.spec.ts:6:7 › audit viewer › audit viewer (15.3s)
+  ✓  2 [chromium] › cp101_audit-viewer.spec.ts:109:7 › audit viewer › audit viewer scenario 1 (26.1s)
+  ✘  3 [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 (13.9s)
+  ✓  4 [chromium] › cp101_audit-viewer.spec.ts:901:7 › audit viewer › audit viewer scenario 3 (41.5s)
+
+
+  1) [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 ────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp101_audit-viewer.spec.ts:583:24
+
+  1 failed
+    [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 ─────────
+  3 passed (1.7m)

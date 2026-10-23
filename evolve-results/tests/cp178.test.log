@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp178-dqgs80u_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp178_steward-dashboard.spec.ts:6:7 › steward dashboard › steward dashboard (7.8s)
+  ✘  2 [chromium] › cp178_steward-dashboard.spec.ts:78:7 › steward dashboard › steward dashboard scenario 1 (21.6s)
+  ✓  3 [chromium] › cp178_steward-dashboard.spec.ts:535:7 › steward dashboard › steward dashboard scenario 2 (16.2s)
+  ✘  4 [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 (20.5s)
+
+
+  1) [chromium] › cp178_steward-dashboard.spec.ts:78:7 › steward dashboard › steward dashboard scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkiq8ieirqg[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkiq8ieirqg-p</strong>[22m
+    [2m  -   unexpected value "smvkiq8ieirqg-p"[22m
+
+
+      190 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      191 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 192 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      193 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      194 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      195 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp178_steward-dashboard.spec.ts:192:54
+
+  2) [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkir271o6bq[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkir271o6bq-p</strong>[22m
+    [2m  -   unexpected value "smvkir271o6bq-p"[22m
+
+
+      1101 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1102 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 1103 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1104 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      1105 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1106 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp178_steward-dashboard.spec.ts:1103:54
+
+  2 failed
+    [chromium] › cp178_steward-dashboard.spec.ts:78:7 › steward dashboard › steward dashboard scenario 1 
+    [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+  2 passed (1.1m)

@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp125-1qhlu2vx
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp125_unretire.spec.ts:6:7 › unretire › unretire (7.8s)
+  ✓  2 [chromium] › cp125_unretire.spec.ts:154:7 › unretire › unretire scenario 1 (19.5s)
+  ✘  3 [chromium] › cp125_unretire.spec.ts:535:7 › unretire › unretire scenario 2 (15.2s)
+  ✓  4 [chromium] › cp125_unretire.spec.ts:1383:7 › unretire › unretire scenario 3 (19.2s)
+
+
+  1) [chromium] › cp125_unretire.spec.ts:535:7 › unretire › unretire scenario 2 ────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31mnull[39m
+
+      641 |     await expect(pg_vic.getByTestId("header-due-total")).toHaveText("6.00");
+      642 |     await expect(pg_vic.getByTestId("header-overdue-total")).toHaveText("2.00");
+    > 643 |     expect(await ui.pasteClaims(pg_vic, "Ben,0.40,,paste\nBen,0.40,2026-02-10,a, b\nAda,3.33,,paste")).toBe(3);
+          |                                                                                                        ^
+      644 |     const c_ben_0 = await ui.claimAt(pg_vic, p_ben, 0);
+      645 |     const c_ben_1 = await ui.claimAt(pg_vic, p_ben, 1);
+      646 |     const c_ada_2 = await ui.claimAt(pg_vic, p_ada, 2);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp125_unretire.spec.ts:643:104
+
+  1 failed
+    [chromium] › cp125_unretire.spec.ts:535:7 › unretire › unretire scenario 2 ─────────────────────
+  3 passed (1.1m)

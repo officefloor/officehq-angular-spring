@@ -1,0 +1,66 @@
+{
+  "checkpoint": 159,
+  "checkpoint_id": "cp159_carried-figures",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "b4cdf6bd184cdee9a1433d5ffd0dd4843447caf0",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T10:23:49",
+  "seconds": 168,
+  "build_log_file": "cp159.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp159_carried-figures.spec.ts::carried figures": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 1": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 2": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15190,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 52412,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 36329,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkclv06ge9n\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkclv06ge9n-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkclv06ge9n-p\"\u001b[22m\n\n\n  1129 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"yes\");\n  1130 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 1131 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                          "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

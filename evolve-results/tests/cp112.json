@@ -1,0 +1,71 @@
+{
+  "checkpoint": 112,
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "140db46c98ab58fedd48e2dda3fdf7dba3802c26",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T03:56:43",
+  "seconds": 101,
+  "build_log_file": "cp112.test.log",
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1": false,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10465,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30082,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvjypygnd4if\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjypygnd4if-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjypygnd4if-p\"\u001b[22m\n\n\n  230 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  231 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-15\");\n> 232 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14090,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 22320,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m3\u001b[39m\n\n  900 |     await ui.refresh(pg_uma);\n  901 |     expect(await ui.claimAction(pg_uma, c_ada_1, \"open\")).toBe(true);\n> 902 |     expect(await ui.pasteClaims(pg_uma, \"Ada,0.40,,\\nCam,25.00,2026-03-15,a, b\\nCam,12.50,,\")).toBeNull();\n      |                                                                                                ^\n  903 |     await ui.refresh(pg_vic);\n  904 |     expect(await ui.claimAction(pg_vic, c_cam_0, \"open\")).toBe(true);\n  905 |     expect(await ui.bulkGrade(pg_vic, [p_ada, p_cam], {\"grade\": \"B\", \"from\": \"2026-03-01\"})).toBe(2);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp112_uniqueness-across-tree.spec.ts:902:96 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m3\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

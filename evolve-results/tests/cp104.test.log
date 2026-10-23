@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp104-nrf4f0q_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp104_reassign-renumbers.spec.ts:6:7 › reassign renumbers › reassign renumbers (8.7s)
+  ✘  2 [chromium] › cp104_reassign-renumbers.spec.ts:106:7 › reassign renumbers › reassign renumbers scenario 1 (10.9s)
+  ✓  3 [chromium] › cp104_reassign-renumbers.spec.ts:509:7 › reassign renumbers › reassign renumbers scenario 2 (33.3s)
+  ✓  4 [chromium] › cp104_reassign-renumbers.spec.ts:708:7 › reassign renumbers › reassign renumbers scenario 3 (17.8s)
+
+
+  1) [chromium] › cp104_reassign-renumbers.spec.ts:106:7 › reassign renumbers › reassign renumbers scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      128 |     expect(await ui.statementAsOf(pg_wes, p_ada, "2026-03-09")).toBe(false);
+      129 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "B", "gradeFrom": "2026-04-02"})).toBe(true);
+    > 130 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "C"})).toBe(true);
+          |                                                                ^
+      131 |     await ui.expectAuditView(pg_wes, "", [
+      132 |       `ROLLUP sheet=${sheet} by=wes person=Ben claimed=0.00 due-total=n/a overdue-total=0.00`,
+      133 |       `PERSON_EDITED sheet=${sheet} by=wes name=Ben grade=C`,
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp104_reassign-renumbers.spec.ts:130:64
+
+  1 failed
+    [chromium] › cp104_reassign-renumbers.spec.ts:106:7 › reassign renumbers › reassign renumbers scenario 1 
+  3 passed (1.3m)

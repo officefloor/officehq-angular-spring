@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp127-hzf0vz3y
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp127_my-figures.spec.ts:6:7 › my figures › my figures (6.8s)
+  ✘  2 [chromium] › cp127_my-figures.spec.ts:100:7 › my figures › my figures scenario 1 (14.6s)
+  ✘  3 [chromium] › cp127_my-figures.spec.ts:451:7 › my figures › my figures scenario 2 (26.7s)
+  ✓  4 [chromium] › cp127_my-figures.spec.ts:913:7 › my figures › my figures scenario 3 (14.8s)
+
+
+  1) [chromium] › cp127_my-figures.spec.ts:100:7 › my figures › my figures scenario 1 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk25s4b3610[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk25s4b3610-p</strong>[22m
+    [2m  -   unexpected value "smvk25s4b3610-p"[22m
+
+
+      204 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      205 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 206 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      207 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("4");
+      208 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      209 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp127_my-figures.spec.ts:206:54
+
+  2) [chromium] › cp127_my-figures.spec.ts:451:7 › my figures › my figures scenario 2 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk263yfpw3t[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk263yfpw3t-p</strong>[22m
+    [2m  -   unexpected value "smvk263yfpw3t-p"[22m
+
+
+      576 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      577 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-28");
+    > 578 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      579 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      580 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("1.23");
+      581 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("1.23");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp127_my-figures.spec.ts:578:54
+
+  2 failed
+    [chromium] › cp127_my-figures.spec.ts:100:7 › my figures › my figures scenario 1 ───────────────
+    [chromium] › cp127_my-figures.spec.ts:451:7 › my figures › my figures scenario 2 ───────────────
+  2 passed (1.1m)

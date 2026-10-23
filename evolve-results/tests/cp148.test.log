@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp148-qt6sap8y
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp148_claimed-without-corrections.spec.ts:6:7 › claimed without corrections › claimed without corrections (7.2s)
+  ✓  2 [chromium] › cp148_claimed-without-corrections.spec.ts:86:7 › claimed without corrections › claimed without corrections scenario 1 (18.6s)
+  ✓  3 [chromium] › cp148_claimed-without-corrections.spec.ts:582:7 › claimed without corrections › claimed without corrections scenario 2 (24.3s)
+  ✘  4 [chromium] › cp148_claimed-without-corrections.spec.ts:880:7 › claimed without corrections › claimed without corrections scenario 3 (24.9s)
+
+
+  1) [chromium] › cp148_claimed-without-corrections.spec.ts:880:7 › claimed without corrections › claimed without corrections scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-7').getByTestId('claim-amount')
+    Expected string: [32m"0.40"[39m
+    Received string: [31m"3.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-7').getByTestId('claim-amount')[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">3.33</span>[22m
+    [2m  -   unexpected value "3.33"[22m
+
+
+      1113 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-batch")).toHaveText("");
+      1114 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-lines-line")).toHaveText([]);
+    > 1115 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-amount")).toHaveText("0.40");
+           |                                                                                          ^
+      1116 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-date")).toHaveText("2026-03-01");
+      1117 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-note")).toHaveText("tpl");
+      1118 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-due")).toHaveText("1.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp148_claimed-without-corrections.spec.ts:1115:90
+
+  Slow test file: [chromium] › cp148_claimed-without-corrections.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp148_claimed-without-corrections.spec.ts:880:7 › claimed without corrections › claimed without corrections scenario 3 
+  3 passed (1.3m)

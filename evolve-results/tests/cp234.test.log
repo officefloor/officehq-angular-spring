@@ -1,0 +1,139 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp234-bx5gyrok
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp234_tree-export.spec.ts:6:7 › tree export › tree export (8.3s)
+  ✘  2 [chromium] › cp234_tree-export.spec.ts:33:7 › tree export › tree export scenario 1 (26.2s)
+  ✘  3 [chromium] › cp234_tree-export.spec.ts:815:7 › tree export › tree export scenario 2 (18.0s)
+  ✘  4 [chromium] › cp234_tree-export.spec.ts:1593:7 › tree export › tree export scenario 3 (7.2s)
+
+
+  1) [chromium] › cp234_tree-export.spec.ts:6:7 › tree export › tree export ────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    [32m- Expected  - 4[39m
+    [31m+ Received  + 4[39m
+
+    [2m  sheet,name,grade,due-total[22m
+    [32m- __SHEET__,Ada,A,2.00[39m
+    [32m- __SHEET__,Ben,B,n/a[39m
+    [32m- [7m__SHEET__[27m-c1,Cy,A,1.00[39m
+    [31m+ smvl876r0wmm1,Ada,A,2.00[39m
+    [31m+ smvl876r0wmm1,Ben,B,n/a[39m
+    [31m+ [7msmvl876r0wmm1[27m-c1,Cy,A,1.00[39m
+    [32m- [7m__SHEET__[27m-c1,Di,B,4.00[39m
+    [31m+ [7msmvl876r0wmm1[27m-c1,Di,B,4.00[39m
+    [2m  ↵[22m
+
+      27 |     await ui.setSetting(pg_uma, "parent", `${sheet}`);
+      28 |     await ui.loadSheet(pg_uma, sheet);
+    > 29 |     expect(await ui.exportTree(pg_uma)).toBe("sheet,name,grade,due-total\n__SHEET__,Ada,A,2.00\n__SHEET__,Ben,B,n/a\n__SHEET__-c1,Cy,A,1.00\n__SHEET__-c1,Di,B,4.00\n");
+         |                                         ^
+      30 |     await ui.loadSheet(pg_uma, `${sheet}-c1`);
+      31 |     expect(await ui.exportTree(pg_uma)).toBe("sheet,name,grade,due-total\n__SHEET__-c1,Cy,A,1.00\n__SHEET__-c1,Di,B,4.00\n__SHEET__,Ada,A,2.00\n__SHEET__,Ben,B,n/a\n");
+      32 |   });
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:29:41
+
+  2) [chromium] › cp234_tree-export.spec.ts:33:7 › tree export › tree export scenario 1 ────────────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByTestId('person-row-6').locator('[data-testid^="claim-row-"]').nth(-2)
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toBeVisible with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('person-row-6').locator('[data-testid^="claim-row-"]').nth(-2)[22m
+
+
+       at ../support/ui.ts:656
+
+      654 |   const n = await all.count();
+      655 |   const r = all.nth(n - 1 - idx);
+    > 656 |   await expect(r).toBeVisible({ timeout: WAIT });
+          |                   ^
+      657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');
+      658 | }
+      659 |
+
+        at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:656:19)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:125:21
+
+  3) [chromium] › cp234_tree-export.spec.ts:815:7 › tree export › tree export scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-10').getByTestId('person-due-total')
+    Expected string: [32m"[7m2[27m.00"[39m
+    Received string: [31m"[7m1[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+
+
+      865 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+      866 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("10.25");
+    > 867 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("2.00");
+          |                                                                                             ^
+      868 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-due")).toHaveText("1.00");
+      869 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-status")).toHaveText("OPEN");
+      870 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:867:93
+
+  4) [chromium] › cp234_tree-export.spec.ts:1593:7 › tree export › tree export scenario 3 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Array [[22m
+    [32m-   "Ben  ",[39m
+    [32m-   "Cam  ",[39m
+    [31m+   "Ben",[39m
+    [31m+   "Cam",[39m
+    [2m  ][22m
+
+      1615 |     const p_cam = ui.must(await ui.addPerson(pg_uma, {"name": "Cam", "grade": "A", "contact": " Ada@x ", "tags": "b, a"}));
+      1616 |     expect(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A", "contact": "ADA@X"})).toBeNull();
+    > 1617 |     expect(await ui.snapshotCompare(pg_uma, "2026-04-05", "2026-04-05")).toEqual(["Ben  ", "Cam  "]);
+           |                                                                          ^
+      1618 |     expect(await ui.statement(pg_uma, p_ben)).toBe(true);
+      1619 |     expect(await ui.ratePreview(pg_uma, "B", "12.50")).toEqual({ count: 0, diff: "0.00" });
+      1620 |     expect(await ui.addPatron(pg_uma, p_ben, "Cam")).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:1617:74
+
+  4 failed
+    [chromium] › cp234_tree-export.spec.ts:6:7 › tree export › tree export ─────────────────────────
+    [chromium] › cp234_tree-export.spec.ts:33:7 › tree export › tree export scenario 1 ─────────────
+    [chromium] › cp234_tree-export.spec.ts:815:7 › tree export › tree export scenario 2 ────────────
+    [chromium] › cp234_tree-export.spec.ts:1593:7 › tree export › tree export scenario 3 ───────────

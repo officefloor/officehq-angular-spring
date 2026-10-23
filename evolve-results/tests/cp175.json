@@ -1,0 +1,66 @@
+{
+  "checkpoint": 175,
+  "checkpoint_id": "cp175_transfer-undo",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "0b04aa864f3d4dd29ab1775345a73bef33254c90",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T13:10:55",
+  "seconds": 137,
+  "build_log_file": "cp175.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp175_transfer-undo.spec.ts::transfer undo": false,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 1": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 2": false,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 13084,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-2').getByTestId('person-origin')\nExpected string: \u001b[32m\"__SHEET__\"\u001b[39m\nReceived string: \u001b[31m\"smvkiiqgqnhf4\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-2').getByTestId('person-origin')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-origin\">smvkiiqgqnhf4</td>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiiqgqnhf4\"\u001b[22m\n\n\n  38 |     await ui.refresh(pg_wes);\n  39 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_ben_2).getByTestId(\"person-name\")).toHaveText(\"Ben\");\n> 40 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_ben_2).getByTestId(\"person-origin\")).toHaveText(\"__SHEET__\");\n     |                                                                                "
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20387,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17390,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  745 |     expect(await ui.inlineGrade(pg_vic, p_ada, \"B\")).toBe(true);\n  746 |     expect(await ui.periodAction(pg_vic, \"P2\", \"close\")).toBe(true);\n> 747 |     expect(await ui.editInline(pg_vic, c_ben_0, \"4.00\")).toBe(false);\n      |                                                          ^\n  748 |     expect(await ui.pasteClaims(pg_vic, \"Ben,10.35,2026-02-25,\\nBen,25.00,2026-03-20,\")).toBeNull();\n  749 |     await ui.refresh(pg_vic);\n  750 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:747:58 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 45669,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

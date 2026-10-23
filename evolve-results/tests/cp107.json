@@ -1,0 +1,66 @@
+{
+  "checkpoint": 107,
+  "checkpoint_id": "cp107_merge-people",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "89a8a722ce52872ad8ffe6f98706089a6f9a8227",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T02:54:18",
+  "seconds": 107,
+  "build_log_file": "cp107.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp107_merge-people.spec.ts::merge people": false,
+      "cp107_merge-people.spec.ts::merge people scenario 1": false,
+      "cp107_merge-people.spec.ts::merge people scenario 2": true,
+      "cp107_merge-people.spec.ts::merge people scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18229,
+        "failure": "Error: quick add: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp107_merge-people.spec.ts:82:31 | Error: quick add: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 15239,
+        "failure": "Error: audit line 39\n  expected: CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=20.00 date=2026-03-05 from=Cam to=Ada\n  actual:   CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=10.25 date=2026-04-05 from=Cam to=Ada\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   at ../support/ui.ts:1560\n\n  1558 |     const e = expected[i];\n  1559 |     const ok = line === e || line.startsWith(e + ' ');\n> 1560 |     expect(ok, `audit line ${i + 1}\\n  expected: ${e}\\n  actual:   ${line}`).toBe(true);\n       |                                                                              ^\n  1561 |   });\n  1562 | }\n  1563 |\n\n    at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)\n    at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp107_merge-people.spec.ts:341:14 | Error: audit line 39\n  expected: CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=20.00 date=2026-03-05 from=Cam to=Ada\n  actual:   CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=10.25 date=2026-04-05 from=Cam to=Ada\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19028,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21402,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

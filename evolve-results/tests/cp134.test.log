@@ -1,0 +1,84 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp134-ew6r61nu
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting (10.9s)
+  ✘  2 [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 (22.8s)
+  ✓  3 [chromium] › cp134_sorting.spec.ts:552:7 › sorting › sorting scenario 2 (21.9s)
+  ✘  4 [chromium] › cp134_sorting.spec.ts:797:7 › sorting › sorting scenario 3 (25.5s)
+
+
+  1) [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 ────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m7[39m
+    Received: [31m9[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:1265
+
+      1263 |   await page.getByTestId('audit-show').click();
+      1264 |   const lines = page.getByTestId('audit-line');
+    > 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);
+           |   ^
+      1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());
+      1267 |   texts.forEach((line, i) => {
+      1268 |     const e = expected[i];
+
+        at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1265:3)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp134_sorting.spec.ts:205:5
+
+  2) [chromium] › cp134_sorting.spec.ts:797:7 › sorting › sorting scenario 3 ───────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-name')
+    Expected string: [32m"Ada"[39m
+    Received string: [31m"Fay"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Fay</td>[22m
+    [2m  -   unexpected value "Fay"[22m
+
+
+      930 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      931 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+    > 932 |     await expect(pg_wes.getByTestId("person-row-" + p_fay).getByTestId("person-name")).toHaveText("Ada");
+          |                                                                                        ^
+      933 |     await expect(pg_wes.getByTestId("person-row-" + p_fay).getByTestId("person-grade")).toHaveText("B");
+      934 |     await expect(pg_wes.getByTestId("person-row-" + p_fay).getByTestId("person-claimed")).toHaveText("0.00");
+      935 |     await expect(pg_wes.getByTestId("person-row-" + p_fay).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp134_sorting.spec.ts:932:88
+
+  2 failed
+    [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 ─────────────────────────
+    [chromium] › cp134_sorting.spec.ts:797:7 › sorting › sorting scenario 3 ────────────────────────
+  2 passed (1.4m)

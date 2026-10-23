@@ -1,0 +1,69 @@
+{
+  "checkpoint": 204,
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "b0d32eeb10c5d6fffde8320699d540951c598a75",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T18:33:54",
+  "seconds": 119,
+  "build_log_file": "cp204.test.log",
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1": false,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2": false,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7799,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 26210,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvku2cozs2du\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2cozs2du-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2cozs2du-p\"\u001b[22m\n\n\n  241 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  242 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-01\");\n> 243 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19381,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvku2xsrp45a\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku2xsrp45a-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku2xsrp45a-p\"\u001b[22m\n\n\n  929 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  930 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-09\");\n> 931 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21721,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvku3d8v2liv\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku3d8v2liv-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku3d8v2liv-p\"\u001b[22m\n\n\n  1436 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1437 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 1438 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                           "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

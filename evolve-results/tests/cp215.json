@@ -1,0 +1,66 @@
+{
+  "checkpoint": 215,
+  "checkpoint_id": "cp215_sheet-comparison",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "e84d02b698392c89fe85caa6268ab5f7c5001d45",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:41:31",
+  "seconds": 178,
+  "build_log_file": "cp215.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp215_sheet-comparison.spec.ts::sheet comparison": true,
+      "cp215_sheet-comparison.spec.ts::sheet comparison scenario 1": false,
+      "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2": false,
+      "cp215_sheet-comparison.spec.ts::sheet comparison scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp215_sheet-comparison.spec.ts::sheet comparison",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10307,
+        "failure": ""
+      },
+      {
+        "test_id": "cp215_sheet-comparison.spec.ts::sheet comparison scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 28810,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-5').getByTestId('person-statement-line-line')\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 5\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"2026-03-20 0.00\",\u001b[39m\n\u001b[31m+   \"2026-03-20 0.00\",\u001b[39m\n\u001b[31m+   \"2026-03-20 0.00\",\u001b[39m\n\u001b[31m+ ]\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-5').getByTestId('person-statement-line-line')\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\n\n  445 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-tags\")).toHaveText(\"a\");\n  446 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-snapshot-line\")).toHaveText([\"2026-03-20 0.00\"]);\n> 447 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-statement-line-line\")).toHaveText([]);\n      |                                                                                                       ^\n  448 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-flag-shown\")).toHaveText(\"\");\n  449 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-approver\")).toHaveText(\"\");\n  450 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-score\")).toHaveText(\"0\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp215_sheet-comparison.spec.ts:447:103 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b["
+      },
+      {
+        "test_id": "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 34674,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkynrmx5orp\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkynrmx5orp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkynrmx5orp-p\"\u001b[22m\n\n\n  809 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  810 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 811 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp215_sheet-comparison.spec.ts::sheet comparison scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30632,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

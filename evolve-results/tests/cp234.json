@@ -1,0 +1,66 @@
+{
+  "checkpoint": 234,
+  "checkpoint_id": "cp234_tree-export",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "e4fd3a0fcd5c688c6eb71ed8fef237dfd6cba29d",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-24T01:09:13",
+  "seconds": 135,
+  "build_log_file": "cp234.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp234_tree-export.spec.ts::tree export": false,
+      "cp234_tree-export.spec.ts::tree export scenario 1": false,
+      "cp234_tree-export.spec.ts::tree export scenario 2": false,
+      "cp234_tree-export.spec.ts::tree export scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp234_tree-export.spec.ts::tree export",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 8309,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\n\u001b[32m- Expected  - 4\u001b[39m\n\u001b[31m+ Received  + 4\u001b[39m\n\n\u001b[2m  sheet,name,grade,due-total\u001b[22m\n\u001b[32m- __SHEET__,Ada,A,2.00\u001b[39m\n\u001b[32m- __SHEET__,Ben,B,n/a\u001b[39m\n\u001b[32m- \u001b[7m__SHEET__\u001b[27m-c1,Cy,A,1.00\u001b[39m\n\u001b[31m+ smvl876r0wmm1,Ada,A,2.00\u001b[39m\n\u001b[31m+ smvl876r0wmm1,Ben,B,n/a\u001b[39m\n\u001b[31m+ \u001b[7msmvl876r0wmm1\u001b[27m-c1,Cy,A,1.00\u001b[39m\n\u001b[32m- \u001b[7m__SHEET__\u001b[27m-c1,Di,B,4.00\u001b[39m\n\u001b[31m+ \u001b[7msmvl876r0wmm1\u001b[27m-c1,Di,B,4.00\u001b[39m\n\u001b[2m  \u21b5\u001b[22m\n\n  27 |     await ui.setSetting(pg_uma, \"parent\", `${sheet}`);\n  28 |     await ui.loadSheet(pg_uma, sheet);\n> 29 |     expect(await ui.exportTree(pg_uma)).toBe(\"sheet,name,grade,due-total\\n__SHEET__,Ada,A,2.00\\n__SHEET__,Ben,B,n/a\\n__SHEET__-c1,Cy,A,1.00\\n__SHEET__-c1,Di,B,4.00\\n\");\n     |                                         ^\n  30 |     await ui.loadSheet(pg_uma, `${sheet}-c1`);\n  31 |     expect(await ui.exportTree(pg_uma)).toBe(\"sheet,name,grade,due-total\\n__SHEET__-c1,Cy,A,1.00\\n__SHEET__-c1,Di,B,4.00\\n__SHEET__,Ada,A,2.00\\n__SHEET__,Ben,B,n/a\\n\");\n  32 |   });\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:29:41 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\n\u001b[32m- Expected  - 4\u001b[39m\n\u001b[31m+ Received  + 4\u001b[39m\n\n\u001b[2m  sheet,name,grade,due-total\u001b[22m\n\u001b[32m- __SHEET__,Ada,A,2.00\u001b[39m\n\u001b[32m- __SHEET__,Ben,B,n/a\u001b[39m\n\u001b[32m- \u001b[7m__SHEET__\u001b[27m-c1,Cy,A,1.00\u001b[39m\n\u001b[31m+ smvl876r0wmm1,Ada,A,2.00\u001b[39m\n\u001b[31m+ smvl876r0wmm1,Ben,B,n/a\u001b[39m\n\u001b[31m+ \u001b[7msmvl876r0wmm1\u001b[27m-c1,Cy,A,1.00\u001b[39m\n\u001b[32m- \u001b[7m__SHEET__\u001b[27m-c1,Di,B,4.00\u001b[39m\n\u001b[31m+ \u001b[7msmvl876r0wmm1\u001b[27m-c1,Di,B,4.00\u001b[39m\n\u001b[2m  \u21b5\u001b[22m"
+      },
+      {
+        "test_id": "cp234_tree-export.spec.ts::tree export scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 26235,
+        "failure": "Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m()\u001b[22m\n\nLocator: getByTestId('person-row-6').locator('[data-testid^=\"claim-row-\"]').nth(-2)\nExpected: visible\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toBeVisible with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-6').locator('[data-testid^=\"claim-row-\"]').nth(-2)\u001b[22m\n\n\n   at ../support/ui.ts:656\n\n  654 |   const n = await all.count();\n  655 |   const r = all.nth(n - 1 - idx);\n> 656 |   await expect(r).toBeVisible({ timeout: WAIT });\n      |                   ^\n  657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');\n  658 | }\n  659 |\n\n    at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:656:19)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:125:21 | Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m()\u001b[22m\n\nLocator: getByTestId('person-row-6').locator('[data-testid^=\"claim-row-\"]').nth(-2)\nExpected: visible\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toBeVisible with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-6').locator('[data-testid^=\"claim-row-\"]').nth(-2)\u001b[22m\n"
+      },
+      {
+        "test_id": "cp234_tree-export.spec.ts::tree export scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17998,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-10').getByTestId('person-due-total')\nExpected string: \u001b[32m\"\u001b[7m2\u001b[27m.00\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7m1\u001b[27m.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">1.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.00\"\u001b[22m\n\n\n  865 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n  866 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"10.25\");\n> 867 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-due-total\")).toHaveText(\"2.00\");\n      |                                                                                             ^\n  868 |     await expec"
+      },
+      {
+        "test_id": "cp234_tree-export.spec.ts::tree export scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7213,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Ben  \",\u001b[39m\n\u001b[32m-   \"Cam  \",\u001b[39m\n\u001b[31m+   \"Ben\",\u001b[39m\n\u001b[31m+   \"Cam\",\u001b[39m\n\u001b[2m  ]\u001b[22m\n\n  1615 |     const p_cam = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Cam\", \"grade\": \"A\", \"contact\": \" Ada@x \", \"tags\": \"b, a\"}));\n  1616 |     expect(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\", \"contact\": \"ADA@X\"})).toBeNull();\n> 1617 |     expect(await ui.snapshotCompare(pg_uma, \"2026-04-05\", \"2026-04-05\")).toEqual([\"Ben  \", \"Cam  \"]);\n       |                                                                          ^\n  1618 |     expect(await ui.statement(pg_uma, p_ben)).toBe(true);\n  1619 |     expect(await ui.ratePreview(pg_uma, \"B\", \"12.50\")).toEqual({ count: 0, diff: \"0.00\" });\n  1620 |     expect(await ui.addPatron(pg_uma, p_ben, \"Cam\")).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp234_tree-export.spec.ts:1617:74 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Ben  \",\u001b[39m\n\u001b[32m-   \"Cam  \",\u001b[39m\n\u001b[31m+   \"Ben\",\u001b[39m\n\u001b[31m+   \"Cam\",\u001b[39m\n\u001b[2m  ]\u001b[22m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

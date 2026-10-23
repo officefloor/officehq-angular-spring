@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp247-a3p_thbz
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp247_reject-reason-required.spec.ts:6:7 › reject reason required › reject reason required (12.0s)
+  ✘  2 [chromium] › cp247_reject-reason-required.spec.ts:39:7 › reject reason required › reject reason required scenario 1 (25.0s)
+  ✘  3 [chromium] › cp247_reject-reason-required.spec.ts:510:7 › reject reason required › reject reason required scenario 2 (8.7s)
+  ✓  4 [chromium] › cp247_reject-reason-required.spec.ts:1149:7 › reject reason required › reject reason required scenario 3 (26.4s)
+
+
+  1) [chromium] › cp247_reject-reason-required.spec.ts:39:7 › reject reason required › reject reason required scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-2').getByTestId('claim-due-by')
+    Expected string: [32m"2026-05-[7m01[27m"[39m
+    Received string: [31m"2026-05-[7m22[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-2').getByTestId('claim-due-by')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-05-22</span>[22m
+    [2m  -   unexpected value "2026-05-22"[22m
+
+
+      327 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-stated")).toHaveText("no");
+      328 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-period")).toHaveText("");
+    > 329 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-due-by")).toHaveText("2026-05-01");
+          |                                                                                          ^
+      330 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-overdue")).toHaveText("yes");
+      331 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-corrects")).toHaveText("");
+      332 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-log-line")).toHaveText(["DRAFT by uma on 2026-04-25 due=2.07", "OPEN by uma on 2026-05-30 due=1.04"]);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp247_reject-reason-required.spec.ts:329:90
+
+  2) [chromium] › cp247_reject-reason-required.spec.ts:510:7 › reject reason required › reject reason required scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"5"[39m
+
+      548 |     expect(await ui.importRates(pg_uma, "A,12.50\nB,12.50,2026-03-05")).toBe(2);
+      549 |     expect(await ui.statement(pg_uma, p_ada)).toBe(true);
+    > 550 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "0.04", "date": "2026-02-25", "note": "n", "ref": " r-1 "})).toBeNull();
+          |                                                                                                                     ^
+      551 |     expect(await ui.statement(pg_uma, p_ada)).toBe(true);
+      552 |     expect(await ui.activity(pg_uma)).toEqual(["uma GRADE_ADDED 1", "uma HOLIDAY_ADDED 1", "uma PERIOD_ADDED 1", "uma PERIOD_CLOSED 1", "uma PERSON_ADDED 1", "uma PERSON_EDITED 1", "uma PLAN_ADDED 1", "uma RATE_SET 5", "uma ROLE_SET 1", "uma ROLLUP 1", "uma SETTING_CHANGED 14", "uma STATEMENT 2"]);
+      553 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp247_reject-reason-required.spec.ts:550:117
+
+  2 failed
+    [chromium] › cp247_reject-reason-required.spec.ts:39:7 › reject reason required › reject reason required scenario 1 
+    [chromium] › cp247_reject-reason-required.spec.ts:510:7 › reject reason required › reject reason required scenario 2 
+  2 passed (1.3m)

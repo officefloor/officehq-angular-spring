@@ -1,0 +1,66 @@
+{
+  "checkpoint": 134,
+  "checkpoint_id": "cp134_sorting",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "4c275da4a14f39ddcc76f36af912ca97dd4e1ed4",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T06:44:31",
+  "seconds": 155,
+  "build_log_file": "cp134.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp134_sorting.spec.ts::sorting": true,
+      "cp134_sorting.spec.ts::sorting scenario 1": false,
+      "cp134_sorting.spec.ts::sorting scenario 2": true,
+      "cp134_sorting.spec.ts::sorting scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10941,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 22804,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m7\u001b[39m\nReceived: \u001b[31m9\u001b[39m\n\nCall Log:\n- Timeout 8000ms exceeded while waiting on the predicate\n\n   at ../support/ui.ts:1265\n\n  1263 |   await page.getByTestId('audit-show').click();\n  1264 |   const lines = page.getByTestId('audit-line');\n> 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);\n       |   ^\n  1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());\n  1267 |   texts.forEach((line, i) => {\n  1268 |     const e = expected[i];\n\n    at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1265:3)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp134_sorting.spec.ts:205:5 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m7\u001b[39m\nReceived: \u001b[31m9\u001b[39m\n\nCall Log:\n- Timeout 8000ms exceeded while waiting on the predicate"
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21896,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25501,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-11').getByTestId('person-name')\nExpected string: \u001b[32m\"Ada\"\u001b[39m\nReceived string: \u001b[31m\"Fay\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Fay</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Fay\"\u001b[22m\n\n\n  930 |     await expect(pg_wes.getByTestId(\"consolidated-due-total\")).toHaveText(\"0.00\");\n  931 |     await expect(pg_wes.getByTestId(\"consolidated-overdue-total\")).toHaveText(\"0.00\");\n> 932 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_fay).getByTestId(\"person-name\")).toHaveText(\"Ada\");\n      |                                                                                        ^\n  933 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_fay).getByTestId(\"person-grade\")).toHaveText(\"B\");\n  934 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_fay)."
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

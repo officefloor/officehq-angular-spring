@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp157-q8vr3myi
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp157_user-locale.spec.ts:6:7 › user locale › user locale (10.5s)
+  ✓  2 [chromium] › cp157_user-locale.spec.ts:126:7 › user locale › user locale scenario 1 (24.4s)
+  ✓  3 [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 (42.4s)
+  ✘  4 [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 (26.8s)
+
+
+  1) [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkc5fvl9e9b[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkc5fvl9e9b-p</strong>[22m
+    [2m  -   unexpected value "smvkc5fvl9e9b-p"[22m
+
+
+      1122 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1123 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-28");
+    > 1124 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1125 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1126 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      1127 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("1.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp157_user-locale.spec.ts:1124:54
+
+  Slow test file: [chromium] › cp157_user-locale.spec.ts (1.7m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ───────────
+  3 passed (1.8m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 197,
+  "checkpoint_id": "cp197_activity-counts",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "a7c9a9ac69537c3478ce7143eee099bcd892a56f",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T16:43:58",
+  "seconds": 115,
+  "build_log_file": "cp197.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp197_activity-counts.spec.ts::activity counts": true,
+      "cp197_activity-counts.spec.ts::activity counts scenario 1": true,
+      "cp197_activity-counts.spec.ts::activity counts scenario 2": true,
+      "cp197_activity-counts.spec.ts::activity counts scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5769,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29241,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12659,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18069,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

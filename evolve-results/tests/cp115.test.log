@@ -1,0 +1,134 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp115-106a9zwq
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp115_nested-pools.spec.ts:6:7 › nested pools › nested pools (17.0s)
+  ✓  2 [chromium] › cp115_nested-pools.spec.ts:114:7 › nested pools › nested pools scenario 1 (46.0s)
+  ✘  3 [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 (28.0s)
+  ✘  4 [chromium] › cp115_nested-pools.spec.ts:856:7 › nested pools › nested pools scenario 3 (17.0s)
+
+
+  1) [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjz7r6cxysx[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjz7r6cxysx-p</strong>[22m
+    [2m  -   unexpected value "smvjz7r6cxysx-p"[22m
+
+
+      644 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      645 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 646 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      647 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      648 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      649 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp115_nested-pools.spec.ts:646:54
+
+  2) [chromium] › cp115_nested-pools.spec.ts:856:7 › nested pools › nested pools scenario 3 ────────
+
+    Error: audit lines for smvjz8df2kg8a:
+    ROLE_SET sheet=smvjz8df2kg8a by=uma user=vic role=steward
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=clerk-limit value=3.00
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=late-pct value=10.00
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=terms-A value=3
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=cap value=2.00
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=proof-threshold value=1.00
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=grace-days value=3
+    HOLIDAY_ADDED sheet=smvjz8df2kg8a by=uma date=2026-03-13
+    HOLIDAY_ADDED sheet=smvjz8df2kg8a by=uma date=2026-03-24
+    VOID_REASON_ADDED sheet=smvjz8df2kg8a by=uma reason=dup
+    RATE_SET sheet=smvjz8df2kg8a by=uma grade=A rate=12.50
+    RATE_SET sheet=smvjz8df2kg8a by=uma grade=B rate=10.00
+    RATE_SET sheet=smvjz8df2kg8a by=uma grade=C rate=33.33
+    RATE_SET sheet=smvjz8df2kg8a by=uma grade=C rate=33.33 from=2026-03-01 to=2026-03-12
+    PERIOD_ADDED sheet=smvjz8df2kg8a by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERIOD_ADDED sheet=smvjz8df2kg8a by=uma period=P2 from=2026-03-16 to=2026-03-31
+    PERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Cam grade=C terms=20
+    ROLLUP sheet=smvjz8df2kg8a by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Ada grade=B terms=20
+    ROLLUP sheet=smvjz8df2kg8a by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Ben grade=A terms=3 contact=ben@x
+    ROLLUP sheet=smvjz8df2kg8a by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    POOL_ADDED sheet=smvjz8df2kg8a by=uma name=P1
+    POOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=Cam share=50.00
+    POOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=Ada share=50.00
+    POOL_ADDED sheet=smvjz8df2kg8a by=uma name=P2
+    POOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P2 name=Cam share=100.00
+    POOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=P2 share=10.00
+    PATRON_ADDED sheet=smvjz8df2kg8a by=uma name=Cam patron=Ada
+    SETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=policy-date value=2026-03-05
+    HOLIDAY_ADDED sheet=smvjz8df2kg8a by=uma date=2026-03-27
+    CLAIM_ADDED sheet=smvjz8df2kg8a by=uma person=Ben amount=3.33 date=2026-03-10 ref=inv 7
+    PERSON_RETIRED sheet=smvjz8df2kg8a by=uma name=Ben from=2026-04-02
+    PERIOD_SOFT_CLOSED sheet=smvjz8df2kg8a by=uma period=P2 total=0.00
+    STATEMENT sheet=smvjz8df2kg8a by=uma name=Ada due-total=0.00 claims=0
+    CLAIM_ADDED sheet=smvjz8df2kg8a by=uma person=Ben amount=4.00 date=2026-03-05
+    PERSON_EDITED sheet=smvjz8df2kg8a by=uma name=Ada grade=B
+    CLAIM_OPENED sheet=smvjz8df2kg8a by=uma person=Ben amount=4.00 date=2026-03-05 number=1
+    ROLLUP sheet=smvjz8df2kg8a by=uma person=Ben claimed=4.00 due-total=1.00 overdue-total=0.00
+    TOTALS sheet=smvjz8df2kg8a by=uma claimed-total=4.00 due-total=0.00 overdue-total=0.00
+    CLAIM_REASSIGNED sheet=smvjz8df2kg8a by=vic person=Cam amount=3.33 date=2026-03-10 from=Ben to=Cam
+    CLAIM_REASSIGNED sheet=smvjz8df2kg8a by=vic person=Cam amount=4.00 date=2026-03-05 number=2 from=Ben to=Cam
+    ROLLUP sheet=smvjz8df2kg8a by=vic person=Cam claimed=4.00 due-total=1.33 overdue-total=0.00
+    ROLLUP sheet=smvjz8df2kg8a by=vic person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_HELD sheet=smvjz8df2kg8a by=vic name=Ben from=2026-02-10
+    CLAIM_DEFERRED sheet=smvjz8df2kg8a by=wes person=Cam amount=4.00 date=2026-03-05 number=2 until=2026-04-01
+    ROLLUP sheet=smvjz8df2kg8a by=wes person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    TOTALS sheet=smvjz8df2kg8a by=wes claimed-total=0.00 due-total=0.00 overdue-total=0.00
+    CLAIM_PROOF_ADDED sheet=smvjz8df2kg8a by=wes person=Cam amount=4.00 date=2026-03-05 number=2 proofs=1
+    CLAIM_ADDED sheet=smvjz8df2kg8a by=wes person=Cam amount=1.00 date=2026-03-10
+    PERSON_EDITED sheet=smvjz8df2kg8a by=wes name=Ben grade=B
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m52[39m
+    Received: [31m51[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp115_nested-pools.spec.ts:1001:5
+
+  2 failed
+    [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 ─────────
+    [chromium] › cp115_nested-pools.spec.ts:856:7 › nested pools › nested pools scenario 3 ─────────
+  2 passed (1.8m)

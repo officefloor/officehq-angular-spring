@@ -1,0 +1,197 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp250-8jefb34a
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+ium] › cp185_partial-settle.spec.ts:6:7 › partial settle › partial settle ────────────────
+    [chromium] › cp185_partial-settle.spec.ts:1306:7 › partial settle › partial settle scenario 3 ──
+    [chromium] › cp186_quarterly-periods.spec.ts:90:7 › quarterly periods › quarterly periods scenario 1 
+    [chromium] › cp186_quarterly-periods.spec.ts:565:7 › quarterly periods › quarterly periods scenario 2 
+    [chromium] › cp187_cut-history.spec.ts:83:7 › cut history › cut history scenario 1 ─────────────
+    [chromium] › cp188_clone-source-rates.spec.ts:88:7 › clone source rates › clone source rates scenario 1 
+    [chromium] › cp188_clone-source-rates.spec.ts:1093:7 › clone source rates › clone source rates scenario 3 
+    [chromium] › cp189_default-grade.spec.ts:101:7 › default grade › default grade scenario 1 ──────
+    [chromium] › cp189_default-grade.spec.ts:1056:7 › default grade › default grade scenario 3 ─────
+    [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 ───────────────────
+    [chromium] › cp190_bulk-void.spec.ts:130:7 › bulk void › bulk void scenario 1 ──────────────────
+    [chromium] › cp190_bulk-void.spec.ts:917:7 › bulk void › bulk void scenario 2 ──────────────────
+    [chromium] › cp190_bulk-void.spec.ts:1329:7 › bulk void › bulk void scenario 3 ─────────────────
+    [chromium] › cp191_clerk-limit-per-grade.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 
+    [chromium] › cp192_name-with-grade.spec.ts:68:7 › name with grade › name with grade scenario 1 ─
+    [chromium] › cp192_name-with-grade.spec.ts:573:7 › name with grade › name with grade scenario 2 
+    [chromium] › cp193_sheet-age-buckets.spec.ts:95:7 › sheet age buckets › sheet age buckets scenario 1 
+    [chromium] › cp193_sheet-age-buckets.spec.ts:579:7 › sheet age buckets › sheet age buckets scenario 2 
+    [chromium] › cp194_settle-as-of-date.spec.ts:78:7 › settle as of date › settle as of date scenario 1 
+    [chromium] › cp194_settle-as-of-date.spec.ts:466:7 › settle as of date › settle as of date scenario 2 
+    [chromium] › cp195_statement-export.spec.ts:28:7 › statement export › statement export scenario 1 
+    [chromium] › cp195_statement-export.spec.ts:1134:7 › statement export › statement export scenario 3 
+    [chromium] › cp196_floor-before-late-charge.spec.ts:123:7 › floor before late charge › floor before late charge scenario 1 
+    [chromium] › cp196_floor-before-late-charge.spec.ts:513:7 › floor before late charge › floor before late charge scenario 2 
+    [chromium] › cp198_duplicate-claims.spec.ts:60:7 › duplicate claims › duplicate claims scenario 1 
+    [chromium] › cp198_duplicate-claims.spec.ts:606:7 › duplicate claims › duplicate claims scenario 2 
+    [chromium] › cp199_approvers.spec.ts:74:7 › approvers › approvers scenario 1 ───────────────────
+    [chromium] › cp199_approvers.spec.ts:757:7 › approvers › approvers scenario 2 ──────────────────
+    [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 ─────────────────
+    [chromium] › cp200_hold-counts-except-cuts.spec.ts:167:7 › hold counts except cuts › hold counts except cuts scenario 1 
+    [chromium] › cp200_hold-counts-except-cuts.spec.ts:1260:7 › hold counts except cuts › hold counts except cuts scenario 3 
+    [chromium] › cp201_consolidated-grades.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 
+    [chromium] › cp202_snapshot-comparison.spec.ts:6:7 › snapshot comparison › snapshot comparison ─
+    [chromium] › cp202_snapshot-comparison.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 
+    [chromium] › cp202_snapshot-comparison.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 
+    [chromium] › cp203_plan-pause.spec.ts:488:7 › plan pause › plan pause scenario 2 ───────────────
+    [chromium] › cp203_plan-pause.spec.ts:1108:7 › plan pause › plan pause scenario 3 ──────────────
+    [chromium] › cp204_trim-at-consolidation.spec.ts:116:7 › trim at consolidation › trim at consolidation scenario 1 
+    [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 
+    [chromium] › cp204_trim-at-consolidation.spec.ts:1293:7 › trim at consolidation › trim at consolidation scenario 3 
+    [chromium] › cp205_plan-history.spec.ts:74:7 › plan history › plan history scenario 1 ──────────
+    [chromium] › cp205_plan-history.spec.ts:964:7 › plan history › plan history scenario 2 ─────────
+    [chromium] › cp206_restricted-role.spec.ts:819:7 › restricted role › restricted role scenario 2 
+    [chromium] › cp206_restricted-role.spec.ts:1107:7 › restricted role › restricted role scenario 3 
+    [chromium] › cp207_year-end-rollover.spec.ts:547:7 › year end rollover › year end rollover scenario 1 
+    [chromium] › cp207_year-end-rollover.spec.ts:1124:7 › year end rollover › year end rollover scenario 2 
+    [chromium] › cp207_year-end-rollover.spec.ts:1863:7 › year end rollover › year end rollover scenario 3 
+    [chromium] › cp208_number-on-settle.spec.ts:530:7 › number on settle › number on settle scenario 2 
+    [chromium] › cp209_score.spec.ts:74:7 › score › score scenario 1 ───────────────────────────────
+    [chromium] › cp209_score.spec.ts:1047:7 › score › score scenario 3 ─────────────────────────────
+    [chromium] › cp210_score-bands.spec.ts:88:7 › score bands › score bands scenario 1 ─────────────
+    [chromium] › cp210_score-bands.spec.ts:764:7 › score bands › score bands scenario 2 ────────────
+    [chromium] › cp211_score-lines.spec.ts:88:7 › score lines › score lines scenario 1 ─────────────
+    [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 ────────────
+    [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 ───────────
+    [chromium] › cp212_score-without-corrections.spec.ts:50:7 › score without corrections › score without corrections scenario 1 
+    [chromium] › cp212_score-without-corrections.spec.ts:596:7 › score without corrections › score without corrections scenario 2 
+    [chromium] › cp212_score-without-corrections.spec.ts:1119:7 › score without corrections › score without corrections scenario 3 
+    [chromium] › cp213_parent-plans.spec.ts:74:7 › parent plans › parent plans scenario 1 ──────────
+    [chromium] › cp213_parent-plans.spec.ts:1004:7 › parent plans › parent plans scenario 3 ────────
+    [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 
+    [chromium] › cp214_max-open-claims.spec.ts:1087:7 › max open claims › max open claims scenario 3 
+    [chromium] › cp215_sheet-comparison.spec.ts:51:7 › sheet comparison › sheet comparison scenario 1 
+    [chromium] › cp215_sheet-comparison.spec.ts:685:7 › sheet comparison › sheet comparison scenario 2 
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:539:7 › cuts frozen at close › cuts frozen at close scenario 2 
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:1062:7 › cuts frozen at close › cuts frozen at close scenario 3 
+    [chromium] › cp217_shared-claims.spec.ts:103:7 › shared claims › shared claims scenario 1 ──────
+    [chromium] › cp217_shared-claims.spec.ts:760:7 › shared claims › shared claims scenario 2 ──────
+    [chromium] › cp217_shared-claims.spec.ts:1257:7 › shared claims › shared claims scenario 3 ─────
+    [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+    [chromium] › cp218_review-assignment.spec.ts:742:7 › review assignment › review assignment scenario 2 
+    [chromium] › cp218_review-assignment.spec.ts:1159:7 › review assignment › review assignment scenario 3 
+    [chromium] › cp219_rollover-undo.spec.ts:524:7 › rollover undo › rollover undo scenario 1 ──────
+    [chromium] › cp219_rollover-undo.spec.ts:1016:7 › rollover undo › rollover undo scenario 2 ─────
+    [chromium] › cp219_rollover-undo.spec.ts:1406:7 › rollover undo › rollover undo scenario 3 ─────
+    [chromium] › cp22_hold.spec.ts:61:7 › hold › hold scenario 1 ───────────────────────────────────
+    [chromium] › cp220_plan-amount-reaches-drafts.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
+    [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree ─
+    [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 
+    [chromium] › cp222_dashboard-over-tree.spec.ts:661:7 › dashboard over tree › dashboard over tree scenario 2 
+    [chromium] › cp222_dashboard-over-tree.spec.ts:1255:7 › dashboard over tree › dashboard over tree scenario 3 
+    [chromium] › cp223_grade-retire.spec.ts:72:7 › grade retire › grade retire scenario 1 ──────────
+    [chromium] › cp223_grade-retire.spec.ts:576:7 › grade retire › grade retire scenario 2 ─────────
+    [chromium] › cp223_grade-retire.spec.ts:1058:7 › grade retire › grade retire scenario 3 ────────
+    [chromium] › cp224_cap-includes-cuts.spec.ts:103:7 › cap includes cuts › cap includes cuts scenario 1 
+    [chromium] › cp224_cap-includes-cuts.spec.ts:1360:7 › cap includes cuts › cap includes cuts scenario 3 
+    [chromium] › cp225_grade-merge.spec.ts:157:7 › grade merge › grade merge scenario 1 ────────────
+    [chromium] › cp225_grade-merge.spec.ts:839:7 › grade merge › grade merge scenario 2 ────────────
+    [chromium] › cp225_grade-merge.spec.ts:1599:7 › grade merge › grade merge scenario 3 ───────────
+    [chromium] › cp226_preview-date.spec.ts:714:7 › preview date › preview date scenario 2 ─────────
+    [chromium] › cp227_preview-exports.spec.ts:24:7 › preview exports › preview exports scenario 1 ─
+    [chromium] › cp227_preview-exports.spec.ts:465:7 › preview exports › preview exports scenario 2 
+    [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 
+    [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 
+    [chromium] › cp229_grades-editable.spec.ts:146:7 › grades editable › grades editable scenario 1 
+    [chromium] › cp229_grades-editable.spec.ts:623:7 › grades editable › grades editable scenario 2 
+    [chromium] › cp230_pending-sla.spec.ts:126:7 › pending sla › pending sla scenario 1 ────────────
+    [chromium] › cp230_pending-sla.spec.ts:1515:7 › pending sla › pending sla scenario 3 ───────────
+    [chromium] › cp231_period-export.spec.ts:802:7 › period export › period export scenario 2 ──────
+    [chromium] › cp231_period-export.spec.ts:1404:7 › period export › period export scenario 3 ─────
+    [chromium] › cp232_grade-merge-retroactive.spec.ts:114:7 › grade merge retroactive › grade merge retroactive scenario 1 
+    [chromium] › cp233_due-by-override.spec.ts:414:7 › due by override › due by override scenario 2 
+    [chromium] › cp233_due-by-override.spec.ts:1148:7 › due by override › due by override scenario 3 
+    [chromium] › cp234_tree-export.spec.ts:6:7 › tree export › tree export ─────────────────────────
+    [chromium] › cp234_tree-export.spec.ts:33:7 › tree export › tree export scenario 1 ─────────────
+    [chromium] › cp234_tree-export.spec.ts:815:7 › tree export › tree export scenario 2 ────────────
+    [chromium] › cp234_tree-export.spec.ts:1593:7 › tree export › tree export scenario 3 ───────────
+    [chromium] › cp236_deferred-bound-counts.spec.ts:122:7 › deferred bound counts › deferred bound counts scenario 1 
+    [chromium] › cp236_deferred-bound-counts.spec.ts:777:7 › deferred bound counts › deferred bound counts scenario 2 
+    [chromium] › cp236_deferred-bound-counts.spec.ts:1410:7 › deferred bound counts › deferred bound counts scenario 3 
+    [chromium] › cp238_merge-undo.spec.ts:6:7 › merge undo › merge undo ────────────────────────────
+    [chromium] › cp239_period-claim-counts.spec.ts:1324:7 › period claim counts › period claim counts scenario 3 
+    [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2 ───────────────────────────────
+    [chromium] › cp240_shared-due-per-holder.spec.ts:622:7 › shared due per holder › shared due per holder scenario 2 
+    [chromium] › cp241_as-of-roles.spec.ts:42:7 › as of roles › as of roles scenario 1 ─────────────
+    [chromium] › cp241_as-of-roles.spec.ts:524:7 › as of roles › as of roles scenario 2 ────────────
+    [chromium] › cp241_as-of-roles.spec.ts:1311:7 › as of roles › as of roles scenario 3 ───────────
+    [chromium] › cp242_person-timeline.spec.ts:47:7 › person timeline › person timeline scenario 1 ─
+    [chromium] › cp242_person-timeline.spec.ts:534:7 › person timeline › person timeline scenario 2 
+    [chromium] › cp243_person-export.spec.ts:995:7 › person export › person export scenario 2 ──────
+    [chromium] › cp243_person-export.spec.ts:1523:7 › person export › person export scenario 3 ─────
+    [chromium] › cp245_rate-withdraw.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ──────
+    [chromium] › cp245_rate-withdraw.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ─────
+    [chromium] › cp246_claim-counts-per-person.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 
+    [chromium] › cp246_claim-counts-per-person.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 
+    [chromium] › cp246_claim-counts-per-person.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 
+    [chromium] › cp247_reject-reason-required.spec.ts:39:7 › reject reason required › reject reason required scenario 1 
+    [chromium] › cp247_reject-reason-required.spec.ts:510:7 › reject reason required › reject reason required scenario 2 
+    [chromium] › cp247_reject-reason-required.spec.ts:1149:7 › reject reason required › reject reason required scenario 3 
+    [chromium] › cp248_policy-versions.spec.ts:677:7 › policy versions › policy versions scenario 2 
+    [chromium] › cp248_policy-versions.spec.ts:1299:7 › policy versions › policy versions scenario 3 
+    [chromium] › cp25_due-by-and-overdue.spec.ts:309:7 › due by and overdue › due by and overdue scenario 2 
+    [chromium] › cp250_policy-export.spec.ts:29:7 › policy export › policy export scenario 1 ───────
+    [chromium] › cp250_policy-export.spec.ts:820:7 › policy export › policy export scenario 2 ──────
+    [chromium] › cp250_policy-export.spec.ts:1185:7 › policy export › policy export scenario 3 ─────
+    [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 
+    [chromium] › cp30_corrections.spec.ts:492:7 › corrections › corrections scenario 3 ─────────────
+    [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1 ──────────────────────────
+    [chromium] › cp34_bulk-open.spec.ts:480:7 › bulk open › bulk open scenario 3 ───────────────────
+    [chromium] › cp42_rate-end-dates.spec.ts:343:7 › rate end dates › rate end dates scenario 2 ────
+    [chromium] › cp42_rate-end-dates.spec.ts:631:7 › rate end dates › rate end dates scenario 3 ────
+    [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ─────────────────────────────────────
+    [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:360:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ────────────────
+    [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ────────
+    [chromium] › cp64_floor-after-late.spec.ts:700:7 › floor after late › floor after late scenario 3 
+    [chromium] › cp67_active-people.spec.ts:119:7 › active people › active people scenario 1 ───────
+    [chromium] › cp68_backing-recent-settled.spec.ts:723:7 › backing recent settled › backing recent settled scenario 3 
+    [chromium] › cp69_claim-lock.spec.ts:71:7 › claim lock › claim lock scenario 1 ─────────────────
+    [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 ────────────────
+    [chromium] › cp69_claim-lock.spec.ts:782:7 › claim lock › claim lock scenario 3 ────────────────
+    [chromium] › cp70_soft-close.spec.ts:6:7 › soft close › soft close ─────────────────────────────
+    [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 
+    [chromium] › cp71_cancel-statement.spec.ts:307:7 › cancel statement › cancel statement scenario 2 
+    [chromium] › cp71_cancel-statement.spec.ts:672:7 › cancel statement › cancel statement scenario 3 
+    [chromium] › cp73_statement-as-of.spec.ts:248:7 › statement as of › statement as of scenario 1 ─
+    [chromium] › cp75_bulk-grade.spec.ts:366:7 › bulk grade › bulk grade scenario 2 ────────────────
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+    [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 ────────────────────
+    [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 ────────
+    [chromium] › cp78_age-buckets.spec.ts:82:7 › age buckets › age buckets scenario 1 ──────────────
+    [chromium] › cp80_period-by-due-by.spec.ts:1132:7 › period by due by › period by due by scenario 3 
+    [chromium] › cp81_remind.spec.ts:381:7 › remind › remind scenario 2 ────────────────────────────
+    [chromium] › cp81_remind.spec.ts:781:7 › remind › remind scenario 3 ────────────────────────────
+    [chromium] › cp82_settled-and-open-totals.spec.ts:115:7 › settled and open totals › settled and open totals scenario 1 
+    [chromium] › cp83_holidays.spec.ts:93:7 › holidays › holidays scenario 1 ───────────────────────
+    [chromium] › cp85_grace-per-grade.spec.ts:137:7 › grace per grade › grace per grade scenario 1 ─
+    [chromium] › cp87_external-reference.spec.ts:804:7 › external reference › external reference scenario 3 
+    [chromium] › cp88_compound-late-charge.spec.ts:92:7 › compound late charge › compound late charge scenario 1 
+    [chromium] › cp89_claim-tags.spec.ts:369:7 › claim tags › claim tags scenario 2 ────────────────
+    [chromium] › cp89_claim-tags.spec.ts:666:7 › claim tags › claim tags scenario 3 ────────────────
+    [chromium] › cp90_void-reasons.spec.ts:101:7 › void reasons › void reasons scenario 1 ──────────
+    [chromium] › cp90_void-reasons.spec.ts:338:7 › void reasons › void reasons scenario 2 ──────────
+    [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 ─────
+    [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 
+    [chromium] › cp92_four-eyes-editor.spec.ts:910:7 › four eyes editor › four eyes editor scenario 3 
+    [chromium] › cp93_bulk-reassign.spec.ts:711:7 › bulk reassign › bulk reassign scenario 3 ───────
+    [chromium] › cp94_proof-threshold-per-grade.spec.ts:87:7 › proof threshold per grade › proof threshold per grade scenario 1 
+    [chromium] › cp94_proof-threshold-per-grade.spec.ts:600:7 › proof threshold per grade › proof threshold per grade scenario 2 
+    [chromium] › cp94_proof-threshold-per-grade.spec.ts:920:7 › proof threshold per grade › proof threshold per grade scenario 3 
+    [chromium] › cp95_rate-preview.spec.ts:537:7 › rate preview › rate preview scenario 2 ──────────
+    [chromium] › cp97_monthly-totals.spec.ts:97:7 › monthly totals › monthly totals scenario 1 ─────
+    [chromium] › cp97_monthly-totals.spec.ts:538:7 › monthly totals › monthly totals scenario 2 ────
+    [chromium] › cp98_settle-batches.spec.ts:421:7 › settle batches › settle batches scenario 2 ────
+  647 passed (1.9h)

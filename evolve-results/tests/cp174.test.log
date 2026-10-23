@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp174-wtknyi5x
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp174_late-charge-waiver.spec.ts:6:7 › late charge waiver › late charge waiver (7.5s)
+  ✓  2 [chromium] › cp174_late-charge-waiver.spec.ts:105:7 › late charge waiver › late charge waiver scenario 1 (21.2s)
+  ✘  3 [chromium] › cp174_late-charge-waiver.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 (20.8s)
+  ✓  4 [chromium] › cp174_late-charge-waiver.spec.ts:951:7 › late charge waiver › late charge waiver scenario 3 (18.9s)
+
+
+  1) [chromium] › cp174_late-charge-waiver.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkih23z98s2[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkih23z98s2-p</strong>[22m
+    [2m  -   unexpected value "smvkih23z98s2-p"[22m
+
+
+      711 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      712 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 713 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      714 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      715 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("39.98");
+      716 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("39.98");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp174_late-charge-waiver.spec.ts:713:54
+
+  1 failed
+    [chromium] › cp174_late-charge-waiver.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 
+  3 passed (1.2m)

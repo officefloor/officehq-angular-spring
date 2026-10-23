@@ -1,0 +1,66 @@
+{
+  "checkpoint": 114,
+  "checkpoint_id": "cp114_delete-and-restore-draft",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "b1175c385216d380d665e2f8ea8845002471a6de",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T04:03:30",
+  "seconds": 83,
+  "build_log_file": "cp114.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 1": false,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 2": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4740,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 8292,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"9\"\u001b[39m\n\n  217 |     await ui.refresh(pg_uma);\n  218 |     expect(await ui.claimAction(pg_uma, c_ben_0, \"open\")).toBe(true);\n> 219 |     expect(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"4.00\", \"date\": \"2026-03-01\"})).toBeNull();\n      |                                                                                        ^\n  220 |     expect(await ui.statement(pg_uma, p_ben)).toBe(true);\n  221 |     expect(await ui.bulkOpen(pg_uma, [c_cam_1, c_ben_1])).toEqual({ opened: 2, refused: 0 });\n  222 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp114_delete-and-restore-draft.spec.ts:219:88 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"9\"\u001b[39m"
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29543,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 16588,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvjyzddmxepp\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjyzddmxepp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjyzddmxepp-p\"\u001b[22m\n\n\n  1143 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1144 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-15\");\n> 1145 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

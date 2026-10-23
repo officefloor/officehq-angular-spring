@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp186-v3d3yh2r
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp186_quarterly-periods.spec.ts:6:7 › quarterly periods › quarterly periods (13.6s)
+  ✘  2 [chromium] › cp186_quarterly-periods.spec.ts:90:7 › quarterly periods › quarterly periods scenario 1 (11.4s)
+  ✘  3 [chromium] › cp186_quarterly-periods.spec.ts:565:7 › quarterly periods › quarterly periods scenario 2 (34.5s)
+  ✓  4 [chromium] › cp186_quarterly-periods.spec.ts:959:7 › quarterly periods › quarterly periods scenario 3 (58.2s)
+
+
+  1) [chromium] › cp186_quarterly-periods.spec.ts:90:7 › quarterly periods › quarterly periods scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      126 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);
+      127 |     expect(await ui.editPerson(pg_uma, p_cam, {"grade": "C", "gradeFrom": "2026-04-02"}, "A")).toBe(true);
+    > 128 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);
+          |                                               ^
+      129 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      130 |     await ui.refresh(pg_vic);
+      131 |     await expect(pg_vic.getByTestId("person-row-" + p_cam)).toHaveCount(0);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp186_quarterly-periods.spec.ts:128:47
+
+  2) [chromium] › cp186_quarterly-periods.spec.ts:565:7 › quarterly periods › quarterly periods scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkmfeg2ifax[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmfeg2ifax-p</strong>[22m
+    [2m  -   unexpected value "smvkmfeg2ifax-p"[22m
+
+
+      677 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      678 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 679 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      680 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      681 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("2.25");
+      682 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp186_quarterly-periods.spec.ts:679:54
+
+  2 failed
+    [chromium] › cp186_quarterly-periods.spec.ts:90:7 › quarterly periods › quarterly periods scenario 1 
+    [chromium] › cp186_quarterly-periods.spec.ts:565:7 › quarterly periods › quarterly periods scenario 2 
+  2 passed (2.1m)

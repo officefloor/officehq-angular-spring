@@ -1,0 +1,78 @@
+{
+  "checkpoint": 176,
+  "checkpoint_id": "cp176_statement-binds-late-charge",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "31971e2cc68e23f15467a735e4a69c39309d51a8",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T13:13:12",
+  "seconds": 108,
+  "build_log_file": "cp176.test.log",
+  "replaced_tests": [
+    "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+    "cp174_late-charge-waiver.spec.ts::late charge waiver",
+    "cp24_floor.spec.ts::floor",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp46_re-settle.spec.ts::re settle",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp56_late-per-boundary.spec.ts::late per boundary",
+    "cp64_floor-after-late.spec.ts::floor after late",
+    "cp84_business-day-terms.spec.ts::business day terms scenario 2",
+    "cp88_compound-late-charge.spec.ts::compound late charge"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge": true,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 1": true,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 2": false,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8232,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16842,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19642,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkim98ma28b\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkim98ma28b-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkim98ma28b-p\"\u001b[22m\n\n\n  902 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  903 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-10\");\n> 904 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22366,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

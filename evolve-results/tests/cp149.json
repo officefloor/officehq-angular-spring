@@ -1,0 +1,66 @@
+{
+  "checkpoint": 149,
+  "checkpoint_id": "cp149_period-claim-cap",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "71bb56838497fabfbcd30bbc1bed31f4d783a11c",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T08:36:21",
+  "seconds": 151,
+  "build_log_file": "cp149.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp149_period-claim-cap.spec.ts::period claim cap": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 1": false,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 2": false,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18085,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25443,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvk8qp9v161s\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk8qp9v161s-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk8qp9v161s-p\"\u001b[22m\n\n\n  202 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  203 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 204 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10351,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"9\"\u001b[39m\n\n  479 |     expect(await ui.ratePreview(pg_vic, \"B\", \"20.00\")).toEqual({ count: 0, diff: \"0.00\" });\n  480 |     await ui.refresh(pg_uma);\n> 481 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"25.00\"})).toBeNull();\n      |                                                                   ^\n  482 |     expect(await ui.importPeople(pg_uma, \"Dot,C\")).toMatchObject({\"added\": 1, \"updated\": 0});\n  483 |     const p_dot = await ui.personId(pg_uma, \"Dot\");\n  484 |     await ui.refresh(pg_uma);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp149_period-claim-cap.spec.ts:481:67 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"9\"\u001b[39m"
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25439,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-11').getByTestId('claim-amount')\nExpected string: \u001b[32m\"0.\u001b[7m0\u001b[27m4\"\u001b[39m\nReceived string: \u001b[31m\"0.4\u001b[7m0\u001b[27m\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-amount')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\n\n  964 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2027-05-due-total\")).toHaveText(\"0.00\");\n  965 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2027-06-due-total\")).toHaveText(\"0.00\");\n> 966 |     await expect(pg_wes.getByTestId(\"claim-row-\" + c_ada_0).getByTestId(\"claim-amount\")).toHaveText(\"0.04\");\n      |                                                                                          ^\n  967 | "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

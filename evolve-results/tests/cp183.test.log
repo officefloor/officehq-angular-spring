@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp183-huu9ghlw
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp183_period-lock.spec.ts:6:7 › period lock › period lock (11.0s)
+  ✘  2 [chromium] › cp183_period-lock.spec.ts:59:7 › period lock › period lock scenario 1 (26.8s)
+  ✘  3 [chromium] › cp183_period-lock.spec.ts:630:7 › period lock › period lock scenario 2 (40.7s)
+  ✓  4 [chromium] › cp183_period-lock.spec.ts:1116:7 › period lock › period lock scenario 3 (23.5s)
+
+
+  1) [chromium] › cp183_period-lock.spec.ts:59:7 › period lock › period lock scenario 1 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      132 |       `CLAIM_ADDED sheet=${sheet} by=uma person=Ben amount=4.00 date=2026-03-01`
+      133 |     ]);
+    > 134 |     expect(await ui.claimEditOpen(pg_uma, c_ben_0)).toBe(true);
+          |                                                     ^
+      135 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      136 |     expect(await ui.claimEditOpen(pg_vic, c_ben_0)).toBe(false);
+      137 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp183_period-lock.spec.ts:134:53
+
+  2) [chromium] › cp183_period-lock.spec.ts:630:7 › period lock › period lock scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkm4jfzlckb[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm4jfzlckb-p</strong>[22m
+    [2m  -   unexpected value "smvkm4jfzlckb-p"[22m
+
+
+      797 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("yes");
+      798 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 799 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      800 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      801 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      802 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp183_period-lock.spec.ts:799:54
+
+  2 failed
+    [chromium] › cp183_period-lock.spec.ts:59:7 › period lock › period lock scenario 1 ─────────────
+    [chromium] › cp183_period-lock.spec.ts:630:7 › period lock › period lock scenario 2 ────────────
+  2 passed (1.8m)

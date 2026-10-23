@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp201-0a47465d
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp201_consolidated-grades.spec.ts:6:7 › consolidated grades › consolidated grades (8.7s)
+  ✘  2 [chromium] › cp201_consolidated-grades.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 (22.1s)
+  ✓  3 [chromium] › cp201_consolidated-grades.spec.ts:685:7 › consolidated grades › consolidated grades scenario 2 (26.0s)
+  ✓  4 [chromium] › cp201_consolidated-grades.spec.ts:1075:7 › consolidated grades › consolidated grades scenario 3 (28.3s)
+
+
+  1) [chromium] › cp201_consolidated-grades.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkttxwa3f1m[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkttxwa3f1m-p</strong>[22m
+    [2m  -   unexpected value "smvkttxwa3f1m-p"[22m
+
+
+      259 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      260 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 261 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      262 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      263 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("10.00");
+      264 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("10.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp201_consolidated-grades.spec.ts:261:54
+
+  1 failed
+    [chromium] › cp201_consolidated-grades.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 
+  3 passed (1.5m)

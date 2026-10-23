@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp138-o1dzh9kx
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp138_inline-grade.spec.ts:6:7 › inline grade › inline grade (11.7s)
+  ✘  2 [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 (18.0s)
+  ✘  3 [chromium] › cp138_inline-grade.spec.ts:467:7 › inline grade › inline grade scenario 2 (26.5s)
+  ✓  4 [chromium] › cp138_inline-grade.spec.ts:957:7 › inline grade › inline grade scenario 3 (14.5s)
+
+
+  1) [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      150 |     ]);
+      151 |     expect(await ui.addAlias(pg_wes, p_eve, "Bee")).toBe(true);
+    > 152 |     expect(await ui.statementAsOf(pg_wes, p_eve, "2026-03-20")).toBe(true);
+          |                                                                 ^
+      153 |     await ui.refresh(pg_wes);
+      154 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-claimed")).toHaveText("0.00");
+      155 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp138_inline-grade.spec.ts:152:65
+
+  2) [chromium] › cp138_inline-grade.spec.ts:467:7 › inline grade › inline grade scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk5ot5f7zqz[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk5ot5f7zqz-p</strong>[22m
+    [2m  -   unexpected value "smvk5ot5f7zqz-p"[22m
+
+
+      601 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      602 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 603 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      604 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      605 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      606 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp138_inline-grade.spec.ts:603:54
+
+  2 failed
+    [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 ──────────
+    [chromium] › cp138_inline-grade.spec.ts:467:7 › inline grade › inline grade scenario 2 ─────────
+  2 passed (1.3m)

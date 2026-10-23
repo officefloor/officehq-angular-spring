@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "checkpoint_id": "cp212_score-without-corrections",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "4d66b02cab85efc6d6024bbe0e4a207df04b8aa7",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:34:19",
+  "seconds": 143,
+  "build_log_file": "cp212.test.log",
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp212_score-without-corrections.spec.ts::score without corrections": true,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 1": false,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 2": false,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12678,
+        "failure": ""
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 27439,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('pool-member-C1-2').getByTestId('pool-cut')\nExpected string: \u001b[32m\"\"\u001b[39m\nReceived string: \u001b[31m\"0.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('pool-member-C1-2').getByTestId('pool-cut')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-cut\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\n\n  497 |     await expect(pg_uma.getByTestId(\"pool-row-C1\").getByTestId(\"pool-balanced\")).toHaveText(\"yes\");\n  498 |     await expect(pg_uma.getByTestId(\"pool-member-C1-\" + p_cam).getByTestId(\"pool-share\")).toHaveText(\"100.00\");\n> 499 |     await expect(pg_uma.getByTestId(\"pool-member-C1-\" + p_cam).getByTestId(\"pool-cut\")).toHaveText(\"\");\n      |                                                                                         ^\n  500 |     await expect(pg_uma.getByTestId(\"crew-row-C1\").getByTestId(\"crew-lead\")).toHaveText(\"Cam (C)\");\n  501 "
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 14397,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  721 |     expect(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"0.04\", \"ref\": \"R-2\"})).toBeNull();\n  722 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n> 723 |     expect(await ui.editInline(pg_uma, c_cam_0, \"0.40\")).toBe(false);\n      |                                                          ^\n  724 |     await ui.setAsOf(pg_uma, \"2026-03-15\");\n  725 |     await ui.refresh(pg_uma);\n  726 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp212_score-without-corrections.spec.ts:723:58 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 31779,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkyej5vsyoo\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyej5vsyoo-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyej5vsyoo-p\"\u001b[22m\n\n\n  1260 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1261 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 1262 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                           "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

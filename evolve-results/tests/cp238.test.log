@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp238-va2rztgi
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp238_merge-undo.spec.ts:6:7 › merge undo › merge undo (17.5s)
+  ✓  2 [chromium] › cp238_merge-undo.spec.ts:138:7 › merge undo › merge undo scenario 1 (28.2s)
+  ✘  3 [chromium] › cp238_merge-undo.spec.ts:874:7 › merge undo › merge undo scenario 2 (25.3s)
+  ✓  4 [chromium] › cp238_merge-undo.spec.ts:1465:7 › merge undo › merge undo scenario 3 (26.9s)
+
+
+  1) [chromium] › cp238_merge-undo.spec.ts:6:7 › merge undo › merge undo ───────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-2').getByTestId('person-name')
+    Expected string: [32m"[7mCam[27m ([7mC[27m)"[39m
+    Received string: [31m"[7mBen[27m ([7mB[27m)"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-2').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+    [2m  -   unexpected value "Ben (B)"[22m
+
+
+      41 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-number")).toHaveText("");
+      42 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-status")).toHaveText("OPEN");
+    > 43 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-name")).toHaveText("Cam (C)");
+         |                                                                                        ^
+      44 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-aliases")).toHaveText("");
+      45 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      46 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("n/a");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp238_merge-undo.spec.ts:43:88
+
+  2) [chromium] › cp238_merge-undo.spec.ts:874:7 › merge undo › merge undo scenario 2 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('dash-pending-count')
+    Expected string: [32m""[39m
+    Received string: [31m"0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('dash-pending-count')[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+
+
+      1090 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
+      1091 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
+    > 1092 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
+           |                                                            ^
+      1093 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+      1094 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+      1095 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp238_merge-undo.spec.ts:1092:60
+
+  2 failed
+    [chromium] › cp238_merge-undo.spec.ts:6:7 › merge undo › merge undo ────────────────────────────
+    [chromium] › cp238_merge-undo.spec.ts:874:7 › merge undo › merge undo scenario 2 ───────────────
+  2 passed (1.7m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 153,
+  "checkpoint_id": "cp153_rate-versions",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "f8cdfa7cca56b9f4c79d1ca028ace1e7e3f7a948",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T09:37:24",
+  "seconds": 106,
+  "build_log_file": "cp153.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp153_rate-versions.spec.ts::rate versions": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 1": false,
+      "cp153_rate-versions.spec.ts::rate versions scenario 2": false,
+      "cp153_rate-versions.spec.ts::rate versions scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6564,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19286,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkawa3ykeg6\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawa3ykeg6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawa3ykeg6-p\"\u001b[22m\n\n\n  204 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  205 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-05\");\n> 206 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 24735,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkawphv3sb4\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkawphv3sb4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkawphv3sb4-p\"\u001b[22m\n\n\n  564 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  565 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 566 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17047,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"10\"\u001b[39m\n\n  906 |     expect(await ui.claimAction(pg_wes, c_ben_0, \"open\")).toBe(true);\n  907 |     expect(await ui.periodAction(pg_wes, \"P1\", \"close\")).toBe(true);\n> 908 |     expect(await ui.addClaim(pg_wes, p_ada, {\"amount\": \"-4.00\", \"corrects\": \"X-1\"})).toBeNull();\n      |                                                                                      ^\n  909 |     expect(await ui.importPeople(pg_wes, \"Eve,A\")).toMatchObject({\"added\": 1, \"updated\": 0});\n  910 |     const p_eve = await ui.personId(pg_wes, \"Eve\");\n  911 |     expect(await ui.setRate(pg_wes, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp153_rate-versions.spec.ts:908:86 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"10\"\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

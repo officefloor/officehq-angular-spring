@@ -1,0 +1,70 @@
+{
+  "checkpoint": 168,
+  "checkpoint_id": "cp168_crews-are-pools",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "d330d0f88afe017d9db51782aa869ea50e0bba49",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T11:47:05",
+  "seconds": 139,
+  "build_log_file": "cp168.test.log",
+  "replaced_tests": [
+    "cp166_crews.spec.ts::crews",
+    "cp166_crews.spec.ts::crews scenario 1",
+    "cp167_crew-lead-total.spec.ts::crew lead total scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp168_crews-are-pools.spec.ts::crews are pools": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 1": false,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 2": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8087,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19178,
+        "failure": "Error: audit line 50\n  expected: ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00 for=vic\n  actual:   ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   at ../support/ui.ts:1560\n\n  1558 |     const e = expected[i];\n  1559 |     const ok = line === e || line.startsWith(e + ' ');\n> 1560 |     expect(ok, `audit line ${i + 1}\\n  expected: ${e}\\n  actual:   ${line}`).toBe(true);\n       |                                                                              ^\n  1561 |   });\n  1562 | }\n  1563 |\n\n    at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)\n    at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp168_crews-are-pools.spec.ts:555:14 | Error: audit line 50\n  expected: ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00 for=vic\n  actual:   ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28934,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 34122,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkfkcxixyqd\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkfkcxixyqd-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkfkcxixyqd-p\"\u001b[22m\n\n\n  1428 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1429 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-15\");\n> 1430 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

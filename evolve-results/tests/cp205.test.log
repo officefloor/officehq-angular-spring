@@ -1,0 +1,73 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp205-3qlenxcy
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp205_plan-history.spec.ts:6:7 › plan history › plan history (7.1s)
+  ✘  2 [chromium] › cp205_plan-history.spec.ts:70:7 › plan history › plan history scenario 1 (19.1s)
+  ✘  3 [chromium] › cp205_plan-history.spec.ts:948:7 › plan history › plan history scenario 2 (16.8s)
+  ✓  4 [chromium] › cp205_plan-history.spec.ts:1288:7 › plan history › plan history scenario 3 (19.6s)
+
+
+  1) [chromium] › cp205_plan-history.spec.ts:70:7 › plan history › plan history scenario 1 ─────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('note-line')
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 3[39m
+
+    [32m- Array [][39m
+    [31m+ Array [[39m
+    [31m+   "2026-03-10 wes: hi",[39m
+    [31m+ ][39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('note-line')[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+
+
+      354 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+      355 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+    > 356 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+          |                                                   ^
+      357 |     await ui.expectAudit(sheet, [
+      358 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+      359 |       `SETTING_CHANGED sheet=${sheet} by=uma key=clerk-limit value=3.00`,
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp205_plan-history.spec.ts:356:51
+
+  2) [chromium] › cp205_plan-history.spec.ts:948:7 › plan history › plan history scenario 2 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"16"[39m
+
+      1027 |     expect(await ui.statementAsOf(pg_uma, p_ada, "2026-03-05")).toBe(false);
+      1028 |     expect(await ui.quickAdd(pg_uma, {"name": "Dot", "amount": "10.35"})).toBeNull();
+    > 1029 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-02-25", "note": "n", "ref": "R-1"})).toBeNull();
+           |                                                                                                                    ^
+      1030 |     await ui.refresh(pg_uma);
+      1031 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+      1032 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp205_plan-history.spec.ts:1029:116
+
+  2 failed
+    [chromium] › cp205_plan-history.spec.ts:70:7 › plan history › plan history scenario 1 ──────────
+    [chromium] › cp205_plan-history.spec.ts:948:7 › plan history › plan history scenario 2 ─────────
+  2 passed (1.1m)

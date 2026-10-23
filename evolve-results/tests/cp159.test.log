@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp159-tulfhlz8
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp159_carried-figures.spec.ts:6:7 › carried figures › carried figures (15.2s)
+  ✓  2 [chromium] › cp159_carried-figures.spec.ts:168:7 › carried figures › carried figures scenario 1 (52.4s)
+  ✓  3 [chromium] › cp159_carried-figures.spec.ts:537:7 › carried figures › carried figures scenario 2 (20.5s)
+  ✘  4 [chromium] › cp159_carried-figures.spec.ts:993:7 › carried figures › carried figures scenario 3 (36.3s)
+
+
+  1) [chromium] › cp159_carried-figures.spec.ts:993:7 › carried figures › carried figures scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkclv06ge9n[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkclv06ge9n-p</strong>[22m
+    [2m  -   unexpected value "smvkclv06ge9n-p"[22m
+
+
+      1129 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
+      1130 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 1131 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1132 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1133 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1134 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp159_carried-figures.spec.ts:1131:54
+
+  Slow test file: [chromium] › cp159_carried-figures.spec.ts (2.1m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp159_carried-figures.spec.ts:993:7 › carried figures › carried figures scenario 3 
+  3 passed (2.1m)

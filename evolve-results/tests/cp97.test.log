@@ -1,0 +1,82 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp97-hg9x4nxz
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp97_monthly-totals.spec.ts:6:7 › monthly totals › monthly totals (4.9s)
+  ✘  2 [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 (8.5s)
+  ✓  3 [chromium] › cp97_monthly-totals.spec.ts:540:7 › monthly totals › monthly totals scenario 2 (10.1s)
+  ✓  4 [chromium] › cp97_monthly-totals.spec.ts:736:7 › monthly totals › monthly totals scenario 3 (11.9s)
+
+
+  1) [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 ────
+
+    Error: audit lines for smvjtc4dkjys6:
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=floor value=0.50
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=terms value=30
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=period-numbering-from value=2026-03-01
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=cap value=5.00
+    ROLE_SET sheet=smvjtc4dkjys6 by=uma user=wes role=viewer
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=entry-date value=2026-03-05
+    HOLIDAY_ADDED sheet=smvjtc4dkjys6 by=uma date=2026-03-13
+    HOLIDAY_ADDED sheet=smvjtc4dkjys6 by=uma date=2026-03-24
+    VOID_REASON_ADDED sheet=smvjtc4dkjys6 by=uma reason=late
+    RATE_SET sheet=smvjtc4dkjys6 by=uma grade=A rate=12.50
+    RATE_SET sheet=smvjtc4dkjys6 by=uma grade=B rate=12.50
+    RATE_SET sheet=smvjtc4dkjys6 by=uma grade=C rate=12.50
+    RATE_SET sheet=smvjtc4dkjys6 by=uma grade=A rate=33.33 from=2026-03-10
+    PERIOD_ADDED sheet=smvjtc4dkjys6 by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERSON_ADDED sheet=smvjtc4dkjys6 by=uma name=Ben grade=B
+    ROLLUP sheet=smvjtc4dkjys6 by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjtc4dkjys6 by=uma name=Ada grade=A
+    ROLLUP sheet=smvjtc4dkjys6 by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjtc4dkjys6 by=uma name=Cam grade=B
+    ROLLUP sheet=smvjtc4dkjys6 by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    SNAPSHOT sheet=smvjtc4dkjys6 by=uma name=Ben due-total=0.00
+    SNAPSHOT sheet=smvjtc4dkjys6 by=uma name=Ada due-total=0.00
+    SNAPSHOT sheet=smvjtc4dkjys6 by=uma name=Cam due-total=0.00
+    CLAIM_ADDED sheet=smvjtc4dkjys6 by=uma person=Cam amount=1.00 date=2026-03-05
+    CLAIM_EDITED sheet=smvjtc4dkjys6 by=uma person=Cam amount=0.04 date=2026-03-05
+    CLAIM_OPENED sheet=smvjtc4dkjys6 by=uma person=Cam amount=0.04 date=2026-03-05 number=X-1
+    ROLLUP sheet=smvjtc4dkjys6 by=uma person=Cam claimed=0.04 due-total=1.00 overdue-total=1.00
+    TOTALS sheet=smvjtc4dkjys6 by=uma claimed-total=0.04 due-total=0.00 overdue-total=0.00
+    PERSON_WATCHED sheet=smvjtc4dkjys6 by=uma name=Ada
+    CLAIM_ADDED sheet=smvjtc4dkjys6 by=uma person=Ben amount=0.40 date=2026-03-05 tags=a,b
+    CLAIM_PROOF_ADDED sheet=smvjtc4dkjys6 by=uma person=Cam amount=0.04 date=2026-03-05 number=X-1 proofs=1
+    STATEMENT sheet=smvjtc4dkjys6 by=uma name=Ada due-total=0.00 claims=0
+    PERIOD_SOFT_CLOSED sheet=smvjtc4dkjys6 by=uma period=P1 total=0.00
+    CLAIM_EDITED sheet=smvjtc4dkjys6 by=uma person=Ben amount=0.40 date=2026-04-02
+    SETTING_CHANGED sheet=smvjtc4dkjys6 by=uma key=policy-date value=2026-03-15
+    CLAIM_ADDED sheet=smvjtc4dkjys6 by=uma person=Cam amount=20.00 date=2026-03-05 ref=inv 7
+    HOLIDAY_ADDED sheet=smvjtc4dkjys6 by=uma date=2026-03-27
+    CLAIM_ADDED sheet=smvjtc4dkjys6 by=uma person=Ada amount=0.04 date=2026-03-28
+    CLAIM_ADDED sheet=smvjtc4dkjys6 by=uma person=Ada amount=4.00 date=2026-02-10
+    LATE_ENTRY sheet=smvjtc4dkjys6 by=uma person=Ada amount=4.00 date=2026-02-10
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m39[39m
+    Received: [31m40[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp97_monthly-totals.spec.ts:231:14
+
+  1 failed
+    [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 ─────
+  3 passed (37.2s)

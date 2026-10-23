@@ -1,0 +1,66 @@
+{
+  "checkpoint": 218,
+  "checkpoint_id": "cp218_review-assignment",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "92fa12485d22760eef5ebfd4cd898064d121cb4f",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:49:33",
+  "seconds": 162,
+  "build_log_file": "cp218.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp218_review-assignment.spec.ts::review assignment": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 1": false,
+      "cp218_review-assignment.spec.ts::review assignment scenario 2": false,
+      "cp218_review-assignment.spec.ts::review assignment scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25469,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 32079,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkyxb8emcn2\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyxb8emcn2-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyxb8emcn2-p\"\u001b[22m\n\n\n  247 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  248 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-20\");\n> 249 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 26993,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkyy0zxp8qb\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyy0zxp8qb-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyy0zxp8qb-p\"\u001b[22m\n\n\n  858 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  859 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 860 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 26072,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkyymkvfssq\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyymkvfssq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyymkvfssq-p\"\u001b[22m\n\n\n  1320 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1321 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-25\");\n> 1322 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

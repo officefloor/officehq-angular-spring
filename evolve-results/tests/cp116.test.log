@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp116-0hn3isqb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp116_import-upserts.spec.ts:6:7 › import upserts › import upserts (11.6s)
+  ✓  2 [chromium] › cp116_import-upserts.spec.ts:87:7 › import upserts › import upserts scenario 1 (9.5s)
+  ✓  3 [chromium] › cp116_import-upserts.spec.ts:379:7 › import upserts › import upserts scenario 2 (23.0s)
+  ✘  4 [chromium] › cp116_import-upserts.spec.ts:690:7 › import upserts › import upserts scenario 3 (20.4s)
+
+
+  1) [chromium] › cp116_import-upserts.spec.ts:690:7 › import upserts › import upserts scenario 3 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-11').getByTestId('claim-amount')
+    Expected string: [32m"0.04"[39m
+    Received string: [31m"1.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-amount')[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">1.00</span>[22m
+    [2m  -   unexpected value "1.00"[22m
+
+
+      924 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-period-P1-due-total")).toHaveText("0.00");
+      925 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-period-P2-due-total")).toHaveText("0.00");
+    > 926 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-amount")).toHaveText("0.04");
+          |                                                                                          ^
+      927 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-date")).toHaveText("2026-03-20");
+      928 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-note")).toHaveText("paste");
+      929 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("0.50");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp116_import-upserts.spec.ts:926:90
+
+  Slow test file: [chromium] › cp116_import-upserts.spec.ts (1.1m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp116_import-upserts.spec.ts:690:7 › import upserts › import upserts scenario 3 ───
+  3 passed (1.1m)

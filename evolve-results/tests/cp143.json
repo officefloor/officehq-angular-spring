@@ -1,0 +1,66 @@
+{
+  "checkpoint": 143,
+  "checkpoint_id": "cp143_fiscal-year",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "41dabd2f0999b5b7abc573afd47ca0c061515384",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T08:22:34",
+  "seconds": 182,
+  "build_log_file": "cp143.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp143_fiscal-year.spec.ts::fiscal year": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 1": false,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 2": false,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15722,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 6205,
+        "failure": "Error: the screen refused this action (its error element appeared)\n\n   at ../support/ui.ts:25\n\n  23 |  *  lands on the arranging line rather than on a later assertion. */\n  24 | export function must(id: string | null): string {\n> 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');\n     |                          ^\n  26 |   return id;\n  27 | }\n  28 |\n\n    at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp143_fiscal-year.spec.ts:165:24 | Error: the screen refused this action (its error element appeared)"
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 39648,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvk88z8pxte6\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk88z8pxte6-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk88z8pxte6-p\"\u001b[22m\n\n\n  751 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  752 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 753 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 53909,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('period-row-2026-02').getByTestId('period-closed')\nExpected string: \u001b[32m\"yes\"\u001b[39m\nReceived string: \u001b[31m\"no\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('period-row-2026-02').getByTestId('period-closed')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"period-closed\">no</td>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\n\n  1276 |     await expect(pg_vic.getByTestId(\"my-overdue-total\")).toHaveText(\"\");\n  1277 |     await expect(pg_vic.getByTestId(\"period-row-2026-02\").getByTestId(\"period-due-total\")).toHaveText(\"0.00\");\n> 1278 |     await expect(pg_vic.getByTestId(\"period-row-2026-02\").getByTestId(\"period-closed\")).toHaveText(\"yes\");\n       |                                                                                         ^\n  1279 |     await expect(pg_vic.getByTestId(\"period-row-2026-02\").getByTestId(\"period-fy\")).toHaveText(\"FY2026\");\n  1280 |     await expect(pg_vic"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

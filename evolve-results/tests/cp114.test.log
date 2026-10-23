@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp114-twpopbs9
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp114_delete-and-restore-draft.spec.ts:6:7 › delete and restore draft › delete and restore draft (4.7s)
+  ✘  2 [chromium] › cp114_delete-and-restore-draft.spec.ts:143:7 › delete and restore draft › delete and restore draft scenario 1 (8.3s)
+  ✓  3 [chromium] › cp114_delete-and-restore-draft.spec.ts:633:7 › delete and restore draft › delete and restore draft scenario 2 (29.5s)
+  ✘  4 [chromium] › cp114_delete-and-restore-draft.spec.ts:1052:7 › delete and restore draft › delete and restore draft scenario 3 (16.6s)
+
+
+  1) [chromium] › cp114_delete-and-restore-draft.spec.ts:143:7 › delete and restore draft › delete and restore draft scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"9"[39m
+
+      217 |     await ui.refresh(pg_uma);
+      218 |     expect(await ui.claimAction(pg_uma, c_ben_0, "open")).toBe(true);
+    > 219 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "4.00", "date": "2026-03-01"})).toBeNull();
+          |                                                                                        ^
+      220 |     expect(await ui.statement(pg_uma, p_ben)).toBe(true);
+      221 |     expect(await ui.bulkOpen(pg_uma, [c_cam_1, c_ben_1])).toEqual({ opened: 2, refused: 0 });
+      222 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp114_delete-and-restore-draft.spec.ts:219:88
+
+  2) [chromium] › cp114_delete-and-restore-draft.spec.ts:1052:7 › delete and restore draft › delete and restore draft scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjyzddmxepp[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyzddmxepp-p</strong>[22m
+    [2m  -   unexpected value "smvjyzddmxepp-p"[22m
+
+
+      1143 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1144 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-15");
+    > 1145 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1146 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      1147 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1148 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp114_delete-and-restore-draft.spec.ts:1145:54
+
+  2 failed
+    [chromium] › cp114_delete-and-restore-draft.spec.ts:143:7 › delete and restore draft › delete and restore draft scenario 1 
+    [chromium] › cp114_delete-and-restore-draft.spec.ts:1052:7 › delete and restore draft › delete and restore draft scenario 3 
+  2 passed (1.0m)

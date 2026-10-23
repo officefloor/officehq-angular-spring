@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp212-3a4_q_nk
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp212_score-without-corrections.spec.ts:6:7 › score without corrections › score without corrections (12.7s)
+  ✘  2 [chromium] › cp212_score-without-corrections.spec.ts:50:7 › score without corrections › score without corrections scenario 1 (27.4s)
+  ✘  3 [chromium] › cp212_score-without-corrections.spec.ts:596:7 › score without corrections › score without corrections scenario 2 (14.4s)
+  ✘  4 [chromium] › cp212_score-without-corrections.spec.ts:1119:7 › score without corrections › score without corrections scenario 3 (31.8s)
+
+
+  1) [chromium] › cp212_score-without-corrections.spec.ts:50:7 › score without corrections › score without corrections scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('pool-member-C1-2').getByTestId('pool-cut')
+    Expected string: [32m""[39m
+    Received string: [31m"0.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('pool-member-C1-2').getByTestId('pool-cut')[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+      497 |     await expect(pg_uma.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("yes");
+      498 |     await expect(pg_uma.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-share")).toHaveText("100.00");
+    > 499 |     await expect(pg_uma.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-cut")).toHaveText("");
+          |                                                                                         ^
+      500 |     await expect(pg_uma.getByTestId("crew-row-C1").getByTestId("crew-lead")).toHaveText("Cam (C)");
+      501 |     await expect(pg_uma.getByTestId("crew-row-C1").getByTestId("crew-due-total")).toHaveText("0.00");
+      502 |     await expect(pg_uma.getByTestId("rate-month-A-2026-01")).toHaveText("33.33");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp212_score-without-corrections.spec.ts:499:89
+
+  2) [chromium] › cp212_score-without-corrections.spec.ts:596:7 › score without corrections › score without corrections scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      721 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "0.04", "ref": "R-2"})).toBeNull();
+      722 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "7.50"})).toBe(true);
+    > 723 |     expect(await ui.editInline(pg_uma, c_cam_0, "0.40")).toBe(false);
+          |                                                          ^
+      724 |     await ui.setAsOf(pg_uma, "2026-03-15");
+      725 |     await ui.refresh(pg_uma);
+      726 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp212_score-without-corrections.spec.ts:723:58
+
+  3) [chromium] › cp212_score-without-corrections.spec.ts:1119:7 › score without corrections › score without corrections scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkyej5vsyoo[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyej5vsyoo-p</strong>[22m
+    [2m  -   unexpected value "smvkyej5vsyoo-p"[22m
+
+
+      1260 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1261 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 1262 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1263 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("2");
+      1264 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("18.49");
+      1265 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp212_score-without-corrections.spec.ts:1262:54
+
+  3 failed
+    [chromium] › cp212_score-without-corrections.spec.ts:50:7 › score without corrections › score without corrections scenario 1 
+    [chromium] › cp212_score-without-corrections.spec.ts:596:7 › score without corrections › score without corrections scenario 2 
+    [chromium] › cp212_score-without-corrections.spec.ts:1119:7 › score without corrections › score without corrections scenario 3 
+  1 passed (1.6m)

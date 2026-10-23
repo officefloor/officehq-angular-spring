@@ -1,0 +1,80 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp219-a6__rqi_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp219_rollover-undo.spec.ts:6:7 › rollover undo › rollover undo (18.9s)
+  ✘  2 [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 (33.5s)
+  ✘  3 [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 (24.1s)
+  ✘  4 [chromium] › cp219_rollover-undo.spec.ts:1392:7 › rollover undo › rollover undo scenario 3 (6.2s)
+
+
+  1) [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31mnull[39m
+
+      608 |     await expect(pg_wes.getByTestId("my-crew-due-total")).toHaveText("");
+      609 |     await expect(pg_wes.getByTestId("my-reviews-count")).toHaveText("0");
+    > 610 |     expect(await ui.generatePeriods(pg_wes, "2026-01-15", "2026-02-20")).toBe(0);
+          |                                                                          ^
+      611 |     expect(await ui.addClaim(pg_wes, p_ben, {"amount": "10.35", "note": "n"})).toBeNull();
+      612 |     expect(await ui.addNote(pg_wes, "")).toBe(false);
+      613 |     expect(await ui.inlineGrade(pg_wes, p_cam, "C")).toBe(false);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp219_rollover-undo.spec.ts:610:74
+
+  2) [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 ────
+
+    Error: flag: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp219_rollover-undo.spec.ts:1084:12
+
+  3) [chromium] › cp219_rollover-undo.spec.ts:1392:7 › rollover undo › rollover undo scenario 3 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Array [[22m
+    [32m-   "Cam  ",[39m
+    [32m-   "Ben  ",[39m
+    [31m+   "Cam",[39m
+    [31m+   "Ben",[39m
+    [2m  ][22m
+
+      1428 |     expect(await ui.editPerson(pg_uma, p_cam, {"terms": "3", "termsFrom": "2026-03-12"})).toBe(true);
+      1429 |     const pl_cam_1 = ui.must(await ui.addPlan(pg_uma, p_cam, {"amount": "1.00", "start": "2026-03-01", "end": "2026-04-30", "every": "7"}));
+    > 1430 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-10", "2026-03-10")).toEqual(["Cam  ", "Ben  "]);
+           |                                                                          ^
+      1431 |     expect(await ui.pasteClaims(pg_uma, "Ben,10.35,2026-03-01,\nBen,4.00,,paste\nBen,25.00,,")).toBeNull();
+      1432 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      1433 |     expect(await ui.rollover(pg_vic, "2026")).toBeNull();
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp219_rollover-undo.spec.ts:1430:74
+
+  3 failed
+    [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 ──────
+    [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 ─────
+    [chromium] › cp219_rollover-undo.spec.ts:1392:7 › rollover undo › rollover undo scenario 3 ─────
+  1 passed (1.4m)

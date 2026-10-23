@@ -1,0 +1,85 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp224-a_3kupd4
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp224_cap-includes-cuts.spec.ts:6:7 › cap includes cuts › cap includes cuts (7.4s)
+  ✘  2 [chromium] › cp224_cap-includes-cuts.spec.ts:103:7 › cap includes cuts › cap includes cuts scenario 1 (11.6s)
+  ✓  3 [chromium] › cp224_cap-includes-cuts.spec.ts:839:7 › cap includes cuts › cap includes cuts scenario 2 (26.2s)
+  ✘  4 [chromium] › cp224_cap-includes-cuts.spec.ts:1360:7 › cap includes cuts › cap includes cuts scenario 3 (24.3s)
+
+
+  1) [chromium] › cp224_cap-includes-cuts.spec.ts:103:7 › cap includes cuts › cap includes cuts scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Array [[22m
+    [32m-   "Ben  ",[39m
+    [32m-   "Dot  ",[39m
+    [31m+   "Ben",[39m
+    [31m+   "Dot",[39m
+    [2m  ][22m
+
+      190 |     expect(await ui.merge(pg_vic, p_ada, "Ben")).toBe(true);
+      191 |     const c_ben_2 = await ui.claimAt(pg_vic, p_ben, 2);
+    > 192 |     expect(await ui.snapshotCompare(pg_vic, "2026-03-20", "2026-03-10")).toEqual(["Ben  ", "Dot  "]);
+          |                                                                          ^
+      193 |     await ui.refresh(pg_vic);
+      194 |     expect(await ui.redate(pg_vic, c_ben_1, "2026-04-02")).toBe(true);
+      195 |     expect(await ui.addAlias(pg_vic, p_ben, "Al")).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp224_cap-includes-cuts.spec.ts:192:74
+
+  2) [chromium] › cp224_cap-includes-cuts.spec.ts:1360:7 › cap includes cuts › cap includes cuts scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-claimed')
+    Expected string: [32m"3.33"[39m
+    Received string: [31m"0.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-claimed')[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+      1455 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-status")).toHaveText("DRAFT");
+      1456 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-stated")).toHaveText("no");
+    > 1457 |     await expect(pg_uma.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("3.33");
+           |                                                                                           ^
+      1458 |     await expect(pg_uma.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("1.00");
+      1459 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-due")).toHaveText("1.00");
+      1460 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp224_cap-includes-cuts.spec.ts:1457:91
+
+  2 failed
+    [chromium] › cp224_cap-includes-cuts.spec.ts:103:7 › cap includes cuts › cap includes cuts scenario 1 
+    [chromium] › cp224_cap-includes-cuts.spec.ts:1360:7 › cap includes cuts › cap includes cuts scenario 3 
+  2 passed (1.2m)

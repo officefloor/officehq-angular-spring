@@ -1,0 +1,66 @@
+{
+  "checkpoint": 125,
+  "checkpoint_id": "cp125_unretire",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "318db5becf1d15513728c9e8325777ecf99c9dc9",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T05:29:21",
+  "seconds": 99,
+  "build_log_file": "cp125.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp125_unretire.spec.ts::unretire": true,
+      "cp125_unretire.spec.ts::unretire scenario 1": true,
+      "cp125_unretire.spec.ts::unretire scenario 2": false,
+      "cp125_unretire.spec.ts::unretire scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7759,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19504,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 15228,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31mnull\u001b[39m\n\n  641 |     await expect(pg_vic.getByTestId(\"header-due-total\")).toHaveText(\"6.00\");\n  642 |     await expect(pg_vic.getByTestId(\"header-overdue-total\")).toHaveText(\"2.00\");\n> 643 |     expect(await ui.pasteClaims(pg_vic, \"Ben,0.40,,paste\\nBen,0.40,2026-02-10,a, b\\nAda,3.33,,paste\")).toBe(3);\n      |                                                                                                        ^\n  644 |     const c_ben_0 = await ui.claimAt(pg_vic, p_ben, 0);\n  645 |     const c_ben_1 = await ui.claimAt(pg_vic, p_ben, 1);\n  646 |     const c_ada_2 = await ui.claimAt(pg_vic, p_ada, 2);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp125_unretire.spec.ts:643:104 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31mnull\u001b[39m"
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19220,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

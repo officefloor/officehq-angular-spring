@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp193-f7un79hf
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp193_sheet-age-buckets.spec.ts:6:7 › sheet age buckets › sheet age buckets (11.1s)
+  ✘  2 [chromium] › cp193_sheet-age-buckets.spec.ts:97:7 › sheet age buckets › sheet age buckets scenario 1 (23.2s)
+  ✘  3 [chromium] › cp193_sheet-age-buckets.spec.ts:581:7 › sheet age buckets › sheet age buckets scenario 2 (24.6s)
+  ✓  4 [chromium] › cp193_sheet-age-buckets.spec.ts:1192:7 › sheet age buckets › sheet age buckets scenario 3 (17.3s)
+
+
+  1) [chromium] › cp193_sheet-age-buckets.spec.ts:97:7 › sheet age buckets › sheet age buckets scenario 1 
+
+    Error: flag: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp193_sheet-age-buckets.spec.ts:172:12
+
+  2) [chromium] › cp193_sheet-age-buckets.spec.ts:581:7 › sheet age buckets › sheet age buckets scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkpt9jyvmhp[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpt9jyvmhp-p</strong>[22m
+    [2m  -   unexpected value "smvkpt9jyvmhp-p"[22m
+
+
+      712 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      713 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 714 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      715 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      716 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      717 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp193_sheet-age-buckets.spec.ts:714:54
+
+  2 failed
+    [chromium] › cp193_sheet-age-buckets.spec.ts:97:7 › sheet age buckets › sheet age buckets scenario 1 
+    [chromium] › cp193_sheet-age-buckets.spec.ts:581:7 › sheet age buckets › sheet age buckets scenario 2 
+  2 passed (1.4m)

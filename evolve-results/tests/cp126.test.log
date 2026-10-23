@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp126-eywfwk3i
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp126_clone-sheet.spec.ts:6:7 › clone sheet › clone sheet (13.3s)
+  ✘  2 [chromium] › cp126_clone-sheet.spec.ts:260:7 › clone sheet › clone sheet scenario 1 (17.1s)
+  ✘  3 [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 (22.0s)
+  ✓  4 [chromium] › cp126_clone-sheet.spec.ts:948:7 › clone sheet › clone sheet scenario 3 (16.1s)
+
+
+  1) [chromium] › cp126_clone-sheet.spec.ts:260:7 › clone sheet › clone sheet scenario 1 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-14').getByTestId('claim-late-entry')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-14').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      433 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-proofs")).toHaveText("0");
+      434 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-split-from")).toHaveText("");
+    > 435 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-late-entry")).toHaveText("no");
+          |                                                                                              ^
+      436 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-reminded")).toHaveText("");
+      437 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-ref")).toHaveText("");
+      438 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-tags")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp126_clone-sheet.spec.ts:435:94
+
+  2) [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk2453wy3vl[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk2453wy3vl-p</strong>[22m
+    [2m  -   unexpected value "smvk2453wy3vl-p"[22m
+
+
+      666 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      667 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 668 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      669 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      670 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("2.05");
+      671 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp126_clone-sheet.spec.ts:668:54
+
+  2 failed
+    [chromium] › cp126_clone-sheet.spec.ts:260:7 › clone sheet › clone sheet scenario 1 ────────────
+    [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 ────────────
+  2 passed (1.2m)

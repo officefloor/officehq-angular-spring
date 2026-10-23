@@ -1,0 +1,142 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp161-k009e96q
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp161_as-of-exports.spec.ts:6:7 › as of exports › as of exports (10.0s)
+  ✘  2 [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 (21.4s)
+  ✘  3 [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 (23.2s)
+  ✘  4 [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 (25.5s)
+
+
+  1) [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 ──────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkf17wr7yic[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf17wr7yic-p</strong>[22m
+    [2m  -   unexpected value "smvkf17wr7yic-p"[22m
+
+
+      155 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      156 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-01");
+    > 157 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      158 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      159 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      160 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:157:54
+
+  2) [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkf1peuyuw2[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf1peuyuw2-p</strong>[22m
+    [2m  -   unexpected value "smvkf1peuyuw2-p"[22m
+
+
+      541 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      542 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 543 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      544 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      545 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      546 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:543:54
+
+  3) [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkf2867lobo[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf2867lobo-p</strong>[22m
+    [2m  -   unexpected value "smvkf2867lobo-p"[22m
+
+
+      1043 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1044 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 1045 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1046 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      1047 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1048 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:1045:54
+
+  3 failed
+    [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 ───────
+    [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 ──────
+    [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 ──────
+  1 passed (1.4m)

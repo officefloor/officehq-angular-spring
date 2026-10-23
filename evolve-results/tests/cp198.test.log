@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp198-5sk230we
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp198_duplicate-claims.spec.ts:6:7 › duplicate claims › duplicate claims (14.1s)
+  ✘  2 [chromium] › cp198_duplicate-claims.spec.ts:60:7 › duplicate claims › duplicate claims scenario 1 (35.3s)
+  ✘  3 [chromium] › cp198_duplicate-claims.spec.ts:606:7 › duplicate claims › duplicate claims scenario 2 (39.4s)
+  ✘  4 [chromium] › cp198_duplicate-claims.spec.ts:1121:7 › duplicate claims › duplicate claims scenario 3 (19.1s)
+
+
+  1) [chromium] › cp198_duplicate-claims.spec.ts:60:7 › duplicate claims › duplicate claims scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkq87th77b9[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq87th77b9-p</strong>[22m
+    [2m  -   unexpected value "smvkq87th77b9-p"[22m
+
+
+      190 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      191 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 192 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      193 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      194 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      195 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp198_duplicate-claims.spec.ts:192:54
+
+  2) [chromium] › cp198_duplicate-claims.spec.ts:606:7 › duplicate claims › duplicate claims scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkq90wll8wk[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq90wll8wk-p</strong>[22m
+    [2m  -   unexpected value "smvkq90wll8wk-p"[22m
+
+
+      760 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
+      761 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 762 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      763 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("4");
+      764 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      765 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp198_duplicate-claims.spec.ts:762:54
+
+  3) [chromium] › cp198_duplicate-claims.spec.ts:1121:7 › duplicate claims › duplicate claims scenario 3 
+
+    Error: flag: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp198_duplicate-claims.spec.ts:1156:12
+
+  3 failed
+    [chromium] › cp198_duplicate-claims.spec.ts:60:7 › duplicate claims › duplicate claims scenario 1 
+    [chromium] › cp198_duplicate-claims.spec.ts:606:7 › duplicate claims › duplicate claims scenario 2 
+    [chromium] › cp198_duplicate-claims.spec.ts:1121:7 › duplicate claims › duplicate claims scenario 3 
+  1 passed (1.9m)

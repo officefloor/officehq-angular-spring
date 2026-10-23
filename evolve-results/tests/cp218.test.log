@@ -1,0 +1,142 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp218-9vq2gzow
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp218_review-assignment.spec.ts:6:7 › review assignment › review assignment (25.5s)
+  ✘  2 [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 (32.1s)
+  ✘  3 [chromium] › cp218_review-assignment.spec.ts:742:7 › review assignment › review assignment scenario 2 (27.0s)
+  ✘  4 [chromium] › cp218_review-assignment.spec.ts:1159:7 › review assignment › review assignment scenario 3 (26.1s)
+
+
+  1) [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkyxb8emcn2[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyxb8emcn2-p</strong>[22m
+    [2m  -   unexpected value "smvkyxb8emcn2-p"[22m
+
+
+      247 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      248 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 249 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      250 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      251 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.56");
+      252 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp218_review-assignment.spec.ts:249:54
+
+  2) [chromium] › cp218_review-assignment.spec.ts:742:7 › review assignment › review assignment scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkyy0zxp8qb[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyy0zxp8qb-p</strong>[22m
+    [2m  -   unexpected value "smvkyy0zxp8qb-p"[22m
+
+
+      858 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      859 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 860 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      861 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("3");
+      862 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      863 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp218_review-assignment.spec.ts:860:54
+
+  3) [chromium] › cp218_review-assignment.spec.ts:1159:7 › review assignment › review assignment scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkyymkvfssq[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyymkvfssq-p</strong>[22m
+    [2m  -   unexpected value "smvkyymkvfssq-p"[22m
+
+
+      1320 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1321 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 1322 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1323 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      1324 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1325 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp218_review-assignment.spec.ts:1322:54
+
+  3 failed
+    [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+    [chromium] › cp218_review-assignment.spec.ts:742:7 › review assignment › review assignment scenario 2 
+    [chromium] › cp218_review-assignment.spec.ts:1159:7 › review assignment › review assignment scenario 3 
+  1 passed (1.9m)

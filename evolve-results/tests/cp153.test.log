@@ -1,0 +1,118 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp153-wzrjyjpt
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp153_rate-versions.spec.ts:6:7 › rate versions › rate versions (6.6s)
+  ✘  2 [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 (19.3s)
+  ✘  3 [chromium] › cp153_rate-versions.spec.ts:443:7 › rate versions › rate versions scenario 2 (24.7s)
+  ✘  4 [chromium] › cp153_rate-versions.spec.ts:784:7 › rate versions › rate versions scenario 3 (17.0s)
+
+
+  1) [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkawa3ykeg6[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawa3ykeg6-p</strong>[22m
+    [2m  -   unexpected value "smvkawa3ykeg6-p"[22m
+
+
+      204 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      205 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+    > 206 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      207 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      208 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      209 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp153_rate-versions.spec.ts:206:54
+
+  2) [chromium] › cp153_rate-versions.spec.ts:443:7 › rate versions › rate versions scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkawphv3sb4[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkawphv3sb4-p</strong>[22m
+    [2m  -   unexpected value "smvkawphv3sb4-p"[22m
+
+
+      564 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      565 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 566 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      567 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      568 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      569 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp153_rate-versions.spec.ts:566:54
+
+  3) [chromium] › cp153_rate-versions.spec.ts:784:7 › rate versions › rate versions scenario 3 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"10"[39m
+
+      906 |     expect(await ui.claimAction(pg_wes, c_ben_0, "open")).toBe(true);
+      907 |     expect(await ui.periodAction(pg_wes, "P1", "close")).toBe(true);
+    > 908 |     expect(await ui.addClaim(pg_wes, p_ada, {"amount": "-4.00", "corrects": "X-1"})).toBeNull();
+          |                                                                                      ^
+      909 |     expect(await ui.importPeople(pg_wes, "Eve,A")).toMatchObject({"added": 1, "updated": 0});
+      910 |     const p_eve = await ui.personId(pg_wes, "Eve");
+      911 |     expect(await ui.setRate(pg_wes, {"grade": "B", "pct": "7.50"})).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp153_rate-versions.spec.ts:908:86
+
+  3 failed
+    [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 ──────
+    [chromium] › cp153_rate-versions.spec.ts:443:7 › rate versions › rate versions scenario 2 ──────
+    [chromium] › cp153_rate-versions.spec.ts:784:7 › rate versions › rate versions scenario 3 ──────
+  1 passed (1.2m)

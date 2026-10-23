@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp92-fqtd35jh
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp92_four-eyes-editor.spec.ts:6:7 › four eyes editor › four eyes editor (12.1s)
+  ✘  2 [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 (17.1s)
+  ✓  3 [chromium] › cp92_four-eyes-editor.spec.ts:439:7 › four eyes editor › four eyes editor scenario 2 (18.9s)
+  ✓  4 [chromium] › cp92_four-eyes-editor.spec.ts:910:7 › four eyes editor › four eyes editor scenario 3 (12.1s)
+
+
+  1) [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('period-row-P1').getByTestId('period-closed')
+    Expected string: [32m"yes"[39m
+    Received string: [31m"no"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('period-row-P1').getByTestId('period-closed')[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+
+
+      225 |     await expect(pg_wes.getByTestId("header-overdue-total")).toHaveText("0.00");
+      226 |     await expect(pg_wes.getByTestId("period-row-P1").getByTestId("period-due-total")).toHaveText("0.00");
+    > 227 |     await expect(pg_wes.getByTestId("period-row-P1").getByTestId("period-closed")).toHaveText("yes");
+          |                                                                                    ^
+      228 |     await expect(pg_wes.getByTestId("period-row-P2").getByTestId("period-due-total")).toHaveText("0.00");
+      229 |     await expect(pg_wes.getByTestId("period-row-P2").getByTestId("period-closed")).toHaveText("no");
+      230 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp92_four-eyes-editor.spec.ts:227:84
+
+  1 failed
+    [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 
+  3 passed (1.1m)

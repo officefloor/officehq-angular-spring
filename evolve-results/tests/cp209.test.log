@@ -1,0 +1,55 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp209-g1alae7v
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp209_score.spec.ts:6:7 › score › score (10.9s)
+  ✘  2 [chromium] › cp209_score.spec.ts:74:7 › score › score scenario 1 (10.0s)
+  ✓  3 [chromium] › cp209_score.spec.ts:531:7 › score › score scenario 2 (22.4s)
+  ✘  4 [chromium] › cp209_score.spec.ts:1047:7 › score › score scenario 3 (18.6s)
+
+
+  1) [chromium] › cp209_score.spec.ts:74:7 › score › score scenario 1 ──────────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"6"[39m
+
+      142 |     expect(await ui.claimAction(pg_uma, c_ada_0, "void")).toBe(false);
+      143 |     expect(await ui.search(pg_uma, "e")).toEqual([`${sheet} Ben (A) 0.00`]);
+    > 144 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-03-01", "note": "n", "tags": "b,a,a"})).toBeNull();
+          |                                                                                                                      ^
+      145 |     expect(await ui.importOpenings(pg_uma, "Ben,P2,5.50")).toBe(1);
+      146 |     expect(await ui.movePerson(pg_uma, p_ada, "up")).toBe(false);
+      147 |     expect(await ui.statement(pg_uma, p_ben)).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp209_score.spec.ts:144:118
+
+  2) [chromium] › cp209_score.spec.ts:1047:7 › score › score scenario 3 ────────────────────────────
+
+    Error: quick add: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp209_score.spec.ts:1083:29
+
+  2 failed
+    [chromium] › cp209_score.spec.ts:74:7 › score › score scenario 1 ───────────────────────────────
+    [chromium] › cp209_score.spec.ts:1047:7 › score › score scenario 3 ─────────────────────────────
+  2 passed (1.1m)

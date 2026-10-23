@@ -1,0 +1,42 @@
+{
+  "checkpoint": 1,
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "da7db0e251cf00d6e3a63737511e4a830ab3a05c",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T18:21:52",
+  "seconds": 27,
+  "build_log_file": "cp01.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 1,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1688,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

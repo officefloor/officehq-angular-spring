@@ -1,0 +1,66 @@
+{
+  "checkpoint": 206,
+  "checkpoint_id": "cp206_restricted-role",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "1831e2264b4d97ea6efcc0e19eb0fe76dc5e4544",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T18:37:40",
+  "seconds": 136,
+  "build_log_file": "cp206.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp206_restricted-role.spec.ts::restricted role": true,
+      "cp206_restricted-role.spec.ts::restricted role scenario 1": true,
+      "cp206_restricted-role.spec.ts::restricted role scenario 2": false,
+      "cp206_restricted-role.spec.ts::restricted role scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10642,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21021,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 23751,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvku7vokpa4h\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvku7vokpa4h-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvku7vokpa4h-p\"\u001b[22m\n\n\n  924 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  925 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 926 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 29168,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-11').getByTestId('claim-status')\nExpected string: \u001b[32m\"SETTLED\"\u001b[39m\nReceived string: \u001b[31m\"DRAFT\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-status')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-status\">DRAFT</span>\u001b[22m\n\u001b[2m  -   unexpected value \"DRAFT\"\u001b[22m\n\n\n  1238 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ada_3).getByTestId(\"claim-stated\")).toHaveText(\"no\");\n  1239 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ada_3).getByTestId(\"claim-due\")).toHaveText(\"n/a\");\n> 1240 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ada_3).getByTestId(\"claim-status\")).toHaveText(\"SETTLED\");\n       |                                                                                          ^\n  1241 |     await expect(pg_uma.getByT"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

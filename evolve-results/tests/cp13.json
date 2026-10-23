@@ -1,0 +1,66 @@
+{
+  "checkpoint": 13,
+  "checkpoint_id": "cp13_four-eyes",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "b027bf4bc2f4e3e59c036659df811d25495606f5",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T18:47:06",
+  "seconds": 46,
+  "build_log_file": "cp13.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 1": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 2": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5171,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6716,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5093,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

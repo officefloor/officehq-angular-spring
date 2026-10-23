@@ -1,0 +1,86 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp168-hls7d5t3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp168_crews-are-pools.spec.ts:6:7 › crews are pools › crews are pools (8.1s)
+  ✘  2 [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 (19.2s)
+  ✓  3 [chromium] › cp168_crews-are-pools.spec.ts:621:7 › crews are pools › crews are pools scenario 2 (28.9s)
+  ✘  4 [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 (34.1s)
+
+
+  1) [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 
+
+    Error: audit line 50
+      expected: ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00 for=vic
+      actual:   ALERT sheet=smvkfjaeeoka1 by=wes name=Cam due-total=2.00
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp168_crews-are-pools.spec.ts:555:14
+
+  2) [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkfkcxixyqd[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfkcxixyqd-p</strong>[22m
+    [2m  -   unexpected value "smvkfkcxixyqd-p"[22m
+
+
+      1428 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1429 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-15");
+    > 1430 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1431 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      1432 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1433 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp168_crews-are-pools.spec.ts:1430:54
+
+  2 failed
+    [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 ─
+    [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+  2 passed (1.6m)

@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp117-b604234x
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp117_list-positions.spec.ts:6:7 › list positions › list positions (10.2s)
+  ✘  2 [chromium] › cp117_list-positions.spec.ts:72:7 › list positions › list positions scenario 1 (14.5s)
+  ✘  3 [chromium] › cp117_list-positions.spec.ts:546:7 › list positions › list positions scenario 2 (7.1s)
+  ✘  4 [chromium] › cp117_list-positions.spec.ts:899:7 › list positions › list positions scenario 3 (19.7s)
+
+
+  1) [chromium] › cp117_list-positions.spec.ts:72:7 › list positions › list positions scenario 1 ───
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-10').getByTestId('claim-late-entry')
+    Expected string: [32m"yes"[39m
+    Received string: [31m"no"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-10').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+
+
+      279 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-proofs")).toHaveText("0");
+      280 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-split-from")).toHaveText("");
+    > 281 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-late-entry")).toHaveText("yes");
+          |                                                                                              ^
+      282 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-reminded")).toHaveText("");
+      283 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-ref")).toHaveText("");
+      284 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_4).getByTestId("claim-tags")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp117_list-positions.spec.ts:281:94
+
+  2) [chromium] › cp117_list-positions.spec.ts:546:7 › list positions › list positions scenario 2 ──
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp117_list-positions.spec.ts:566:22
+
+  3) [chromium] › cp117_list-positions.spec.ts:899:7 › list positions › list positions scenario 3 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjzh8kwby90[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzh8kwby90-p</strong>[22m
+    [2m  -   unexpected value "smvjzh8kwby90-p"[22m
+
+
+      986 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      987 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 988 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      989 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      990 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      991 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp117_list-positions.spec.ts:988:54
+
+  3 failed
+    [chromium] › cp117_list-positions.spec.ts:72:7 › list positions › list positions scenario 1 ────
+    [chromium] › cp117_list-positions.spec.ts:546:7 › list positions › list positions scenario 2 ───
+    [chromium] › cp117_list-positions.spec.ts:899:7 › list positions › list positions scenario 3 ───
+  1 passed (54.5s)

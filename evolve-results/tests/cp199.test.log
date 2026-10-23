@@ -1,0 +1,97 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp199-hl5nihw3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp199_approvers.spec.ts:6:7 › approvers › approvers (10.9s)
+  ✓  2 [chromium] › cp199_approvers.spec.ts:74:7 › approvers › approvers scenario 1 (27.3s)
+  ✘  3 [chromium] › cp199_approvers.spec.ts:757:7 › approvers › approvers scenario 2 (25.3s)
+  ✘  4 [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 (25.5s)
+
+
+  1) [chromium] › cp199_approvers.spec.ts:757:7 › approvers › approvers scenario 2 ─────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkqccaghne0[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqccaghne0-p</strong>[22m
+    [2m  -   unexpected value "smvkqccaghne0-p"[22m
+
+
+      868 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      869 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 870 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      871 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      872 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      873 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp199_approvers.spec.ts:870:54
+
+  2) [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 ────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-9').getByTestId('person-statement-line-line')
+    [32m- Expected  - 0[39m
+    [31m+ Received  + 1[39m
+
+    [2m  Array [[22m
+    [31m+   "2026-04-05 n/a",[39m
+    [2m    "2026-04-05 0.00",[22m
+    [2m  ][22m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-statement-line-line')[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   locator resolved to 2 elements[22m
+
+
+      1267 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-tags")).toHaveText("a, b");
+      1268 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-snapshot-line")).toHaveText([]);
+    > 1269 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-statement-line-line")).toHaveText(["2026-04-05 0.00"]);
+           |                                                                                                       ^
+      1270 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-flag-shown")).toHaveText("");
+      1271 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-approver")).toHaveText("");
+      1272 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-period-P1-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp199_approvers.spec.ts:1269:103
+
+  2 failed
+    [chromium] › cp199_approvers.spec.ts:757:7 › approvers › approvers scenario 2 ──────────────────
+    [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 ─────────────────
+  2 passed (1.6m)

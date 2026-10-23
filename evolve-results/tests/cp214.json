@@ -1,0 +1,66 @@
+{
+  "checkpoint": 214,
+  "checkpoint_id": "cp214_max-open-claims",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "161410886fe13a93a544aba6c79051ba9a16a565",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:39:06",
+  "seconds": 145,
+  "build_log_file": "cp214.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp214_max-open-claims.spec.ts::max open claims": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 1": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 2": false,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 28861,
+        "failure": "Error: add claim: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at Object.addClaim (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:678:14)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp214_max-open-claims.spec.ts:825:29 | Error: add claim: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 32451,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkykoioxe3q\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkykoioxe3q-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkykoioxe3q-p\"\u001b[22m\n\n\n  1237 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1238 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 1239 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                           "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

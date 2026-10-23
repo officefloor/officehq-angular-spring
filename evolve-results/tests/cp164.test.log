@@ -1,0 +1,116 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp164-gs2lqkf6
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp164_correction-limit.spec.ts:6:7 › correction limit › correction limit (11.8s)
+  ✘  2 [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 (10.2s)
+  ✘  3 [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 (10.1s)
+  ✘  4 [chromium] › cp164_correction-limit.spec.ts:1247:7 › correction limit › correction limit scenario 3 (17.9s)
+
+
+  1) [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m5[39m
+    Received: [31m7[39m
+
+      149 |     expect(await ui.unretire(pg_uma, p_dot)).toBe(true);
+      150 |     expect(await ui.statement(pg_uma, p_dot)).toBe(true);
+    > 151 |     expect(await ui.generatePlans(pg_uma)).toBe(5);
+          |                                            ^
+      152 |     const c_ada_1 = await ui.claimAt(pg_uma, p_ada, 1);
+      153 |     const c_ada_2 = await ui.claimAt(pg_uma, p_ada, 2);
+      154 |     const c_ada_3 = await ui.claimAt(pg_uma, p_ada, 3);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp164_correction-limit.spec.ts:151:44
+
+  2) [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      808 |     expect(await ui.bulkReassign(pg_wes, [c_ben_1, c_ben_0], "Cam")).toEqual({ reassigned: 1, refused: 1 });
+      809 |     expect(await ui.periodAction(pg_wes, "P2", "soft-close")).toBe(true);
+    > 810 |     expect(await ui.claimEditOpen(pg_wes, c_ben_0)).toBe(true);
+          |                                                     ^
+      811 |     await ui.refresh(pg_vic);
+      812 |     expect(await ui.claimEditOpen(pg_vic, c_ben_0)).toBe(false);
+      813 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp164_correction-limit.spec.ts:810:53
+
+  3) [chromium] › cp164_correction-limit.spec.ts:1247:7 › correction limit › correction limit scenario 3 
+
+    Error: audit lines for smvkf9nsfsldg:
+    ROLE_SET sheet=smvkf9nsfsldg by=uma user=wes role=steward
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=clerk-limit value=1.50
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=terms value=10
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=late-pct value=10.00
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=perm-open value=steward
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=entry-date value=2026-03-05
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=grace-A value=2
+    TEMPLATE_SAVED sheet=smvkf9nsfsldg by=uma name=T1 amount=12.50 note=tpl
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=alert-threshold value=3.00
+    SETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=review-threshold value=4.00
+    RATE_SET sheet=smvkf9nsfsldg by=uma grade=A rate=12.50
+    RATE_SET sheet=smvkf9nsfsldg by=uma grade=B rate=7.50
+    RATE_SET sheet=smvkf9nsfsldg by=uma grade=B rate=7.50 from=2026-03-01 to=2026-03-25
+    PERIOD_ADDED sheet=smvkf9nsfsldg by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERIOD_ADDED sheet=smvkf9nsfsldg by=uma period=P2 from=2026-03-16 to=2026-03-31
+    PERSON_ADDED sheet=smvkf9nsfsldg by=uma name=Cam grade=A
+    ROLLUP sheet=smvkf9nsfsldg by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvkf9nsfsldg by=uma name=Ben grade=C
+    ROLLUP sheet=smvkf9nsfsldg by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
+    PERSON_RETIRED sheet=smvkf9nsfsldg by=uma name=Ben from=2026-03-09
+    CLAIM_ADDED sheet=smvkf9nsfsldg by=uma person=Ben amount=3.33 date=2026-03-01
+    PERIOD_SOFT_CLOSED sheet=smvkf9nsfsldg by=uma period=P1 total=0.00
+    PERSON_RETIRED sheet=smvkf9nsfsldg by=vic name=Cam from=2026-02-25
+    CLAIM_ADDED sheet=smvkf9nsfsldg by=vic person=Ben amount=10.25 date=2026-02-10
+    LATE_ENTRY sheet=smvkf9nsfsldg by=vic person=Ben amount=10.25 date=2026-02-10
+    PERSON_HELD sheet=smvkf9nsfsldg by=vic name=Cam from=2026-02-10
+    PERSON_UNRETIRED sheet=smvkf9nsfsldg by=vic name=Cam on=2026-04-05
+    PERSON_EDITED sheet=smvkf9nsfsldg by=vic name=Cam grade=C
+    ROLLUP sheet=smvkf9nsfsldg by=vic person=Cam claimed=0.00 due-total=n/a overdue-total=0.00
+    PERSON_EDITED sheet=smvkf9nsfsldg by=vic name=Ben grade=C
+    CLAIM_EDITED sheet=smvkf9nsfsldg by=vic person=Ben amount=0.04 date=2026-02-10
+    PERIOD_SOFT_CLOSED sheet=smvkf9nsfsldg by=wes period=P2 total=0.00
+    RATE_SET sheet=smvkf9nsfsldg by=wes grade=C rate=5.00
+    ROLLUP sheet=smvkf9nsfsldg by=wes person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    ROLLUP sheet=smvkf9nsfsldg by=wes person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    CLAIM_ADDED sheet=smvkf9nsfsldg by=wes person=Ben amount=1.00 date=2026-03-05
+    LATE_ENTRY sheet=smvkf9nsfsldg by=wes person=Ben amount=1.00 date=2026-03-05
+    PERSON_HELD sheet=smvkf9nsfsldg by=wes name=Cam from=2026-03-01
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m37[39m
+    Received: [31m38[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp164_correction-limit.spec.ts:1399:14
+
+  3 failed
+    [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 
+    [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+    [chromium] › cp164_correction-limit.spec.ts:1247:7 › correction limit › correction limit scenario 3 
+  1 passed (55.6s)

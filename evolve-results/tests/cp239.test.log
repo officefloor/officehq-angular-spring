@@ -1,0 +1,79 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp239-tyevvb7_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp239_period-claim-counts.spec.ts:6:7 › period claim counts › period claim counts (7.2s)
+  ✘  2 [chromium] › cp239_period-claim-counts.spec.ts:70:7 › period claim counts › period claim counts scenario 1 (35.4s)
+  ✘  3 [chromium] › cp239_period-claim-counts.spec.ts:969:7 › period claim counts › period claim counts scenario 2 (19.5s)
+  ✓  4 [chromium] › cp239_period-claim-counts.spec.ts:1324:7 › period claim counts › period claim counts scenario 3 (24.3s)
+
+
+  1) [chromium] › cp239_period-claim-counts.spec.ts:70:7 › period claim counts › period claim counts scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('dash-pending-count')
+    Expected string: [32m""[39m
+    Received string: [31m"0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('dash-pending-count')[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+    [2m  -   unexpected value "0"[22m
+
+
+      363 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
+      364 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
+    > 365 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
+          |                                                            ^
+      366 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+      367 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+      368 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp239_period-claim-counts.spec.ts:365:60
+
+  2) [chromium] › cp239_period-claim-counts.spec.ts:969:7 › period claim counts › period claim counts scenario 2 
+
+    Error: save dated setting: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1149:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp239_period-claim-counts.spec.ts:1047:12
+
+  2 failed
+    [chromium] › cp239_period-claim-counts.spec.ts:70:7 › period claim counts › period claim counts scenario 1 
+    [chromium] › cp239_period-claim-counts.spec.ts:969:7 › period claim counts › period claim counts scenario 2 
+  2 passed (1.5m)

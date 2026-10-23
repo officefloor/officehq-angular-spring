@@ -1,0 +1,36 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp89-2b1skgej
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp89_claim-tags.spec.ts:6:7 › claim tags › claim tags (5.1s)
+  ✓  2 [chromium] › cp89_claim-tags.spec.ts:105:7 › claim tags › claim tags scenario 1 (11.0s)
+  ✘  3 [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 (3.3s)
+  ✓  4 [chromium] › cp89_claim-tags.spec.ts:668:7 › claim tags › claim tags scenario 3 (6.6s)
+
+
+  1) [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"6"[39m
+
+      391 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "B"}));
+      392 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+    > 393 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "12.50", "date": "2026-03-01", "ref": " r-1 "})).toBeNull();
+          |                                                                                                         ^
+      394 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      395 |     expect(await ui.delegate(pg_wes, {"user": "vic", "from": "2026-03-01", "to": "2026-03-20"})).toBe(true);
+      396 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp89_claim-tags.spec.ts:393:105
+
+  1 failed
+    [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 ────────────────
+  3 passed (28.0s)

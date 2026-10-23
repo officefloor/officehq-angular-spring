@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp146-b1b6o6d0
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp146_over-threshold-alert.spec.ts:6:7 › over threshold alert › over threshold alert (8.9s)
+  ✓  2 [chromium] › cp146_over-threshold-alert.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (13.1s)
+  ✘  3 [chromium] › cp146_over-threshold-alert.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 (20.8s)
+  ✓  4 [chromium] › cp146_over-threshold-alert.spec.ts:1278:7 › over threshold alert › over threshold alert scenario 3 (18.6s)
+
+
+  1) [chromium] › cp146_over-threshold-alert.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-name')
+    Expected string: [32m"Cam"[39m
+    Received string: [31m"Ada"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+
+
+      862 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-batch")).toHaveText("");
+      863 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-lines-line")).toHaveText([]);
+    > 864 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Cam");
+          |                                                                                        ^
+      865 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-grade")).toHaveText("A");
+      866 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+      867 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp146_over-threshold-alert.spec.ts:864:88
+
+  1 failed
+    [chromium] › cp146_over-threshold-alert.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
+  3 passed (1.1m)

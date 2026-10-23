@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp122-67rbatfu
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp122_pool-membership-dated.spec.ts:6:7 › pool membership dated › pool membership dated (9.7s)
+  ✓  2 [chromium] › cp122_pool-membership-dated.spec.ts:83:7 › pool membership dated › pool membership dated scenario 1 (17.4s)
+  ✘  3 [chromium] › cp122_pool-membership-dated.spec.ts:345:7 › pool membership dated › pool membership dated scenario 2 (18.1s)
+  ✓  4 [chromium] › cp122_pool-membership-dated.spec.ts:629:7 › pool membership dated › pool membership dated scenario 3 (30.3s)
+
+
+  1) [chromium] › cp122_pool-membership-dated.spec.ts:345:7 › pool membership dated › pool membership dated scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-3').getByTestId('claim-due')
+    Expected string: [32m"1.0[7m0[27m"[39m
+    Received string: [31m"1.0[7m3[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-3').getByTestId('claim-due')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">1.03</span>[22m
+    [2m  -   unexpected value "1.03"[22m
+
+
+      417 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+      418 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-stated")).toHaveText("no");
+    > 419 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-due")).toHaveText("1.00");
+          |                                                                                       ^
+      420 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+      421 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-stated")).toHaveText("no");
+      422 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-due")).toHaveText("1.03");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp122_pool-membership-dated.spec.ts:419:87
+
+  1 failed
+    [chromium] › cp122_pool-membership-dated.spec.ts:345:7 › pool membership dated › pool membership dated scenario 2 
+  3 passed (1.3m)

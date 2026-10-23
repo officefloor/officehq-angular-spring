@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp118-4gei3wfp
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp118_import-rates.spec.ts:6:7 › import rates › import rates (14.1s)
+  ✘  2 [chromium] › cp118_import-rates.spec.ts:91:7 › import rates › import rates scenario 1 (19.0s)
+  ✘  3 [chromium] › cp118_import-rates.spec.ts:434:7 › import rates › import rates scenario 2 (27.5s)
+  ✓  4 [chromium] › cp118_import-rates.spec.ts:871:7 › import rates › import rates scenario 3 (13.7s)
+
+
+  1) [chromium] › cp118_import-rates.spec.ts:91:7 › import rates › import rates scenario 1 ─────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjzrv2qbhv3[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzrv2qbhv3-p</strong>[22m
+    [2m  -   unexpected value "smvjzrv2qbhv3-p"[22m
+
+
+      193 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      194 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 195 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      196 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("2");
+      197 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("2.04");
+      198 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp118_import-rates.spec.ts:195:54
+
+  2) [chromium] › cp118_import-rates.spec.ts:434:7 › import rates › import rates scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjzsajlsze2[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzsajlsze2-p</strong>[22m
+    [2m  -   unexpected value "smvjzsajlsze2-p"[22m
+
+
+      548 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      549 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 550 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      551 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      552 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("3.50");
+      553 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp118_import-rates.spec.ts:550:54
+
+  2 failed
+    [chromium] › cp118_import-rates.spec.ts:91:7 › import rates › import rates scenario 1 ──────────
+    [chromium] › cp118_import-rates.spec.ts:434:7 › import rates › import rates scenario 2 ─────────
+  2 passed (1.3m)

@@ -1,0 +1,73 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp216-d92bv4k9
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp216_cuts-frozen-at-close.spec.ts:6:7 › cuts frozen at close › cuts frozen at close (8.3s)
+  ✘  2 [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 (17.5s)
+  ✘  3 [chromium] › cp216_cuts-frozen-at-close.spec.ts:539:7 › cuts frozen at close › cuts frozen at close scenario 2 (27.0s)
+  ✘  4 [chromium] › cp216_cuts-frozen-at-close.spec.ts:1062:7 › cuts frozen at close › cuts frozen at close scenario 3 (24.7s)
+
+
+  1) [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"4"[39m
+
+      192 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      193 |     expect(await ui.unstate(pg_vic, p_cam)).toBe(true);
+    > 194 |     expect(await ui.addClaim(pg_vic, p_cam, {"amount": "20.00", "date": "2026-03-05", "note": "n"})).toBeNull();
+          |                                                                                                      ^
+      195 |     await ui.refresh(pg_vic);
+      196 |     expect(await ui.bulkReassign(pg_vic, [c_cam_2], "Cam")).toEqual({ reassigned: 1, refused: 0 });
+      197 |     expect(await ui.claimEditOpen(pg_vic, c_cam_2)).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp216_cuts-frozen-at-close.spec.ts:194:102
+
+  2) [chromium] › cp216_cuts-frozen-at-close.spec.ts:539:7 › cuts frozen at close › cuts frozen at close scenario 2 
+
+    Error: import rates: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.importRates (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1216:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp216_cuts-frozen-at-close.spec.ts:649:12
+
+  3) [chromium] › cp216_cuts-frozen-at-close.spec.ts:1062:7 › cuts frozen at close › cuts frozen at close scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      1182 |     expect(await ui.claimAction(pg_wes, c_cam_0, "open")).toBe(false);
+      1183 |     const c_ben_2 = ui.must(await ui.addClaim(pg_wes, p_ben, {"amount": "0.40", "note": "n", "ref": "R-2"}));
+    > 1184 |     expect(await ui.claimEditOpen(pg_wes, c_ben_0)).toBe(true);
+           |                                                     ^
+      1185 |     await ui.refresh(pg_uma);
+      1186 |     expect(await ui.claimEditOpen(pg_uma, c_ben_0)).toBe(false);
+      1187 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp216_cuts-frozen-at-close.spec.ts:1184:53
+
+  3 failed
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:539:7 › cuts frozen at close › cuts frozen at close scenario 2 
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:1062:7 › cuts frozen at close › cuts frozen at close scenario 3 
+  1 passed (1.4m)

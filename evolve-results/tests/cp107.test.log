@@ -1,0 +1,64 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp107-89mu86wr
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp107_merge-people.spec.ts:6:7 › merge people › merge people (18.2s)
+  ✘  2 [chromium] › cp107_merge-people.spec.ts:144:7 › merge people › merge people scenario 1 (15.2s)
+  ✓  3 [chromium] › cp107_merge-people.spec.ts:753:7 › merge people › merge people scenario 2 (19.0s)
+  ✓  4 [chromium] › cp107_merge-people.spec.ts:1316:7 › merge people › merge people scenario 3 (21.4s)
+
+
+  1) [chromium] › cp107_merge-people.spec.ts:6:7 › merge people › merge people ─────────────────────
+
+    Error: quick add: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp107_merge-people.spec.ts:82:31
+
+  2) [chromium] › cp107_merge-people.spec.ts:144:7 › merge people › merge people scenario 1 ────────
+
+    Error: audit line 39
+      expected: CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=20.00 date=2026-03-05 from=Cam to=Ada
+      actual:   CLAIM_REASSIGNED sheet=smvjwi0qjzbkd by=vic person=Ada amount=10.25 date=2026-04-05 from=Cam to=Ada
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp107_merge-people.spec.ts:341:14
+
+  2 failed
+    [chromium] › cp107_merge-people.spec.ts:6:7 › merge people › merge people ──────────────────────
+    [chromium] › cp107_merge-people.spec.ts:144:7 › merge people › merge people scenario 1 ─────────
+  2 passed (1.3m)

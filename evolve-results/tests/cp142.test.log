@@ -1,0 +1,43 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp142-ao3bqcmd
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp142_plan-preview.spec.ts:6:7 › plan preview › plan preview (5.7s)
+  ✓  2 [chromium] › cp142_plan-preview.spec.ts:81:7 › plan preview › plan preview scenario 1 (17.4s)
+  ✘  3 [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 (14.4s)
+  ✓  4 [chromium] › cp142_plan-preview.spec.ts:830:7 › plan preview › plan preview scenario 3 (11.6s)
+
+
+  1) [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m4[39m
+    Received: [31m5[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:1265
+
+      1263 |   await page.getByTestId('audit-show').click();
+      1264 |   const lines = page.getByTestId('audit-line');
+    > 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);
+           |   ^
+      1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());
+      1267 |   texts.forEach((line, i) => {
+      1268 |     const e = expected[i];
+
+        at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1265:3)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp142_plan-preview.spec.ts:460:5
+
+  1 failed
+    [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 ─────────
+  3 passed (52.3s)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 213,
+  "checkpoint_id": "cp213_parent-plans",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "ec036dd246fd2e621c3083085b56259ec698a771",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:36:43",
+  "seconds": 143,
+  "build_log_file": "cp213.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp213_parent-plans.spec.ts::parent plans": true,
+      "cp213_parent-plans.spec.ts::parent plans scenario 1": false,
+      "cp213_parent-plans.spec.ts::parent plans scenario 2": true,
+      "cp213_parent-plans.spec.ts::parent plans scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10651,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m2\u001b[39m\n\n  104 |     expect(await ui.periodAction(pg_uma, \"P1\", \"close\")).toBe(true);\n  105 |     expect(await ui.editPerson(pg_uma, p_cam, {\"terms\": \"\"})).toBe(true);\n> 106 |     expect(await ui.generatePlans(pg_uma)).toBe(1);\n      |                                            ^\n  107 |     const c_cam_0 = await ui.claimAt(pg_uma, p_cam, 0);\n  108 |     await ui.refresh(pg_uma);\n  109 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp213_parent-plans.spec.ts:106:44 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m2\u001b[39m"
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27292,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 28196,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkyhoaqqb1l\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkyhoaqqb1l-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkyhoaqqb1l-p\"\u001b[22m\n\n\n  1199 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1200 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 1201 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                           "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

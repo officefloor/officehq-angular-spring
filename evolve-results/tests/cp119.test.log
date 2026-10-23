@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp119-vtvd3spv
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp119_cut-totals.spec.ts:6:7 › cut totals › cut totals (8.1s)
+  ✘  2 [chromium] › cp119_cut-totals.spec.ts:152:7 › cut totals › cut totals scenario 1 (25.6s)
+  ✓  3 [chromium] › cp119_cut-totals.spec.ts:524:7 › cut totals › cut totals scenario 2 (20.0s)
+  ✓  4 [chromium] › cp119_cut-totals.spec.ts:956:7 › cut totals › cut totals scenario 3 (20.8s)
+
+
+  1) [chromium] › cp119_cut-totals.spec.ts:152:7 › cut totals › cut totals scenario 1 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjzx3p7bjq4[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjzx3p7bjq4-p</strong>[22m
+    [2m  -   unexpected value "smvjzx3p7bjq4-p"[22m
+
+
+      261 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("yes");
+      262 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 263 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      264 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      265 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      266 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp119_cut-totals.spec.ts:263:54
+
+  1 failed
+    [chromium] › cp119_cut-totals.spec.ts:152:7 › cut totals › cut totals scenario 1 ───────────────
+  3 passed (1.3m)

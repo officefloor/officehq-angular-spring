@@ -1,0 +1,120 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp246-i_tt9csg
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp246_claim-counts-per-person.spec.ts:6:7 › claim counts per person › claim counts per person (8.2s)
+  ✘  2 [chromium] › cp246_claim-counts-per-person.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 (33.3s)
+  ✘  3 [chromium] › cp246_claim-counts-per-person.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 (16.8s)
+  ✘  4 [chromium] › cp246_claim-counts-per-person.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 (29.2s)
+
+
+  1) [chromium] › cp246_claim-counts-per-person.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvld1w45c2lj[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld1w45c2lj-p</strong>[22m
+    [2m  -   unexpected value "smvld1w45c2lj-p"[22m
+
+
+      242 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      243 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 244 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      245 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      246 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      247 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp246_claim-counts-per-person.spec.ts:244:54
+
+  2) [chromium] › cp246_claim-counts-per-person.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 
+
+    Error: quick add: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp246_claim-counts-per-person.spec.ts:741:29
+
+  3) [chromium] › cp246_claim-counts-per-person.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvld323ae45v[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld323ae45v-p</strong>[22m
+    [2m  -   unexpected value "smvld323ae45v-p"[22m
+
+
+      1448 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1449 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 1450 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1451 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      1452 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1453 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp246_claim-counts-per-person.spec.ts:1450:54
+
+  3 failed
+    [chromium] › cp246_claim-counts-per-person.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 
+    [chromium] › cp246_claim-counts-per-person.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 
+    [chromium] › cp246_claim-counts-per-person.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 
+  1 passed (1.6m)

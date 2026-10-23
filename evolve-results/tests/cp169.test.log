@@ -1,0 +1,95 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp169-10rp61ms
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp169_person-terms-dated.spec.ts:6:7 › person terms dated › person terms dated (13.9s)
+  ✘  2 [chromium] › cp169_person-terms-dated.spec.ts:99:7 › person terms dated › person terms dated scenario 1 (22.9s)
+  ✘  3 [chromium] › cp169_person-terms-dated.spec.ts:523:7 › person terms dated › person terms dated scenario 2 (13.3s)
+  ✘  4 [chromium] › cp169_person-terms-dated.spec.ts:865:7 › person terms dated › person terms dated scenario 3 (33.9s)
+
+
+  1) [chromium] › cp169_person-terms-dated.spec.ts:99:7 › person terms dated › person terms dated scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31m1[39m
+
+      177 |     expect(await ui.periodAction(pg_vic, "2026-02", "close")).toBe(true);
+      178 |     const c_ada_2 = ui.must(await ui.addClaim(pg_vic, p_ada, {"amount": "10.25", "tags": " c "}));
+    > 179 |     expect(await ui.generatePlans(pg_vic)).toBe(0);
+          |                                            ^
+      180 |     await ui.refresh(pg_vic);
+      181 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.40");
+      182 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("1.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:179:44
+
+  2) [chromium] › cp169_person-terms-dated.spec.ts:523:7 › person terms dated › person terms dated scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"13"[39m
+
+      596 |     expect(await ui.editInline(pg_uma, c_cam_0, "99.95")).toBe(true);
+      597 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+    > 598 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "3.33", "date": "2026-03-01", "note": "n"})).toBeNull();
+          |                                                                                                     ^
+      599 |     expect(await ui.addLine(pg_uma, c_cam_0, {"label": "y", "qty": "1", "unit": "0.01"})).toBe(true);
+      600 |     expect(await ui.statement(pg_uma, p_dot)).toBe(true);
+      601 |     expect(await ui.watch(pg_uma, p_fay, true)).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:598:101
+
+  3) [chromium] › cp169_person-terms-dated.spec.ts:865:7 › person terms dated › person terms dated scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkfo2ltm5e3[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfo2ltm5e3-p</strong>[22m
+    [2m  -   unexpected value "smvkfo2ltm5e3-p"[22m
+
+
+      1053 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1054 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 1055 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1056 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      1057 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1058 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:1055:54
+
+  3 failed
+    [chromium] › cp169_person-terms-dated.spec.ts:99:7 › person terms dated › person terms dated scenario 1 
+    [chromium] › cp169_person-terms-dated.spec.ts:523:7 › person terms dated › person terms dated scenario 2 
+    [chromium] › cp169_person-terms-dated.spec.ts:865:7 › person terms dated › person terms dated scenario 3 
+  1 passed (1.5m)

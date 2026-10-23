@@ -1,0 +1,79 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp214-659xi5rl
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp214_max-open-claims.spec.ts:6:7 › max open claims › max open claims (9.3s)
+  ✓  2 [chromium] › cp214_max-open-claims.spec.ts:78:7 › max open claims › max open claims scenario 1 (24.6s)
+  ✘  3 [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 (28.9s)
+  ✘  4 [chromium] › cp214_max-open-claims.spec.ts:1087:7 › max open claims › max open claims scenario 3 (32.5s)
+
+
+  1) [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 
+
+    Error: add claim: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.addClaim (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:678:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp214_max-open-claims.spec.ts:825:29
+
+  2) [chromium] › cp214_max-open-claims.spec.ts:1087:7 › max open claims › max open claims scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkykoioxe3q[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkykoioxe3q-p</strong>[22m
+    [2m  -   unexpected value "smvkykoioxe3q-p"[22m
+
+
+      1237 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1238 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1239 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1240 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      1241 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1242 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp214_max-open-claims.spec.ts:1239:54
+
+  2 failed
+    [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 
+    [chromium] › cp214_max-open-claims.spec.ts:1087:7 › max open claims › max open claims scenario 3 
+  2 passed (1.7m)

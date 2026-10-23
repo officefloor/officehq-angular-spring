@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp203-_mhtwbx5
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp203_plan-pause.spec.ts:6:7 › plan pause › plan pause (5.8s)
+  ✓  2 [chromium] › cp203_plan-pause.spec.ts:56:7 › plan pause › plan pause scenario 1 (46.0s)
+  ✘  3 [chromium] › cp203_plan-pause.spec.ts:488:7 › plan pause › plan pause scenario 2 (24.7s)
+  ✘  4 [chromium] › cp203_plan-pause.spec.ts:1108:7 › plan pause › plan pause scenario 3 (22.7s)
+
+
+  1) [chromium] › cp203_plan-pause.spec.ts:488:7 › plan pause › plan pause scenario 2 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvku08hl14si[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku08hl14si-p</strong>[22m
+    [2m  -   unexpected value "smvku08hl14si-p"[22m
+
+
+      615 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      616 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 617 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      618 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      619 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      620 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp203_plan-pause.spec.ts:617:54
+
+  2) [chromium] › cp203_plan-pause.spec.ts:1108:7 › plan pause › plan pause scenario 3 ─────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvku0s6nq4q9[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku0s6nq4q9-p</strong>[22m
+    [2m  -   unexpected value "smvku0s6nq4q9-p"[22m
+
+
+      1244 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1245 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 1246 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1247 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1248 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1249 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp203_plan-pause.spec.ts:1246:54
+
+  2 failed
+    [chromium] › cp203_plan-pause.spec.ts:488:7 › plan pause › plan pause scenario 2 ───────────────
+    [chromium] › cp203_plan-pause.spec.ts:1108:7 › plan pause › plan pause scenario 3 ──────────────
+  2 passed (1.7m)

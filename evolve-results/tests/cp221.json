@@ -1,0 +1,66 @@
+{
+  "checkpoint": 221,
+  "checkpoint_id": "cp221_watched-total",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "76cec9ea56445f8c4a3ba12dd5296cd20c9349c6",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T22:45:50",
+  "seconds": 149,
+  "build_log_file": "cp221.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp221_watched-total.spec.ts::watched total": true,
+      "cp221_watched-total.spec.ts::watched total scenario 1": false,
+      "cp221_watched-total.spec.ts::watched total scenario 2": true,
+      "cp221_watched-total.spec.ts::watched total scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp221_watched-total.spec.ts::watched total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12002,
+        "failure": ""
+      },
+      {
+        "test_id": "cp221_watched-total.spec.ts::watched total scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 23418,
+        "failure": "Error: flag: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp221_watched-total.spec.ts:170:12 | Error: flag: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp221_watched-total.spec.ts::watched total scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20254,
+        "failure": ""
+      },
+      {
+        "test_id": "cp221_watched-total.spec.ts::watched total scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14896,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

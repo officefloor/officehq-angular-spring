@@ -1,0 +1,54 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp156-og63w93b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp156_forward-only-rates.spec.ts:6:7 › forward only rates › forward only rates (7.1s)
+  ✘  2 [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 (42.4s)
+  ✘  3 [chromium] › cp156_forward-only-rates.spec.ts:758:7 › forward only rates › forward only rates scenario 2 (12.4s)
+  ✓  4 [chromium] › cp156_forward-only-rates.spec.ts:1219:7 › forward only rates › forward only rates scenario 3 (12.3s)
+
+
+  1) [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      191 |     expect(await ui.claimEditOpen(pg_uma, c_cam_0)).toBe(false);
+      192 |     await ui.refresh(pg_wes);
+    > 193 |     expect(await ui.claimEditSave(pg_wes, c_cam_0, {"amount": "10.25"})).toBe(false);
+          |                                                                          ^
+      194 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "B", "gradeFrom": "2026-03-28"}, "C")).toBe(true);
+      195 |     const c_cam_0_2 = ui.must(await ui.addClaim(pg_wes, p_cam, {"amount": "10.35", "ref": "inv 7"}));
+      196 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:193:74
+
+  2) [chromium] › cp156_forward-only-rates.spec.ts:758:7 › forward only rates › forward only rates scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"10"[39m
+
+      869 |     expect(await ui.hold(pg_uma, p_ada, {"from": "2026-02-10"})).toBe(true);
+      870 |     expect(await ui.claimAction(pg_uma, c_ada_0, "delete")).toBe(true);
+    > 871 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "0.04", "date": "2026-02-10", "tags": "a, B"})).toBeNull();
+          |                                                                                                        ^
+      872 |     expect(await ui.inlineGrade(pg_uma, p_ada, "A")).toBe(true);
+      873 |     const c_ada_2 = ui.must(await ui.addClaim(pg_uma, p_ada, {"amount": "0.04"}));
+      874 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:871:104
+
+  2 failed
+    [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+    [chromium] › cp156_forward-only-rates.spec.ts:758:7 › forward only rates › forward only rates scenario 2 
+  2 passed (1.3m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 39,
+  "checkpoint_id": "cp39_claim-log",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "b4bf1934c121514b40c9fa469230646a9290c746",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T20:12:12",
+  "seconds": 57,
+  "build_log_file": "cp39.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp39_claim-log.spec.ts::claim log": true,
+      "cp39_claim-log.spec.ts::claim log scenario 1": true,
+      "cp39_claim-log.spec.ts::claim log scenario 2": true,
+      "cp39_claim-log.spec.ts::claim log scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5534,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11382,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5951,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5663,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

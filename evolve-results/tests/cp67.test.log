@@ -1,0 +1,70 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp67-mpm1b6l6
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp67_active-people.spec.ts:6:7 › active people › active people (12.5s)
+  ✘  2 [chromium] › cp67_active-people.spec.ts:116:7 › active people › active people scenario 1 (13.3s)
+  ✓  3 [chromium] › cp67_active-people.spec.ts:471:7 › active people › active people scenario 2 (12.7s)
+  ✓  4 [chromium] › cp67_active-people.spec.ts:756:7 › active people › active people scenario 3 (14.3s)
+
+
+  1) [chromium] › cp67_active-people.spec.ts:116:7 › active people › active people scenario 1 ──────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mnot[2m.[22mtoHaveValue[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-form-name')
+    Expected string: not [32m""[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.not.toHaveValue with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('person-form-name')[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+
+
+       at ../support/ui.ts:300
+
+      298 | export async function editOpen(page: Page, personId: string): Promise<void> {
+      299 |   await page.getByTestId(`person-edit-${personId}`).click();
+    > 300 |   await expect(page.getByTestId('person-form-name')).not.toHaveValue('', { timeout: WAIT });
+          |                                                          ^
+      301 |   editing.set(page, personId);
+      302 | }
+      303 |
+
+        at editOpen (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:300:58)
+        at Object.editPerson (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:324:3)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp67_active-people.spec.ts:140:12
+
+  1 failed
+    [chromium] › cp67_active-people.spec.ts:116:7 › active people › active people scenario 1 ───────
+  3 passed (56.9s)

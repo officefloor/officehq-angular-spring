@@ -1,0 +1,66 @@
+{
+  "checkpoint": 138,
+  "checkpoint_id": "cp138_inline-grade",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "02e79bbd0a089215fbe03b9816b9e6cdcde200ed",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T07:11:11",
+  "seconds": 113,
+  "build_log_file": "cp138.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp138_inline-grade.spec.ts::inline grade": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 1": false,
+      "cp138_inline-grade.spec.ts::inline grade scenario 2": false,
+      "cp138_inline-grade.spec.ts::inline grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11720,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17963,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  150 |     ]);\n  151 |     expect(await ui.addAlias(pg_wes, p_eve, \"Bee\")).toBe(true);\n> 152 |     expect(await ui.statementAsOf(pg_wes, p_eve, \"2026-03-20\")).toBe(true);\n      |                                                                 ^\n  153 |     await ui.refresh(pg_wes);\n  154 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_eve).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n  155 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_eve).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp138_inline-grade.spec.ts:152:65 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 26503,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvk5ot5f7zqz\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvk5ot5f7zqz-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvk5ot5f7zqz-p\"\u001b[22m\n\n\n  601 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  602 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-10\");\n> 603 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14487,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

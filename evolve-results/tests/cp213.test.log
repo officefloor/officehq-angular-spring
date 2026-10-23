@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp213-hd_4wxpr
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp213_parent-plans.spec.ts:6:7 › parent plans › parent plans (14.2s)
+  ✘  2 [chromium] › cp213_parent-plans.spec.ts:74:7 › parent plans › parent plans scenario 1 (10.7s)
+  ✓  3 [chromium] › cp213_parent-plans.spec.ts:518:7 › parent plans › parent plans scenario 2 (27.3s)
+  ✘  4 [chromium] › cp213_parent-plans.spec.ts:1004:7 › parent plans › parent plans scenario 3 (28.2s)
+
+
+  1) [chromium] › cp213_parent-plans.spec.ts:74:7 › parent plans › parent plans scenario 1 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m1[39m
+    Received: [31m2[39m
+
+      104 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+      105 |     expect(await ui.editPerson(pg_uma, p_cam, {"terms": ""})).toBe(true);
+    > 106 |     expect(await ui.generatePlans(pg_uma)).toBe(1);
+          |                                            ^
+      107 |     const c_cam_0 = await ui.claimAt(pg_uma, p_cam, 0);
+      108 |     await ui.refresh(pg_uma);
+      109 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp213_parent-plans.spec.ts:106:44
+
+  2) [chromium] › cp213_parent-plans.spec.ts:1004:7 › parent plans › parent plans scenario 3 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkyhoaqqb1l[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkyhoaqqb1l-p</strong>[22m
+    [2m  -   unexpected value "smvkyhoaqqb1l-p"[22m
+
+
+      1199 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1200 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1201 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1202 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("4");
+      1203 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("2.00");
+      1204 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp213_parent-plans.spec.ts:1201:54
+
+  2 failed
+    [chromium] › cp213_parent-plans.spec.ts:74:7 › parent plans › parent plans scenario 1 ──────────
+    [chromium] › cp213_parent-plans.spec.ts:1004:7 › parent plans › parent plans scenario 3 ────────
+  2 passed (1.4m)

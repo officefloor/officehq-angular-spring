@@ -1,0 +1,66 @@
+{
+  "checkpoint": 178,
+  "checkpoint_id": "cp178_steward-dashboard",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "e9426b916a993a41e0ee206aea007d0bc193077a",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T13:16:46",
+  "seconds": 97,
+  "build_log_file": "cp178.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp178_steward-dashboard.spec.ts::steward dashboard": true,
+      "cp178_steward-dashboard.spec.ts::steward dashboard scenario 1": false,
+      "cp178_steward-dashboard.spec.ts::steward dashboard scenario 2": true,
+      "cp178_steward-dashboard.spec.ts::steward dashboard scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp178_steward-dashboard.spec.ts::steward dashboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7803,
+        "failure": ""
+      },
+      {
+        "test_id": "cp178_steward-dashboard.spec.ts::steward dashboard scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21573,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkiq8ieirqg\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkiq8ieirqg-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkiq8ieirqg-p\"\u001b[22m\n\n\n  190 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  191 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-04-02\");\n> 192 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp178_steward-dashboard.spec.ts::steward dashboard scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp178_steward-dashboard.spec.ts::steward dashboard scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 20546,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkir271o6bq\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkir271o6bq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkir271o6bq-p\"\u001b[22m\n\n\n  1101 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1102 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-20\");\n> 1103 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

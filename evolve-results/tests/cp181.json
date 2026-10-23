@@ -1,0 +1,66 @@
+{
+  "checkpoint": 181,
+  "checkpoint_id": "cp181_sheet-notes",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "c9712dbb6d9e8f1a937898cda6b1d6031d726174",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T14:45:48",
+  "seconds": 174,
+  "build_log_file": "cp181.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp181_sheet-notes.spec.ts::sheet notes": true,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 1": false,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 2": false,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16916,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 41730,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m33\u001b[39m\nReceived: \u001b[31m34\u001b[39m\n\nCall Log:\n- Timeout 8000ms exceeded while waiting on the predicate\n\n   at ../support/ui.ts:1265\n\n  1263 |   await page.getByTestId('audit-show').click();\n  1264 |   const lines = page.getByTestId('audit-line');\n> 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);\n       |   ^\n  1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());\n  1267 |   texts.forEach((line, i) => {\n  1268 |     const e = expected[i];\n\n    at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1265:3)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:125:5 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m33\u001b[39m\nReceived: \u001b[31m34\u001b[39m\n\nCall Log:\n- Timeout 8000ms exceeded while waiting on the predicate"
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 16756,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m\n\n  577 |       `CLAIM_ADDED sheet=${sheet} by=wes person=Cam amount=1.00 date=2026-04-05`\n  578 |     ]);\n> 579 |     expect(await ui.addClaim(pg_wes, p_cam, {\"amount\": \"0.40\", \"date\": \"2026-03-09\"})).toBeNull();\n      |                                                                                        ^\n  580 |     expect(await ui.claimEditOpen(pg_wes, c_cam_2)).toBe(true);\n  581 |     await ui.refresh(pg_uma);\n  582 |     expect(await ui.claimEditOpen(pg_uma, c_cam_2)).toBe(false);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:579:88 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m"
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 8279,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"7\"\u001b[39m\n\n  1035 |     await ui.setToday(pg_uma, \"2026-03-21\");\n  1036 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\", \"from\": \"2026-04-05\"})).toBe(true);\n> 1037 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"4.00\", \"date\": \"2026-03-09\", \"ref\": \"R-2\"})).toBeNull();\n       |                                                                                                      ^\n  1038 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\", \"from\": \"2026-03-10\", \"to\": \"2026-03-25\"})).toBe(true);\n  1039 |     expect(await ui.bulkGrade(pg_uma, [p_ada, p_ben], {\"grade\": \"C\", \"from\": \"2026-02-10\"})).toBe(2);\n  1040 |     expect(await ui.exportCsv(pg_uma)).toBe(\"name,grade,retired-from,due-total\\nCam,C,,0.00\\nAda,C,,0.00\\nBen,C,,0.00\\n\");\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:1037:102 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"7\"\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

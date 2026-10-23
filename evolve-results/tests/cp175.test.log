@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp175-tey88ldi
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp175_transfer-undo.spec.ts:6:7 › transfer undo › transfer undo (13.1s)
+  ✓  2 [chromium] › cp175_transfer-undo.spec.ts:103:7 › transfer undo › transfer undo scenario 1 (20.4s)
+  ✘  3 [chromium] › cp175_transfer-undo.spec.ts:665:7 › transfer undo › transfer undo scenario 2 (17.4s)
+  ✓  4 [chromium] › cp175_transfer-undo.spec.ts:1111:7 › transfer undo › transfer undo scenario 3 (45.7s)
+
+
+  1) [chromium] › cp175_transfer-undo.spec.ts:6:7 › transfer undo › transfer undo ──────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-2').getByTestId('person-origin')
+    Expected string: [32m"__SHEET__"[39m
+    Received string: [31m"smvkiiqgqnhf4"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-2').getByTestId('person-origin')[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvkiiqgqnhf4</td>[22m
+    [2m  -   unexpected value "smvkiiqgqnhf4"[22m
+
+
+      38 |     await ui.refresh(pg_wes);
+      39 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-name")).toHaveText("Ben");
+    > 40 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-origin")).toHaveText("__SHEET__");
+         |                                                                                            ^
+      41 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-statement-count")).toHaveText("0");
+      42 |     await expect(pg_wes.getByTestId("rollup-claimed-total")).toHaveText("0.00");
+      43 |     await expect(pg_wes.getByTestId("rollup-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:40:92
+
+  2) [chromium] › cp175_transfer-undo.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      745 |     expect(await ui.inlineGrade(pg_vic, p_ada, "B")).toBe(true);
+      746 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
+    > 747 |     expect(await ui.editInline(pg_vic, c_ben_0, "4.00")).toBe(false);
+          |                                                          ^
+      748 |     expect(await ui.pasteClaims(pg_vic, "Ben,10.35,2026-02-25,\nBen,25.00,2026-03-20,")).toBeNull();
+      749 |     await ui.refresh(pg_vic);
+      750 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:747:58
+
+  2 failed
+    [chromium] › cp175_transfer-undo.spec.ts:6:7 › transfer undo › transfer undo ───────────────────
+    [chromium] › cp175_transfer-undo.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ──────
+  2 passed (1.7m)

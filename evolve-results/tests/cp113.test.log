@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp113-kaig8ki2
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp113_import-people.spec.ts:6:7 › import people › import people (22.1s)
+  ✘  2 [chromium] › cp113_import-people.spec.ts:84:7 › import people › import people scenario 1 (24.1s)
+  ✘  3 [chromium] › cp113_import-people.spec.ts:522:7 › import people › import people scenario 2 (24.1s)
+  ✘  4 [chromium] › cp113_import-people.spec.ts:888:7 › import people › import people scenario 3 (12.0s)
+
+
+  1) [chromium] › cp113_import-people.spec.ts:84:7 › import people › import people scenario 1 ──────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjysde7e9ui[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjysde7e9ui-p</strong>[22m
+    [2m  -   unexpected value "smvjysde7e9ui-p"[22m
+
+
+      232 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      233 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 234 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      235 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("4");
+      236 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      237 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp113_import-people.spec.ts:234:54
+
+  2) [chromium] › cp113_import-people.spec.ts:522:7 › import people › import people scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjyswiaqjv3[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjyswiaqjv3-p</strong>[22m
+    [2m  -   unexpected value "smvjyswiaqjv3-p"[22m
+
+
+      639 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      640 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 641 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      642 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("3");
+      643 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      644 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp113_import-people.spec.ts:641:54
+
+  3) [chromium] › cp113_import-people.spec.ts:888:7 › import people › import people scenario 3 ─────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp113_import-people.spec.ts:987:24
+
+  3 failed
+    [chromium] › cp113_import-people.spec.ts:84:7 › import people › import people scenario 1 ───────
+    [chromium] › cp113_import-people.spec.ts:522:7 › import people › import people scenario 2 ──────
+    [chromium] › cp113_import-people.spec.ts:888:7 › import people › import people scenario 3 ──────
+  1 passed (1.4m)

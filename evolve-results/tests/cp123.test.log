@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp123-28nf3t1u
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp123_bulk-retire.spec.ts:6:7 › bulk retire › bulk retire (7.7s)
+  ✘  2 [chromium] › cp123_bulk-retire.spec.ts:120:7 › bulk retire › bulk retire scenario 1 (30.3s)
+  ✘  3 [chromium] › cp123_bulk-retire.spec.ts:387:7 › bulk retire › bulk retire scenario 2 (11.1s)
+  ✓  4 [chromium] › cp123_bulk-retire.spec.ts:784:7 › bulk retire › bulk retire scenario 3 (26.0s)
+
+
+  1) [chromium] › cp123_bulk-retire.spec.ts:120:7 › bulk retire › bulk retire scenario 1 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk1w7025d0y[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1w7025d0y-p</strong>[22m
+    [2m  -   unexpected value "smvk1w7025d0y-p"[22m
+
+
+      222 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      223 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 224 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      225 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      226 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      227 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp123_bulk-retire.spec.ts:224:54
+
+  2) [chromium] › cp123_bulk-retire.spec.ts:387:7 › bulk retire › bulk retire scenario 2 ───────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp123_bulk-retire.spec.ts:436:24
+
+  2 failed
+    [chromium] › cp123_bulk-retire.spec.ts:120:7 › bulk retire › bulk retire scenario 1 ────────────
+    [chromium] › cp123_bulk-retire.spec.ts:387:7 › bulk retire › bulk retire scenario 2 ────────────
+  2 passed (1.3m)

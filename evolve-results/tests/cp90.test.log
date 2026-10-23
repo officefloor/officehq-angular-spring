@@ -1,0 +1,309 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp90-6h5ipesh
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+wes.getByTestId("claim-row-" + c_ada_2).getByTestId("claim-amount")).toHaveText("3.33");
+      329 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_2).getByTestId("claim-date")).toHaveText("2026-03-20");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp82_settled-and-open-totals.spec.ts:326:94
+
+  31) [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays ─────────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-1350').getByTestId('claim-due-by')
+    Expected string: [32m"2026-03-1[7m7[27m"[39m
+    Received string: [31m"2026-03-1[7m8[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-1350').getByTestId('claim-due-by')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+
+
+      26 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-due-by")).toHaveText("2026-03-18");
+      27 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-overdue")).toHaveText("no");
+    > 28 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-due-by")).toHaveText("2026-03-17");
+         |                                                                                          ^
+      29 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-overdue")).toHaveText("no");
+      30 |     await expect(pg_uma.getByTestId("rollup-claimed-total")).toHaveText("60.00");
+      31 |     await expect(pg_uma.getByTestId("rollup-due-total")).toHaveText("6.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp83_holidays.spec.ts:28:90
+
+  32) [chromium] › cp83_holidays.spec.ts:593:7 › holidays › holidays scenario 2 ────────────────────
+
+    Error: audit line 42
+      expected: PERSON_EDITED sheet=smvjrr4ltuub8 by=wes name=Cam grade=A terms=
+      actual:   PERSON_EDITED sheet=smvjrr4ltuub8 by=wes name=Cam grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp83_holidays.spec.ts:734:14
+
+  33) [chromium] › cp83_holidays.spec.ts:1055:7 › holidays › holidays scenario 3 ───────────────────
+
+    Error: audit lines for smvjrrcbp2c02:
+    ROLE_SET sheet=smvjrrcbp2c02 by=uma user=vic role=steward
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=floor value=0.50
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=terms value=30
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=policy-date value=2026-03-05
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=period-numbering-from value=2026-03-01
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=cap value=2.00
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=uma key=note-threshold value=1.00
+    RATE_SET sheet=smvjrrcbp2c02 by=uma grade=A rate=33.33
+    RATE_SET sheet=smvjrrcbp2c02 by=uma grade=B rate=5.00
+    PERIOD_ADDED sheet=smvjrrcbp2c02 by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERSON_ADDED sheet=smvjrrcbp2c02 by=uma name=Ada grade=C
+    ROLLUP sheet=smvjrrcbp2c02 by=uma person=Ada claimed=0.00 due-total=n/a overdue-total=0.00
+    PERSON_ADDED sheet=smvjrrcbp2c02 by=uma name=Cam grade=C
+    ROLLUP sheet=smvjrrcbp2c02 by=uma person=Cam claimed=0.00 due-total=n/a overdue-total=0.00
+    PERSON_ADDED sheet=smvjrrcbp2c02 by=uma name=Ben grade=C
+    ROLLUP sheet=smvjrrcbp2c02 by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=uma person=Cam amount=0.40 date=2026-03-15
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=uma person=Ben amount=12.50 date=2026-03-10
+    CLAIM_PROOF_ADDED sheet=smvjrrcbp2c02 by=uma person=Ben amount=12.50 date=2026-03-10 proofs=1
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=uma person=Ben amount=25.00 date=2026-02-25
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=uma person=Ben amount=12.50 date=2026-03-10
+    PERSON_EDITED sheet=smvjrrcbp2c02 by=uma name=Cam grade=A
+    ROLLUP sheet=smvjrrcbp2c02 by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    DELEGATED sheet=smvjrrcbp2c02 by=vic user=wes from=2026-02-25 to=2026-03-15
+    PERSON_ADDED sheet=smvjrrcbp2c02 by=wes name=Dot grade=A for=vic
+    ROLLUP sheet=smvjrrcbp2c02 by=wes person=Dot claimed=0.00 due-total=0.00 overdue-total=0.00
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=wes person=Dot amount=20.00 date=2026-03-10 for=vic
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=vic key=proof-threshold value=1.00 from=2026-02-25
+    CLAIM_OPENED sheet=smvjrrcbp2c02 by=vic person=Ben amount=12.50 date=2026-03-10 number=X-1
+    ROLLUP sheet=smvjrrcbp2c02 by=vic person=Ben claimed=12.50 due-total=n/a overdue-total=0.00
+    TOTALS sheet=smvjrrcbp2c02 by=vic claimed-total=12.50 due-total=0.00 overdue-total=0.00
+    SNAPSHOT sheet=smvjrrcbp2c02 by=vic name=Ada due-total=n/a
+    SNAPSHOT sheet=smvjrrcbp2c02 by=vic name=Cam due-total=0.00
+    SNAPSHOT sheet=smvjrrcbp2c02 by=vic name=Ben due-total=n/a
+    SNAPSHOT sheet=smvjrrcbp2c02 by=vic name=Dot due-total=0.00
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=vic person=Ada amount=20.00 date=2026-03-29
+    STATEMENT sheet=smvjrrcbp2c02 by=vic name=Dot due-total=0.00 claims=0
+    SETTING_CHANGED sheet=smvjrrcbp2c02 by=vic key=proof-threshold value= from=2026-03-20
+    PERIOD_SOFT_CLOSED sheet=smvjrrcbp2c02 by=vic period=P1 total=0.00
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=vic person=Ada amount=12.50 date=2026-02-10
+    LATE_ENTRY sheet=smvjrrcbp2c02 by=vic person=Ada amount=12.50 date=2026-02-10
+    RATE_SET sheet=smvjrrcbp2c02 by=vic grade=C rate=20.00
+    ROLLUP sheet=smvjrrcbp2c02 by=vic person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    ROLLUP sheet=smvjrrcbp2c02 by=vic person=Ben claimed=12.50 due-total=2.00 overdue-total=0.00
+    CLAIM_SETTLED sheet=smvjrrcbp2c02 by=wes person=Ben amount=12.50 date=2026-03-10 number=X-1 due=2.50
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=wes person=Cam amount=10.35 date=2026-03-29
+    CLAIM_ADDED sheet=smvjrrcbp2c02 by=wes person=Ben amount=4.00 date=2026-03-20
+    PERSON_HELD sheet=smvjrrcbp2c02 by=wes name=Ben from=2026-02-10
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m47[39m
+    Received: [31m48[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp83_holidays.spec.ts:1459:14
+
+  34) [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 ──────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-1438').getByTestId('claim-late-entry')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-1438').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      233 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-proofs")).toHaveText("0");
+      234 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-split-from")).toHaveText("");
+    > 235 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-late-entry")).toHaveText("no");
+          |                                                                                              ^
+      236 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-reminded")).toHaveText("");
+      237 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-name")).toHaveText("Cam");
+      238 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-grade")).toHaveText("A");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp86_inline-amount.spec.ts:235:94
+
+  35) [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 ─────
+
+    Error: save dated setting: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1149:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp86_inline-amount.spec.ts:691:12
+
+  36) [chromium] › cp87_external-reference.spec.ts:77:7 › external reference › external reference scenario 1 
+
+    Error: audit line 41
+      expected: PERSON_EDITED sheet=smvjrta2qggkr by=uma name=Ada grade=A terms=3
+      actual:   PERSON_EDITED sheet=smvjrta2qggkr by=uma name=Ada grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp87_external-reference.spec.ts:319:14
+
+  37) [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"1455"[39m
+
+      154 |     expect(await ui.bulkGrade(pg_vic, [p_ben, p_ada], {"grade": "C", "from": "2026-03-20"})).toBe(2);
+      155 |     expect(await ui.statementAsOf(pg_vic, p_ben, "2026-03-01")).toBe(false);
+    > 156 |     expect(await ui.addClaimTwice(pg_vic, p_cam, {"amount": "20.00", "date": "2026-03-01"})).toBeNull();
+          |                                                                                              ^
+      157 |     await ui.refresh(pg_vic);
+      158 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+      159 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp88_compound-late-charge.spec.ts:156:94
+
+  38) [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"1482"[39m
+
+      391 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "B"}));
+      392 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+    > 393 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "12.50", "date": "2026-03-01", "ref": " r-1 "})).toBeNull();
+          |                                                                                                         ^
+      394 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      395 |     expect(await ui.delegate(pg_wes, {"user": "vic", "from": "2026-03-01", "to": "2026-03-20"})).toBe(true);
+      396 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp89_claim-tags.spec.ts:393:105
+
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (1.8m)
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (1.7m)
+  Slow test file: [chromium] › cp74_as-of-view.spec.ts (1.4m)
+  Slow test file: [chromium] › cp70_soft-close.spec.ts (1.4m)
+  Slow test file: [chromium] › cp84_business-day-terms.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  38 failed
+    [chromium] › cp18_close-period.spec.ts:226:7 › close period › close period scenario 2 ──────────
+    [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 ───────────────────
+    [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1 ───────────────────────────────────
+    [chromium] › cp25_due-by-and-overdue.spec.ts:309:7 › due by and overdue › due by and overdue scenario 2 
+    [chromium] › cp25_due-by-and-overdue.spec.ts:442:7 › due by and overdue › due by and overdue scenario 3 
+    [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 
+    [chromium] › cp30_corrections.spec.ts:497:7 › corrections › corrections scenario 3 ─────────────
+    [chromium] › cp34_bulk-open.spec.ts:490:7 › bulk open › bulk open scenario 3 ───────────────────
+    [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 
+    [chromium] › cp42_rate-end-dates.spec.ts:343:7 › rate end dates › rate end dates scenario 2 ────
+    [chromium] › cp42_rate-end-dates.spec.ts:631:7 › rate end dates › rate end dates scenario 3 ────
+    [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ─────────────────────────────────────
+    [chromium] › cp45_bulk-settle.spec.ts:551:7 › bulk settle › bulk settle scenario 3 ─────────────
+    [chromium] › cp46_re-settle.spec.ts:387:7 › re settle › re settle scenario 2 ───────────────────
+    [chromium] › cp48_dated-settings.spec.ts:135:7 › dated settings › dated settings scenario 1 ────
+    [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:335:7 › period templates › period templates scenario 2 
+    [chromium] › cp60_trimmed-totals.spec.ts:759:7 › trimmed totals › trimmed totals scenario 3 ────
+    [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ────────────────
+    [chromium] › cp64_floor-after-late.spec.ts:702:7 › floor after late › floor after late scenario 3 
+    [chromium] › cp66_redate-claim.spec.ts:117:7 › redate claim › redate claim scenario 1 ──────────
+    [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 ───────
+    [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 
+    [chromium] › cp73_statement-as-of.spec.ts:457:7 › statement as of › statement as of scenario 2 ─
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+    [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 ────────────────────
+    [chromium] › cp81_remind.spec.ts:459:7 › remind › remind scenario 2 ────────────────────────────
+    [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 
+    [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays ───────────────────────────────────
+    [chromium] › cp83_holidays.spec.ts:593:7 › holidays › holidays scenario 2 ──────────────────────
+    [chromium] › cp83_holidays.spec.ts:1055:7 › holidays › holidays scenario 3 ─────────────────────
+    [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 ────────
+    [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 ───────
+    [chromium] › cp87_external-reference.spec.ts:77:7 › external reference › external reference scenario 1 
+    [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 
+    [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 ────────────────
+  310 passed (22.7m)

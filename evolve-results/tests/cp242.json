@@ -1,0 +1,66 @@
+{
+  "checkpoint": 242,
+  "checkpoint_id": "cp242_person-timeline",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "73c46282b23aafd574b54656a6a4d5816d4a4123",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-24T03:14:06",
+  "seconds": 180,
+  "build_log_file": "cp242.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp242_person-timeline.spec.ts::person timeline": true,
+      "cp242_person-timeline.spec.ts::person timeline scenario 1": false,
+      "cp242_person-timeline.spec.ts::person timeline scenario 2": false,
+      "cp242_person-timeline.spec.ts::person timeline scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10684,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 22880,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvlco5cbn9g3\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlco5cbn9g3-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlco5cbn9g3-p\"\u001b[22m\n\n\n  178 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  179 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 180 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 31848,
+        "failure": "Error: save dated setting: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1149:14)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp242_person-timeline.spec.ts:624:12 | Error: save dated setting: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 33494,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('dash-pending-count')\nExpected string: \u001b[32m\"\"\u001b[39m\nReceived string: \u001b[31m\"0\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('dash-pending-count')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\n\n  1566 |     await expect(pg_wes.getByTestId(\"rate-month-C-2026-11\")).toHaveText(\"n/a\");\n  1567 |     await expect(pg_wes.getByTestId(\"rate-month-C-2026-12\")).toHaveText(\"n/a\");\n> 1568 |     await expect(pg_wes.getByTestId(\"dash-pending-count\")).toHaveText(\"\");\n       |                                                            ^\n  1569 |     await expect(pg_wes.getByTestId(\"dash-review-count\")).toHaveText(\"\");\n  1570 |     await expect(pg_wes.getByTestId(\"dash-overdue-count\")).toHaveText(\"\");\n  1571 |     await expect(pg"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,43 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp09-9to5vf5l
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering (4.5s)
+  ✓  2 [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1 (6.3s)
+  ✓  3 [chromium] › cp09_numbering.spec.ts:172:7 › numbering › numbering scenario 2 (6.9s)
+  ✓  4 [chromium] › cp09_numbering.spec.ts:309:7 › numbering › numbering scenario 3 (5.6s)
+
+
+  1) [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering ───────────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 1[39m
+
+    [2m  Array [[22m
+    [31m+   "",[39m
+    [2m    "3",[22m
+    [32m-   "4",[39m
+    [2m  ][22m
+
+      21 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      22 |     await Promise.all([ui.claimAction(pg_uma, c_ada_1, "open"), ui.claimAction(pg_vic, c_ben_1, "open")]);
+    > 23 |     expect((await ui.numbersOf(pg_vic, [c_ada_1, c_ben_1])).sort()).toEqual(["3", "4"]);
+         |                                                                     ^
+      24 |     await ui.refresh(pg_vic);
+      25 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-number")).toHaveText(/^(3|4)$/);
+      26 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("OPEN");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp09_numbering.spec.ts:23:69
+
+  1 failed
+    [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering ────────────────────────────────
+  3 passed (27.0s)

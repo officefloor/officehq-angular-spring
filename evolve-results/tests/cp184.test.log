@@ -1,0 +1,118 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp184-rshfc3ui
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp184_hold-leaves-claimed.spec.ts:6:7 › hold leaves claimed › hold leaves claimed (13.0s)
+  ✘  2 [chromium] › cp184_hold-leaves-claimed.spec.ts:107:7 › hold leaves claimed › hold leaves claimed scenario 1 (29.6s)
+  ✘  3 [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 (20.9s)
+  ✘  4 [chromium] › cp184_hold-leaves-claimed.spec.ts:1441:7 › hold leaves claimed › hold leaves claimed scenario 3 (20.7s)
+
+
+  1) [chromium] › cp184_hold-leaves-claimed.spec.ts:107:7 › hold leaves claimed › hold leaves claimed scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkm7qq8tmwz[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm7qq8tmwz-p</strong>[22m
+    [2m  -   unexpected value "smvkm7qq8tmwz-p"[22m
+
+
+      225 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      226 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 227 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      228 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      229 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("7.86");
+      230 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("4.44");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp184_hold-leaves-claimed.spec.ts:227:54
+
+  2) [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-15').getByTestId('claim-status')
+    Expected string: [32m"DRAFT"[39m
+    Received string: [31m"OPEN"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-15').getByTestId('claim-status')[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+
+
+      802 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_3).getByTestId("claim-stated")).toHaveText("no");
+      803 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_3).getByTestId("claim-due")).toHaveText("1.00");
+    > 804 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_3).getByTestId("claim-status")).toHaveText("DRAFT");
+          |                                                                                          ^
+      805 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_3).getByTestId("claim-stated")).toHaveText("no");
+      806 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_1).getByTestId("claim-due")).toHaveText("1.03");
+      807 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_1).getByTestId("claim-status")).toHaveText("VOID");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp184_hold-leaves-claimed.spec.ts:804:90
+
+  3) [chromium] › cp184_hold-leaves-claimed.spec.ts:1441:7 › hold leaves claimed › hold leaves claimed scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"18"[39m
+
+      1546 |     await ui.refresh(pg_vic);
+      1547 |     expect(await ui.unstate(pg_vic, p_ben)).toBe(true);
+    > 1548 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "20.00", "date": "2026-03-28"})).toBeNull();
+           |                                                                                         ^
+      1549 |     await ui.refresh(pg_vic);
+      1550 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1551 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp184_hold-leaves-claimed.spec.ts:1548:89
+
+  3 failed
+    [chromium] › cp184_hold-leaves-claimed.spec.ts:107:7 › hold leaves claimed › hold leaves claimed scenario 1 
+    [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+    [chromium] › cp184_hold-leaves-claimed.spec.ts:1441:7 › hold leaves claimed › hold leaves claimed scenario 3 
+  1 passed (1.5m)

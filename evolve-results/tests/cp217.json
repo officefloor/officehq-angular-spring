@@ -1,0 +1,66 @@
+{
+  "checkpoint": 217,
+  "checkpoint_id": "cp217_shared-claims",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "99449e8e8b5b2b36bc18f2e682f5332efc86280c",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:46:57",
+  "seconds": 155,
+  "build_log_file": "cp217.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp217_shared-claims.spec.ts::shared claims": true,
+      "cp217_shared-claims.spec.ts::shared claims scenario 1": false,
+      "cp217_shared-claims.spec.ts::shared claims scenario 2": false,
+      "cp217_shared-claims.spec.ts::shared claims scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp217_shared-claims.spec.ts::shared claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15258,
+        "failure": ""
+      },
+      {
+        "test_id": "cp217_shared-claims.spec.ts::shared claims scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 34854,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkytsl94kta\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkytsl94kta-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkytsl94kta-p\"\u001b[22m\n\n\n  251 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  252 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-05\");\n> 253 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp217_shared-claims.spec.ts::shared claims scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 31492,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Ada 0.00 \",\u001b[39m\n\u001b[32m-   \"Cam 0.00 \",\u001b[39m\n\u001b[31m+   \"Ada 0.00\",\u001b[39m\n\u001b[31m+   \"Cam 0.00\",\u001b[39m\n\u001b[2m  ]\u001b[22m\n\n  886 |     expect(await ui.claimEditSave(pg_vic, c_cam_1, {\"amount\": \"0.04\"})).toBe(false);\n  887 |     expect(await ui.setRate(pg_vic, {\"grade\": \"C\", \"pct\": \"12.50\"})).toBe(false);\n> 888 |     expect(await ui.snapshotCompare(pg_vic, \"2026-04-05\", \"2026-03-20\")).toEqual([\"Ada 0.00 \", \"Cam 0.00 \"]);\n      |                                                                          ^\n  889 |     await ui.refresh(pg_wes);\n  890 |     expect(await ui.claimAction(pg_wes, c_cam_1, \"open\")).toBe(true);\n  891 |     expect(await ui.hold(pg_wes, p_cam, {\"from\": \"2026-03-15\", \"to\": \"2026-03-20\"})).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp217_shared-claims.spec.ts:888:74 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Ada 0.00 \",\u001b[39m\n\u001b[32m-   \"Cam 0.00 \",\u001b[39m\n\u001b[31m+   \"Ada 0.00\",\u001b[39m\n\u001b[31m+   \"Cam 0.00\",\u001b[39m\n\u001b[2m  ]\u001b[22m"
+      },
+      {
+        "test_id": "cp217_shared-claims.spec.ts::shared claims scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 20076,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('rollup-cut-total')\nExpected string: \u001b[32m\"5.18\"\u001b[39m\nReceived string: \u001b[31m\"7.77\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('rollup-cut-total')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"rollup-cut-total\">7.77</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"7.77\"\u001b[22m\n\n\n  1396 |     await expect(pg_wes.getByTestId(\"rollup-open-total\")).toHaveText(\"10.17\");\n  1397 |     await expect(pg_wes.getByTestId(\"bulk-settle-batch\")).toHaveText(\"\");\n> 1398 |     await expect(pg_wes.getByTestId(\"rollup-cut-total\")).toHaveText(\"5.18\");\n       |                                                          ^\n  1399 |     await expect(pg_wes.getByTestId(\"rollup-aged-0-30\")).toHaveText(\"10.17\");\n  1400 |     await expect(pg_wes.getByTestId(\"rollup-aged-31-60\")).toHaveTex"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

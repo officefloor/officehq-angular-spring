@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp112-ip3kfzqs
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp112_uniqueness-across-tree.spec.ts:6:7 › uniqueness across tree › uniqueness across tree (10.5s)
+  ✘  2 [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 (30.1s)
+  ✓  3 [chromium] › cp112_uniqueness-across-tree.spec.ts:532:7 › uniqueness across tree › uniqueness across tree scenario 2 (14.1s)
+  ✘  4 [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 (22.3s)
+
+
+  1) [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvjypygnd4if[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvjypygnd4if-p</strong>[22m
+    [2m  -   unexpected value "smvjypygnd4if-p"[22m
+
+
+      230 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      231 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-15");
+    > 232 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      233 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      234 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("2.00");
+      235 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp112_uniqueness-across-tree.spec.ts:232:54
+
+  2) [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m3[39m
+
+      900 |     await ui.refresh(pg_uma);
+      901 |     expect(await ui.claimAction(pg_uma, c_ada_1, "open")).toBe(true);
+    > 902 |     expect(await ui.pasteClaims(pg_uma, "Ada,0.40,,\nCam,25.00,2026-03-15,a, b\nCam,12.50,,")).toBeNull();
+          |                                                                                                ^
+      903 |     await ui.refresh(pg_vic);
+      904 |     expect(await ui.claimAction(pg_vic, c_cam_0, "open")).toBe(true);
+      905 |     expect(await ui.bulkGrade(pg_vic, [p_ada, p_cam], {"grade": "B", "from": "2026-03-01"})).toBe(2);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp112_uniqueness-across-tree.spec.ts:902:96
+
+  2 failed
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 
+  2 passed (1.3m)

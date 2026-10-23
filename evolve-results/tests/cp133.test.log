@@ -1,0 +1,129 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp133-046hrznx
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp133_person-tags.spec.ts:6:7 › person tags › person tags (20.6s)
+  ✓  2 [chromium] › cp133_person-tags.spec.ts:67:7 › person tags › person tags scenario 1 (21.7s)
+  ✘  3 [chromium] › cp133_person-tags.spec.ts:547:7 › person tags › person tags scenario 2 (38.4s)
+  ✘  4 [chromium] › cp133_person-tags.spec.ts:1059:7 › person tags › person tags scenario 3 (16.2s)
+
+
+  1) [chromium] › cp133_person-tags.spec.ts:6:7 › person tags › person tags ────────────────────────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mnot[2m.[22mtoHaveValue[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-form-name')
+    Expected string: not [32m""[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.not.toHaveValue with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('person-form-name')[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <input id="person-form-name" data-testid="person-form-name"/>[22m
+    [2m  -   unexpected value ""[22m
+
+
+       at ../support/ui.ts:300
+
+      298 | export async function editOpen(page: Page, personId: string): Promise<void> {
+      299 |   await page.getByTestId(`person-edit-${personId}`).click();
+    > 300 |   await expect(page.getByTestId('person-form-name')).not.toHaveValue('', { timeout: WAIT });
+          |                                                          ^
+      301 |   editing.set(page, personId);
+      302 | }
+      303 |
+
+        at editOpen (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:300:58)
+        at Object.editPerson (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:324:3)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp133_person-tags.spec.ts:29:12
+
+  2) [chromium] › cp133_person-tags.spec.ts:547:7 › person tags › person tags scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-7').getByTestId('person-watched')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-7').getByTestId('person-watched')[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      756 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-backing")).toHaveText("0.00");
+      757 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-excess")).toHaveText("0.00");
+    > 758 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-watched")).toHaveText("no");
+          |                                                                                           ^
+      759 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-terms")).toHaveText("");
+      760 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-active")).toHaveText("no");
+      761 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-aged-0-30")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp133_person-tags.spec.ts:758:91
+
+  3) [chromium] › cp133_person-tags.spec.ts:1059:7 › person tags › person tags scenario 3 ──────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp133_person-tags.spec.ts:1125:24
+
+  3 failed
+    [chromium] › cp133_person-tags.spec.ts:6:7 › person tags › person tags ─────────────────────────
+    [chromium] › cp133_person-tags.spec.ts:547:7 › person tags › person tags scenario 2 ────────────
+    [chromium] › cp133_person-tags.spec.ts:1059:7 › person tags › person tags scenario 3 ───────────
+  1 passed (1.8m)

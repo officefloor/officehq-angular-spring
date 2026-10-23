@@ -1,0 +1,118 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp171-lw0zbuog
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp171_review-sla.spec.ts:6:7 › review sla › review sla (8.3s)
+  ✘  2 [chromium] › cp171_review-sla.spec.ts:126:7 › review sla › review sla scenario 1 (11.2s)
+  ✘  3 [chromium] › cp171_review-sla.spec.ts:516:7 › review sla › review sla scenario 2 (21.8s)
+  ✘  4 [chromium] › cp171_review-sla.spec.ts:907:7 › review sla › review sla scenario 3 (27.4s)
+
+
+  1) [chromium] › cp171_review-sla.spec.ts:126:7 › review sla › review sla scenario 1 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"5"[39m
+
+      197 |     await ui.setToday(pg_uma, "2026-04-18");
+      198 |     await ui.setSetting(pg_uma, "entry-date", "2026-03-01");
+    > 199 |     expect(await ui.addClaim(pg_uma, p_eve, {"amount": "10.35", "date": "2026-03-09", "note": "n"})).toBeNull();
+          |                                                                                                      ^
+      200 |     expect(await ui.claimAction(pg_uma, c_eve_0, "delete")).toBe(true);
+      201 |     expect(await ui.claimAction(pg_uma, c_eve_0, "restore")).toBe(true);
+      202 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp171_review-sla.spec.ts:199:102
+
+  2) [chromium] › cp171_review-sla.spec.ts:516:7 › review sla › review sla scenario 2 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvki9gyqx0ns[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9gyqx0ns-p</strong>[22m
+    [2m  -   unexpected value "smvki9gyqx0ns-p"[22m
+
+
+      638 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      639 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 640 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      641 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      642 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      643 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp171_review-sla.spec.ts:640:54
+
+  3) [chromium] › cp171_review-sla.spec.ts:907:7 › review sla › review sla scenario 3 ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvki9ymmz686[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvki9ymmz686-p</strong>[22m
+    [2m  -   unexpected value "smvki9ymmz686-p"[22m
+
+
+      1057 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1058 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1059 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1060 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      1061 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1062 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp171_review-sla.spec.ts:1059:54
+
+  3 failed
+    [chromium] › cp171_review-sla.spec.ts:126:7 › review sla › review sla scenario 1 ───────────────
+    [chromium] › cp171_review-sla.spec.ts:516:7 › review sla › review sla scenario 2 ───────────────
+    [chromium] › cp171_review-sla.spec.ts:907:7 › review sla › review sla scenario 3 ───────────────
+  1 passed (1.2m)

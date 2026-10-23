@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp147-4v1bnuvs
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp147_snapshot-lines.spec.ts:6:7 › snapshot lines › snapshot lines (9.2s)
+  ✘  2 [chromium] › cp147_snapshot-lines.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 (31.8s)
+  ✘  3 [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 (21.3s)
+  ✓  4 [chromium] › cp147_snapshot-lines.spec.ts:1144:7 › snapshot lines › snapshot lines scenario 3 (21.0s)
+
+
+  1) [chromium] › cp147_snapshot-lines.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ───
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-7').getByTestId('person-name')
+    Expected string: [32m"Ben"[39m
+    Received string: [31m"Dot"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-7').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+
+
+      388 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-batch")).toHaveText("");
+      389 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-lines-line")).toHaveText([]);
+    > 390 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Ben");
+          |                                                                                        ^
+      391 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("A");
+      392 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
+      393 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp147_snapshot-lines.spec.ts:390:88
+
+  2) [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk8lgysyg2c[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8lgysyg2c-p</strong>[22m
+    [2m  -   unexpected value "smvk8lgysyg2c-p"[22m
+
+
+      724 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      725 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 726 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      727 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      728 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      729 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp147_snapshot-lines.spec.ts:726:54
+
+  2 failed
+    [chromium] › cp147_snapshot-lines.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ────
+    [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ───
+  2 passed (1.5m)

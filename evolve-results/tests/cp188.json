@@ -1,0 +1,68 @@
+{
+  "checkpoint": 188,
+  "checkpoint_id": "cp188_clone-source-rates",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "a06acdfe3e518bff94568e4013776e733d5636c4",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T15:04:52",
+  "seconds": 156,
+  "build_log_file": "cp188.test.log",
+  "replaced_tests": [
+    "cp126_clone-sheet.spec.ts::clone sheet"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp188_clone-source-rates.spec.ts::clone source rates": true,
+      "cp188_clone-source-rates.spec.ts::clone source rates scenario 1": false,
+      "cp188_clone-source-rates.spec.ts::clone source rates scenario 2": false,
+      "cp188_clone-source-rates.spec.ts::clone source rates scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp188_clone-source-rates.spec.ts::clone source rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17299,
+        "failure": ""
+      },
+      {
+        "test_id": "cp188_clone-source-rates.spec.ts::clone source rates scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18169,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"8\"\u001b[39m\n\n  153 |     await expect(pg_vic.getByTestId(\"my-crew-due-total\")).toHaveText(\"\");\n  154 |     expect(await ui.addAlias(pg_vic, p_ben, \"Bee\")).toBe(true);\n> 155 |     expect(await ui.addClaim(pg_vic, p_ben, {\"amount\": \"25.00\", \"ref\": \" r-1 \"})).toBeNull();\n      |                                                                                   ^\n  156 |     expect(await ui.addClaim(pg_vic, p_ben, {\"amount\": \"10.25\", \"date\": \"2026-03-09\", \"note\": \"n\"})).toBeNull();\n  157 |     expect(await ui.quickAdd(pg_vic, {\"name\": \"Dot\", \"amount\": \"3.33\"})).toBeNull();\n  158 |     expect(await ui.addAlias(pg_vic, p_ben, \" ada \")).toBe(false);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp188_clone-source-rates.spec.ts:155:83 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"8\"\u001b[39m"
+      },
+      {
+        "test_id": "cp188_clone-source-rates.spec.ts::clone source rates scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19872,
+        "failure": "Error: flag: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp188_clone-source-rates.spec.ts:625:12 | Error: flag: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp188_clone-source-rates.spec.ts::clone source rates scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 20984,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkmncn2ulp4\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmncn2ulp4-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmncn2ulp4-p\"\u001b[22m\n\n\n  1210 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1211 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-25\");\n> 1212 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

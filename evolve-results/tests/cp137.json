@@ -1,0 +1,66 @@
+{
+  "checkpoint": 137,
+  "checkpoint_id": "cp137_claim-lines",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "9c3ec13946d4306493968a30f36356da18447083",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T07:04:06",
+  "seconds": 96,
+  "build_log_file": "cp137.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp137_claim-lines.spec.ts::claim lines": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 1": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 2": false,
+      "cp137_claim-lines.spec.ts::claim lines scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10705,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 6997,
+        "failure": "Error: the screen refused this action (its error element appeared)\n\n   at ../support/ui.ts:25\n\n  23 |  *  lands on the arranging line rather than on a later assertion. */\n  24 | export function must(id: string | null): string {\n> 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');\n     |                          ^\n  26 |   return id;\n  27 | }\n  28 |\n\n    at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp137_claim-lines.spec.ts:647:24 | Error: the screen refused this action (its error element appeared)"
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19212,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-16').getByTestId('claim-amount')\nExpected string: \u001b[32m\"7.77\"\u001b[39m\nReceived string: \u001b[31m\"0.40\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-16').getByTestId('claim-amount')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-amount\">0.40</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.40\"\u001b[22m\n\n\n  1299 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_2).getByTestId(\"claim-batch\")).toHaveText(\"\");\n  1300 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_2).getByTestId(\"claim-lines-line\")).toHaveText([]);\n> 1301 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_3).getByTestId(\"claim-amount\")).toHaveText(\"7.77\");\n       |                                                                                          ^\n  1302 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_c"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

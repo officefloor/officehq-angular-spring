@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp196-0i1gvcki
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp196_floor-before-late-charge.spec.ts:6:7 › floor before late charge › floor before late charge (11.9s)
+  ✘  2 [chromium] › cp196_floor-before-late-charge.spec.ts:123:7 › floor before late charge › floor before late charge scenario 1 (22.2s)
+  ✘  3 [chromium] › cp196_floor-before-late-charge.spec.ts:513:7 › floor before late charge › floor before late charge scenario 2 (19.2s)
+  ✘  4 [chromium] › cp196_floor-before-late-charge.spec.ts:957:7 › floor before late charge › floor before late charge scenario 3 (9.5s)
+
+
+  1) [chromium] › cp196_floor-before-late-charge.spec.ts:123:7 › floor before late charge › floor before late charge scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkq2qb00nsb[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkq2qb00nsb-p</strong>[22m
+    [2m  -   unexpected value "smvkq2qb00nsb-p"[22m
+
+
+      229 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      230 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 231 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      232 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      233 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("2.55");
+      234 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp196_floor-before-late-charge.spec.ts:231:54
+
+  2) [chromium] › cp196_floor-before-late-charge.spec.ts:513:7 › floor before late charge › floor before late charge scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-7').getByTestId('claim-late-entry')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-7').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      698 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-proofs")).toHaveText("1");
+      699 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-split-from")).toHaveText("");
+    > 700 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-late-entry")).toHaveText("no");
+          |                                                                                              ^
+      701 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-reminded")).toHaveText("");
+      702 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-ref")).toHaveText("r-1");
+      703 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-tags")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp196_floor-before-late-charge.spec.ts:700:94
+
+  3) [chromium] › cp196_floor-before-late-charge.spec.ts:957:7 › floor before late charge › floor before late charge scenario 3 
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp196_floor-before-late-charge.spec.ts:1030:24
+
+  3 failed
+    [chromium] › cp196_floor-before-late-charge.spec.ts:123:7 › floor before late charge › floor before late charge scenario 1 
+    [chromium] › cp196_floor-before-late-charge.spec.ts:513:7 › floor before late charge › floor before late charge scenario 2 
+    [chromium] › cp196_floor-before-late-charge.spec.ts:957:7 › floor before late charge › floor before late charge scenario 3 
+  1 passed (1.1m)

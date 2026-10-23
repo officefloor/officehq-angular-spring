@@ -1,0 +1,36 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp88-vbu_m_mb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp88_compound-late-charge.spec.ts:6:7 › compound late charge › compound late charge (5.2s)
+  ✘  2 [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 (7.0s)
+  ✓  3 [chromium] › cp88_compound-late-charge.spec.ts:544:7 › compound late charge › compound late charge scenario 2 (16.8s)
+  ✓  4 [chromium] › cp88_compound-late-charge.spec.ts:916:7 › compound late charge › compound late charge scenario 3 (43.7s)
+
+
+  1) [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"5"[39m
+
+      154 |     expect(await ui.bulkGrade(pg_vic, [p_ben, p_ada], {"grade": "C", "from": "2026-03-20"})).toBe(2);
+      155 |     expect(await ui.statementAsOf(pg_vic, p_ben, "2026-03-01")).toBe(false);
+    > 156 |     expect(await ui.addClaimTwice(pg_vic, p_cam, {"amount": "20.00", "date": "2026-03-01"})).toBeNull();
+          |                                                                                              ^
+      157 |     await ui.refresh(pg_vic);
+      158 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+      159 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp88_compound-late-charge.spec.ts:156:94
+
+  1 failed
+    [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 
+  3 passed (1.2m)

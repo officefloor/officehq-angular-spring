@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp132-wy8vtma7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp132_tree-numbering.spec.ts:6:7 › tree numbering › tree numbering (9.3s)
+  ✓  2 [chromium] › cp132_tree-numbering.spec.ts:107:7 › tree numbering › tree numbering scenario 1 (45.5s)
+  ✓  3 [chromium] › cp132_tree-numbering.spec.ts:612:7 › tree numbering › tree numbering scenario 2 (12.3s)
+  ✘  4 [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 (27.9s)
+
+
+  1) [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk4kn7itajh[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4kn7itajh-p</strong>[22m
+    [2m  -   unexpected value "smvk4kn7itajh-p"[22m
+
+
+      1071 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1072 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 1073 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1074 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1075 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1076 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp132_tree-numbering.spec.ts:1073:54
+
+  Slow test file: [chromium] › cp132_tree-numbering.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 ───
+  3 passed (1.6m)

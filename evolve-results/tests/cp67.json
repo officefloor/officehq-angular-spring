@@ -1,0 +1,66 @@
+{
+  "checkpoint": 67,
+  "checkpoint_id": "cp67_active-people",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "af67a48c67b76d2f133aff0270d296aa65014ec5",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T22:04:49",
+  "seconds": 106,
+  "build_log_file": "cp67.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp67_active-people.spec.ts::active people": true,
+      "cp67_active-people.spec.ts::active people scenario 1": false,
+      "cp67_active-people.spec.ts::active people scenario 2": true,
+      "cp67_active-people.spec.ts::active people scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp67_active-people.spec.ts::active people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12540,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 13308,
+        "failure": "Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoHaveValue\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-form-name')\nExpected string: not \u001b[32m\"\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.not.toHaveValue with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-form-name')\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <input id=\"person-form-name\" data-testid=\"person-form-name\"/>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n   at ../support/ui.ts:300\n\n  29"
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12709,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14321,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

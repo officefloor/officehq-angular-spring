@@ -1,0 +1,96 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp211-wsarbpo6
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp211_score-lines.spec.ts:6:7 › score lines › score lines (14.6s)
+  ✘  2 [chromium] › cp211_score-lines.spec.ts:88:7 › score lines › score lines scenario 1 (8.5s)
+  ✘  3 [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 (25.1s)
+  ✘  4 [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 (9.6s)
+
+
+  1) [chromium] › cp211_score-lines.spec.ts:88:7 › score lines › score lines scenario 1 ────────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp211_score-lines.spec.ts:125:24
+
+  2) [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkybds9e3ed[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkybds9e3ed-p</strong>[22m
+    [2m  -   unexpected value "smvkybds9e3ed-p"[22m
+
+
+      878 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      879 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 880 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      881 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      882 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      883 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp211_score-lines.spec.ts:880:54
+
+  3) [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      1419 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
+      1420 |     const c_cam_1 = ui.must(await ui.addClaim(pg_uma, p_cam, {"amount": "3.33", "date": "2026-03-05", "note": "n"}));
+    > 1421 |     expect(await ui.claimEditOpen(pg_uma, c_ben_0)).toBe(true);
+           |                                                     ^
+      1422 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      1423 |     expect(await ui.claimEditOpen(pg_vic, c_ben_0)).toBe(false);
+      1424 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp211_score-lines.spec.ts:1421:53
+
+  3 failed
+    [chromium] › cp211_score-lines.spec.ts:88:7 › score lines › score lines scenario 1 ─────────────
+    [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 ────────────
+    [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 ───────────
+  1 passed (1.1m)

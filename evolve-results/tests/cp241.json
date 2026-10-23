@@ -1,0 +1,66 @@
+{
+  "checkpoint": 241,
+  "checkpoint_id": "cp241_as-of-roles",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "c78f4af96f09ada9d55e9d2cd60073112b8b6bde",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-24T03:12:07",
+  "seconds": 119,
+  "build_log_file": "cp241.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp241_as-of-roles.spec.ts::as of roles": true,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 1": false,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 2": false,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6540,
+        "failure": ""
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21561,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('header-claims-OPEN-count')\nExpected string: \u001b[32m\"2\"\u001b[39m\nReceived string: \u001b[31m\"1\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('header-claims-OPEN-count')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"header-claims-OPEN-count\">1</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\n\n  155 |     await expect(pg_uma.getByTestId(\"header-people-count\")).toHaveText(\"2\");\n  156 |     await expect(pg_uma.getByTestId(\"header-claims-DRAFT-count\")).toHaveText(\"1\");\n> 157 |     await expect(pg_uma.getByTestId(\"header-claims-OPEN-count\")).toHaveText(\"2\");\n      |                                                                  ^\n  158 |     await expect(pg_uma.getByTestId(\"header-claims-PENDING-count\")).toHaveText(\"0\");\n  159 |     await expect(p"
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 16886,
+        "failure": "Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m()\u001b[22m\n\nLocator: getByTestId('person-row-5').locator('[data-testid^=\"claim-row-\"]').nth(-2)\nExpected: visible\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toBeVisible with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-5').locator('[data-testid^=\"claim-row-\"]').nth(-2)\u001b[22m\n\n\n   at ../support/ui.ts:656\n\n  654 |   const n = await all.count();\n  655 |   const r = all.nth(n - 1 - idx);\n> 656 |   await expect(r).toBeVisible({ timeout: WAIT });\n      |                   ^\n  657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');\n  658 | }\n  659 |\n\n    at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:656:19)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp241_as-of-roles.spec.ts:562:21 | Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m()\u001b[22m\n\nLocator: getByTestId('person-row-5').locator('[data-testid^=\"claim-row-\"]').nth(-2)\nExpected: visible\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toBeVisible with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-5').locator('[data-testid^=\"claim-row-\"]').nth(-2)\u001b[22m\n"
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21110,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvlclswn4c2d\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvlclswn4c2d-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvlclswn4c2d-p\"\u001b[22m\n\n\n  1486 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1487 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-01\");\n> 1488 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

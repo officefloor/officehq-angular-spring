@@ -1,0 +1,66 @@
+{
+  "checkpoint": 238,
+  "checkpoint_id": "cp238_merge-undo",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "ae64c491f14fc3899246c8562f87b6978818f9b9",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-24T01:19:33",
+  "seconds": 158,
+  "build_log_file": "cp238.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp238_merge-undo.spec.ts::merge undo": false,
+      "cp238_merge-undo.spec.ts::merge undo scenario 1": true,
+      "cp238_merge-undo.spec.ts::merge undo scenario 2": false,
+      "cp238_merge-undo.spec.ts::merge undo scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17472,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-2').getByTestId('person-name')\nExpected string: \u001b[32m\"\u001b[7mCam\u001b[27m (\u001b[7mC\u001b[27m)\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7mBen\u001b[27m (\u001b[7mB\u001b[27m)\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-2').getByTestId('person-name')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-name\">Ben (B)</td>\u001b[22m\n\u001b[2m  -   unexpected value \"Ben (B)\"\u001b[22m\n\n\n  41 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_ada_0).getByTestId(\"claim-number\")).toHaveText(\"\");\n  42 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_ada_0).getByTestId(\"claim-status\")).toHaveText(\"OPEN\");\n> 43 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-name\")).toHaveText(\"Cam (C)\");\n     |                                                                                        ^\n  44 |     await expec"
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28174,
+        "failure": ""
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25302,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('dash-pending-count')\nExpected string: \u001b[32m\"\"\u001b[39m\nReceived string: \u001b[31m\"0\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('dash-pending-count')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"dash-pending-count\">0</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\n\n  1090 |     await expect(pg_wes.getByTestId(\"rate-month-C-2026-11\")).toHaveText(\"n/a\");\n  1091 |     await expect(pg_wes.getByTestId(\"rate-month-C-2026-12\")).toHaveText(\"n/a\");\n> 1092 |     await expect(pg_wes.getByTestId(\"dash-pending-count\")).toHaveText(\"\");\n       |                                                            ^\n  1093 |     await expect(pg_wes.getByTestId(\"dash-review-count\")).toHaveText(\"\");\n  1094 |     await expect(pg_wes.getByTestId(\"dash-overdue-count\")).toHaveText(\"\");\n  1095 |     await expect(pg"
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26914,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

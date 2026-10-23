@@ -1,0 +1,84 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp155-6ldwr5cv
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp155_review-state.spec.ts:6:7 › review state › review state (16.7s)
+  ✓  2 [chromium] › cp155_review-state.spec.ts:182:7 › review state › review state scenario 1 (21.6s)
+  ✓  3 [chromium] › cp155_review-state.spec.ts:731:7 › review state › review state scenario 2 (12.3s)
+  ✘  4 [chromium] › cp155_review-state.spec.ts:1140:7 › review state › review state scenario 3 (11.2s)
+
+
+  1) [chromium] › cp155_review-state.spec.ts:1140:7 › review state › review state scenario 3 ───────
+
+    Error: audit lines for smvkb2sq2enra:
+    ROLE_SET sheet=smvkb2sq2enra by=uma user=vic role=steward
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=clerk-limit value=3.00
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=proof-threshold value=1.00
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=note-threshold value=1.00
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=entry-date value=2026-03-05
+    HOLIDAY_ADDED sheet=smvkb2sq2enra by=uma date=2026-04-03
+    HOLIDAY_ADDED sheet=smvkb2sq2enra by=uma date=2026-03-13
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=pot value=100.00
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=fiscal-start-month value=4
+    SETTING_CHANGED sheet=smvkb2sq2enra by=uma key=alert-threshold value=1.00
+    RATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=12.50
+    RATE_SET sheet=smvkb2sq2enra by=uma grade=B rate=7.50
+    RATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=5.00 from=2026-03-01
+    PERIOD_ADDED sheet=smvkb2sq2enra by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERIOD_ADDED sheet=smvkb2sq2enra by=uma period=P2 from=2026-03-16 to=2026-03-31
+    PERSON_ADDED sheet=smvkb2sq2enra by=uma name=Cam grade=B terms=3
+    ROLLUP sheet=smvkb2sq2enra by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvkb2sq2enra by=uma name=Ben grade=B
+    ROLLUP sheet=smvkb2sq2enra by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    POOL_ADDED sheet=smvkb2sq2enra by=uma name=P1
+    POOL_MEMBER_ADDED sheet=smvkb2sq2enra by=uma pool=P1 name=Cam share=50.00
+    POOL_MEMBER_ADDED sheet=smvkb2sq2enra by=uma pool=P1 name=Ben share=50.00
+    PERSON_EDITED sheet=smvkb2sq2enra by=uma name=Cam grade=B
+    PERSON_EDITED sheet=smvkb2sq2enra by=uma name=Ben grade=B
+    SNAPSHOT sheet=smvkb2sq2enra by=uma name=Cam due-total=0.00
+    SNAPSHOT sheet=smvkb2sq2enra by=uma name=Ben due-total=0.00
+    RATE_SET sheet=smvkb2sq2enra by=uma grade=A rate=5.00
+    DELEGATED sheet=smvkb2sq2enra by=vic user=wes from=2026-03-15 to=2026-03-20
+    STATEMENT sheet=smvkb2sq2enra by=uma name=Cam due-total=0.00 claims=0
+    CLAIM_ADDED sheet=smvkb2sq2enra by=uma person=Ben amount=25.00 date=2026-03-05
+    HOLIDAY_ADDED sheet=smvkb2sq2enra by=uma date=2026-03-11
+    CLAIM_VOIDED sheet=smvkb2sq2enra by=uma person=Ben amount=25.00 date=2026-03-05
+    RATE_SET sheet=smvkb2sq2enra by=uma grade=C rate=12.50 from=2026-03-01 to=2026-03-12
+    PERIOD_SOFT_CLOSED sheet=smvkb2sq2enra by=uma period=P1 total=0.00
+    CLAIM_ADDED sheet=smvkb2sq2enra by=uma person=Cam amount=20.00 date=2026-03-15 tags=a,b
+    LATE_ENTRY sheet=smvkb2sq2enra by=uma person=Cam amount=20.00 date=2026-03-15
+    CLAIM_EDITED sheet=smvkb2sq2enra by=uma person=Cam amount=20.00 date=2026-03-15
+    SNAPSHOT sheet=smvkb2sq2enra by=uma name=Cam due-total=0.00
+    SNAPSHOT sheet=smvkb2sq2enra by=uma name=Ben due-total=0.00
+    PERIOD_REOPENED sheet=smvkb2sq2enra by=vic period=P1
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m39[39m
+    Received: [31m40[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp155_review-state.spec.ts:1293:14
+
+  Slow test file: [chromium] › cp155_review-state.spec.ts (1.0m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp155_review-state.spec.ts:1140:7 › review state › review state scenario 3 ────────
+  3 passed (1.1m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 33,
+  "checkpoint_id": "cp33_export-people",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "4d1f21318697d55af53a7030c3e2ee07b5ed00f3",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T19:52:57",
+  "seconds": 84,
+  "build_log_file": "cp33.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp33_export-people.spec.ts::export people": true,
+      "cp33_export-people.spec.ts::export people scenario 1": true,
+      "cp33_export-people.spec.ts::export people scenario 2": true,
+      "cp33_export-people.spec.ts::export people scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp33_export-people.spec.ts::export people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3030,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9231,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7715,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10005,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

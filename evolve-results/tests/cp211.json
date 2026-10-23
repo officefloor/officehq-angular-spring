@@ -1,0 +1,66 @@
+{
+  "checkpoint": 211,
+  "checkpoint_id": "cp211_score-lines",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "6d05111817d8ef69130558ce359d63d81e54bb37",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T20:32:17",
+  "seconds": 122,
+  "build_log_file": "cp211.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp211_score-lines.spec.ts::score lines": true,
+      "cp211_score-lines.spec.ts::score lines scenario 1": false,
+      "cp211_score-lines.spec.ts::score lines scenario 2": false,
+      "cp211_score-lines.spec.ts::score lines scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14638,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 8513,
+        "failure": "Error: the screen refused this action (its error element appeared)\n\n   at ../support/ui.ts:25\n\n  23 |  *  lands on the arranging line rather than on a later assertion. */\n  24 | export function must(id: string | null): string {\n> 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');\n     |                          ^\n  26 |   return id;\n  27 | }\n  28 |\n\n    at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp211_score-lines.spec.ts:125:24 | Error: the screen refused this action (its error element appeared)"
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25071,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkybds9e3ed\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkybds9e3ed-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkybds9e3ed-p\"\u001b[22m\n\n\n  878 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  879 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-25\");\n> 880 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 9560,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  1419 |     await expect(pg_uma.getByTestId(\"my-crew-due-total\")).toHaveText(\"\");\n  1420 |     const c_cam_1 = ui.must(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"3.33\", \"date\": \"2026-03-05\", \"note\": \"n\"}));\n> 1421 |     expect(await ui.claimEditOpen(pg_uma, c_ben_0)).toBe(true);\n       |                                                     ^\n  1422 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n  1423 |     expect(await ui.claimEditOpen(pg_vic, c_ben_0)).toBe(false);\n  1424 |     await ui.refresh(pg_uma);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp211_score-lines.spec.ts:1421:53 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

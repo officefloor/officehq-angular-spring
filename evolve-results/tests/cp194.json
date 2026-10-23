@@ -1,0 +1,66 @@
+{
+  "checkpoint": 194,
+  "checkpoint_id": "cp194_settle-as-of-date",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "69d4bcff58d43615f01544554459ca7c69332d10",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T16:36:25",
+  "seconds": 174,
+  "build_log_file": "cp194.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp194_settle-as-of-date.spec.ts::settle as of date": true,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 1": false,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 2": false,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 43817,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkpw1n3ueaq\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkpw1n3ueaq-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkpw1n3ueaq-p\"\u001b[22m\n\n\n  209 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  210 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 211 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                               "
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 14464,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  542 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n  543 |     expect(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"3.33\", \"tags\": \"a, B\"})).toBeNull();\n> 544 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);\n      |                                                     ^\n  545 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n  546 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);\n  547 |     await ui.refresh(pg_uma);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp194_settle-as-of-date.spec.ts:544:53 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27243,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

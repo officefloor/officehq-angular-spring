@@ -1,0 +1,127 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp241-vw4foodz
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp241_as-of-roles.spec.ts:6:7 › as of roles › as of roles (6.5s)
+  ✘  2 [chromium] › cp241_as-of-roles.spec.ts:42:7 › as of roles › as of roles scenario 1 (21.6s)
+  ✘  3 [chromium] › cp241_as-of-roles.spec.ts:524:7 › as of roles › as of roles scenario 2 (16.9s)
+  ✘  4 [chromium] › cp241_as-of-roles.spec.ts:1311:7 › as of roles › as of roles scenario 3 (21.1s)
+
+
+  1) [chromium] › cp241_as-of-roles.spec.ts:42:7 › as of roles › as of roles scenario 1 ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('header-claims-OPEN-count')
+    Expected string: [32m"2"[39m
+    Received string: [31m"1"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('header-claims-OPEN-count')[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+
+
+      155 |     await expect(pg_uma.getByTestId("header-people-count")).toHaveText("2");
+      156 |     await expect(pg_uma.getByTestId("header-claims-DRAFT-count")).toHaveText("1");
+    > 157 |     await expect(pg_uma.getByTestId("header-claims-OPEN-count")).toHaveText("2");
+          |                                                                  ^
+      158 |     await expect(pg_uma.getByTestId("header-claims-PENDING-count")).toHaveText("0");
+      159 |     await expect(pg_uma.getByTestId("header-claims-SETTLED-count")).toHaveText("0");
+      160 |     await expect(pg_uma.getByTestId("header-claims-VOID-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp241_as-of-roles.spec.ts:157:66
+
+  2) [chromium] › cp241_as-of-roles.spec.ts:524:7 › as of roles › as of roles scenario 2 ───────────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toBeVisible with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)[22m
+
+
+       at ../support/ui.ts:656
+
+      654 |   const n = await all.count();
+      655 |   const r = all.nth(n - 1 - idx);
+    > 656 |   await expect(r).toBeVisible({ timeout: WAIT });
+          |                   ^
+      657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');
+      658 | }
+      659 |
+
+        at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:656:19)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp241_as-of-roles.spec.ts:562:21
+
+  3) [chromium] › cp241_as-of-roles.spec.ts:1311:7 › as of roles › as of roles scenario 3 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvlclswn4c2d[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlclswn4c2d-p</strong>[22m
+    [2m  -   unexpected value "smvlclswn4c2d-p"[22m
+
+
+      1486 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1487 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-01");
+    > 1488 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1489 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      1490 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1491 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp241_as-of-roles.spec.ts:1488:54
+
+  3 failed
+    [chromium] › cp241_as-of-roles.spec.ts:42:7 › as of roles › as of roles scenario 1 ─────────────
+    [chromium] › cp241_as-of-roles.spec.ts:524:7 › as of roles › as of roles scenario 2 ────────────
+    [chromium] › cp241_as-of-roles.spec.ts:1311:7 › as of roles › as of roles scenario 3 ───────────
+  1 passed (1.2m)

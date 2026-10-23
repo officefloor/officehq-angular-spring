@@ -1,0 +1,72 @@
+{
+  "checkpoint": 164,
+  "checkpoint_id": "cp164_correction-limit",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "433e02d25ff6a89c56a6430b1a039cad70d39cb5",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T11:38:59",
+  "seconds": 110,
+  "build_log_file": "cp164.test.log",
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp164_correction-limit.spec.ts::correction limit": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 1": false,
+      "cp164_correction-limit.spec.ts::correction limit scenario 2": false,
+      "cp164_correction-limit.spec.ts::correction limit scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11824,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10187,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m5\u001b[39m\nReceived: \u001b[31m7\u001b[39m\n\n  149 |     expect(await ui.unretire(pg_uma, p_dot)).toBe(true);\n  150 |     expect(await ui.statement(pg_uma, p_dot)).toBe(true);\n> 151 |     expect(await ui.generatePlans(pg_uma)).toBe(5);\n      |                                            ^\n  152 |     const c_ada_1 = await ui.claimAt(pg_uma, p_ada, 1);\n  153 |     const c_ada_2 = await ui.claimAt(pg_uma, p_ada, 2);\n  154 |     const c_ada_3 = await ui.claimAt(pg_uma, p_ada, 3);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp164_correction-limit.spec.ts:151:44 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m5\u001b[39m\nReceived: \u001b[31m7\u001b[39m"
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10098,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  808 |     expect(await ui.bulkReassign(pg_wes, [c_ben_1, c_ben_0], \"Cam\")).toEqual({ reassigned: 1, refused: 1 });\n  809 |     expect(await ui.periodAction(pg_wes, \"P2\", \"soft-close\")).toBe(true);\n> 810 |     expect(await ui.claimEditOpen(pg_wes, c_ben_0)).toBe(true);\n      |                                                     ^\n  811 |     await ui.refresh(pg_vic);\n  812 |     expect(await ui.claimEditOpen(pg_vic, c_ben_0)).toBe(false);\n  813 |     await ui.refresh(pg_wes);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp164_correction-limit.spec.ts:810:53 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17866,
+        "failure": "Error: audit lines for smvkf9nsfsldg:\nROLE_SET sheet=smvkf9nsfsldg by=uma user=wes role=steward\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=clerk-limit value=1.50\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=terms value=10\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=late-pct value=10.00\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=perm-open value=steward\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=entry-date value=2026-03-05\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=grace-A value=2\nTEMPLATE_SAVED sheet=smvkf9nsfsldg by=uma name=T1 amount=12.50 note=tpl\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=alert-threshold value=3.00\nSETTING_CHANGED sheet=smvkf9nsfsldg by=uma key=review-threshold value=4.00\nRATE_SET sheet=smvkf9nsfsldg by=uma grade=A rate=12.50\nRATE_SET sheet=smvkf9nsfsldg by=uma grade=B rate=7.50\nRATE_SET sheet=smvkf9nsfsldg by=uma grade=B rate=7.50 from=2026-03-01 to=2026-03-25\nPERIOD_ADDED sheet=smvkf9nsfsldg by=uma period=P1 from=2026-03-01 to=2026-03-15\nPERIOD_ADDED sheet=smvkf9nsfsldg by=uma period=P2 from=2026-03-16 to=2026-03-31\nPERSON_ADDED sheet=smvkf9nsfsldg by=uma name=Cam grade=A\nROLLUP sheet=smvkf9nsfsldg by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvkf9nsfsldg by=uma name=Ben grade=C\nROLLUP sheet=smvkf9nsfsldg by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00\nPERSON_RETIRED sheet=smvkf9nsfsldg by=uma name=Ben from=2026-03-09\nCLAIM_ADDED sheet=smvkf9nsfsldg by=uma person=Ben amount=3.33 date=2026-03-01\nPERIOD_SOFT_CLOSED sheet=smvkf9nsfsldg by=uma period=P1 total=0.00\nPERSON_RETIRED sheet=smvkf9nsfsldg by=vic name=Cam from=2026-02-25\nCLAIM_ADDED sheet=smvkf9nsfsldg by=vic person=Ben amount=10.25 date=2026-02-10\nLATE_ENTRY sheet=smvkf9nsfsldg by=vic person=Ben amount=10.25 date=2026-02-10\nPERSON_HELD sheet=smvkf9nsfsldg by=vic name=Cam from=2026-02-10\nPERSON_UNRETIRED sheet=smvkf9nsfsldg by=vic name=Cam on=2026-04-05\nPERSON_EDITED sheet=smvkf9nsfsldg by=vic name=Cam grade=C"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

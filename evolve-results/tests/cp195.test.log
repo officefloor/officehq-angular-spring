@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp195-gbj4sld3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp195_statement-export.spec.ts:6:7 › statement export › statement export (6.5s)
+  ✘  2 [chromium] › cp195_statement-export.spec.ts:28:7 › statement export › statement export scenario 1 (31.9s)
+  ✘  3 [chromium] › cp195_statement-export.spec.ts:662:7 › statement export › statement export scenario 2 (18.1s)
+  ✘  4 [chromium] › cp195_statement-export.spec.ts:1138:7 › statement export › statement export scenario 3 (21.5s)
+
+
+  1) [chromium] › cp195_statement-export.spec.ts:28:7 › statement export › statement export scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkpzlzs8kro[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpzlzs8kro-p</strong>[22m
+    [2m  -   unexpected value "smvkpzlzs8kro-p"[22m
+
+
+      197 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      198 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 199 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      200 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      201 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      202 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp195_statement-export.spec.ts:199:54
+
+  2) [chromium] › cp195_statement-export.spec.ts:662:7 › statement export › statement export scenario 2 
+
+    Error: flag: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp195_statement-export.spec.ts:694:12
+
+  3) [chromium] › cp195_statement-export.spec.ts:1138:7 › statement export › statement export scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-9').getByTestId('person-claimed')
+    Expected string: [32m"[7m4[27m.00"[39m
+    Received string: [31m"[7m0[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-claimed')[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+      1221 |     const c_ben_2 = ui.must(await ui.addClaim(pg_vic, p_ben, {"amount": "0.40", "note": "n", "tags": "a, B"}));
+      1222 |     await ui.refresh(pg_vic);
+    > 1223 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("4.00");
+           |                                                                                           ^
+      1224 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("1.00");
+      1225 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-due")).toHaveText("1.00");
+      1226 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp195_statement-export.spec.ts:1223:91
+
+  3 failed
+    [chromium] › cp195_statement-export.spec.ts:28:7 › statement export › statement export scenario 1 
+    [chromium] › cp195_statement-export.spec.ts:662:7 › statement export › statement export scenario 2 
+    [chromium] › cp195_statement-export.spec.ts:1138:7 › statement export › statement export scenario 3 
+  1 passed (1.4m)

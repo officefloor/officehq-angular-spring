@@ -1,0 +1,66 @@
+{
+  "checkpoint": 89,
+  "checkpoint_id": "cp89_claim-tags",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "c0d4f07cac22214d877c8f59089b412f7d33f54f",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T00:18:43",
+  "seconds": 53,
+  "build_log_file": "cp89.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp89_claim-tags.spec.ts::claim tags": true,
+      "cp89_claim-tags.spec.ts::claim tags scenario 1": true,
+      "cp89_claim-tags.spec.ts::claim tags scenario 2": false,
+      "cp89_claim-tags.spec.ts::claim tags scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11018,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3339,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m\n\n  391 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n  392 |     expect(await ui.periodAction(pg_uma, \"P1\", \"close\")).toBe(true);\n> 393 |     expect(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"12.50\", \"date\": \"2026-03-01\", \"ref\": \" r-1 \"})).toBeNull();\n      |                                                                                                         ^\n  394 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n  395 |     expect(await ui.delegate(pg_wes, {\"user\": \"vic\", \"from\": \"2026-03-01\", \"to\": \"2026-03-20\"})).toBe(true);\n  396 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp89_claim-tags.spec.ts:393:105 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m"
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6646,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

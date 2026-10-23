@@ -1,0 +1,66 @@
+{
+  "checkpoint": 102,
+  "checkpoint_id": "cp102_aliases",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "3287c1c666f14068b3704702e435dd33472b1bbf",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T02:27:24",
+  "seconds": 155,
+  "build_log_file": "cp102.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp102_aliases.spec.ts::aliases": false,
+      "cp102_aliases.spec.ts::aliases scenario 1": false,
+      "cp102_aliases.spec.ts::aliases scenario 2": false,
+      "cp102_aliases.spec.ts::aliases scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21699,
+        "failure": "Error: quick add: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp102_aliases.spec.ts:21:31 | Error: quick add: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 16558,
+        "failure": "Error: audit lines for smvjvk6pcd6t7:\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=floor value=0.50\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=late-pct value=5.00\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=policy-date value=2026-03-05\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=period-numbering-from value=2026-03-01\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=cap value=2.00\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=perm-close value=clerk\nHOLIDAY_ADDED sheet=smvjvk6pcd6t7 by=uma date=2026-03-13\nHOLIDAY_ADDED sheet=smvjvk6pcd6t7 by=uma date=2026-04-03\nSETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=grace-A value=5\nVOID_REASON_ADDED sheet=smvjvk6pcd6t7 by=uma reason=late\nVOID_REASON_ADDED sheet=smvjvk6pcd6t7 by=uma reason=error\nRATE_SET sheet=smvjvk6pcd6t7 by=uma grade=A rate=10.00\nRATE_SET sheet=smvjvk6pcd6t7 by=uma grade=B rate=33.33\nRATE_SET sheet=smvjvk6pcd6t7 by=uma grade=C rate=5.00 from=2026-03-10\nPERIOD_ADDED sheet=smvjvk6pcd6t7 by=uma period=P1 from=2026-03-01 to=2026-03-15\nPERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Cam grade=A terms=20\nROLLUP sheet=smvjvk6pcd6t7 by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Ada grade=A contact=ada@x\nROLLUP sheet=smvjvk6pcd6t7 by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Ben grade=A\nROLLUP sheet=smvjvk6pcd6t7 by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_WATCHED sheet=smvjvk6pcd6t7 by=uma name=Ada\nPERIOD_SOFT_CLOSED sheet=smvjvk6pcd6t7 by=uma period=P1 total=0.00\nPERSON_WATCHED sheet=smvjvk6pcd6t7 by=uma name=Cam\nCLAIM_ADDED sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date=2026-02-10\nLATE_ENTRY sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date=2026-02-10\nPATRON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Cam patron=Ben\nPERSON_HELD sheet=smvjvk6pcd6t7 by=uma name=Ben from=2026-03-09\nCLAIM_OPENED sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date"
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 22182,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-5').getByTestId('claim-deferred')\nExpected string: \u001b[32m\"yes\"\u001b[39m\nReceived string: \u001b[31m\"no\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-5').getByTestId('claim-deferred')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-deferred\">no</span>\u001b[22m\n\u001b[2m  -   unexpected value \"no\"\u001b[22m\n\n\n  602 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ben_0).getByTestId(\"claim-corrects\")).toHaveText(\"\");\n  603 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ben_0).getByTestId(\"claim-log-line\")).toHaveText([\"DRAFT by uma on 2026-03-20 due=1.00\", \"OPEN by uma on 2026-03-20 due=1.00\", \"VOID by vic on 2026-03-20 due=1.33\"]);\n> 604 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ben_0).getByTestId(\"claim-deferred\")).toHaveText(\"yes\");\n      |                                                               "
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27993,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

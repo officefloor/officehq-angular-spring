@@ -1,0 +1,151 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp222-tkn18oqv
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree (14.7s)
+  ✘  2 [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 (32.0s)
+  ✘  3 [chromium] › cp222_dashboard-over-tree.spec.ts:661:7 › dashboard over tree › dashboard over tree scenario 2 (24.7s)
+  ✘  4 [chromium] › cp222_dashboard-over-tree.spec.ts:1255:7 › dashboard over tree › dashboard over tree scenario 3 (16.5s)
+
+
+  1) [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      46 |     await ui.refresh(pg_wes);
+      47 |     await ui.loadSheet(pg_wes, `${sheet}-c1`);
+    > 48 |     expect(await ui.claimAction(pg_wes, c_cy_0, "settle")).toBe(false);
+         |                                                            ^
+      49 |     await ui.setToday(pg_wes, "2026-03-20");
+      50 |     await ui.loadSheet(pg_wes, sheet);
+      51 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:48:60
+
+  2) [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-5').getByTestId('person-statement-line-line')
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 3[39m
+
+    [32m- Array [][39m
+    [31m+ Array [[39m
+    [31m+   "2026-03-10 0.00",[39m
+    [31m+ ][39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-statement-line-line')[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+
+
+      414 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-tags")).toHaveText("");
+      415 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-snapshot-line")).toHaveText(["2026-03-10 0.00"]);
+    > 416 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-statement-line-line")).toHaveText([]);
+          |                                                                                                       ^
+      417 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-flag-shown")).toHaveText("");
+      418 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-approver")).toHaveText("");
+      419 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-score")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:416:103
+
+  3) [chromium] › cp222_dashboard-over-tree.spec.ts:661:7 › dashboard over tree › dashboard over tree scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('note-line')
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 3[39m
+
+    [32m- Array [][39m
+    [31m+ Array [[39m
+    [31m+   "2026-04-17 uma: x",[39m
+    [31m+ ][39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('note-line')[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+    [2m  -   locator resolved to 1 element[22m
+
+
+      873 |     await expect(pg_uma.getByTestId("dash-review-count")).toHaveText("");
+      874 |     await expect(pg_uma.getByTestId("dash-overdue-count")).toHaveText("");
+    > 875 |     await expect(pg_uma.getByTestId("note-line")).toHaveText([]);
+          |                                                   ^
+      876 |     await ui.expectAudit(sheet, [
+      877 |       `SETTING_CHANGED sheet=${sheet} by=uma key=clerk-limit value=3.00`,
+      878 |       `SETTING_CHANGED sheet=${sheet} by=uma key=terms value=10`,
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:875:51
+
+  4) [chromium] › cp222_dashboard-over-tree.spec.ts:1255:7 › dashboard over tree › dashboard over tree scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-due-total')
+    Expected string: [32m"1.[7m8[27m3"[39m
+    Received string: [31m"1.[7m3[27m3"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.33</td>[22m
+    [2m  -   unexpected value "1.33"[22m
+
+
+      1288 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+      1289 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("4.00");
+    > 1290 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("1.83");
+           |                                                                                             ^
+      1291 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-due")).toHaveText("1.33");
+      1292 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-status")).toHaveText("OPEN");
+      1293 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:1290:93
+
+  4 failed
+    [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree ─
+    [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 
+    [chromium] › cp222_dashboard-over-tree.spec.ts:661:7 › dashboard over tree › dashboard over tree scenario 2 
+    [chromium] › cp222_dashboard-over-tree.spec.ts:1255:7 › dashboard over tree › dashboard over tree scenario 3 

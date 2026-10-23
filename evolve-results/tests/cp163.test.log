@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp163-x5trl6c8
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp163_statement-lines.spec.ts:6:7 › statement lines › statement lines (6.9s)
+  ✓  2 [chromium] › cp163_statement-lines.spec.ts:67:7 › statement lines › statement lines scenario 1 (20.3s)
+  ✘  3 [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 (31.3s)
+  ✓  4 [chromium] › cp163_statement-lines.spec.ts:1312:7 › statement lines › statement lines scenario 3 (21.6s)
+
+
+  1) [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkf6gwleuyj[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf6gwleuyj-p</strong>[22m
+    [2m  -   unexpected value "smvkf6gwleuyj-p"[22m
+
+
+      753 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      754 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 755 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      756 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      757 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("5.00");
+      758 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp163_statement-lines.spec.ts:755:54
+
+  1 failed
+    [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+  3 passed (1.4m)

@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp228-72ugrhe0
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp228_rollover-soft-closes.spec.ts:6:7 › rollover soft closes › rollover soft closes (9.2s)
+  ✘  2 [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 (26.7s)
+  ✓  3 [chromium] › cp228_rollover-soft-closes.spec.ts:1192:7 › rollover soft closes › rollover soft closes scenario 2 (25.8s)
+  ✘  4 [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 (26.1s)
+
+
+  1) [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvl3ognhcjxt[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3ognhcjxt-p</strong>[22m
+    [2m  -   unexpected value "smvl3ognhcjxt-p"[22m
+
+
+      604 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      605 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 606 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      607 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      608 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      609 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:606:54
+
+  2) [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-6').getByTestId('person-watched')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-6').getByTestId('person-watched')[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      1944 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-backing")).toHaveText("0.00");
+      1945 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-excess")).toHaveText("0.00");
+    > 1946 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-watched")).toHaveText("no");
+           |                                                                                           ^
+      1947 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-terms")).toHaveText("20");
+      1948 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-active")).toHaveText("no");
+      1949 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-aged-0-30")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:1946:91
+
+  2 failed
+    [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 
+    [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 
+  2 passed (1.5m)

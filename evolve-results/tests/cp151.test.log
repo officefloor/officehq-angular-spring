@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp151-kvbz4axb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp151_rounding-mode.spec.ts:6:7 › rounding mode › rounding mode (10.5s)
+  ✓  2 [chromium] › cp151_rounding-mode.spec.ts:110:7 › rounding mode › rounding mode scenario 1 (48.5s)
+  ✘  3 [chromium] › cp151_rounding-mode.spec.ts:589:7 › rounding mode › rounding mode scenario 2 (24.1s)
+  ✓  4 [chromium] › cp151_rounding-mode.spec.ts:944:7 › rounding mode › rounding mode scenario 3 (15.2s)
+
+
+  1) [chromium] › cp151_rounding-mode.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkas63zty1d[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkas63zty1d-p</strong>[22m
+    [2m  -   unexpected value "smvkas63zty1d-p"[22m
+
+
+      707 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      708 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 709 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      710 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      711 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      712 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp151_rounding-mode.spec.ts:709:54
+
+  1 failed
+    [chromium] › cp151_rounding-mode.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ──────
+  3 passed (1.7m)

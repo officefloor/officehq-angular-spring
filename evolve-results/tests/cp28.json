@@ -1,0 +1,88 @@
+{
+  "checkpoint": 28,
+  "checkpoint_id": "cp28_grade-dated",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "692d9e9fbb165e827b3c6752d9e9ffbc216d6603",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T19:37:35",
+  "seconds": 50,
+  "build_log_file": "cp28.test.log",
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp08_workflow.spec.ts::workflow scenario 3",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+    "cp12_half-even.spec.ts::half even scenario 3",
+    "cp13_four-eyes.spec.ts::four eyes scenario 2",
+    "cp13_four-eyes.spec.ts::four eyes scenario 3",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+    "cp17_periods.spec.ts::periods scenario 1",
+    "cp17_periods.spec.ts::periods scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp22_hold.spec.ts::hold scenario 1",
+    "cp22_hold.spec.ts::hold scenario 3",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+    "cp26_late-charge.spec.ts::late charge scenario 2",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 1": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 2": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2877,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8156,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8033,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6358,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

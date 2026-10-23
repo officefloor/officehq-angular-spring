@@ -1,0 +1,46 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp226-ge10d745
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp226_preview-date.spec.ts:6:7 › preview date › preview date (12.6s)
+  ✓  2 [chromium] › cp226_preview-date.spec.ts:255:7 › preview date › preview date scenario 1 (24.3s)
+  ✘  3 [chromium] › cp226_preview-date.spec.ts:714:7 › preview date › preview date scenario 2 (10.1s)
+  ✓  4 [chromium] › cp226_preview-date.spec.ts:1330:7 › preview date › preview date scenario 3 (18.1s)
+
+
+  1) [chromium] › cp226_preview-date.spec.ts:714:7 › preview date › preview date scenario 2 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 3[39m
+    [31m+ Received  + 3[39m
+
+    [2m  Array [[22m
+    [32m-   "Cam  ",[39m
+    [32m-   "Ben  ",[39m
+    [32m-   "Dot  ",[39m
+    [31m+   "Cam",[39m
+    [31m+   "Ben",[39m
+    [31m+   "Dot",[39m
+    [2m  ][22m
+
+      747 |     expect(await ui.addProof(pg_wes, c_dot_0, "photo")).toBe(true);
+      748 |     expect(await ui.editInline(pg_wes, c_dot_0, "4.00")).toBe(true);
+    > 749 |     expect(await ui.snapshotCompare(pg_wes, "2026-04-05", "2026-03-10")).toEqual(["Cam  ", "Ben  ", "Dot  "]);
+          |                                                                          ^
+      750 |     expect(await ui.periodAction(pg_wes, "P2", "soft-close")).toBe(true);
+      751 |     await ui.refresh(pg_wes);
+      752 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp226_preview-date.spec.ts:749:74
+
+  1 failed
+    [chromium] › cp226_preview-date.spec.ts:714:7 › preview date › preview date scenario 2 ─────────
+  3 passed (1.1m)

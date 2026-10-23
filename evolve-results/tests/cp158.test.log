@@ -1,0 +1,118 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp158-k9j4qs0a
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp158_column-chooser.spec.ts:6:7 › column chooser › column chooser (10.6s)
+  ✘  2 [chromium] › cp158_column-chooser.spec.ts:117:7 › column chooser › column chooser scenario 1 (12.2s)
+  ✘  3 [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 (37.4s)
+  ✘  4 [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 (28.6s)
+
+
+  1) [chromium] › cp158_column-chooser.spec.ts:117:7 › column chooser › column chooser scenario 1 ──
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"4"[39m
+
+      179 |     expect(await ui.periodAction(pg_wes, "P2", "close")).toBe(true);
+      180 |     expect(await ui.search(pg_wes, "a")).toEqual([`${sheet} Cam 5.00`, `${sheet} Ada 0.00`]);
+    > 181 |     expect(await ui.addClaim(pg_wes, p_ben, {"amount": "10.25", "tags": "a"})).toBeNull();
+          |                                                                                ^
+      182 |     await ui.expectAuditView(pg_wes, "", [
+      183 |       `PERIOD_CLOSED sheet=${sheet} by=wes period=P2 total=5.00`,
+      184 |       `ROLLUP sheet=${sheet} by=wes person=Cam claimed=25.00 due-total=5.00 overdue-total=5.00`,
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp158_column-chooser.spec.ts:181:80
+
+  2) [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkcaim1p8td[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcaim1p8td-p</strong>[22m
+    [2m  -   unexpected value "smvkcaim1p8td-p"[22m
+
+
+      698 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      699 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 700 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      701 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      702 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      703 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp158_column-chooser.spec.ts:700:54
+
+  3) [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkcbe7uyx9h[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcbe7uyx9h-p</strong>[22m
+    [2m  -   unexpected value "smvkcbe7uyx9h-p"[22m
+
+
+      1076 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1077 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+    > 1078 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1079 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1080 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("2.00");
+      1081 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("2.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp158_column-chooser.spec.ts:1078:54
+
+  3 failed
+    [chromium] › cp158_column-chooser.spec.ts:117:7 › column chooser › column chooser scenario 1 ───
+    [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 ───
+    [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 ───
+  1 passed (1.6m)

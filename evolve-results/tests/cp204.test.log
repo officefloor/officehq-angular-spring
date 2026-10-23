@@ -1,0 +1,142 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp204-c3pyk16b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp204_trim-at-consolidation.spec.ts:6:7 › trim at consolidation › trim at consolidation (7.8s)
+  ✘  2 [chromium] › cp204_trim-at-consolidation.spec.ts:116:7 › trim at consolidation › trim at consolidation scenario 1 (26.2s)
+  ✘  3 [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 (19.4s)
+  ✘  4 [chromium] › cp204_trim-at-consolidation.spec.ts:1293:7 › trim at consolidation › trim at consolidation scenario 3 (21.7s)
+
+
+  1) [chromium] › cp204_trim-at-consolidation.spec.ts:116:7 › trim at consolidation › trim at consolidation scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvku2cozs2du[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2cozs2du-p</strong>[22m
+    [2m  -   unexpected value "smvku2cozs2du-p"[22m
+
+
+      241 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      242 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-01");
+    > 243 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      244 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      245 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      246 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp204_trim-at-consolidation.spec.ts:243:54
+
+  2) [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvku2xsrp45a[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku2xsrp45a-p</strong>[22m
+    [2m  -   unexpected value "smvku2xsrp45a-p"[22m
+
+
+      929 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      930 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 931 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      932 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      933 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      934 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp204_trim-at-consolidation.spec.ts:931:54
+
+  3) [chromium] › cp204_trim-at-consolidation.spec.ts:1293:7 › trim at consolidation › trim at consolidation scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvku3d8v2liv[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku3d8v2liv-p</strong>[22m
+    [2m  -   unexpected value "smvku3d8v2liv-p"[22m
+
+
+      1436 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1437 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1438 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1439 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      1440 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1441 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp204_trim-at-consolidation.spec.ts:1438:54
+
+  3 failed
+    [chromium] › cp204_trim-at-consolidation.spec.ts:116:7 › trim at consolidation › trim at consolidation scenario 1 
+    [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 
+    [chromium] › cp204_trim-at-consolidation.spec.ts:1293:7 › trim at consolidation › trim at consolidation scenario 3 
+  1 passed (1.3m)

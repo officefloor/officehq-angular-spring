@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp233-h8knmkqb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp233_due-by-override.spec.ts:6:7 › due by override › due by override (11.0s)
+  ✓  2 [chromium] › cp233_due-by-override.spec.ts:94:7 › due by override › due by override scenario 1 (1.0m)
+  ✘  3 [chromium] › cp233_due-by-override.spec.ts:414:7 › due by override › due by override scenario 2 (19.8s)
+  ✓  4 [chromium] › cp233_due-by-override.spec.ts:1148:7 › due by override › due by override scenario 3 (32.9s)
+
+
+  1) [chromium] › cp233_due-by-override.spec.ts:414:7 › due by override › due by override scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+    Expected string: [32m"[7m3[27m.00"[39m
+    Received string: [31m"[7m2[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+
+
+      490 |     await ui.refresh(pg_vic);
+      491 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.04");
+    > 492 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("3.00");
+          |                                                                                             ^
+      493 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+      494 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+      495 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp233_due-by-override.spec.ts:492:93
+
+  1 failed
+    [chromium] › cp233_due-by-override.spec.ts:414:7 › due by override › due by override scenario 2 
+  3 passed (2.2m)

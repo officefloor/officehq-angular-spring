@@ -1,0 +1,66 @@
+{
+  "checkpoint": 189,
+  "checkpoint_id": "cp189_default-grade",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "fe696c3702e92cba4f9d63b09da8b29881507c9e",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T15:07:28",
+  "seconds": 164,
+  "build_log_file": "cp189.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp189_default-grade.spec.ts::default grade": true,
+      "cp189_default-grade.spec.ts::default grade scenario 1": false,
+      "cp189_default-grade.spec.ts::default grade scenario 2": true,
+      "cp189_default-grade.spec.ts::default grade scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12159,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 14733,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"4\"\u001b[39m\n\n  165 |     await expect(pg_wes.getByTestId(\"my-overdue-total\")).toHaveText(\"\");\n  166 |     await expect(pg_wes.getByTestId(\"my-crew-due-total\")).toHaveText(\"\");\n> 167 |     expect(await ui.quickAdd(pg_wes, {\"name\": \"Ada\", \"amount\": \"7.77\"})).toBeNull();\n      |                                                                          ^\n  168 |     await ui.setToday(pg_wes, \"2026-03-31\");\n  169 |     expect(await ui.setRate(pg_wes, {\"grade\": \"C\", \"pct\": \"33.33\"})).toBe(true);\n  170 |     await ui.refresh(pg_uma);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp189_default-grade.spec.ts:167:74 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"4\"\u001b[39m"
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24296,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25814,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkmqreanlqu\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkmqreanlqu-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkmqreanlqu-p\"\u001b[22m\n\n\n  1216 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1217 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-10\");\n> 1218 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

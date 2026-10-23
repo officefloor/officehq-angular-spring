@@ -1,0 +1,142 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp207-zvla0tam
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp207_year-end-rollover.spec.ts:6:7 › year end rollover › year end rollover (17.4s)
+  ✘  2 [chromium] › cp207_year-end-rollover.spec.ts:535:7 › year end rollover › year end rollover scenario 1 (20.4s)
+  ✘  3 [chromium] › cp207_year-end-rollover.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 (17.7s)
+  ✘  4 [chromium] › cp207_year-end-rollover.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 (31.2s)
+
+
+  1) [chromium] › cp207_year-end-rollover.spec.ts:535:7 › year end rollover › year end rollover scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+    Expected string: [32m"[7m2[27m.00"[39m
+    Received string: [31m"[7m1[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+
+
+      646 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-stated")).toHaveText("no");
+      647 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("7.77");
+    > 648 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("2.00");
+          |                                                                                             ^
+      649 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+      650 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+      651 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp207_year-end-rollover.spec.ts:648:93
+
+  2) [chromium] › cp207_year-end-rollover.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkuaigiio1r[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuaigiio1r-p</strong>[22m
+    [2m  -   unexpected value "smvkuaigiio1r-p"[22m
+
+
+      1240 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1241 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 1242 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1243 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1244 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      1245 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp207_year-end-rollover.spec.ts:1242:54
+
+  3) [chromium] › cp207_year-end-rollover.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkuax4tjzio[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkuax4tjzio-p</strong>[22m
+    [2m  -   unexpected value "smvkuax4tjzio-p"[22m
+
+
+      2052 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      2053 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 2054 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      2055 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      2056 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      2057 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp207_year-end-rollover.spec.ts:2054:54
+
+  3 failed
+    [chromium] › cp207_year-end-rollover.spec.ts:535:7 › year end rollover › year end rollover scenario 1 
+    [chromium] › cp207_year-end-rollover.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 
+    [chromium] › cp207_year-end-rollover.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 
+  1 passed (1.5m)

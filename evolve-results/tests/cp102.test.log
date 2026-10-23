@@ -1,0 +1,147 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp102-gf_c2lyt
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp102_aliases.spec.ts:6:7 › aliases › aliases (21.7s)
+  ✘  2 [chromium] › cp102_aliases.spec.ts:76:7 › aliases › aliases scenario 1 (16.6s)
+  ✘  3 [chromium] › cp102_aliases.spec.ts:419:7 › aliases › aliases scenario 2 (22.2s)
+  ✓  4 [chromium] › cp102_aliases.spec.ts:744:7 › aliases › aliases scenario 3 (28.0s)
+
+
+  1) [chromium] › cp102_aliases.spec.ts:6:7 › aliases › aliases ────────────────────────────────────
+
+    Error: quick add: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp102_aliases.spec.ts:21:31
+
+  2) [chromium] › cp102_aliases.spec.ts:76:7 › aliases › aliases scenario 1 ────────────────────────
+
+    Error: audit lines for smvjvk6pcd6t7:
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=floor value=0.50
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=late-pct value=5.00
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=policy-date value=2026-03-05
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=period-numbering-from value=2026-03-01
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=cap value=2.00
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=perm-close value=clerk
+    HOLIDAY_ADDED sheet=smvjvk6pcd6t7 by=uma date=2026-03-13
+    HOLIDAY_ADDED sheet=smvjvk6pcd6t7 by=uma date=2026-04-03
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=uma key=grace-A value=5
+    VOID_REASON_ADDED sheet=smvjvk6pcd6t7 by=uma reason=late
+    VOID_REASON_ADDED sheet=smvjvk6pcd6t7 by=uma reason=error
+    RATE_SET sheet=smvjvk6pcd6t7 by=uma grade=A rate=10.00
+    RATE_SET sheet=smvjvk6pcd6t7 by=uma grade=B rate=33.33
+    RATE_SET sheet=smvjvk6pcd6t7 by=uma grade=C rate=5.00 from=2026-03-10
+    PERIOD_ADDED sheet=smvjvk6pcd6t7 by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Cam grade=A terms=20
+    ROLLUP sheet=smvjvk6pcd6t7 by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Ada grade=A contact=ada@x
+    ROLLUP sheet=smvjvk6pcd6t7 by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Ben grade=A
+    ROLLUP sheet=smvjvk6pcd6t7 by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_WATCHED sheet=smvjvk6pcd6t7 by=uma name=Ada
+    PERIOD_SOFT_CLOSED sheet=smvjvk6pcd6t7 by=uma period=P1 total=0.00
+    PERSON_WATCHED sheet=smvjvk6pcd6t7 by=uma name=Cam
+    CLAIM_ADDED sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date=2026-02-10
+    LATE_ENTRY sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date=2026-02-10
+    PATRON_ADDED sheet=smvjvk6pcd6t7 by=uma name=Cam patron=Ben
+    PERSON_HELD sheet=smvjvk6pcd6t7 by=uma name=Ben from=2026-03-09
+    CLAIM_OPENED sheet=smvjvk6pcd6t7 by=uma person=Ben amount=3.33 date=2026-02-10 number=P1-1
+    ROLLUP sheet=smvjvk6pcd6t7 by=uma person=Ben claimed=3.33 due-total=1.00 overdue-total=1.00
+    TOTALS sheet=smvjvk6pcd6t7 by=uma claimed-total=3.33 due-total=0.00 overdue-total=0.00
+    CLAIM_SETTLED sheet=smvjvk6pcd6t7 by=vic person=Ben amount=3.33 date=2026-02-10 number=P1-1 due=1.00
+    ROLLUP sheet=smvjvk6pcd6t7 by=vic person=Ben claimed=3.33 due-total=1.00 overdue-total=0.00
+    PERSON_EDITED sheet=smvjvk6pcd6t7 by=vic name=Ada grade=C
+    STATEMENT sheet=smvjvk6pcd6t7 by=vic name=Ben due-total=1.00 claims=1
+    SETTING_CHANGED sheet=smvjvk6pcd6t7 by=vic key=note-threshold value=2.50
+    CLAIM_ADDED sheet=smvjvk6pcd6t7 by=vic person=Ada amount=12.50 date=2026-03-20
+    PERSON_RETIRED sheet=smvjvk6pcd6t7 by=vic name=Ben from=2026-04-02
+    CLAIM_ADDED sheet=smvjvk6pcd6t7 by=vic person=Ben amount=25.00 date=2026-03-09
+    LATE_ENTRY sheet=smvjvk6pcd6t7 by=vic person=Ben amount=25.00 date=2026-03-09
+    CLAIM_OPENED sheet=smvjvk6pcd6t7 by=vic person=Ada amount=12.50 date=2026-03-20 number=X-1
+    ROLLUP sheet=smvjvk6pcd6t7 by=vic person=Ada claimed=12.50 due-total=0.62 overdue-total=0.00
+    TOTALS sheet=smvjvk6pcd6t7 by=vic claimed-total=15.83 due-total=0.62 overdue-total=0.00
+    CLAIM_SETTLED sheet=smvjvk6pcd6t7 by=wes person=Ada amount=12.50 date=2026-03-20 number=X-1 due=0.62
+    NOTIFY sheet=smvjvk6pcd6t7 by=wes user=uma person=Ada number=X-1
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m43[39m
+    Received: [31m45[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp102_aliases.spec.ts:209:14
+
+  3) [chromium] › cp102_aliases.spec.ts:419:7 › aliases › aliases scenario 2 ───────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-5').getByTestId('claim-deferred')
+    Expected string: [32m"yes"[39m
+    Received string: [31m"no"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-5').getByTestId('claim-deferred')[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <span data-testid="claim-deferred">no</span>[22m
+    [2m  -   unexpected value "no"[22m
+
+
+      602 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-corrects")).toHaveText("");
+      603 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-log-line")).toHaveText(["DRAFT by uma on 2026-03-20 due=1.00", "OPEN by uma on 2026-03-20 due=1.00", "VOID by vic on 2026-03-20 due=1.33"]);
+    > 604 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-deferred")).toHaveText("yes");
+          |                                                                                            ^
+      605 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-deferred-until")).toHaveText("2026-04-05");
+      606 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-proofs")).toHaveText("0");
+      607 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-split-from")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp102_aliases.spec.ts:604:92
+
+  3 failed
+    [chromium] › cp102_aliases.spec.ts:6:7 › aliases › aliases ─────────────────────────────────────
+    [chromium] › cp102_aliases.spec.ts:76:7 › aliases › aliases scenario 1 ─────────────────────────
+    [chromium] › cp102_aliases.spec.ts:419:7 › aliases › aliases scenario 2 ────────────────────────
+  1 passed (1.6m)

@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp248-y5x82cr7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp248_policy-versions.spec.ts:6:7 › policy versions › policy versions (14.7s)
+  ✓  2 [chromium] › cp248_policy-versions.spec.ts:152:7 › policy versions › policy versions scenario 1 (24.8s)
+  ✘  3 [chromium] › cp248_policy-versions.spec.ts:677:7 › policy versions › policy versions scenario 2 (26.6s)
+  ✘  4 [chromium] › cp248_policy-versions.spec.ts:1299:7 › policy versions › policy versions scenario 3 (57.9s)
+
+
+  1) [chromium] › cp248_policy-versions.spec.ts:677:7 › policy versions › policy versions scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvld922r6sb7[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld922r6sb7-p</strong>[22m
+    [2m  -   unexpected value "smvld922r6sb7-p"[22m
+
+
+      803 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      804 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+    > 805 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      806 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      807 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      808 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp248_policy-versions.spec.ts:805:54
+
+  2) [chromium] › cp248_policy-versions.spec.ts:1299:7 › policy versions › policy versions scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvld9nj293iv[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvld9nj293iv-p</strong>[22m
+    [2m  -   unexpected value "smvld9nj293iv-p"[22m
+
+
+      1433 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1434 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1435 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1436 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      1437 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      1438 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp248_policy-versions.spec.ts:1435:54
+
+  2 failed
+    [chromium] › cp248_policy-versions.spec.ts:677:7 › policy versions › policy versions scenario 2 
+    [chromium] › cp248_policy-versions.spec.ts:1299:7 › policy versions › policy versions scenario 3 
+  2 passed (2.1m)

@@ -1,0 +1,87 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp243-ck77c2_0
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp243_person-export.spec.ts:6:7 › person export › person export (9.0s)
+  ✓  2 [chromium] › cp243_person-export.spec.ts:25:7 › person export › person export scenario 1 (32.1s)
+  ✘  3 [chromium] › cp243_person-export.spec.ts:995:7 › person export › person export scenario 2 (39.1s)
+  ✘  4 [chromium] › cp243_person-export.spec.ts:1523:7 › person export › person export scenario 3 (12.4s)
+
+
+  1) [chromium] › cp243_person-export.spec.ts:995:7 › person export › person export scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvlcsa0xzmw7[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvlcsa0xzmw7-p</strong>[22m
+    [2m  -   unexpected value "smvlcsa0xzmw7-p"[22m
+
+
+      1114 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1115 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 1116 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1117 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      1118 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1119 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp243_person-export.spec.ts:1116:54
+
+  2) [chromium] › cp243_person-export.spec.ts:1523:7 › person export › person export scenario 3 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 3[39m
+    [31m+ Received  + 3[39m
+
+    [2m  Array [[22m
+    [32m-   "Cam  ",[39m
+    [32m-   "Ben  ",[39m
+    [32m-   "Ada  ",[39m
+    [31m+   "Cam",[39m
+    [31m+   "Ben",[39m
+    [31m+   "Ada",[39m
+    [2m  ][22m
+
+      1558 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);
+      1559 |     expect(await ui.hold(pg_uma, p_ben, {"from": "2026-03-09", "to": "2026-03-20"})).toBe(true);
+    > 1560 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-10", "2026-03-10")).toEqual(["Cam  ", "Ben  ", "Ada  "]);
+           |                                                                          ^
+      1561 |     await ui.refresh(pg_uma);
+      1562 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+      1563 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("n/a");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp243_person-export.spec.ts:1560:74
+
+  2 failed
+    [chromium] › cp243_person-export.spec.ts:995:7 › person export › person export scenario 2 ──────
+    [chromium] › cp243_person-export.spec.ts:1523:7 › person export › person export scenario 3 ─────
+  2 passed (1.6m)

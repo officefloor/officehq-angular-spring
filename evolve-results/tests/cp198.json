@@ -1,0 +1,66 @@
+{
+  "checkpoint": 198,
+  "checkpoint_id": "cp198_duplicate-claims",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "ce0df5de1441f1bd9aab0e898c0fbe950f01453e",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T16:45:53",
+  "seconds": 185,
+  "build_log_file": "cp198.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp198_duplicate-claims.spec.ts::duplicate claims": true,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 1": false,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 2": false,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14050,
+        "failure": ""
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 35293,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkq87th77b9\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq87th77b9-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq87th77b9-p\"\u001b[22m\n\n\n  190 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  191 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"2026-02-10\");\n> 192 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 39371,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkq90wll8wk\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkq90wll8wk-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkq90wll8wk-p\"\u001b[22m\n\n\n  760 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"yes\");\n  761 |     await expect(pg_wes.getByTestId(\"sheet-asof\")).toHaveText(\"\");\n> 762 |     await expect(pg_wes.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                              "
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19119,
+        "failure": "Error: flag: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp198_duplicate-claims.spec.ts:1156:12 | Error: flag: neither a result nor an error appeared within 8000ms"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

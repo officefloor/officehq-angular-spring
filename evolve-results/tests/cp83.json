@@ -1,0 +1,66 @@
+{
+  "checkpoint": 83,
+  "checkpoint_id": "cp83_holidays",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "792411be4783095d598db4675c59f2b22be69f22",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-22T23:38:05",
+  "seconds": 79,
+  "build_log_file": "cp83.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp83_holidays.spec.ts::holidays": true,
+      "cp83_holidays.spec.ts::holidays scenario 1": true,
+      "cp83_holidays.spec.ts::holidays scenario 2": true,
+      "cp83_holidays.spec.ts::holidays scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6307,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16712,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13810,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15821,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

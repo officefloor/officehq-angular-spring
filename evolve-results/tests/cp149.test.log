@@ -1,0 +1,118 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp149-2m9z3mxn
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp149_period-claim-cap.spec.ts:6:7 › period claim cap › period claim cap (18.1s)
+  ✘  2 [chromium] › cp149_period-claim-cap.spec.ts:89:7 › period claim cap › period claim cap scenario 1 (25.4s)
+  ✘  3 [chromium] › cp149_period-claim-cap.spec.ts:423:7 › period claim cap › period claim cap scenario 2 (10.4s)
+  ✘  4 [chromium] › cp149_period-claim-cap.spec.ts:720:7 › period claim cap › period claim cap scenario 3 (25.4s)
+
+
+  1) [chromium] › cp149_period-claim-cap.spec.ts:89:7 › period claim cap › period claim cap scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk8qp9v161s[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qp9v161s-p</strong>[22m
+    [2m  -   unexpected value "smvk8qp9v161s-p"[22m
+
+
+      202 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      203 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 204 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      205 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      206 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("7.00");
+      207 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("7.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp149_period-claim-cap.spec.ts:204:54
+
+  2) [chromium] › cp149_period-claim-cap.spec.ts:423:7 › period claim cap › period claim cap scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"9"[39m
+
+      479 |     expect(await ui.ratePreview(pg_vic, "B", "20.00")).toEqual({ count: 0, diff: "0.00" });
+      480 |     await ui.refresh(pg_uma);
+    > 481 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "25.00"})).toBeNull();
+          |                                                                   ^
+      482 |     expect(await ui.importPeople(pg_uma, "Dot,C")).toMatchObject({"added": 1, "updated": 0});
+      483 |     const p_dot = await ui.personId(pg_uma, "Dot");
+      484 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp149_period-claim-cap.spec.ts:481:67
+
+  3) [chromium] › cp149_period-claim-cap.spec.ts:720:7 › period claim cap › period claim cap scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-11').getByTestId('claim-amount')
+    Expected string: [32m"0.[7m0[27m4"[39m
+    Received string: [31m"0.4[7m0[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-amount')[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+    [2m  -   locator resolved to <span data-testid="claim-amount">0.40</span>[22m
+    [2m  -   unexpected value "0.40"[22m
+
+
+      964 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2027-05-due-total")).toHaveText("0.00");
+      965 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2027-06-due-total")).toHaveText("0.00");
+    > 966 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-amount")).toHaveText("0.04");
+          |                                                                                          ^
+      967 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-date")).toHaveText("2026-03-05");
+      968 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-note")).toHaveText("");
+      969 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-due")).toHaveText("1.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp149_period-claim-cap.spec.ts:966:90
+
+  3 failed
+    [chromium] › cp149_period-claim-cap.spec.ts:89:7 › period claim cap › period claim cap scenario 1 
+    [chromium] › cp149_period-claim-cap.spec.ts:423:7 › period claim cap › period claim cap scenario 2 
+    [chromium] › cp149_period-claim-cap.spec.ts:720:7 › period claim cap › period claim cap scenario 3 
+  1 passed (1.4m)

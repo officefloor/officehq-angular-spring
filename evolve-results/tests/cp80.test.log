@@ -1,0 +1,269 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp80-mp_nz97n
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+34:7 › dated settings › dated settings scenario 1 (7.2s)
+  ✓  179 [chromium] › cp49_paste-claims.spec.ts:6:7 › paste claims › paste claims (13.6s)
+  ✓  181 [chromium] › cp48_dated-settings.spec.ts:434:7 › dated settings › dated settings scenario 2 (8.2s)
+  ✓  180 [chromium] › cp50_deferred-claims.spec.ts:6:7 › deferred claims › deferred claims (10.9s)
+  ✓  182 [chromium] › cp49_paste-claims.spec.ts:84:7 › paste claims › paste claims scenario 1 (8.1s)
+  ✓  183 [chromium] › cp48_dated-settings.spec.ts:721:7 › dated settings › dated settings scenario 3 (8.9s)
+  ✓  184 [chromium] › cp50_deferred-claims.spec.ts:138:7 › deferred claims › deferred claims scenario 1 (7.2s)
+  ✓  185 [chromium] › cp49_paste-claims.spec.ts:368:7 › paste claims › paste claims scenario 2 (9.6s)
+  ✓  187 [chromium] › cp50_deferred-claims.spec.ts:377:7 › deferred claims › deferred claims scenario 2 (10.8s)
+  ✓  186 [chromium] › cp51_proofs.spec.ts:6:7 › proofs › proofs (12.1s)
+  ✓  190 [chromium] › cp51_proofs.spec.ts:87:7 › proofs › proofs scenario 1 (6.8s)
+  ✓  188 [chromium] › cp49_paste-claims.spec.ts:709:7 › paste claims › paste claims scenario 3 (12.9s)
+  ✓  189 [chromium] › cp50_deferred-claims.spec.ts:781:7 › deferred claims › deferred claims scenario 3 (12.0s)
+  ✓  192 [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end (4.7s)
+  ✓  191 [chromium] › cp51_proofs.spec.ts:351:7 › proofs › proofs scenario 2 (20.5s)
+  ✓  194 [chromium] › cp52_period-status-as-of-end.spec.ts:127:7 › period status as of end › period status as of end scenario 1 (18.2s)
+  ✓  195 [chromium] › cp51_proofs.spec.ts:770:7 › proofs › proofs scenario 3 (12.2s)
+  ✓  196 [chromium] › cp52_period-status-as-of-end.spec.ts:502:7 › period status as of end › period status as of end scenario 2 (9.9s)
+  ✓  198 [chromium] › cp52_period-status-as-of-end.spec.ts:820:7 › period status as of end › period status as of end scenario 3 (8.4s)
+  ✓  199 [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close (4.0s)
+  ✓  193 [chromium] › cp53_permission-matrix.spec.ts:6:7 › permission matrix › permission matrix (51.4s)
+  ✓  200 [chromium] › cp55_auto-close.spec.ts:102:7 › auto close › auto close scenario 1 (9.1s)
+  ✓  197 [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role (34.5s)
+  ✓  201 [chromium] › cp53_permission-matrix.spec.ts:97:7 › permission matrix › permission matrix scenario 1 (14.1s)
+  ✓  203 [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 (10.5s)
+  ✓  204 [chromium] › cp53_permission-matrix.spec.ts:350:7 › permission matrix › permission matrix scenario 2 (11.3s)
+  ✓  205 [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 (11.1s)
+  ✓  202 [chromium] › cp55_auto-close.spec.ts:377:7 › auto close › auto close scenario 2 (35.8s)
+  ✓  207 [chromium] › cp54_viewer-role.spec.ts:619:7 › viewer role › viewer role scenario 3 (9.4s)
+  ✓  209 [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary (6.3s)
+  ✓  208 [chromium] › cp55_auto-close.spec.ts:624:7 › auto close › auto close scenario 3 (20.1s)
+  ✓  210 [chromium] › cp56_late-per-boundary.spec.ts:86:7 › late per boundary › late per boundary scenario 1 (11.3s)
+  ✓  206 [chromium] › cp53_permission-matrix.spec.ts:693:7 › permission matrix › permission matrix scenario 3 (42.5s)
+  ✓  211 [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim (12.2s)
+  ✓  213 [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify (5.2s)
+  ✓  212 [chromium] › cp56_late-per-boundary.spec.ts:400:7 › late per boundary › late per boundary scenario 2 (14.8s)
+  ✓  214 [chromium] › cp57_split-claim.spec.ts:159:7 › split claim › split claim scenario 1 (10.2s)
+  ✓  215 [chromium] › cp58_watch-and-notify.spec.ts:96:7 › watch and notify › watch and notify scenario 1 (8.3s)
+  ✓  217 [chromium] › cp57_split-claim.spec.ts:484:7 › split claim › split claim scenario 2 (15.6s)
+  ✓  216 [chromium] › cp56_late-per-boundary.spec.ts:679:7 › late per boundary › late per boundary scenario 3 (28.4s)
+  ✓  218 [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 (21.9s)
+  ✓  219 [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 (16.1s)
+  ✓  220 [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates (12.2s)
+  ✓  221 [chromium] › cp58_watch-and-notify.spec.ts:694:7 › watch and notify › watch and notify scenario 3 (13.2s)
+  ✓  222 [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals (7.8s)
+  ✓  223 [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 (13.8s)
+  ✓  224 [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation (13.4s)
+  ✓  225 [chromium] › cp60_trimmed-totals.spec.ts:179:7 › trimmed totals › trimmed totals scenario 1 (22.1s)
+  ✓  226 [chromium] › cp59_period-templates.spec.ts:335:7 › period templates › period templates scenario 2 (18.2s)
+  ✓  227 [chromium] › cp61_delegation.spec.ts:77:7 › delegation › delegation scenario 1 (19.7s)
+  ✓  228 [chromium] › cp60_trimmed-totals.spec.ts:433:7 › trimmed totals › trimmed totals scenario 2 (12.2s)
+  ✓  230 [chromium] › cp61_delegation.spec.ts:426:7 › delegation › delegation scenario 2 (7.6s)
+  ✓  229 [chromium] › cp59_period-templates.spec.ts:674:7 › period templates › period templates scenario 3 (10.4s)
+  ✓  232 [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 (11.8s)
+  ✓  231 [chromium] › cp60_trimmed-totals.spec.ts:759:7 › trimmed totals › trimmed totals scenario 3 (17.5s)
+  ✘  234 [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms (6.6s)
+  ✓  235 [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late (6.6s)
+  ✓  237 [chromium] › cp63_person-terms.spec.ts:84:7 › person terms › person terms scenario 1 (6.4s)
+  ✓  233 [chromium] › cp62_archive-sheet.spec.ts:6:7 › archive sheet › archive sheet (34.3s)
+  ✘  238 [chromium] › cp63_person-terms.spec.ts:362:7 › person terms › person terms scenario 2 (11.2s)
+  ✓  240 [chromium] › cp63_person-terms.spec.ts:741:7 › person terms › person terms scenario 3 (5.7s)
+  ✓  239 [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 (10.0s)
+  ✓  242 [chromium] › cp62_archive-sheet.spec.ts:361:7 › archive sheet › archive sheet scenario 2 (6.6s)
+  ✓  241 [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled (8.3s)
+  ✓  236 [chromium] › cp64_floor-after-late.spec.ts:101:7 › floor after late › floor after late scenario 1 (40.2s)
+  ✓  243 [chromium] › cp62_archive-sheet.spec.ts:653:7 › archive sheet › archive sheet scenario 3 (11.9s)
+  ✓  245 [chromium] › cp64_floor-after-late.spec.ts:390:7 › floor after late › floor after late scenario 2 (13.7s)
+  ✓  246 [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim (10.1s)
+  ✓  244 [chromium] › cp65_void-settled.spec.ts:99:7 › void settled › void settled scenario 1 (27.5s)
+  ✓  247 [chromium] › cp64_floor-after-late.spec.ts:702:7 › floor after late › floor after late scenario 3 (15.1s)
+  ✓  250 [chromium] › cp67_active-people.spec.ts:6:7 › active people › active people (3.7s)
+  ✘  251 [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 (16.0s)
+  ✓  249 [chromium] › cp65_void-settled.spec.ts:361:7 › void settled › void settled scenario 2 (38.6s)
+  ✓  252 [chromium] › cp67_active-people.spec.ts:503:7 › active people › active people scenario 2 (11.8s)
+  ✓  248 [chromium] › cp66_redate-claim.spec.ts:117:7 › redate claim › redate claim scenario 1 (48.8s)
+  ✓  255 [chromium] › cp66_redate-claim.spec.ts:368:7 › redate claim › redate claim scenario 2 (9.8s)
+  ✓  254 [chromium] › cp67_active-people.spec.ts:789:7 › active people › active people scenario 3 (12.1s)
+  ✓  253 [chromium] › cp65_void-settled.spec.ts:593:7 › void settled › void settled scenario 3 (19.1s)
+  ✓  257 [chromium] › cp68_backing-recent-settled.spec.ts:6:7 › backing recent settled › backing recent settled (5.6s)
+  ✓  256 [chromium] › cp66_redate-claim.spec.ts:674:7 › redate claim › redate claim scenario 3 (8.4s)
+  ✓  259 [chromium] › cp68_backing-recent-settled.spec.ts:98:7 › backing recent settled › backing recent settled scenario 1 (9.6s)
+  ✓  260 [chromium] › cp70_soft-close.spec.ts:6:7 › soft close › soft close (11.2s)
+  ✓  258 [chromium] › cp69_claim-lock.spec.ts:6:7 › claim lock › claim lock (15.2s)
+  ✓  261 [chromium] › cp68_backing-recent-settled.spec.ts:426:7 › backing recent settled › backing recent settled scenario 2 (9.5s)
+  ✓  262 [chromium] › cp70_soft-close.spec.ts:111:7 › soft close › soft close scenario 1 (15.1s)
+  ✓  263 [chromium] › cp69_claim-lock.spec.ts:71:7 › claim lock › claim lock scenario 1 (14.3s)
+  ✓  264 [chromium] › cp68_backing-recent-settled.spec.ts:720:7 › backing recent settled › backing recent settled scenario 3 (14.1s)
+  ✓  266 [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 (11.5s)
+  ✓  267 [chromium] › cp71_cancel-statement.spec.ts:6:7 › cancel statement › cancel statement (10.1s)
+  ✓  265 [chromium] › cp70_soft-close.spec.ts:383:7 › soft close › soft close scenario 2 (18.7s)
+  ✓  268 [chromium] › cp69_claim-lock.spec.ts:777:7 › claim lock › claim lock scenario 3 (9.8s)
+  ✓  271 [chromium] › cp72_retired-leave-totals.spec.ts:6:7 › retired leave totals › retired leave totals (4.5s)
+  ✓  269 [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 (13.2s)
+  ✓  272 [chromium] › cp72_retired-leave-totals.spec.ts:149:7 › retired leave totals › retired leave totals scenario 1 (11.7s)
+  ✓  273 [chromium] › cp71_cancel-statement.spec.ts:307:7 › cancel statement › cancel statement scenario 2 (15.3s)
+  ✓  270 [chromium] › cp70_soft-close.spec.ts:732:7 › soft close › soft close scenario 3 (30.3s)
+  ✓  275 [chromium] › cp71_cancel-statement.spec.ts:672:7 › cancel statement › cancel statement scenario 3 (19.1s)
+  ✓  276 [chromium] › cp73_statement-as-of.spec.ts:6:7 › statement as of › statement as of (16.6s)
+  ✓  277 [chromium] › cp74_as-of-view.spec.ts:6:7 › as of view › as of view (15.0s)
+  ✓  274 [chromium] › cp72_retired-leave-totals.spec.ts:421:7 › retired leave totals › retired leave totals scenario 2 (40.7s)
+  ✓  278 [chromium] › cp73_statement-as-of.spec.ts:246:7 › statement as of › statement as of scenario 1 (14.6s)
+  ✓  280 [chromium] › cp72_retired-leave-totals.spec.ts:622:7 › retired leave totals › retired leave totals scenario 3 (9.1s)
+  ✓  282 [chromium] › cp75_bulk-grade.spec.ts:6:7 › bulk grade › bulk grade (3.6s)
+  ✓  281 [chromium] › cp73_statement-as-of.spec.ts:457:7 › statement as of › statement as of scenario 2 (11.5s)
+  ✓  279 [chromium] › cp74_as-of-view.spec.ts:277:7 › as of view › as of view scenario 1 (21.7s)
+  ✓  283 [chromium] › cp75_bulk-grade.spec.ts:101:7 › bulk grade › bulk grade scenario 1 (8.2s)
+  ✓  284 [chromium] › cp73_statement-as-of.spec.ts:830:7 › statement as of › statement as of scenario 3 (12.2s)
+  ✓  287 [chromium] › cp76_snapshots.spec.ts:6:7 › snapshots › snapshots (3.0s)
+  ✓  285 [chromium] › cp74_as-of-view.spec.ts:702:7 › as of view › as of view scenario 2 (13.6s)
+  ✓  286 [chromium] › cp75_bulk-grade.spec.ts:366:7 › bulk grade › bulk grade scenario 2 (17.4s)
+  ✓  288 [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 (18.9s)
+  ✘  290 [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 (11.9s)
+  ✓  289 [chromium] › cp74_as-of-view.spec.ts:1050:7 › as of view › as of view scenario 3 (21.7s)
+  ✓  293 [chromium] › cp78_age-buckets.spec.ts:6:7 › age buckets › age buckets (6.9s)
+  ✓  292 [chromium] › cp77_note-required.spec.ts:6:7 › note required › note required (12.0s)
+  ✓  291 [chromium] › cp76_snapshots.spec.ts:430:7 › snapshots › snapshots scenario 2 (17.5s)
+  ✓  296 [chromium] › cp76_snapshots.spec.ts:820:7 › snapshots › snapshots scenario 3 (10.9s)
+  ✓  295 [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 (11.7s)
+  ✓  297 [chromium] › cp79_entry-date.spec.ts:6:7 › entry date › entry date (6.7s)
+  ✓  298 [chromium] › cp77_note-required.spec.ts:441:7 › note required › note required scenario 2 (7.1s)
+  ✓  300 [chromium] › cp77_note-required.spec.ts:674:7 › note required › note required scenario 3 (17.0s)
+  ✓  301 [chromium] › cp80_period-by-due-by.spec.ts:6:7 › period by due by › period by due by (4.8s)
+  ✓  294 [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 (43.5s)
+  ✓  302 [chromium] › cp80_period-by-due-by.spec.ts:164:7 › period by due by › period by due by scenario 1 (13.6s)
+  ✓  303 [chromium] › cp78_age-buckets.spec.ts:608:7 › age buckets › age buckets scenario 2 (16.5s)
+  ✓  299 [chromium] › cp79_entry-date.spec.ts:99:7 › entry date › entry date scenario 1 (42.7s)
+  ✓  305 [chromium] › cp78_age-buckets.spec.ts:879:7 › age buckets › age buckets scenario 3 (6.6s)
+  ✓  304 [chromium] › cp80_period-by-due-by.spec.ts:710:7 › period by due by › period by due by scenario 2 (12.8s)
+  ✓  306 [chromium] › cp79_entry-date.spec.ts:363:7 › entry date › entry date scenario 2 (7.4s)
+  ✓  307 [chromium] › cp80_period-by-due-by.spec.ts:1121:7 › period by due by › period by due by scenario 3 (14.6s)
+  ✓  308 [chromium] › cp79_entry-date.spec.ts:704:7 › entry date › entry date scenario 3 (14.4s)
+
+
+  1) [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering ───────────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 1[39m
+
+    [2m  Array [[22m
+    [31m+   "",[39m
+    [2m    "3",[22m
+    [32m-   "4",[39m
+    [2m  ][22m
+
+      21 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      22 |     await Promise.all([ui.claimAction(pg_uma, c_ada_1, "open"), ui.claimAction(pg_vic, c_ben_1, "open")]);
+    > 23 |     expect((await ui.numbersOf(pg_vic, [c_ada_1, c_ben_1])).sort()).toEqual(["3", "4"]);
+         |                                                                     ^
+      24 |     await ui.refresh(pg_vic);
+      25 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-number")).toHaveText(/^(3|4)$/);
+      26 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("OPEN");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp09_numbering.spec.ts:23:69
+
+  2) [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms ──────────────────────
+
+    Error: audit line 15
+      expected: PERSON_EDITED sheet=smvjp3zzctd3l by=uma name=Ben grade=B terms=
+      actual:   PERSON_EDITED sheet=smvjp3zzctd3l by=uma name=Ben grade=B
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp63_person-terms.spec.ts:48:14
+
+  3) [chromium] › cp63_person-terms.spec.ts:362:7 › person terms › person terms scenario 2 ─────────
+
+    Error: audit line 19
+      expected: PERSON_EDITED sheet=smvjp4b14nw0z by=uma name=Ada grade=B terms=
+      actual:   PERSON_EDITED sheet=smvjp4b14nw0z by=uma name=Ada grade=B
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp63_person-terms.spec.ts:699:14
+
+  4) [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 ──────
+
+    Error: audit line 22
+      expected: PERSON_EDITED sheet=smvjp5pusmurm by=uma name=Ben grade=C terms=
+      actual:   PERSON_EDITED sheet=smvjp5pusmurm by=uma name=Ben grade=C
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp67_active-people.spec.ts:454:14
+
+  5) [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      742 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "0.40"})).toBeNull();
+      743 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 744 |     expect(await ui.reassign(pg_wes, c_ada_0, "Ben")).toBe(false);
+          |                                                       ^
+      745 |     await ui.refresh(pg_wes);
+      746 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      747 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp75_bulk-grade.spec.ts:744:55
+
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (2.0m)
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (1.6m)
+  Slow test file: [chromium] › cp66_redate-claim.spec.ts (1.3m)
+  Slow test file: [chromium] › cp64_floor-after-late.spec.ts (1.3m)
+  Slow test file: [chromium] › cp70_soft-close.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  5 failed
+    [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering ────────────────────────────────
+    [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms ───────────────────────
+    [chromium] › cp63_person-terms.spec.ts:362:7 › person terms › person terms scenario 2 ──────────
+    [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 ───────
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+  303 passed (20.0m)

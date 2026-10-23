@@ -1,0 +1,66 @@
+{
+  "checkpoint": 91,
+  "checkpoint_id": "cp91_claim-comments",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "af8d738536ad9ba5c13010c2b0e443553b948bd2",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T00:45:35",
+  "seconds": 68,
+  "build_log_file": "cp91.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp91_claim-comments.spec.ts::claim comments": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 1": false,
+      "cp91_claim-comments.spec.ts::claim comments scenario 2": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6747,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 4224,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"3\"\u001b[39m\n\n  71 |     expect(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"0.40\", \"tags\": \"a\"})).toBeNull();\n  72 |     expect(await ui.periodAction(pg_uma, \"2026-02\", \"close\")).toBe(true);\n> 73 |     expect(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"0.04\", \"date\": \"2026-03-09\"})).toBeNull();\n     |                                                                                        ^\n  74 |     expect(await ui.generatePeriods(pg_uma, \"2026-01-15\", \"2026-02-20\")).toBe(1);\n  75 |     const c_ada_0 = ui.must(await ui.addClaimTwice(pg_uma, p_ada, {\"amount\": \"99.95\", \"date\": \"2026-03-15\"}));\n  76 |     expect(await ui.claimCount(pg_uma, p_ada)).toBe(1);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp91_claim-comments.spec.ts:73:88 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"3\"\u001b[39m"
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9919,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13972,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

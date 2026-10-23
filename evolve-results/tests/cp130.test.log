@@ -1,0 +1,258 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp130-6009t1vg
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+io 3 
+
+    Error: audit lines for smvk4c8x15hk3:
+    SETTING_CHANGED sheet=smvk4c8x15hk3 by=uma key=clerk-limit value=1.50
+    SETTING_CHANGED sheet=smvk4c8x15hk3 by=uma key=floor value=0.50
+    SETTING_CHANGED sheet=smvk4c8x15hk3 by=uma key=terms value=10
+    SETTING_CHANGED sheet=smvk4c8x15hk3 by=uma key=cap value=2.00
+    SETTING_CHANGED sheet=smvk4c8x15hk3 by=uma key=proof-threshold value=1.00
+    ROLE_SET sheet=smvk4c8x15hk3 by=uma user=vic role=viewer
+    HOLIDAY_ADDED sheet=smvk4c8x15hk3 by=uma date=2026-03-16
+    HOLIDAY_ADDED sheet=smvk4c8x15hk3 by=uma date=2026-04-03
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=A rate=33.33
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=B rate=33.33
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=C rate=20.00
+    PERIOD_ADDED sheet=smvk4c8x15hk3 by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERIOD_ADDED sheet=smvk4c8x15hk3 by=uma period=P2 from=2026-03-16 to=2026-03-31
+    PERSON_ADDED sheet=smvk4c8x15hk3 by=uma name=Ada grade=B terms=3
+    ROLLUP sheet=smvk4c8x15hk3 by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvk4c8x15hk3 by=uma name=Cam grade=B
+    ROLLUP sheet=smvk4c8x15hk3 by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvk4c8x15hk3 by=uma name=Ben grade=C terms=20
+    ROLLUP sheet=smvk4c8x15hk3 by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    STATEMENT sheet=smvk4c8x15hk3 by=uma name=Ben due-total=0.00 claims=0
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=B rate=10.00 from=2026-03-10
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ada due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Cam due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ben due-total=0.00
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=A rate=12.50 from=2026-03-16
+    PERSON_WATCHED sheet=smvk4c8x15hk3 by=uma name=Cam
+    PERSON_EDITED sheet=smvk4c8x15hk3 by=uma name=Ada grade=B
+    PERSON_EDITED sheet=smvk4c8x15hk3 by=uma name=Ben grade=B
+    PERIOD_SOFT_CLOSED sheet=smvk4c8x15hk3 by=uma period=P1 total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ada due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Cam due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ben due-total=0.00
+    PERIOD_SOFT_CLOSED sheet=smvk4c8x15hk3 by=uma period=P2 total=0.00
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Ben amount=12.50 date=2026-04-13
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Cam amount=3.33 date=2026-02-25
+    LATE_ENTRY sheet=smvk4c8x15hk3 by=uma person=Cam amount=3.33 date=2026-02-25
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Ada amount=7.77 date=2026-03-15
+    LATE_ENTRY sheet=smvk4c8x15hk3 by=uma person=Ada amount=7.77 date=2026-03-15
+    CLAIM_VOIDED sheet=smvk4c8x15hk3 by=uma person=Cam amount=3.33 date=2026-02-25
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ada due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Cam due-total=0.00
+    SNAPSHOT sheet=smvk4c8x15hk3 by=uma name=Ben due-total=0.00
+    PATRON_ADDED sheet=smvk4c8x15hk3 by=uma name=Ben patron=Ada
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Cam amount=1.00 date=2026-03-15 ref=R-2 tags=a,b
+    LATE_ENTRY sheet=smvk4c8x15hk3 by=uma person=Cam amount=1.00 date=2026-03-15
+    STATEMENT sheet=smvk4c8x15hk3 by=uma name=Cam due-total=0.00 claims=0
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Ben amount=20.00 date=2026-05-12
+    STATEMENT sheet=smvk4c8x15hk3 by=uma name=Ada due-total=0.00 claims=0
+    CLAIM_ADDED sheet=smvk4c8x15hk3 by=uma person=Ben amount=7.77 date=2026-03-15
+    LATE_ENTRY sheet=smvk4c8x15hk3 by=uma person=Ben amount=7.77 date=2026-03-15
+    RATE_SET sheet=smvk4c8x15hk3 by=uma grade=C rate=12.50
+    CLAIM_EDITED sheet=smvk4c8x15hk3 by=uma person=Ben amount=7.77 date=2026-03-15
+    HOLIDAY_ADDED sheet=smvk4c8x15hk3 by=uma date=2026-03-27
+    PERSON_EDITED sheet=smvk4c8x15hk3 by=uma name=Cam grade=A
+    PERSON_EDITED sheet=smvk4c8x15hk3 by=uma name=Ben grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m54[39m
+    Received: [31m55[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp94_proof-threshold-per-grade.spec.ts:1084:14
+
+  102) [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 ──
+
+    Error: audit lines for smvk4cvtngg1w:
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=floor value=0.50
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=terms value=30
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=period-numbering-from value=2026-03-01
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=cap value=5.00
+    ROLE_SET sheet=smvk4cvtngg1w by=uma user=wes role=viewer
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=entry-date value=2026-03-05
+    HOLIDAY_ADDED sheet=smvk4cvtngg1w by=uma date=2026-03-13
+    HOLIDAY_ADDED sheet=smvk4cvtngg1w by=uma date=2026-03-24
+    VOID_REASON_ADDED sheet=smvk4cvtngg1w by=uma reason=late
+    RATE_SET sheet=smvk4cvtngg1w by=uma grade=A rate=12.50
+    RATE_SET sheet=smvk4cvtngg1w by=uma grade=B rate=12.50
+    RATE_SET sheet=smvk4cvtngg1w by=uma grade=C rate=12.50
+    RATE_SET sheet=smvk4cvtngg1w by=uma grade=A rate=33.33 from=2026-03-10
+    PERIOD_ADDED sheet=smvk4cvtngg1w by=uma period=P1 from=2026-03-01 to=2026-03-15
+    PERSON_ADDED sheet=smvk4cvtngg1w by=uma name=Ben grade=B
+    ROLLUP sheet=smvk4cvtngg1w by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvk4cvtngg1w by=uma name=Ada grade=A
+    ROLLUP sheet=smvk4cvtngg1w by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
+    PERSON_ADDED sheet=smvk4cvtngg1w by=uma name=Cam grade=B
+    ROLLUP sheet=smvk4cvtngg1w by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00
+    SNAPSHOT sheet=smvk4cvtngg1w by=uma name=Ben due-total=0.00
+    SNAPSHOT sheet=smvk4cvtngg1w by=uma name=Ada due-total=0.00
+    SNAPSHOT sheet=smvk4cvtngg1w by=uma name=Cam due-total=0.00
+    CLAIM_ADDED sheet=smvk4cvtngg1w by=uma person=Cam amount=1.00 date=2026-03-05
+    CLAIM_EDITED sheet=smvk4cvtngg1w by=uma person=Cam amount=0.04 date=2026-03-05
+    CLAIM_OPENED sheet=smvk4cvtngg1w by=uma person=Cam amount=0.04 date=2026-03-05 number=X-1
+    ROLLUP sheet=smvk4cvtngg1w by=uma person=Cam claimed=0.04 due-total=1.00 overdue-total=1.00
+    TOTALS sheet=smvk4cvtngg1w by=uma claimed-total=0.04 due-total=0.00 overdue-total=0.00
+    PERSON_WATCHED sheet=smvk4cvtngg1w by=uma name=Ada
+    CLAIM_ADDED sheet=smvk4cvtngg1w by=uma person=Ben amount=0.40 date=2026-03-05 tags=a,b
+    CLAIM_PROOF_ADDED sheet=smvk4cvtngg1w by=uma person=Cam amount=0.04 date=2026-03-05 number=X-1 proofs=1
+    STATEMENT sheet=smvk4cvtngg1w by=uma name=Ada due-total=0.00 claims=0
+    PERIOD_SOFT_CLOSED sheet=smvk4cvtngg1w by=uma period=P1 total=0.00
+    CLAIM_EDITED sheet=smvk4cvtngg1w by=uma person=Ben amount=0.40 date=2026-04-02
+    SETTING_CHANGED sheet=smvk4cvtngg1w by=uma key=policy-date value=2026-03-15
+    CLAIM_ADDED sheet=smvk4cvtngg1w by=uma person=Cam amount=20.00 date=2026-03-05 ref=inv 7
+    LATE_ENTRY sheet=smvk4cvtngg1w by=uma person=Cam amount=20.00 date=2026-03-05
+    HOLIDAY_ADDED sheet=smvk4cvtngg1w by=uma date=2026-03-27
+    CLAIM_ADDED sheet=smvk4cvtngg1w by=uma person=Ada amount=0.04 date=2026-03-28
+    CLAIM_ADDED sheet=smvk4cvtngg1w by=uma person=Ada amount=4.00 date=2026-02-10
+    LATE_ENTRY sheet=smvk4cvtngg1w by=uma person=Ada amount=4.00 date=2026-02-10
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m39[39m
+    Received: [31m41[39m
+
+       at ../support/ui.ts:1556
+
+      1554 |     lines = auditFor(sheet);
+      1555 |   }
+    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
+           |                                                                          ^
+      1557 |   lines.forEach((line, i) => {
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1556:74)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp97_monthly-totals.spec.ts:231:14
+
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (2.1m)
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (1.9m)
+  Slow test file: [chromium] › cp95_rate-preview.spec.ts (1.7m)
+  Slow test file: [chromium] › cp64_floor-after-late.spec.ts (1.7m)
+  Slow test file: [chromium] › cp78_age-buckets.spec.ts (1.7m)
+  Consider splitting slow test files to speed up parallel execution
+  102 failed
+    [chromium] › cp100_batch-all-or-nothing.spec.ts:133:7 › batch all or nothing › batch all or nothing scenario 1 
+    [chromium] › cp100_batch-all-or-nothing.spec.ts:773:7 › batch all or nothing › batch all or nothing scenario 3 
+    [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 ─────────
+    [chromium] › cp102_aliases.spec.ts:6:7 › aliases › aliases ─────────────────────────────────────
+    [chromium] › cp102_aliases.spec.ts:76:7 › aliases › aliases scenario 1 ─────────────────────────
+    [chromium] › cp102_aliases.spec.ts:419:7 › aliases › aliases scenario 2 ────────────────────────
+    [chromium] › cp105_pools.spec.ts:65:7 › pools › pools scenario 1 ───────────────────────────────
+    [chromium] › cp105_pools.spec.ts:824:7 › pools › pools scenario 3 ──────────────────────────────
+    [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts ───────────────────────────────
+    [chromium] › cp107_merge-people.spec.ts:6:7 › merge people › merge people ──────────────────────
+    [chromium] › cp107_merge-people.spec.ts:144:7 › merge people › merge people scenario 1 ─────────
+    [chromium] › cp108_patron-shares.spec.ts:90:7 › patron shares › patron shares scenario 1 ───────
+    [chromium] › cp108_patron-shares.spec.ts:488:7 › patron shares › patron shares scenario 2 ──────
+    [chromium] › cp109_parent-sheet-rates.spec.ts:6:7 › parent sheet rates › parent sheet rates ────
+    [chromium] › cp109_parent-sheet-rates.spec.ts:910:7 › parent sheet rates › parent sheet rates scenario 3 
+    [chromium] › cp110_consolidated-figures.spec.ts:6:7 › consolidated figures › consolidated figures 
+    [chromium] › cp110_consolidated-figures.spec.ts:129:7 › consolidated figures › consolidated figures scenario 1 
+    [chromium] › cp110_consolidated-figures.spec.ts:449:7 › consolidated figures › consolidated figures scenario 2 
+    [chromium] › cp110_consolidated-figures.spec.ts:752:7 › consolidated figures › consolidated figures scenario 3 
+    [chromium] › cp111_transfer-person.spec.ts:892:7 › transfer person › transfer person scenario 3 
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 
+    [chromium] › cp113_import-people.spec.ts:89:7 › import people › import people scenario 1 ───────
+    [chromium] › cp113_import-people.spec.ts:529:7 › import people › import people scenario 2 ──────
+    [chromium] › cp113_import-people.spec.ts:895:7 › import people › import people scenario 3 ──────
+    [chromium] › cp114_delete-and-restore-draft.spec.ts:143:7 › delete and restore draft › delete and restore draft scenario 1 
+    [chromium] › cp114_delete-and-restore-draft.spec.ts:1052:7 › delete and restore draft › delete and restore draft scenario 3 
+    [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 ─────────
+    [chromium] › cp115_nested-pools.spec.ts:856:7 › nested pools › nested pools scenario 3 ─────────
+    [chromium] › cp116_import-upserts.spec.ts:690:7 › import upserts › import upserts scenario 3 ───
+    [chromium] › cp117_list-positions.spec.ts:72:7 › list positions › list positions scenario 1 ────
+    [chromium] › cp117_list-positions.spec.ts:546:7 › list positions › list positions scenario 2 ───
+    [chromium] › cp117_list-positions.spec.ts:899:7 › list positions › list positions scenario 3 ───
+    [chromium] › cp118_import-rates.spec.ts:91:7 › import rates › import rates scenario 1 ──────────
+    [chromium] › cp118_import-rates.spec.ts:434:7 › import rates › import rates scenario 2 ─────────
+    [chromium] › cp119_cut-totals.spec.ts:152:7 › cut totals › cut totals scenario 1 ───────────────
+    [chromium] › cp120_hold-pauses-cuts.spec.ts:923:7 › hold pauses cuts › hold pauses cuts scenario 3 
+    [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows ─────────────
+    [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 ─
+    [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 
+    [chromium] › cp122_pool-membership-dated.spec.ts:345:7 › pool membership dated › pool membership dated scenario 2 
+    [chromium] › cp123_bulk-retire.spec.ts:120:7 › bulk retire › bulk retire scenario 1 ────────────
+    [chromium] › cp123_bulk-retire.spec.ts:387:7 › bulk retire › bulk retire scenario 2 ────────────
+    [chromium] › cp124_retired-share-reallocates.spec.ts:898:7 › retired share reallocates › retired share reallocates scenario 3 
+    [chromium] › cp125_unretire.spec.ts:535:7 › unretire › unretire scenario 2 ─────────────────────
+    [chromium] › cp126_clone-sheet.spec.ts:260:7 › clone sheet › clone sheet scenario 1 ────────────
+    [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 ────────────
+    [chromium] › cp127_my-figures.spec.ts:100:7 › my figures › my figures scenario 1 ───────────────
+    [chromium] › cp127_my-figures.spec.ts:451:7 › my figures › my figures scenario 2 ───────────────
+    [chromium] › cp128_transfer-merges.spec.ts:385:7 › transfer merges › transfer merges scenario 2 
+    [chromium] › cp128_transfer-merges.spec.ts:622:7 › transfer merges › transfer merges scenario 3 
+    [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 
+    [chromium] › cp130_period-comparison.spec.ts:971:7 › period comparison › period comparison scenario 3 
+    [chromium] › cp18_close-period.spec.ts:226:7 › close period › close period scenario 2 ──────────
+    [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 ───────────────────
+    [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1 ───────────────────────────────────
+    [chromium] › cp25_due-by-and-overdue.spec.ts:309:7 › due by and overdue › due by and overdue scenario 2 
+    [chromium] › cp25_due-by-and-overdue.spec.ts:442:7 › due by and overdue › due by and overdue scenario 3 
+    [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 
+    [chromium] › cp30_corrections.spec.ts:497:7 › corrections › corrections scenario 3 ─────────────
+    [chromium] › cp34_bulk-open.spec.ts:490:7 › bulk open › bulk open scenario 3 ───────────────────
+    [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 
+    [chromium] › cp42_rate-end-dates.spec.ts:343:7 › rate end dates › rate end dates scenario 2 ────
+    [chromium] › cp42_rate-end-dates.spec.ts:631:7 › rate end dates › rate end dates scenario 3 ────
+    [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ─────────────────────────────────────
+    [chromium] › cp45_bulk-settle.spec.ts:550:7 › bulk settle › bulk settle scenario 3 ─────────────
+    [chromium] › cp46_re-settle.spec.ts:387:7 › re settle › re settle scenario 2 ───────────────────
+    [chromium] › cp46_re-settle.spec.ts:693:7 › re settle › re settle scenario 3 ───────────────────
+    [chromium] › cp48_dated-settings.spec.ts:135:7 › dated settings › dated settings scenario 1 ────
+    [chromium] › cp48_dated-settings.spec.ts:435:7 › dated settings › dated settings scenario 2 ────
+    [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:96:7 › watch and notify › watch and notify scenario 1 
+    [chromium] › cp58_watch-and-notify.spec.ts:360:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:335:7 › period templates › period templates scenario 2 
+    [chromium] › cp60_trimmed-totals.spec.ts:759:7 › trimmed totals › trimmed totals scenario 3 ────
+    [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ────────────────
+    [chromium] › cp64_floor-after-late.spec.ts:702:7 › floor after late › floor after late scenario 3 
+    [chromium] › cp65_void-settled.spec.ts:593:7 › void settled › void settled scenario 3 ──────────
+    [chromium] › cp66_redate-claim.spec.ts:117:7 › redate claim › redate claim scenario 1 ──────────
+    [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 ───────
+    [chromium] › cp70_soft-close.spec.ts:6:7 › soft close › soft close ─────────────────────────────
+    [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 
+    [chromium] › cp73_statement-as-of.spec.ts:246:7 › statement as of › statement as of scenario 1 ─
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+    [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 ────────────────────
+    [chromium] › cp80_period-by-due-by.spec.ts:164:7 › period by due by › period by due by scenario 1 
+    [chromium] › cp80_period-by-due-by.spec.ts:1121:7 › period by due by › period by due by scenario 3 
+    [chromium] › cp81_remind.spec.ts:459:7 › remind › remind scenario 2 ────────────────────────────
+    [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 
+    [chromium] › cp83_holidays.spec.ts:1053:7 › holidays › holidays scenario 3 ─────────────────────
+    [chromium] › cp84_business-day-terms.spec.ts:493:7 › business day terms › business day terms scenario 2 
+    [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 ────────
+    [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 ───────
+    [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 
+    [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 ────────────────
+    [chromium] › cp89_claim-tags.spec.ts:668:7 › claim tags › claim tags scenario 3 ────────────────
+    [chromium] › cp90_void-reasons.spec.ts:338:7 › void reasons › void reasons scenario 2 ──────────
+    [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 ─────
+    [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 
+    [chromium] › cp94_proof-threshold-per-grade.spec.ts:911:7 › proof threshold per grade › proof threshold per grade scenario 3 
+    [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 ─────
+  406 passed (46.6m)

@@ -1,0 +1,55 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp185-3xo4y724
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp185_partial-settle.spec.ts:6:7 › partial settle › partial settle (20.1s)
+  ✘  2 [chromium] › cp185_partial-settle.spec.ts:71:7 › partial settle › partial settle scenario 1 (28.7s)
+  ✓  3 [chromium] › cp185_partial-settle.spec.ts:759:7 › partial settle › partial settle scenario 2 (34.2s)
+  ✘  4 [chromium] › cp185_partial-settle.spec.ts:1306:7 › partial settle › partial settle scenario 3 (18.7s)
+
+
+  1) [chromium] › cp185_partial-settle.spec.ts:71:7 › partial settle › partial settle scenario 1 ───
+
+    Error: flag: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp185_partial-settle.spec.ts:189:12
+
+  2) [chromium] › cp185_partial-settle.spec.ts:1306:7 › partial settle › partial settle scenario 3 ─
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31m5[39m
+
+      1389 |     expect(await ui.exportCsv(pg_vic)).toBe("name,grade,retired-from,due-total\nCam,A,,0.00\nBen,B,,n/a\n");
+      1390 |     expect(await ui.setRate(pg_vic, {"grade": "A", "pct": "33.33", "from": "2026-03-10"})).toBe(true);
+    > 1391 |     expect(await ui.generatePlans(pg_vic)).toBe(3);
+           |                                            ^
+      1392 |     const c_cam_1 = await ui.claimAt(pg_vic, p_cam, 1);
+      1393 |     const c_cam_2 = await ui.claimAt(pg_vic, p_cam, 2);
+      1394 |     const c_cam_3 = await ui.claimAt(pg_vic, p_cam, 3);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp185_partial-settle.spec.ts:1391:44
+
+  2 failed
+    [chromium] › cp185_partial-settle.spec.ts:71:7 › partial settle › partial settle scenario 1 ────
+    [chromium] › cp185_partial-settle.spec.ts:1306:7 › partial settle › partial settle scenario 3 ──
+  2 passed (1.8m)

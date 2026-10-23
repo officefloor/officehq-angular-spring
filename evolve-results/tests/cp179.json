@@ -1,0 +1,66 @@
+{
+  "checkpoint": 179,
+  "checkpoint_id": "cp179_flags",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "3679ecd12b4025e91e25bb50971b80da5e962a1a",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T13:18:22",
+  "seconds": 104,
+  "build_log_file": "cp179.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp179_flags.spec.ts::flags": true,
+      "cp179_flags.spec.ts::flags scenario 1": false,
+      "cp179_flags.spec.ts::flags scenario 2": true,
+      "cp179_flags.spec.ts::flags scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp179_flags.spec.ts::flags",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11994,
+        "failure": ""
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19398,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m\n\n  155 |     await ui.sortBy(pg_uma, \"due-total\");\n  156 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"3.33\", \"date\": \"2026-04-02\", \"note\": \"n\", \"tags\": \"b,a,a\"})).toBeNull();\n> 157 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"10.35\", \"date\": \"2026-03-01\"})).toBeNull();\n      |                                                                                         ^\n  158 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"3.33\", \"date\": \"2026-03-15\", \"tags\": \" c \"})).toBeNull();\n  159 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n  160 |     expect(await ui.delegate(pg_vic, {\"user\": \"uma\", \"from\": \"2026-02-10\", \"to\": \"2026-03-01\"})).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp179_flags.spec.ts:157:89 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m"
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13849,
+        "failure": ""
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 15434,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvkitele5qzp\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvkitele5qzp-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvkitele5qzp-p\"\u001b[22m\n\n\n  1063 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  1064 |     await expect(pg_vic.getByTestId(\"sheet-asof\")).toHaveText(\"2026-04-02\");\n> 1065 |     await expect(pg_vic.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n       |                                 "
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

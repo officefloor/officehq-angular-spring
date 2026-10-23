@@ -1,0 +1,86 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp108-c59zpurw
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp108_patron-shares.spec.ts:6:7 › patron shares › patron shares (11.0s)
+  ✘  2 [chromium] › cp108_patron-shares.spec.ts:90:7 › patron shares › patron shares scenario 1 (28.2s)
+  ✘  3 [chromium] › cp108_patron-shares.spec.ts:488:7 › patron shares › patron shares scenario 2 (33.1s)
+  ✓  4 [chromium] › cp108_patron-shares.spec.ts:889:7 › patron shares › patron shares scenario 3 (14.9s)
+
+
+  1) [chromium] › cp108_patron-shares.spec.ts:90:7 › patron shares › patron shares scenario 1 ──────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-6').getByTestId('person-watched')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-6').getByTestId('person-watched')[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="person-watched">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      248 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-backing")).toHaveText("0.00");
+      249 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-excess")).toHaveText("0.00");
+    > 250 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-watched")).toHaveText("no");
+          |                                                                                           ^
+      251 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-terms")).toHaveText("");
+      252 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-active")).toHaveText("no");
+      253 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-aged-0-30")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp108_patron-shares.spec.ts:250:91
+
+  2) [chromium] › cp108_patron-shares.spec.ts:488:7 › patron shares › patron shares scenario 2 ─────
+
+    Error: audit line 31
+      expected: CLAIM_OPENED sheet=smvjwvisxsnby by=vic person=Cam amount=4.00 date=2026-03-20 number=2026-04-1
+      actual:   CLAIM_OPENED sheet=smvjwvisxsnby by=vic person=Cam amount=12.50 date=2026-03-20 number=2026-04-1
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1560
+
+      1558 |     const e = expected[i];
+      1559 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1560 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1561 |   });
+      1562 | }
+      1563 |
+
+        at forEach (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1560:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1557:9)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp108_patron-shares.spec.ts:625:14
+
+  2 failed
+    [chromium] › cp108_patron-shares.spec.ts:90:7 › patron shares › patron shares scenario 1 ───────
+    [chromium] › cp108_patron-shares.spec.ts:488:7 › patron shares › patron shares scenario 2 ──────
+  2 passed (1.5m)

@@ -1,0 +1,119 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp135-vv3om1pb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp135_export-pools.spec.ts:6:7 › export pools › export pools (4.8s)
+  ✘  2 [chromium] › cp135_export-pools.spec.ts:24:7 › export pools › export pools scenario 1 (10.2s)
+  ✘  3 [chromium] › cp135_export-pools.spec.ts:396:7 › export pools › export pools scenario 2 (28.2s)
+  ✘  4 [chromium] › cp135_export-pools.spec.ts:923:7 › export pools › export pools scenario 3 (28.3s)
+
+
+  1) [chromium] › cp135_export-pools.spec.ts:24:7 › export pools › export pools scenario 1 ─────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp135_export-pools.spec.ts:58:24
+
+  2) [chromium] › cp135_export-pools.spec.ts:396:7 › export pools › export pools scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk4vrkfh6bw[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4vrkfh6bw-p</strong>[22m
+    [2m  -   unexpected value "smvk4vrkfh6bw-p"[22m
+
+
+      517 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      518 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+    > 519 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      520 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      521 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("5.00");
+      522 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp135_export-pools.spec.ts:519:54
+
+  3) [chromium] › cp135_export-pools.spec.ts:923:7 › export pools › export pools scenario 3 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk4wewt2c9o[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk4wewt2c9o-p</strong>[22m
+    [2m  -   unexpected value "smvk4wewt2c9o-p"[22m
+
+
+      1029 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1030 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 1031 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1032 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      1033 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("8.33");
+      1034 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp135_export-pools.spec.ts:1031:54
+
+  3 failed
+    [chromium] › cp135_export-pools.spec.ts:24:7 › export pools › export pools scenario 1 ──────────
+    [chromium] › cp135_export-pools.spec.ts:396:7 › export pools › export pools scenario 2 ─────────
+    [chromium] › cp135_export-pools.spec.ts:923:7 › export pools › export pools scenario 3 ─────────
+  1 passed (1.3m)

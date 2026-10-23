@@ -1,0 +1,66 @@
+{
+  "checkpoint": 154,
+  "checkpoint_id": "cp154_classic-summary",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "ef36ab1fdfc3da7b8ca45cee1c7d593fc9a66bb9",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T09:39:11",
+  "seconds": 142,
+  "build_log_file": "cp154.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp154_classic-summary.spec.ts::classic summary": true,
+      "cp154_classic-summary.spec.ts::classic summary scenario 1": false,
+      "cp154_classic-summary.spec.ts::classic summary scenario 2": true,
+      "cp154_classic-summary.spec.ts::classic summary scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10479,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m\n\n  242 |     await ui.refresh(pg_vic);\n  243 |     expect(await ui.claimEditSave(pg_vic, c_eve_0, {\"amount\": \"3.33\"})).toBe(true);\n> 244 |     expect(await ui.addClaim(pg_vic, p_cam, {\"amount\": \"1.00\", \"date\": \"2026-02-25\", \"note\": \"n\", \"tags\": \"b,a,a\"})).toBeNull();\n      |                                                                                                                      ^\n  245 |     const c_fay_0 = ui.must(await ui.quickAdd(pg_vic, {\"name\": \"Fay\", \"amount\": \"0.40\"}));\n  246 |     expect(await ui.setSettingDated(pg_vic, \"floor\", \"2.00\", \"2026-02-10\", \"2.00\")).toBe(true);\n  247 |     expect(await ui.addComment(pg_vic, c_eve_0, \"ok\")).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp154_classic-summary.spec.ts:244:118 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m"
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 64111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25540,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

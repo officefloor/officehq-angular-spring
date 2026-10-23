@@ -1,0 +1,83 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp192-_kb7gkvy
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp192_name-with-grade.spec.ts:6:7 › name with grade › name with grade (8.7s)
+  ✘  2 [chromium] › cp192_name-with-grade.spec.ts:68:7 › name with grade › name with grade scenario 1 (59.8s)
+  ✘  3 [chromium] › cp192_name-with-grade.spec.ts:573:7 › name with grade › name with grade scenario 2 (47.3s)
+  ✓  4 [chromium] › cp192_name-with-grade.spec.ts:1028:7 › name with grade › name with grade scenario 3 (52.5s)
+
+
+  1) [chromium] › cp192_name-with-grade.spec.ts:68:7 › name with grade › name with grade scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('pool-row-C1').getByTestId('pool-total-share')
+    Expected string: [32m"100.00"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')[22m
+
+
+      473 |     await expect(pg_vic.getByTestId("pool-row-P1").getByTestId("pool-total-share")).toHaveText("0.00");
+      474 |     await expect(pg_vic.getByTestId("pool-row-P1").getByTestId("pool-balanced")).toHaveText("no");
+    > 475 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-total-share")).toHaveText("100.00");
+          |                                                                                     ^
+      476 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("yes");
+      477 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-share")).toHaveText("100.00");
+      478 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-cut")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp192_name-with-grade.spec.ts:475:85
+
+  2) [chromium] › cp192_name-with-grade.spec.ts:573:7 › name with grade › name with grade scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkpox73m9wy[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpox73m9wy-p</strong>[22m
+    [2m  -   unexpected value "smvkpox73m9wy-p"[22m
+
+
+      741 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      742 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 743 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      744 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      745 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      746 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp192_name-with-grade.spec.ts:743:54
+
+  2 failed
+    [chromium] › cp192_name-with-grade.spec.ts:68:7 › name with grade › name with grade scenario 1 ─
+    [chromium] › cp192_name-with-grade.spec.ts:573:7 › name with grade › name with grade scenario 2 
+  2 passed (2.9m)

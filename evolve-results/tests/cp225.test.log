@@ -1,0 +1,120 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp225-a8ppjk5t
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp225_grade-merge.spec.ts:6:7 › grade merge › grade merge (12.6s)
+  ✘  2 [chromium] › cp225_grade-merge.spec.ts:157:7 › grade merge › grade merge scenario 1 (25.1s)
+  ✘  3 [chromium] › cp225_grade-merge.spec.ts:839:7 › grade merge › grade merge scenario 2 (31.6s)
+  ✘  4 [chromium] › cp225_grade-merge.spec.ts:1599:7 › grade merge › grade merge scenario 3 (20.1s)
+
+
+  1) [chromium] › cp225_grade-merge.spec.ts:157:7 › grade merge › grade merge scenario 1 ───────────
+
+    Error: quick add: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1071:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp225_grade-merge.spec.ts:264:29
+
+  2) [chromium] › cp225_grade-merge.spec.ts:839:7 › grade merge › grade merge scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('period-row-2026-02').getByTestId('period-closed')
+    Expected string: [32m"yes"[39m
+    Received string: [31m"no"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('period-row-2026-02').getByTestId('period-closed')[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+    [2m  -   unexpected value "no"[22m
+
+
+      1121 |     await expect(pg_wes.getByTestId("watched-due-total")).toHaveText("0.00");
+      1122 |     await expect(pg_wes.getByTestId("period-row-2026-02").getByTestId("period-due-total")).toHaveText("0.00");
+    > 1123 |     await expect(pg_wes.getByTestId("period-row-2026-02").getByTestId("period-closed")).toHaveText("yes");
+           |                                                                                         ^
+      1124 |     await expect(pg_wes.getByTestId("period-row-2026-02").getByTestId("period-fy")).toHaveText("FY2026");
+      1125 |     await expect(pg_wes.getByTestId("period-row-2026-02").getByTestId("period-cap")).toHaveText("");
+      1126 |     await expect(pg_wes.getByTestId("period-row-2026-02").getByTestId("period-locked")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp225_grade-merge.spec.ts:1123:89
+
+  3) [chromium] › cp225_grade-merge.spec.ts:1599:7 › grade merge › grade merge scenario 3 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rollup-cut-total')
+    Expected string: [32m"[7m10[27m0.00"[39m
+    Received string: [31m"0.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rollup-cut-total')[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+      1648 |     await expect(pg_wes.getByTestId("rollup-open-total")).toHaveText("0.00");
+      1649 |     await expect(pg_wes.getByTestId("bulk-settle-batch")).toHaveText("");
+    > 1650 |     await expect(pg_wes.getByTestId("rollup-cut-total")).toHaveText("100.00");
+           |                                                          ^
+      1651 |     await expect(pg_wes.getByTestId("rollup-aged-0-30")).toHaveText("0.00");
+      1652 |     await expect(pg_wes.getByTestId("rollup-aged-31-60")).toHaveText("0.00");
+      1653 |     await expect(pg_wes.getByTestId("rollup-aged-61")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp225_grade-merge.spec.ts:1650:58
+
+  3 failed
+    [chromium] › cp225_grade-merge.spec.ts:157:7 › grade merge › grade merge scenario 1 ────────────
+    [chromium] › cp225_grade-merge.spec.ts:839:7 › grade merge › grade merge scenario 2 ────────────
+    [chromium] › cp225_grade-merge.spec.ts:1599:7 › grade merge › grade merge scenario 3 ───────────
+  1 passed (1.6m)

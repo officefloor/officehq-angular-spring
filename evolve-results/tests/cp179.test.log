@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp179-644btb_u
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp179_flags.spec.ts:6:7 › flags › flags (12.0s)
+  ✘  2 [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 (19.4s)
+  ✓  3 [chromium] › cp179_flags.spec.ts:527:7 › flags › flags scenario 2 (13.8s)
+  ✘  4 [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 (15.4s)
+
+
+  1) [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ──────────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"6"[39m
+
+      155 |     await ui.sortBy(pg_uma, "due-total");
+      156 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-04-02", "note": "n", "tags": "b,a,a"})).toBeNull();
+    > 157 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "10.35", "date": "2026-03-01"})).toBeNull();
+          |                                                                                         ^
+      158 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-03-15", "tags": " c "})).toBeNull();
+      159 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      160 |     expect(await ui.delegate(pg_vic, {"user": "uma", "from": "2026-02-10", "to": "2026-03-01"})).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp179_flags.spec.ts:157:89
+
+  2) [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ─────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkitele5qzp[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkitele5qzp-p</strong>[22m
+    [2m  -   unexpected value "smvkitele5qzp-p"[22m
+
+
+      1063 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1064 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 1065 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1066 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("4");
+      1067 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1068 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp179_flags.spec.ts:1065:54
+
+  2 failed
+    [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
+    [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
+  2 passed (1.1m)

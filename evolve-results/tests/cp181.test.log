@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp181-xrp2teyl
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp181_sheet-notes.spec.ts:6:7 › sheet notes › sheet notes (16.9s)
+  ✘  2 [chromium] › cp181_sheet-notes.spec.ts:43:7 › sheet notes › sheet notes scenario 1 (41.7s)
+  ✘  3 [chromium] › cp181_sheet-notes.spec.ts:471:7 › sheet notes › sheet notes scenario 2 (16.8s)
+  ✘  4 [chromium] › cp181_sheet-notes.spec.ts:1009:7 › sheet notes › sheet notes scenario 3 (8.3s)
+
+
+  1) [chromium] › cp181_sheet-notes.spec.ts:43:7 › sheet notes › sheet notes scenario 1 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m33[39m
+    Received: [31m34[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:1265
+
+      1263 |   await page.getByTestId('audit-show').click();
+      1264 |   const lines = page.getByTestId('audit-line');
+    > 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);
+           |   ^
+      1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());
+      1267 |   texts.forEach((line, i) => {
+      1268 |     const e = expected[i];
+
+        at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1265:3)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:125:5
+
+  2) [chromium] › cp181_sheet-notes.spec.ts:471:7 › sheet notes › sheet notes scenario 2 ───────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"6"[39m
+
+      577 |       `CLAIM_ADDED sheet=${sheet} by=wes person=Cam amount=1.00 date=2026-04-05`
+      578 |     ]);
+    > 579 |     expect(await ui.addClaim(pg_wes, p_cam, {"amount": "0.40", "date": "2026-03-09"})).toBeNull();
+          |                                                                                        ^
+      580 |     expect(await ui.claimEditOpen(pg_wes, c_cam_2)).toBe(true);
+      581 |     await ui.refresh(pg_uma);
+      582 |     expect(await ui.claimEditOpen(pg_uma, c_cam_2)).toBe(false);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:579:88
+
+  3) [chromium] › cp181_sheet-notes.spec.ts:1009:7 › sheet notes › sheet notes scenario 3 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"7"[39m
+
+      1035 |     await ui.setToday(pg_uma, "2026-03-21");
+      1036 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00", "from": "2026-04-05"})).toBe(true);
+    > 1037 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "4.00", "date": "2026-03-09", "ref": "R-2"})).toBeNull();
+           |                                                                                                      ^
+      1038 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00", "from": "2026-03-10", "to": "2026-03-25"})).toBe(true);
+      1039 |     expect(await ui.bulkGrade(pg_uma, [p_ada, p_ben], {"grade": "C", "from": "2026-02-10"})).toBe(2);
+      1040 |     expect(await ui.exportCsv(pg_uma)).toBe("name,grade,retired-from,due-total\nCam,C,,0.00\nAda,C,,0.00\nBen,C,,0.00\n");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp181_sheet-notes.spec.ts:1037:102
+
+  3 failed
+    [chromium] › cp181_sheet-notes.spec.ts:43:7 › sheet notes › sheet notes scenario 1 ─────────────
+    [chromium] › cp181_sheet-notes.spec.ts:471:7 › sheet notes › sheet notes scenario 2 ────────────
+    [chromium] › cp181_sheet-notes.spec.ts:1009:7 › sheet notes › sheet notes scenario 3 ───────────
+  1 passed (1.5m)

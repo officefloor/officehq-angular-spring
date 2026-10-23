@@ -1,0 +1,79 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp86-1glvxlpw
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp86_inline-amount.spec.ts:6:7 › inline amount › inline amount (13.2s)
+  ✘  2 [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 (15.0s)
+  ✓  3 [chromium] › cp86_inline-amount.spec.ts:368:7 › inline amount › inline amount scenario 2 (43.3s)
+  ✘  4 [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 (16.6s)
+
+
+  1) [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-4').getByTestId('claim-late-entry')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-4').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      233 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-proofs")).toHaveText("0");
+      234 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-split-from")).toHaveText("");
+    > 235 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-late-entry")).toHaveText("no");
+          |                                                                                              ^
+      236 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-reminded")).toHaveText("");
+      237 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-name")).toHaveText("Cam");
+      238 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-grade")).toHaveText("A");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp86_inline-amount.spec.ts:235:94
+
+  2) [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 ──────
+
+    Error: save dated setting: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:136:9)
+        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/testing/e2e/support/ui.ts:1149:14)
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp86_inline-amount.spec.ts:691:12
+
+  2 failed
+    [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 ────────
+    [chromium] › cp86_inline-amount.spec.ts:665:7 › inline amount › inline amount scenario 3 ───────
+  2 passed (1.5m)

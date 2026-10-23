@@ -1,0 +1,142 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp121-puuzglqr
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows (14.4s)
+  ✘  2 [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 (25.0s)
+  ✘  3 [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 (55.7s)
+  ✓  4 [chromium] › cp121_history-follows.spec.ts:1204:7 › history follows › history follows scenario 3 (15.9s)
+
+
+  1) [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('person-origin')
+    Expected string: [32m"__SHEET__"[39m
+    Received string: [31m"smvk1pxeaq0r7"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('person-origin')[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+    [2m  -   locator resolved to <td data-testid="person-origin">smvk1pxeaq0r7</td>[22m
+    [2m  -   unexpected value "smvk1pxeaq0r7"[22m
+
+
+      36 |     await ui.refresh(pg_vic);
+      37 |     await expect(pg_vic.getByTestId("person-row-" + p_ada_2).getByTestId("person-name")).toHaveText("Ada");
+    > 38 |     await expect(pg_vic.getByTestId("person-row-" + p_ada_2).getByTestId("person-origin")).toHaveText("__SHEET__");
+         |                                                                                            ^
+      39 |     await expect(pg_vic.getByTestId("person-row-" + p_ada_2).getByTestId("person-grade")).toHaveText("B");
+      40 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0_2).getByTestId("claim-status")).toHaveText("OPEN");
+      41 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0_2).getByTestId("claim-due")).toHaveText("n/a");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp121_history-follows.spec.ts:38:92
+
+  2) [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk1q9ir6uif[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk1q9ir6uif-p</strong>[22m
+    [2m  -   unexpected value "smvk1q9ir6uif-p"[22m
+
+
+      216 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      217 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 218 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      219 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      220 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      221 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp121_history-follows.spec.ts:218:54
+
+  3) [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-12').getByTestId('claim-late-entry')
+    Expected string: [32m"no"[39m
+    Received string: [31m"yes"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-12').getByTestId('claim-late-entry')[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+    [2m  -   locator resolved to <span data-testid="claim-late-entry">yes</span>[22m
+    [2m  -   unexpected value "yes"[22m
+
+
+      901 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-proofs")).toHaveText("0");
+      902 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-split-from")).toHaveText("");
+    > 903 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-late-entry")).toHaveText("no");
+          |                                                                                              ^
+      904 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-reminded")).toHaveText("");
+      905 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-ref")).toHaveText("");
+      906 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_4).getByTestId("claim-tags")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp121_history-follows.spec.ts:903:94
+
+  3 failed
+    [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows ─────────────
+    [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 ─
+    [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 
+  1 passed (2.0m)

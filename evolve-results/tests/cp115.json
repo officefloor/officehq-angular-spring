@@ -1,0 +1,66 @@
+{
+  "checkpoint": 115,
+  "checkpoint_id": "cp115_nested-pools",
+  "kind": "checkpoint",
+  "run_id": "202610221-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610221-as/just-solve/chain1",
+  "commit_sha": "cf43f5122deb88214e57d986568d3bebdffd2646",
+  "harness_sha": "75508e09e9e3e6055fe0c835c25caa38e91ab9a5",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3003,
+  "started_at": "2026-10-23T04:09:38",
+  "seconds": 135,
+  "build_log_file": "cp115.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp115_nested-pools.spec.ts::nested pools": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 1": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 2": false,
+      "cp115_nested-pools.spec.ts::nested pools scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16986,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 45986,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 27990,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-parent')\nExpected string: \u001b[32m\"\u001b[7m__SHEET__\u001b[27m-p\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7msmvjz7r6cxysx\u001b[27m-p\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-parent')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-parent\">smvjz7r6cxysx-p</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smvjz7r6cxysx-p\"\u001b[22m\n\n\n  644 |     await expect(pg_uma.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n  645 |     await expect(pg_uma.getByTestId(\"sheet-asof\")).toHaveText(\"2026-03-09\");\n> 646 |     await expect(pg_uma.getByTestId(\"sheet-parent\")).toHaveText(\"__SHEET__-p\");\n      |                                     "
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 17034,
+        "failure": "Error: audit lines for smvjz8df2kg8a:\nROLE_SET sheet=smvjz8df2kg8a by=uma user=vic role=steward\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=clerk-limit value=3.00\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=late-pct value=10.00\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=terms-A value=3\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=cap value=2.00\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=proof-threshold value=1.00\nSETTING_CHANGED sheet=smvjz8df2kg8a by=uma key=grace-days value=3\nHOLIDAY_ADDED sheet=smvjz8df2kg8a by=uma date=2026-03-13\nHOLIDAY_ADDED sheet=smvjz8df2kg8a by=uma date=2026-03-24\nVOID_REASON_ADDED sheet=smvjz8df2kg8a by=uma reason=dup\nRATE_SET sheet=smvjz8df2kg8a by=uma grade=A rate=12.50\nRATE_SET sheet=smvjz8df2kg8a by=uma grade=B rate=10.00\nRATE_SET sheet=smvjz8df2kg8a by=uma grade=C rate=33.33\nRATE_SET sheet=smvjz8df2kg8a by=uma grade=C rate=33.33 from=2026-03-01 to=2026-03-12\nPERIOD_ADDED sheet=smvjz8df2kg8a by=uma period=P1 from=2026-03-01 to=2026-03-15\nPERIOD_ADDED sheet=smvjz8df2kg8a by=uma period=P2 from=2026-03-16 to=2026-03-31\nPERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Cam grade=C terms=20\nROLLUP sheet=smvjz8df2kg8a by=uma person=Cam claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Ada grade=B terms=20\nROLLUP sheet=smvjz8df2kg8a by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00\nPERSON_ADDED sheet=smvjz8df2kg8a by=uma name=Ben grade=A terms=3 contact=ben@x\nROLLUP sheet=smvjz8df2kg8a by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00\nPOOL_ADDED sheet=smvjz8df2kg8a by=uma name=P1\nPOOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=Cam share=50.00\nPOOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=Ada share=50.00\nPOOL_ADDED sheet=smvjz8df2kg8a by=uma name=P2\nPOOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P2 name=Cam share=100.00\nPOOL_MEMBER_ADDED sheet=smvjz8df2kg8a by=uma pool=P1 name=P2 share=10.00\nPATRON_ADDED sheet=smvjz8df2kg8a by=uma name=C"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

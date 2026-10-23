@@ -1,0 +1,36 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610221-as-testing-cp91-b6hlyq3y
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610221-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments (6.7s)
+  ✘  2 [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 (4.2s)
+  ✓  3 [chromium] › cp91_claim-comments.spec.ts:377:7 › claim comments › claim comments scenario 2 (9.9s)
+  ✓  4 [chromium] › cp91_claim-comments.spec.ts:849:7 › claim comments › claim comments scenario 3 (14.0s)
+
+
+  1) [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"3"[39m
+
+      71 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "0.40", "tags": "a"})).toBeNull();
+      72 |     expect(await ui.periodAction(pg_uma, "2026-02", "close")).toBe(true);
+    > 73 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "0.04", "date": "2026-03-09"})).toBeNull();
+         |                                                                                        ^
+      74 |     expect(await ui.generatePeriods(pg_uma, "2026-01-15", "2026-02-20")).toBe(1);
+      75 |     const c_ada_0 = ui.must(await ui.addClaimTwice(pg_uma, p_ada, {"amount": "99.95", "date": "2026-03-15"}));
+      76 |     expect(await ui.claimCount(pg_uma, p_ada)).toBe(1);
+
+        at /home/daniel/ui-work/runs/202610221-as/testing/e2e/specs/cp91_claim-comments.spec.ts:73:88
+
+  1 failed
+    [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 ─────
+  3 passed (36.8s)
