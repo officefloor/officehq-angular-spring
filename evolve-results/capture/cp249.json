@@ -1,0 +1,64 @@
+{
+  "checkpoint": 249,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp249_policy-viewer",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b0a7d28694e5795464fa5f7a7bc365cd9b9fe85b",
+  "reset_sha": "",
+  "preagent_sha": "1890f1d695f866d0ac9117e6d6964f765128c991",
+  "prev_sha": "1890f1d695f866d0ac9117e6d6964f765128c991",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.604146600000001,
+    "input_tokens": 130,
+    "output_tokens": 29373,
+    "cache_read_tokens": 5257033,
+    "cache_creation_tokens": 120595,
+    "num_turns": 66,
+    "duration_ms": 1101574,
+    "duration_api_ms": 324802,
+    "model": "claude-opus-5-5",
+    "session_id": "ec61011c-9cb3-4c09-a5ab-75352c02a865",
+    "stop_reason": "success",
+    "result_text": "The policy versions are now shown on screen, and `bin/e2e` passes all 4 tests in the spec (the main test and scenarios 1\u20133).\n\n**The change**\n- **Stored data:** each policy version now keeps the value it set. A new migration, `V126__policy_version_value.sql`, adds the column and fills it in for existing versions. `PolicyVersion`, `Sheet.record` and the saved history snapshots (`SheetHistory`) carry the value too.\n- **Server:** a new endpoint, `GET /api/sheets/{id}/policy-versions`, returns the versions oldest first. Each comes with how many of the sheet's claims fall under it, meaning it is the version in force on the claim's date.\n- **Front end:** a new \"Policy versions\" section on the home screen has a `policy-show` button. Pressing it lists one `policy-line` per version, as `<version> <from> <key>=<value> <count>`. A setting saved without a from-date is already stored from the sheet's today, so it shows that date; \"start\" only appears if a version has no date at all.\n\n**Three other fixes the spec needed.** These change existing behaviour outside the listing:\n1. **\"Terms in force\" display:** it now stays empty until a terms value is recorded for the sheet's today, the same way floor and late percent already work. Before, it showed the default of 14.\n2. **Adding a claim:** a DRAFT whose due-by falls inside a closed period can now be added; opening it is still refused. The add method's own comment already said this, but the code refused it. I removed that check in `ClaimService.add`.\n3. **Bulk grade change:** it now records the grade even when the person already has it, as the person form does. Before, giving Ben grade B when he was already B left nothing in his timeline.\n\nIf anything relied on the old behaviour in those three places, it will now act differently.\n\nI didn't touch the test spec, `bin/*`, `e2e/support` or the docs, and I removed the temporary debug spec I'd used to find the failures.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.604146600000001,
+        "num_turns": 66,
+        "duration_ms": 1101574,
+        "duration_api_ms": 324802,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp249.agent.jsonl",
+  "agent_diff_file": "cp249.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
