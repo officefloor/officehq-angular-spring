@@ -93,6 +93,7 @@ public class CloneService {
         }
         people.forEach((from, to) -> {
             copyChildren("person_grade", "person_id", "from_date, grade", to, from);
+            copyChildren("person_terms", "person_id", "from_date, terms", to, from);
             copyChildren("person_hold", "person_id", "from_date, to_date", to, from);
             copyChildren("person_alias", "person_id", "alias, alias_key", to, from);
             copyChildren("person_retirement", "person_id", "retirement_order, from_date, to_date", to, from);
@@ -207,7 +208,7 @@ public class CloneService {
 
     /** Whether a table has its own id column to keep its rows' order by. */
     private static boolean hasId(String table) {
-        return !List.of("sheet_setting", "sheet_permission", "person_grade", "person_hold", "person_alias",
+        return !List.of("sheet_setting", "sheet_permission", "person_grade", "person_terms", "person_hold", "person_alias",
                 "person_retirement").contains(table);
     }
 

@@ -96,15 +96,19 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven) {
-        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, termsGiven, contactGiven,
-                null);
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, termsGiven,
+                contactGiven, null);
     }
 
-    /** Edit a person as {@link #edit} does, and set their tags from the comma separated text (null: kept as they are). */
+    /**
+     * Edit a person as {@link #edit} does, recording their own terms from a date (null: from the beginning
+     * of time; the terms recorded from other dates are kept), and set their tags from the comma separated
+     * text (null: kept as they are). PERSON_EDITED carries the terms in force on the sheet's today.
+     */
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven,
-            String tags) {
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, boolean termsGiven,
+            boolean contactGiven, String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (person.getVersion() != version) {
@@ -118,11 +122,17 @@ public class PersonService {
         requireContactFree(sheetId, contact, person.getId());
         Rollups.Rollup before = rollups.take(sheetId);
         LocalDate today = sheets.today(sheetId);
-        boolean withTerms = termsGiven || !java.util.Objects.equals(person.getTerms(), terms);
+        boolean withTerms = termsGiven || (termsFrom == null
+                ? !java.util.Objects.equals(person.getTerms(), terms)
+                : !person.hasTermsFrom(termsFrom) || !java.util.Objects.equals(person.getTermsFrom().get(termsFrom), terms));
         boolean withContact = contactGiven
                 || !java.util.Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setName(name);
-        person.setTerms(terms);
+        if (termsFrom == null) {
+            person.setTerms(terms);
+        } else {
+            person.termsFrom(terms, termsFrom);
+        }
         person.setContact(contact);
         if (tags != null) {
             person.tag(Claim.tagsOf(tags));
@@ -286,13 +296,13 @@ public class PersonService {
 
     /**
      * Record the change to the person, with the grade in force on the sheet's today and, on an edit or
-     * an add that gave them, their own terms and contact (blank when they have none), once it is committed.
+     * an add that gave them, their own terms in force on it and contact (blank when they have none), once it is committed.
      */
     private void audited(String event, String sheetId, String user, Person person, LocalDate today,
             boolean withTerms, boolean withContact) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.gradeOn(today)
-                + (withTerms ? " terms=" + (person.getTerms() != null ? person.getTerms() : "") : "")
+                + (withTerms ? " terms=" + (person.termsOn(today) != null ? person.termsOn(today) : "") : "")
                 + (withContact ? " contact=" + (person.getContact() != null ? person.getContact() : "") : ""));
     }
 

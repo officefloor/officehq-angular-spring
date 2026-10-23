@@ -68,9 +68,12 @@ public class SheetHistory {
     record HoldState(LocalDate from, LocalDate to) {
     }
 
+    record TermsState(LocalDate from, Integer terms) {
+    }
+
     record PersonState(long id, String name, String grade, List<GradeState> grades, Integer terms,
             List<HoldState> holds, LocalDate retiredFrom, String contact, List<String> aliases,
-            List<RetirementState> retirements) {
+            List<RetirementState> retirements, List<TermsState> termsFrom) {
     }
 
     record RetirementState(LocalDate from, LocalDate to) {
@@ -229,6 +232,9 @@ public class SheetHistory {
         for (PersonState p : state.people()) {
             Person person = new Person(now.getId(), p.name(), p.grade(), p.terms(), p.contact());
             p.grades().forEach(g -> person.gradeFrom(g.grade(), g.from()));
+            if (p.termsFrom() != null) {
+                p.termsFrom().forEach(t -> person.termsFrom(t.terms(), t.from()));
+            }
             p.holds().forEach(h -> person.hold(h.from(), h.to()));
             if (p.aliases() != null) {
                 p.aliases().forEach(person::addAlias);
@@ -283,7 +289,8 @@ public class SheetHistory {
                 p.getGradesFrom().entrySet().stream().map(e -> new GradeState(e.getKey(), e.getValue())).toList(),
                 p.getTerms(), p.getHolds().stream().map(h -> new HoldState(h.getFromDate(), h.getToDate())).toList(),
                 p.getRetiredFrom(), p.getContact(), p.getAliases(),
-                p.getRetirements().stream().map(r -> new RetirementState(r.getFromDate(), r.getToDate())).toList());
+                p.getRetirements().stream().map(r -> new RetirementState(r.getFromDate(), r.getToDate())).toList(),
+                p.getTermsFrom().entrySet().stream().map(e -> new TermsState(e.getKey(), e.getValue())).toList());
     }
 
     private static RateState kept(Rate r) {

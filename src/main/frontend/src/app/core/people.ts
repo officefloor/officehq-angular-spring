@@ -25,13 +25,33 @@ export function gradeOn(grades: GradeView[], date: string): Grade {
   return on.grade;
 }
 
+/** Own terms a person has from a date (yyyy-mm-dd), in days; null for none of their own. */
+export interface TermsView {
+  terms: number | null;
+  from: string;
+}
+
+/**
+ * The own terms a person has in force on a date (yyyy-mm-dd): those recorded from the latest date on
+ * or before it, else those from the beginning of time; null for none.
+ */
+export function termsOn(person: PersonView, date: string): number | null {
+  let on: TermsView | null = null;
+  for (const t of person.termsFrom ?? []) {
+    if (t.from <= date && (on === null || t.from > on.from)) on = t;
+  }
+  return on === null ? person.terms : on.terms;
+}
+
 export interface PersonView {
   id: number;
   name: string;
   /** The person's grades by the date each is in force from, the first from the beginning of time. */
   grades: GradeView[];
-  /** The person's own terms in days; null when they have none and take their grade's terms. */
+  /** The person's own terms in days from the beginning of time; null when they have none and take their grade's terms. */
   terms: number | null;
+  /** The own terms recorded since, by the date each is in force from; absent from a view kept before terms were dated. */
+  termsFrom?: TermsView[];
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
   /** The person's tags, sorted (trimmed, lower case, no repeats); empty (or absent, as kept by an old snapshot) for none. */
@@ -123,6 +143,8 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** The person's own terms in days; null for none. */
   terms: number | null;
+  /** On an edit, the date (yyyy-mm-dd) the terms are in force from; null for the beginning of time. */
+  termsFrom?: string | null;
   /** The person's contact as typed; blank for none. */
   contact: string;
   /** On an edit, whether the terms were typed on the form: PERSON_EDITED then carries them. */

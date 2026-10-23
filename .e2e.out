@@ -2,46 +2,87 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › crew lead total › crew lead total (10.2s)
-  ✓  2 [chromium] › acceptance.spec.ts:137:7 › crew lead total › crew lead total scenario 1 (16.0s)
-  ✘  3 [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 (7.3s)
-  ✘  4 [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 (15.3s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › person terms dated › person terms dated (10.7s)
+  ✘  2 [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 (21.1s)
+  ✘  3 [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 (15.3s)
+  ✘  4 [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 (34.7s)
 
 
-  1) [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ──────────
+  1) [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31m1[39m
+
+      177 |     expect(await ui.periodAction(pg_vic, "2026-02", "close")).toBe(true);
+      178 |     const c_ada_2 = ui.must(await ui.addClaim(pg_vic, p_ada, {"amount": "10.25", "tags": " c "}));
+    > 179 |     expect(await ui.generatePlans(pg_vic)).toBe(0);
+          |                                            ^
+      180 |     await ui.refresh(pg_vic);
+      181 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.40");
+      182 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("1.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:179:44
+
+  2) [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 ────
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
 
-    Received: [31m"10"[39m
+    Received: [31m"13"[39m
 
-      717 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
-      718 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
-    > 719 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "12.50", "ref": "inv 7"})).toBeNull();
-          |                                                                                   ^
-      720 |     expect(await ui.setRate(pg_vic, {"grade": "B", "pct": "7.50"})).toBe(true);
-      721 |     await ui.refresh(pg_vic);
-      722 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      596 |     expect(await ui.editInline(pg_uma, c_cam_0, "99.95")).toBe(true);
+      597 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+    > 598 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "3.33", "date": "2026-03-01", "note": "n"})).toBeNull();
+          |                                                                                                     ^
+      599 |     expect(await ui.addLine(pg_uma, c_cam_0, {"label": "y", "qty": "1", "unit": "0.01"})).toBe(true);
+      600 |     expect(await ui.statement(pg_uma, p_dot)).toBe(true);
+      601 |     expect(await ui.watch(pg_uma, p_fay, true)).toBe(true);
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:719:83
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:598:101
 
-  2) [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ─────────
+  3) [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 ────
 
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Received: [31m"14"[39m
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkf8r29u1oq[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
 
-      1230 |     expect(await ui.addPatron(pg_uma, p_ada, "Ben")).toBe(true);
-      1231 |     expect(await ui.addLine(pg_uma, c_ada_1, {"label": "y", "qty": "3", "unit": "4.00"})).toBe(false);
-    > 1232 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "20.00", "note": "n"})).toBeNull();
-           |                                                                                ^
-      1233 |     await ui.showRetired(pg_uma, true);
-      1234 |     expect(await ui.unretire(pg_uma, p_ben)).toBe(true);
-      1235 |     expect(await ui.addAlias(pg_uma, p_ben, "")).toBe(false);
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1232:80
+      1053 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      1054 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 1055 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1056 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      1057 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1058 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-  2 failed
-    [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ───────────
-    [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ──────────
-  2 passed (52.0s)
- 1356982
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1055:54
+
+  3 failed
+    [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 ──────
+    [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 ─────
+    [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 ─────
+  1 passed (1.5m)

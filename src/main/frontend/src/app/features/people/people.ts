@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
+import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -149,6 +149,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           [value]="terms()"
           (focus)="termsGiven.set(true)"
           (input)="terms.set(value($event)); termsGiven.set(true); error.set(null)"
+        />
+        <label for="person-form-terms-from">Terms from</label>
+        <input
+          type="date"
+          id="person-form-terms-from"
+          data-testid="person-form-terms-from"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set(null)"
         />
         <label for="person-form-contact">Contact</label>
         <input
@@ -447,7 +455,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               @if (columns.shown('terms')) {
-                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+                <td data-testid="person-terms">{{ termsShown(p) ?? '' }}</td>
               }
               @if (columns.shown('contact')) {
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -1075,6 +1083,10 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms as typed: a whole number of days, or blank for none. */
   protected readonly terms = signal('');
+  /** The date the terms entered are in force from; blank for the beginning of time. */
+  protected readonly termsFrom = signal('');
+  /** The terms an edit just saved from the beginning of time, shown on its row until the person is re-read. */
+  private readonly savedTerms = new WeakMap<PersonView, number | null>();
   /** The person's contact as typed: blank for none. */
   protected readonly contact = signal('');
   /** The person's tags as typed, comma separated: blank for none. */
@@ -1277,6 +1289,19 @@ export class People {
   protected sortKeyOf(event: Event): SortKey {
     const value = (event.target as HTMLSelectElement).value;
     return (SORT_KEYS as readonly string[]).includes(value) ? (value as SortKey) : 'added';
+  }
+
+  /**
+   * The own terms a person's row shows: those in force on the sheet's today, or those an edit just saved
+   * from the beginning of time until the person is re-read.
+   */
+  protected termsShown(person: PersonView): number | null {
+    return this.savedTerms.has(person) ? (this.savedTerms.get(person) ?? null) : termsOn(person, this.today());
+  }
+
+  /** Terms as the form shows them: blank for none. */
+  private termsText(terms: number | null): string {
+    return terms === null ? '' : String(terms);
   }
 
   /** The grade a person has in force on the sheet's today. */
@@ -2063,7 +2088,8 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set(this.today());
-    this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.terms.set(this.termsText(termsOn(person, this.today())));
+    this.termsFrom.set('');
     this.contact.set(person.contact ?? '');
     this.tags.set((person.tags ?? []).join(', '));
     this.termsGiven.set(false);
@@ -2077,6 +2103,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set(this.today());
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.termsGiven.set(false);
@@ -2116,7 +2143,12 @@ export class People {
         this.people.update((list) => [...list, added]);
       } else {
         const gradeFrom = this.gradeFrom().trim() || null;
-        const saved = await this.api.edit(sheet, id, { ...form, gradeFrom, version: this.version() });
+        const termsFrom = this.termsFrom().trim() || null;
+        // Terms left as they were keep the person's own from the beginning of time.
+        const terms = form.termsGiven || termsFrom !== null
+          ? form.terms : (this.people().find((p) => p.id === id)?.terms ?? null);
+        const saved = await this.api.edit(sheet, id, { ...form, terms, termsFrom, gradeFrom, version: this.version() });
+        if (form.termsGiven && termsFrom === null) this.savedTerms.set(saved, terms);
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -2145,7 +2177,7 @@ export class People {
       this.version.set(current.version);
       this.name.set(current.name);
       this.grade.set(this.gradeOf(current));
-      this.terms.set(current.terms === null ? '' : String(current.terms));
+      this.terms.set(this.termsText(termsOn(current, this.today())));
       this.contact.set(current.contact ?? '');
       this.tags.set((current.tags ?? []).join(', '));
     } catch {

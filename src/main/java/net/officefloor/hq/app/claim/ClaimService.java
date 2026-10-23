@@ -913,7 +913,7 @@ public class ClaimService {
      * person's own terms, their grade's terms and the sheet's terms in force on it.
      */
     private static int terms(Sheet sheet, Person person, LocalDate date) {
-        Integer own = person.getTerms();
+        Integer own = person.termsOn(date);
         return own != null ? own : sheet.termsFor(person.gradeOn(date), date);
     }
 
