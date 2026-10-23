@@ -1,0 +1,64 @@
+{
+  "checkpoint": 154,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp154_classic-summary",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ef36ab1fdfc3da7b8ca45cee1c7d593fc9a66bb9",
+  "reset_sha": "",
+  "preagent_sha": "3bc6108d59efb1d5a8aa0030a074daddb711595a",
+  "prev_sha": "3bc6108d59efb1d5a8aa0030a074daddb711595a",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 3.060710200000001,
+    "input_tokens": 132,
+    "output_tokens": 35433,
+    "cache_read_tokens": 6025611,
+    "cache_creation_tokens": 143300,
+    "num_turns": 67,
+    "duration_ms": 692600,
+    "duration_api_ms": 410945,
+    "model": "claude-opus-5-5",
+    "session_id": "02d417b7-dc96-4909-b93f-47c5fc16346f",
+    "stop_reason": "success",
+    "result_text": "I added the classic summary. Three of the four tests pass; \"classic summary scenario 1\" still fails, at a step unrelated to this change.\n\n**What I built**\n- **New panel** (`features/summary/classic-summary.ts`), shown right after the existing summary so both appear at once:\n  - `classic-period-<name>-due-total`: for each period, the due of the claims due in it, counted by their status now (OPEN, PENDING and SETTLED count). A closed or soft-closed period shows the figure fixed when it closed. Claims that are deferred or held are still left out, the same way the live totals leave them out. The existing summary instead counts each claim by its status at the end of the period.\n  - `classic-due-total`: everyone's due-total added up, with no trimming of the highest and lowest.\n- **Wiring** in `features/people/people.ts`: two new computed values next to the existing summary ones. Nothing changes in the server, the stored data or the audit file, because every figure comes from data the screen already loads.\n\n**Test results (`bin/e2e`)**\n- Passing: \"classic summary\", \"scenario 2\" and \"scenario 3\", including every `classic-*` value they check.\n- Failing: \"scenario 1\", at line 244. The test expects adding a 1.00 claim for Cam, dated 2026-02-25, to be refused. The app accepts it and writes a `CLAIM_ADDED` record. That step goes through the server's existing add-claim rules, which this change doesn't touch. None of those rules (retirement, corrections, duplicate reference, closed period, viewer, archive or as-of) applies to that claim. The claim's due date is 2026-03-17, which is outside the closed period P1 (03-01 to 03-15).\n- To check the rest of scenario 1, I ran a temporary copy with only that step and the audit-file checks removed. It passed, including its classic-summary checks. I then deleted the copy and confirmed the real spec is byte-for-byte unchanged.\n\n**Decision for you:** to make scenario 1 pass, the app would need a new rule that refuses this claim. The data fits one possible rule: refuse a new claim dated on or before the end of a closed period. But nothing in the app or the change request calls for it, and I only have this one step to go on, so I didn't add it. If you can confirm the intended rule, I'll implement it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 3.060710200000001,
+        "num_turns": 67,
+        "duration_ms": 692600,
+        "duration_api_ms": 410945,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp154.agent.jsonl",
+  "agent_diff_file": "cp154.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
