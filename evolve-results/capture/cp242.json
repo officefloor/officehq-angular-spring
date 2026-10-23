@@ -1,0 +1,64 @@
+{
+  "checkpoint": 242,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp242_person-timeline",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "73c46282b23aafd574b54656a6a4d5816d4a4123",
+  "reset_sha": "",
+  "preagent_sha": "93515ba630105ce678487be37e24b6c0a3a6bd2d",
+  "prev_sha": "93515ba630105ce678487be37e24b6c0a3a6bd2d",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8480923999999999,
+    "input_tokens": 46,
+    "output_tokens": 9096,
+    "cache_read_tokens": 1053102,
+    "cache_creation_tokens": 56921,
+    "num_turns": 23,
+    "duration_ms": 412532,
+    "duration_api_ms": 112155,
+    "model": "claude-opus-5-5",
+    "session_id": "9d3ace97-693e-4a33-a7ca-d272f6b01965",
+    "stop_reason": "success",
+    "result_text": "I've added the timeline to each person row, but `bin/e2e` does not fully pass: the main \"person timeline\" test passes, and the three \"scenario\" tests fail on checks that have nothing to do with the timeline.\n\n**The change** is front end only, because every dated fact it needs was already stored and sent to the screen:\n- `src/main/frontend/src/app/core/people.ts`: a new `timelineOf(person, claims)` builds the lines, sorted by date. On the same date the order is grade changes, then claims, then holds, then retirements, then unretirements. A person's first grade has no date, so it gets no line. Deleted and voided claims are included, as the test expects.\n- `src/main/frontend/src/app/features/people/people.ts`: a new \"Timeline\" column on each person row, with one `person-timeline-line` item per line.\n\nWhen two lines of the same kind fall on the same date, they're sorted by their text. The spec's expected order fits this but none of the other orders I tried, such as amount or order added. For example, `claim 10.25 DELETED` comes before `claim 3.33 DRAFT`.\n\n**Test results:**\n- **\"person timeline\"**: passes, including its audit check.\n- **Scenario 1** fails at line 180. The test expects `sheet-parent` to read the literal text `\"__SHEET__-p\"` where it should have the real sheet id, so it looks like a bug in the test itself.\n- **Scenario 3** fails at lines 1568\u20131570. It expects the dashboard's pending, review and overdue counts to be empty, but the app shows `0`.\n- **Scenario 2** fails at line 624. Saving the `floor` setting from a later date doesn't show the expected value, and the steps after it then fail too.\n\nI didn't edit the spec. To check the timeline lines inside the scenarios, I ran a temporary copy of it that logs failures instead of stopping. All five timeline checks in scenarios 1 and 3 passed, and the only failures were the ones above. Scenario 2 still stopped before its timeline check at line 905, so that line is unverified, though its expected order fits the same sorting. I deleted the temporary copy afterwards.\n\nI didn't go after the floor-setting and dashboard-count failures because they sit outside this change. I couldn't confirm they failed before my change either, because there's no git history to compare against.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8480923999999999,
+        "num_turns": 23,
+        "duration_ms": 412532,
+        "duration_api_ms": 112155,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp242.agent.jsonl",
+  "agent_diff_file": "cp242.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

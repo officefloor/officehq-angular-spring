@@ -1,0 +1,301 @@
+diff --git a/.e2e.out b/.e2e.out
+index ebccf307..34e5880e 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,119 +2,112 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › as of roles › as of roles (9.1s)
+-  ✘  2 [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 (30.1s)
+-  ✘  3 [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 (20.4s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 (24.4s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › person timeline › person timeline (6.7s)
++  ✘  2 [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 (25.1s)
++  ✘  3 [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 (31.3s)
++  ✘  4 [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 (31.7s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 ───────────────────
++  1) [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ───────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('header-claims-OPEN-count')
+-    Expected string: [32m"2"[39m
+-    Received string: [31m"1"[39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvl3mrh31as5[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('header-claims-OPEN-count')[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+-    [2m  -   unexpected value "1"[22m
+-
+-
+-      155 |     await expect(pg_uma.getByTestId("header-people-count")).toHaveText("2");
+-      156 |     await expect(pg_uma.getByTestId("header-claims-DRAFT-count")).toHaveText("1");
+-    > 157 |     await expect(pg_uma.getByTestId("header-claims-OPEN-count")).toHaveText("2");
+-          |                                                                  ^
+-      158 |     await expect(pg_uma.getByTestId("header-claims-PENDING-count")).toHaveText("0");
+-      159 |     await expect(pg_uma.getByTestId("header-claims-SETTLED-count")).toHaveText("0");
+-      160 |     await expect(pg_uma.getByTestId("header-claims-VOID-count")).toHaveText("0");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:157:66
+-
+-  2) [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 ──────────────────
+-
+-    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+-
+-    Locator: getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)
+-    Expected: visible
+-    Received: <element(s) not found>
+-    Call log:
+-      [2m- expect.toBeVisible with timeout 8000ms[22m
+-    [2m  - waiting for getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)[22m
+-
+-
+-       at ../support/ui.ts:656
+-
+-      654 |   const n = await all.count();
+-      655 |   const r = all.nth(n - 1 - idx);
+-    > 656 |   await expect(r).toBeVisible({ timeout: WAIT });
+-          |                   ^
+-      657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');
+-      658 | }
+-      659 |
+-
+-        at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:656:19)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:562:21
+-
+-  3) [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 ─────────────────
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
++    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
++
++
++      178 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      179 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 180 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      181 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
++      182 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("2.00");
++      183 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:180:54
++
++  2) [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ──────────
++
++    Error: save dated setting: neither a result nor an error appeared within 8000ms
++
++       at ../support/ui.ts:136
++
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
++
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1149:14)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:624:12
++
++  3) [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ─────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvl3jclfjcuf[27m-p"[39m
++    Locator: getByTestId('dash-pending-count')
++    Expected string: [32m""[39m
++    Received string: [31m"0"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+-    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+-
+-
+-      1486 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      1487 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-01");
+-    > 1488 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1489 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+-      1490 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1491 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1488:54
++    [2m  - waiting for getByTestId('dash-pending-count')[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
++    [2m  -   unexpected value "0"[22m
++
++
++      1566 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
++      1567 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
++    > 1568 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
++           |                                                            ^
++      1569 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
++      1570 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
++      1571 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1568:60
+ 
+   3 failed
+-    [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 ────────────────────
+-    [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 ───────────────────
+-    [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 ──────────────────
+-  1 passed (1.5m)
++    [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ────────────
++    [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ───────────
++    [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ──────────
++  1 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index e00ca21c..8f640462 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -328,3 +328,33 @@ export class PeopleApi {
+     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
+   }
+ }
++
++/** A claim as the timeline needs it: its date, amount and status. */
++export interface TimelineClaim {
++  date: string;
++  amount: string;
++  status: string;
++}
++
++/**
++ * A person's timeline: one line per dated thing about them, in date order, and on one date their
++ * grade changes, then claims, then holds, then retirements, then unretirements (each kind by its line):
++ * "<date> grade <grade>", "<date> claim <amount> <status>", "<date> hold[ to <date>]", "<date> retired",
++ * "<date> unretired". The first grade, in force from the beginning of time, has no date and no line.
++ */
++export function timelineOf(person: PersonView, claims: TimelineClaim[]): string[] {
++  const entries: { date: string; kind: number; line: string }[] = [];
++  for (const g of person.grades) {
++    if (g.from !== null) entries.push({ date: g.from, kind: 0, line: `${g.from} grade ${g.grade}` });
++  }
++  for (const c of claims) entries.push({ date: c.date, kind: 1, line: `${c.date} claim ${c.amount} ${c.status}` });
++  for (const h of person.holds) {
++    entries.push({ date: h.from, kind: 2, line: `${h.from} hold${h.to ? ' to ' + h.to : ''}` });
++  }
++  const retired = [...(person.retirements ?? []).map((r) => r.from), ...(person.retiredFrom ? [person.retiredFrom] : [])];
++  for (const from of retired) entries.push({ date: from, kind: 3, line: `${from} retired` });
++  for (const r of person.retirements ?? []) entries.push({ date: r.to, kind: 4, line: `${r.to} unretired` });
++  return entries
++    .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || (a.line < b.line ? -1 : a.line > b.line ? 1 : 0))
++    .map((e) => e.line);
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 134f93bd..287f33c3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
+ import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+ import { ClaimShareView, ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+-import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
++import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn, timelineOf } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+@@ -508,6 +508,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+             }
+             <th scope="col">Statement lines</th>
+             <th scope="col">Snapshots</th>
++            <th scope="col">Timeline</th>
+             <th scope="col">Flag</th>
+             <th scope="col">Approver</th>
+             <th scope="col">Active</th>
+@@ -651,6 +652,13 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   }
+                 </ul>
+               </td>
++              <td>
++                <ul aria-label="Timeline">
++                  @for (line of timelineOf(p, claimsOf(p.id)); track $index) {
++                    <li data-testid="person-timeline-line">{{ line }}</li>
++                  }
++                </ul>
++              </td>
+               <td data-testid="person-flag-shown">{{ flagShown(p) }}</td>
+               <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+@@ -1522,6 +1530,8 @@ export class People {
+     if (this.session.sheet() === sheet && this.session.loads() === loads) this.periods.set(periods);
+   }
+ 
++  protected readonly timelineOf = timelineOf;
++
+   protected claimsOf(personId: number): ClaimView[] {
+     return this.byPerson().get(personId) ?? [];
+   }
