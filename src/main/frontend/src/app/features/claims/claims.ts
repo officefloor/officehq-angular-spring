@@ -258,6 +258,14 @@ const PAST: Record<ClaimAction, string> = {
               <option [value]="r.reason" [selected]="voidReasonsChosen()[c.id] === r.reason">{{ r.reason }}</option>
             }
           </select>
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input
+            [id]="'claim-settle-date-' + c.id"
+            type="date"
+            data-testid="claim-settle-date"
+            [value]="settleDates()[c.id] ?? ''"
+            (input)="setSettleDate(c.id, value($event))"
+          />
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -472,6 +480,8 @@ export class Claims {
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** The person chosen on each claim's row to reassign it to, by claim id. */
   protected readonly reassignTo = signal<Record<number, number>>({});
+  /** The date entered on each claim's row to settle it as of (none: the sheet's today), by claim id. */
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The date entered on each claim's row to defer it until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date entered on each claim's row to re-date it to, by claim id. */
@@ -728,6 +738,12 @@ export class Claims {
   /** Choose the kind of the next proof added to a claim; it clears any error left on the claim's row. */
   protected setProofKind(id: number, kind: string): void {
     this.proofKindsChosen.update((kinds) => ({ ...kinds, [id]: kind as ProofKind | '' }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Enter the date to settle a claim as of; it clears any error left on the claim's row. */
+  protected setSettleDate(id: number, date: string): void {
+    this.settleDates.update((dates) => ({ ...dates, [id]: date }));
     if (this.claimError()?.id === id) this.claimError.set(null);
   }
 
@@ -1150,6 +1166,8 @@ export class Claims {
     if (!sheet) return;
     const reason = action === 'void'
       ? (this.voidReasonsChosen()[claim.id] ?? '')
+      : action === 'settle'
+      ? (this.settleDates()[claim.id] ?? '').trim()
       : (this.rejectReasons()[claim.id] ?? '').trim();
     if (action === 'reject' && reason === '') {
       this.claimError.set({ id: claim.id, message: 'Type a reason to reject the claim.' });
@@ -1163,6 +1181,15 @@ export class Claims {
       this.saved.emit(await this.api.act(sheet, claim.id, action, reason));
       if (action === 'reject') this.rejectReasons.update((reasons) => ({ ...reasons, [claim.id]: '' }));
     } catch (e) {
+      if (action === 'settle' && reason !== '' && e instanceof HttpErrorResponse && e.status === 400) {
+        this.claimError.set({
+          id: claim.id,
+          message: reason > (this.session.today() ?? '')
+            ? 'A claim cannot be settled as of a date after today.'
+            : `The claim did not exist on ${reason}, so it cannot be settled as of then.`,
+        });
+        return;
+      }
       const me = this.session.user()?.trim();
       const mine = claim.openedBy === me;
       const edited = !mine && (claim.editedBy ?? null) === me;

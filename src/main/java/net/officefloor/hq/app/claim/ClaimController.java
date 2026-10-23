@@ -303,13 +303,21 @@ public class ClaimController {
         return new BulkOpenView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
     }
 
-    /** Settle an OPEN claim (PENDING when a clerk settles it above the clerk limit); refused for the user who opened it. */
+    /** The date a claim is settled as of; with none, the sheet's today. */
+    public record SettleForm(LocalDate on) {
+    }
+
+    /**
+     * Settle an OPEN claim (PENDING when a clerk settles it above the clerk limit), as of a date on or
+     * before the sheet's today when one is given; refused for the user who opened it.
+     */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long claimId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.SETTLED));
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) SettleForm form) {
+        return ClaimView.of(service.settle(sheetId, SignedIn.name(user), claimId, form == null ? null : form.on()));
     }
 
     /** Settle the selected claims together, in list order; those that cannot be settled are refused. */

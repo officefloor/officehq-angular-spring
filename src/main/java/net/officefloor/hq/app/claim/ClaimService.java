@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.Retirement;
@@ -42,11 +43,13 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
+    private final SheetHistory history;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, HolidayService holidays,
-            VoidReasonService voidReasons, Audit audit) {
+            VoidReasonService voidReasons, SheetHistory history, Audit audit) {
+        this.history = history;
         this.watches = watches;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
@@ -304,6 +307,22 @@ public class ClaimService {
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason) {
+        return move(sheetId, user, claimId, next, reason, null);
+    }
+
+    /**
+     * Settle a claim as {@link #move(String, String, long, ClaimStatus)} does, as of a date (null: the
+     * sheet's today): its figure is frozen at the due it had at the end of that date, every change made
+     * while the sheet's today was after it left out and that date standing in for the sheet's today, and
+     * its audit record ends with the date. Refused for a date after the sheet's today, or one the claim
+     * did not yet exist on.
+     */
+    @Transactional
+    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
+        return move(sheetId, user, claimId, ClaimStatus.SETTLED, null, on);
+    }
+
+    private Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason, LocalDate on) {
         // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
         LocalDate today = sheets.lock(sheetId).getToday();
@@ -338,7 +357,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal settledDue = next == ClaimStatus.SETTLED
-                ? dues.settling(claim, person.gradeOn(claim.getDate()))
+                ? settlingOn(sheetId, claim, person, today, on)
                 : null;
         if (next == ClaimStatus.OPEN && person.flaggedOn(today)
                 && !Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
@@ -390,12 +409,40 @@ public class ClaimService {
         if (voidReason != null) {
             suffix += " reason=" + voidReason;
         }
+        if (next == ClaimStatus.SETTLED && on != null) {
+            suffix += " on=" + on;
+        }
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         }
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * The due a claim is settled at as of a date (null: the sheet's today, as it stands): on the sheet's
+     * today its live settling figure; before it, its due as the claim stood at the end of that date,
+     * read against the sheet as kept then. Refused for a date after the sheet's today, or one the claim
+     * (or its person) was not yet kept on.
+     */
+    private BigDecimal settlingOn(String sheetId, Claim claim, Person person, LocalDate today, LocalDate on) {
+        if (on == null || on.equals(today)) {
+            return dues.settling(claim, person.gradeOn(claim.getDate()));
+        }
+        if (today == null || on.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim cannot be settled as of a date after today.");
+        }
+        ResponseStatusException notYet = new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "The claim did not exist on " + on + ": it cannot be settled as of then.");
+        SheetHistory.AsOf kept = history.at(sheetId, on).orElseThrow(() -> notYet);
+        Claim then = kept.claims().get(claim.getId());
+        Person personThen = then == null ? null : kept.people().get(then.getPersonId());
+        if (then == null || personThen == null) {
+            throw notYet;
+        }
+        return dues.due(then, personThen.gradeOn(then.getDate()), kept.basis());
     }
 
     /**

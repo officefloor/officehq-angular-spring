@@ -2,11 +2,70 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (26.8s)
-  ✓  2 [chromium] › acceptance.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (41.5s)
-  ✓  3 [chromium] › acceptance.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (30.4s)
-  ✓  4 [chromium] › acceptance.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (26.2s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › settle as of date › settle as of date (12.2s)
+  ✘  2 [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 (41.5s)
+  ✘  3 [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 (17.7s)
+  ✓  4 [chromium] › acceptance.spec.ts:961:7 › settle as of date › settle as of date scenario 3 (24.9s)
 
-  Slow test file: [chromium] › acceptance.spec.ts (2.1m)
-  Consider splitting slow test files to speed up parallel execution
-  4 passed (2.1m)
+
+  1) [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvko8p8p84rq[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+
+
+      209 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      210 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 211 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      212 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      213 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      214 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:211:54
+
+  2) [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ──────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      542 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00"})).toBe(true);
+      543 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "3.33", "tags": "a, B"})).toBeNull();
+    > 544 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);
+          |                                                     ^
+      545 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      546 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);
+      547 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:544:53
+
+  2 failed
+    [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ────────
+    [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ───────
+  2 passed (1.7m)

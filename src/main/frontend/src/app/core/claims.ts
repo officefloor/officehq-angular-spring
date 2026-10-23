@@ -402,10 +402,12 @@ export class ClaimsApi {
    * settling or approving it is the one who opened it or last edited it, and (403) when approving or rejecting it is
    * not a steward. A reject carries its reason. Re-settling is a steward's (403 otherwise), of a
    * SETTLED claim (409 otherwise). A void carries the reason chosen from the sheet's list (409 when
-   * the list is not empty and none, or one not on it, is given).
+   * the list is not empty and none, or one not on it, is given). A settle carries the date it is
+   * settled as of when one is given (400 when it is after the sheet's today or the claim did not exist then).
    */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
-    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
+    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null }
+      : action === 'settle' && reason ? { on: reason } : null;
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, body));
   }
 
