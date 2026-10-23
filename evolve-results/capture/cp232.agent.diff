@@ -1,0 +1,45 @@
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java b/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java
+index 2e7c6834..3f947d26 100644
+--- a/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java
+@@ -17,7 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * Merging a grade into another: every person whose grade in force on the sheet's today is the merged
+  * grade is given the other from the sheet's today, each edited as the person form would, in list order,
+- * then the figures the whole merge moved. A steward only; refused for the same grade twice. Should any edit be refused, nothing is merged.
++ * and then every grade record of theirs on the merged grade, whatever its date, becomes the other; then
++ * the figures the whole merge moved. A steward only; refused for the same grade twice. Should any edit be refused, nothing is merged.
+  */
+ @Service
+ public class GradeMergeService {
+@@ -64,6 +65,11 @@ public class GradeMergeService {
+             }
+             service.edit(sheetId, user, person.getId(), person.getVersion(), person.getName(), into, null,
+                     person.getTerms(), person.getContact(), false, false);
++            // Retroactive: every grade record of theirs on the merged grade becomes the other.
++            people.findById(person.getId()).ifPresent(moved -> {
++                moved.regrade(from, into);
++                people.saveAndFlush(moved);
++            });
+             merged++;
+         }
+         rollups.audit(sheetId, user, before);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9df55dde..7260784f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -266,6 +266,14 @@ public class Person {
+         gradesFrom.put(from, grade);
+     }
+ 
++    /** Every grade record of the person on one grade, the first included, becomes another grade. */
++    public void regrade(String from, String into) {
++        if (from.equals(grade)) {
++            grade = into;
++        }
++        gradesFrom.replaceAll((date, recorded) -> from.equals(recorded) ? into : recorded);
++    }
++
+     /** The person's own terms in days from the beginning of time; null when they have none. */
+     public Integer getTerms() {
+         return terms;
