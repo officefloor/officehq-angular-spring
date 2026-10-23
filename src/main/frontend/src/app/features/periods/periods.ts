@@ -106,6 +106,7 @@ import { Session } from '../../core/session';
           (input)="rolloverYear.set(value($event)); rolloverReset()"
         />
         <button type="submit" data-testid="rollover">Roll the year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo the last rollover</button>
         @if (rolloverMade() !== null) {
           <p role="status">Periods made: <span data-testid="rollover-made">{{ rolloverMade() }}</span></p>
         }
@@ -410,6 +411,30 @@ export class Periods {
           : e instanceof HttpErrorResponse && e.status === 409
             ? 'That fiscal year has no periods to roll over.'
             : 'The year could not be rolled over.',
+      );
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Undo the last rollover; the periods are read again, a refusal shown as the rollover's error. */
+  protected async undoRollover(): Promise<void> {
+    if (this.busy) return;
+    this.rolloverReset();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.busy = true;
+    try {
+      await this.api.undoRollover(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.rolledOver.emit();
+    } catch (e) {
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who made the rollover may undo it.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'The last rollover cannot be undone: there is none, it was made on another day, or a claim is in its periods.'
+            : 'The rollover could not be undone.',
       );
     } finally {
       this.busy = false;

@@ -117,6 +117,11 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/rollover`, { year }));
   }
 
+  /** Undo the last rollover; refused for anyone but its steward, on a later day, or once a claim is in its periods. */
+  undoRollover(sheet: string): Promise<void> {
+    return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/rollover/undo`, {}));
+  }
+
   /** Generate the calendar year's four quarters, named yyyy-Q1 to yyyy-Q4, as generate does; the periods made. */
   generateQuarters(sheet: string, year: string): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-quarters`, { year }));

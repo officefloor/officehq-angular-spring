@@ -139,6 +139,14 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** Undo the sheet's last rollover: its periods removed, its opening balances taken back. */
+    @PostMapping("/rollover/undo")
+    public void undoRollover(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        service.undoRollover(sheetId, SignedIn.name(user));
+    }
+
     /** A calendar year to generate quarterly periods for: four digits. */
     public record QuartersForm(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
     }

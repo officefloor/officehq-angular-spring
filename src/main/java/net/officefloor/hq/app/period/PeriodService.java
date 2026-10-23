@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -41,9 +42,11 @@ public class PeriodService {
     private final RoleService roles;
     private final Audit audit;
     private final SheetHistory history;
+    private final RolloverRepository rollovers;
 
     public PeriodService(PeriodRepository periods, ClaimRepository claims, PersonRepository people, Dues dues,
-            SheetService sheets, RoleService roles, Audit audit, SheetHistory history) {
+            SheetService sheets, RoleService roles, Audit audit, SheetHistory history, RolloverRepository rollovers) {
+        this.rollovers = rollovers;
         this.history = history;
         this.periods = periods;
         this.claims = claims;
@@ -161,8 +164,10 @@ public class PeriodService {
      * figures, as computed now, of their claims due by in a period of the old year (a period whose
      * from-date falls in it) that were OPEN or PENDING at the end of the old year's last period by their
      * status log, each at the grade its person has in force on its date, leaving out the same claims as
-     * {@link #carried}; a person whose figure is nothing gets no line. Refused for anyone but a steward,
-     * and when the old year has no periods. The periods made, in month order.
+     * {@link #carried}; a person whose figure is nothing gets no line, and no one gets one when no period
+     * was made. Refused for anyone but a steward,
+     * and when the old year has no periods. The rollover is kept, with the periods it made and the
+     * opening balances it set, so it can be undone (see {@link #undoRollover}). The periods made, in month order.
      */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -180,8 +185,11 @@ public class PeriodService {
         LocalDate end = old.stream().map(Period::getToDate).max(Comparator.naturalOrder()).orElseThrow();
         Map<Long, BigDecimal> open = openAt(sheetId, old, end, today);
         List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        Rollover rollover = new Rollover(sheetId, user, today, year);
+        made.forEach(p -> rollover.addPeriod(p.getId()));
+        // A rollover that made no periods (the year was already rolled over) carries nothing again.
         periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                .filter(p -> sheet.fiscalYearOf(p.getFromDate()) == year + 1)
+                .filter(p -> !made.isEmpty() && sheet.fiscalYearOf(p.getFromDate()) == year + 1)
                 .findFirst()
                 .ifPresent(first -> {
                     for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
@@ -191,12 +199,54 @@ public class PeriodService {
                         }
                         first.addOpening(person.getId(), amount);
                         periods.saveAndFlush(first);
+                        rollover.addOpening(first.getId(), person.getId(), amount);
                         audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                                 + " period=" + first.getName() + " amount=" + amount.toPlainString());
                     }
                 });
+        rollovers.saveAndFlush(rollover);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
         return made;
+    }
+
+    /**
+     * Undo the sheet's last rollover: remove the periods it generated and take back the opening balances
+     * it set, and record ROLLOVER_UNDONE with the fiscal year it rolled over. Refused when there is no
+     * rollover left to undo, for anyone but the steward who made it, on any day of the sheet but the one
+     * it was made on, and when a claim's date or due-by falls in one of the periods it generated.
+     */
+    @Transactional
+    public void undoRollover(String sheetId, String user) {
+        Sheet sheet = sheets.lock(sheetId);
+        Rollover rollover = rollovers.findFirstBySheetIdOrderByIdDesc(sheetId)
+                .filter(r -> !r.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no rollover to undo."));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user)) || !rollover.getMadeBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made the rollover may undo it.");
+        }
+        if (!Objects.equals(rollover.getMadeOn(), sheet.getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A rollover can only be undone on the day it was made.");
+        }
+        List<Period> made = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> rollover.getPeriodIds().contains(p.getId()))
+                .toList();
+        boolean used = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .anyMatch(c -> made.stream().anyMatch(p -> (c.getDate() != null && p.contains(c.getDate()))
+                        || (c.getDueBy() != null && p.contains(c.getDueBy()))));
+        if (used) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim now belongs to a period the rollover generated.");
+        }
+        if (rollover.getOpeningPeriodId() != null && !rollover.getPeriodIds().contains(rollover.getOpeningPeriodId())) {
+            periods.findByIdAndSheetId(rollover.getOpeningPeriodId(), sheetId).ifPresent(period -> {
+                rollover.getOpenings().forEach(period::takeOpening);
+                periods.saveAndFlush(period);
+            });
+        }
+        periods.deleteAll(made);
+        periods.flush();
+        rollover.undo();
+        rollovers.saveAndFlush(rollover);
+        audit.recordOnCommit("ROLLOVER_UNDONE sheet=" + sheetId + " by=" + user + " fy=FY" + rollover.getFy());
     }
 
     /**
