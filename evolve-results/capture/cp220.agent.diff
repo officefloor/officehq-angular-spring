@@ -1,0 +1,259 @@
+diff --git a/.e2e.out b/.e2e.out
+index 9224541b..7a295068 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,118 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › shared claims › shared claims (19.6s)
+-  ✘  2 [chromium] › acceptance.spec.ts:108:7 › shared claims › shared claims scenario 1 (39.0s)
+-  ✘  3 [chromium] › acceptance.spec.ts:765:7 › shared claims › shared claims scenario 2 (39.6s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1262:7 › shared claims › shared claims scenario 3 (27.8s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan amount reaches drafts › plan amount reaches drafts (9.5s)
++  ✓  2 [chromium] › acceptance.spec.ts:54:7 › plan amount reaches drafts › plan amount reaches drafts scenario 1 (48.8s)
++  ✓  3 [chromium] › acceptance.spec.ts:705:7 › plan amount reaches drafts › plan amount reaches drafts scenario 2 (38.6s)
++  ✘  4 [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 (36.6s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:108:7 › shared claims › shared claims scenario 1 ──────────────
++  1) [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkv1oe1eg7d[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkv1oe1eg7d-p</strong>[22m
+-    [2m  -   unexpected value "smvkv1oe1eg7d-p"[22m
+-
+-
+-      251 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      252 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+-    > 253 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      254 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+-      255 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      256 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:253:54
+-
+-  2) [chromium] › acceptance.spec.ts:765:7 › shared claims › shared claims scenario 2 ──────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+-
+-    [32m- Expected  - 2[39m
+-    [31m+ Received  + 2[39m
+-
+-    [2m  Array [[22m
+-    [32m-   "Ada 0.00 ",[39m
+-    [32m-   "Cam 0.00 ",[39m
+-    [31m+   "Ada 0.00",[39m
+-    [31m+   "Cam 0.00",[39m
+-    [2m  ][22m
+-
+-      886 |     expect(await ui.claimEditSave(pg_vic, c_cam_1, {"amount": "0.04"})).toBe(false);
+-      887 |     expect(await ui.setRate(pg_vic, {"grade": "C", "pct": "12.50"})).toBe(false);
+-    > 888 |     expect(await ui.snapshotCompare(pg_vic, "2026-04-05", "2026-03-20")).toEqual(["Ada 0.00 ", "Cam 0.00 "]);
+-          |                                                                          ^
+-      889 |     await ui.refresh(pg_wes);
+-      890 |     expect(await ui.claimAction(pg_wes, c_cam_1, "open")).toBe(true);
+-      891 |     expect(await ui.hold(pg_wes, p_cam, {"from": "2026-03-15", "to": "2026-03-20"})).toBe(true);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:888:74
+-
+-  3) [chromium] › acceptance.spec.ts:1262:7 › shared claims › shared claims scenario 3 ─────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('rollup-cut-total')
+-    Expected string: [32m"5.18"[39m
++    Locator: getByTestId('person-row-13').getByTestId('person-claimed')
++    Expected string: [32m"0.00"[39m
+     Received string: [31m"7.77"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('rollup-cut-total')[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-claimed')[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <strong data-testid="rollup-cut-total">7.77</strong>[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+     [2m  -   unexpected value "7.77"[22m
+ 
+ 
+-      1396 |     await expect(pg_wes.getByTestId("rollup-open-total")).toHaveText("10.17");
+-      1397 |     await expect(pg_wes.getByTestId("bulk-settle-batch")).toHaveText("");
+-    > 1398 |     await expect(pg_wes.getByTestId("rollup-cut-total")).toHaveText("5.18");
+-           |                                                          ^
+-      1399 |     await expect(pg_wes.getByTestId("rollup-aged-0-30")).toHaveText("10.17");
+-      1400 |     await expect(pg_wes.getByTestId("rollup-aged-31-60")).toHaveText("0.00");
+-      1401 |     await expect(pg_wes.getByTestId("rollup-aged-61")).toHaveText("0.00");
++      1472 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-claimed")).toHaveText("0.00");
++      1473 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-due-total")).toHaveText("0.00");
++    > 1474 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
++           |                                                                                           ^
++      1475 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
++      1476 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("7.77");
++      1477 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("1.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1398:58
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1474:91
+ 
+-  3 failed
+-    [chromium] › acceptance.spec.ts:108:7 › shared claims › shared claims scenario 1 ───────────────
+-    [chromium] › acceptance.spec.ts:765:7 › shared claims › shared claims scenario 2 ───────────────
+-    [chromium] › acceptance.spec.ts:1262:7 › shared claims › shared claims scenario 3 ──────────────
+-  1 passed (2.2m)
++  Slow test file: [chromium] › acceptance.spec.ts (2.2m)
++  Consider splitting slow test files to speed up parallel execution
++  1 failed
++    [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
++  3 passed (2.3m)
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 96d62684..91104207 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -163,6 +163,11 @@ public class Plan {
+         return made.containsKey(date);
+     }
+ 
++    /** The claims the plan has made, in the order of their plan dates. */
++    public List<Long> getMadeClaimIds() {
++        return new TreeMap<>(made).values().stream().toList();
++    }
++
+     /** Record the claim the plan made for the date. */
+     public void made(LocalDate date, long claimId) {
+         made.put(date, claimId);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 970f47c0..8bfe87e1 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -7,7 +7,9 @@ import java.util.ArrayList;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.Role;
+@@ -34,17 +36,19 @@ public class PlanService {
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
+     private final ClaimService claims;
++    private final ClaimRepository claimStore;
+     private final RoleService roles;
+     private final TransactionTemplate eachClaim;
+     private final Audit audit;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets,
+-            SheetRepository sheetStore, ClaimService claims, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
++            SheetRepository sheetStore, ClaimService claims, ClaimRepository claimStore, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
+         this.plans = plans;
+         this.people = people;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+         this.claims = claims;
++        this.claimStore = claimStore;
+         this.roles = roles;
+         this.eachClaim = new TransactionTemplate(transactions);
+         this.audit = audit;
+@@ -135,24 +139,43 @@ public class PlanService {
+ 
+     /**
+      * Change a plan's amount (not below 0.00) on the sheet's today: the claims generated from then on take it,
+-     * those already made keep theirs.
++     * and so do those it made that are still DRAFT, each edited as the claim form would edit it (its date,
++     * note and the number it corrects kept) and audited as CLAIM_EDITED, after the plan's change, in the order
++     * of their plan dates. Each is edited on its own: one the form refuses keeps its amount. Claims in any
++     * other status keep theirs.
+      */
+-    @Transactional
+     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+         if (amount.signum() < 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
+         }
+-        Sheet sheet = sheets.lock(sheetId);
+-        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+-        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
+-        plan.changeAmount(sheet.getToday(), money);
+-        Plan saved = plans.saveAndFlush(plan);
+-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+-                + " start=" + plan.getStart() + " amount=" + money.toPlainString());
+-        return saved;
++        Plan saved = eachClaim.execute(status -> {
++            Sheet sheet = sheets.lock(sheetId);
++            Plan plan = plans.findByIdAndSheetId(planId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
++            Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++            plan.changeAmount(sheet.getToday(), money);
++            Plan changed = plans.saveAndFlush(plan);
++            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                    + " start=" + plan.getStart() + " amount=" + money.toPlainString());
++            return changed;
++        });
++        String claimSheet = saved.getTargetSheetId() != null ? saved.getTargetSheetId() : sheetId;
++        for (Long claimId : saved.getMadeClaimIds()) {
++            try {
++                eachClaim.executeWithoutResult(status -> {
++                    Claim claim = claimStore.findByIdAndSheetId(claimId, claimSheet).orElse(null);
++                    if (claim != null && claim.getStatus() == ClaimStatus.DRAFT) {
++                        claims.edit(claimSheet, user, claimId, money, claim.getDate(), claim.getNote(),
++                                claim.getCorrects(), null, null);
++                    }
++                });
++            } catch (ResponseStatusException refused) {
++                // the claim form refuses this edit: the claim keeps its amount
++            }
++        }
++        return plans.findByIdAndSheetId(planId, sheetId).orElse(saved);
+     }
+ 
+     /**
