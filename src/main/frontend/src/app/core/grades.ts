@@ -10,6 +10,13 @@ export interface GradeStateView {
   retired: boolean;
 }
 
+/** A grade merged into another, and how many people were given the other. */
+export interface GradeMergeView {
+  from: Grade;
+  into: Grade;
+  people: number;
+}
+
 // The sheet's grades, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class GradesApi {
@@ -23,6 +30,11 @@ export class GradesApi {
   /** Retire a grade: the sheet's grades as they are now. Refused when it is already retired. */
   retire(sheet: string, grade: Grade): Promise<GradeStateView[]> {
     return firstValueFrom(this.http.post<GradeStateView[]>(`${this.url(sheet)}/${encodeURIComponent(grade)}/retire`, {}));
+  }
+
+  /** Merge a grade into another: who now has the other grade. Refused for the same grade twice, or anyone but a steward. */
+  merge(sheet: string, from: Grade, into: Grade): Promise<GradeMergeView> {
+    return firstValueFrom(this.http.post<GradeMergeView>(`${this.url(sheet)}/merge`, { from, into }));
   }
 
   private url(sheet: string): string {
@@ -61,6 +73,13 @@ export class GradesStore {
   async retire(sheet: string, grade: Grade): Promise<void> {
     const grades = await this.api.retire(sheet, grade);
     if (this.session.sheet() === sheet) this.grades.set(grades);
+  }
+
+  /** Merge a grade into another on the loaded sheet, then re-read the sheet; throws when the store refuses it. */
+  async merge(sheet: string, from: Grade, into: Grade): Promise<GradeMergeView> {
+    const merged = await this.api.merge(sheet, from, into);
+    if (this.session.sheet() === sheet) await this.session.loadSheet(sheet);
+    return merged;
   }
 
   private async reload(sheet: string, loads: number): Promise<void> {
