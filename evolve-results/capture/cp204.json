@@ -1,0 +1,70 @@
+{
+  "checkpoint": 204,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    110,
+    201
+  ],
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "request": {
+    "spec": "The trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b0d32eeb10c5d6fffde8320699d540951c598a75",
+  "reset_sha": "",
+  "preagent_sha": "bf11c4e8950172b4122f9ed48acb01df2dbb5de4",
+  "prev_sha": "bf11c4e8950172b4122f9ed48acb01df2dbb5de4",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6781020000000001,
+    "input_tokens": 38,
+    "output_tokens": 6566,
+    "cache_read_tokens": 728990,
+    "cache_creation_tokens": 50104,
+    "num_turns": 19,
+    "duration_ms": 469298,
+    "duration_api_ms": 78575,
+    "model": "claude-opus-5-5",
+    "session_id": "9c588bf8-0dfa-4a50-8b0a-7b6d6b06301b",
+    "stop_reason": "success",
+    "result_text": "I've made the change, but `bin/e2e` does not pass: 1 of 4 tests passes and 3 fail. As far as I can tell, all three failures come from the spec, not from the consolidation logic.\n\n**The change** is all in `src/main/java/net/officefloor/hq/app/rollup/Consolidation.java`:\n- **Totals:** the consolidated due-total and overdue-total now gather every person's figure from every sheet in the tree and trim once, leaving out the single highest and lowest when there are three or more. They use the existing `Rollups.trimmed`. People whose due is n/a are skipped for the due-total, as on a single sheet.\n- **People count:** a person's name and aliases are compared the way the app already compares names (trimmed, case ignored). People who share any of them count as one, and the merge carries through chains of matches. Only the count merges people; for the totals each sheet's person keeps their own figure. The first test needs that: it expects a due-total of 9.00, and merging the two \"Ada\"s would give 7.00.\n- No change was needed to the stored data, the API shape or the front end.\n\n**Why three tests fail:** scenarios 1\u20133 each check `sheet-parent` against the literal text `\"__SHEET__-p\"`. That looks like a placeholder that was never filled in, since the app correctly shows the real id (e.g. `smvkr915kjygi-p`). I'm not allowed to edit the spec, so these tests can't get past that step as written.\n\n**Checking past the placeholder:** I ran a throwaway copy of the spec with the placeholder replaced by the real sheet id, then deleted it; the original spec is unchanged. In that run:\n- The first test and scenario 1 passed.\n- Every consolidated value in all four tests matched.\n- Scenarios 2 and 3 then failed on things my change doesn't touch:\n  - **Scenario 2** (`acceptance.spec.ts:1256`): a plan paused on 2026-04-05 is expected to still list 2026-04-30 as its next date. The app deliberately leaves out dates after a pause.\n  - **Scenario 3** (`acceptance.spec.ts:1504`): a claim's late-entry flag is expected to be \"no\" but the app shows \"yes\". That flag is set when a claim is added in a soft-closed period.\n\nI left those two behaviours alone because changing them is outside this request and could break those features. If you want them changed to match the spec, I can look into each one. The spec's `\"__SHEET__-p\"` placeholder needs fixing at its source either way.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6781020000000001,
+        "num_turns": 19,
+        "duration_ms": 469298,
+        "duration_api_ms": 78575,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp204.agent.jsonl",
+  "agent_diff_file": "cp204.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

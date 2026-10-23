@@ -1,0 +1,100 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+index 39759f76..9838ca8e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+@@ -3,9 +3,13 @@ package net.officefloor.hq.app.rollup;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collections;
++import java.util.HashSet;
++import java.util.Iterator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+@@ -27,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
+ public class Consolidation {
+ 
+     /**
+-     * The number of people, the due-totals and overdue-totals added up, per grade the due-totals of the
++     * The number of people (those whose names or aliases match counted once), the people's due-totals and
++     * overdue-totals over the whole tree added up, leaving out the single highest and single lowest when
++     * there are three or more, per grade the due-totals of the
+      * people not retired who have it in force on their sheet's today (those shown as n/a skipped) added
+      * up, and per status how many claims have it.
+      */
+@@ -71,17 +77,26 @@ public class Consolidation {
+         List<String> all = new ArrayList<>();
+         all.add(sheetId);
+         all.addAll(sheets.descendants(sheetId));
+-        int count = 0;
+-        BigDecimal due = BigDecimal.ZERO.setScale(2);
+-        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        List<BigDecimal> dueFigures = new ArrayList<>();
++        List<BigDecimal> overdueFigures = new ArrayList<>();
++        List<Set<String>> persons = new ArrayList<>();
+         Map<String, BigDecimal> grades = new TreeMap<>();
+         Map<String, Integer> statuses = new TreeMap<>();
+         for (String id : all) {
+             Taken taken = asOf == null ? now(id) : asOf(id, asOf);
+             Rollups.Rollup rollup = taken.rollup();
+-            count += rollup.people().size();
+-            due = due.add(rollup.dueTotal());
+-            overdue = overdue.add(rollup.overdueTotal());
++            rollup.people().values().forEach(figures -> {
++                if (figures.dueTotal() != null) {
++                    dueFigures.add(figures.dueTotal());
++                }
++                overdueFigures.add(figures.overdueTotal());
++            });
++            rollup.people().keySet().forEach(personId -> {
++                Person person = taken.people().get(personId);
++                if (person != null) {
++                    persons.add(keys(person));
++                }
++            });
+             LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
+             taken.people().forEach((personId, person) -> {
+                 Rollups.Figures figures = rollup.people().get(personId);
+@@ -95,7 +110,36 @@ public class Consolidation {
+                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
+             }
+         }
+-        return new Consolidated(count, due, overdue, grades, statuses);
++        return new Consolidated(distinct(persons), Rollups.trimmed(dueFigures), Rollups.trimmed(overdueFigures),
++                grades, statuses);
++    }
++
++    /** A person's name and aliases, each as names are compared. */
++    private static Set<String> keys(Person person) {
++        Set<String> keys = new HashSet<>();
++        keys.add(Person.keyOf(person.getName()));
++        person.getAliases().forEach(alias -> keys.add(Person.keyOf(alias)));
++        return keys;
++    }
++
++    /**
++     * How many people there are when those whose names or aliases match, as names are compared, are one
++     * person (and so on through whoever they match in turn).
++     */
++    private static int distinct(List<Set<String>> persons) {
++        List<Set<String>> groups = new ArrayList<>();
++        for (Set<String> person : persons) {
++            Set<String> merged = new HashSet<>(person);
++            for (Iterator<Set<String>> it = groups.iterator(); it.hasNext();) {
++                Set<String> group = it.next();
++                if (!Collections.disjoint(group, merged)) {
++                    merged.addAll(group);
++                    it.remove();
++                }
++            }
++            groups.add(merged);
++        }
++        return groups.size();
+     }
+ 
+     /** A sheet's figures as it stands now. */
