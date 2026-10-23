@@ -133,7 +133,7 @@ public class ClaimService {
         int terms = terms(sheet, person, dated);
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseIfRetired(person, dated);
-        refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
         String referred = reference(ref);
         refuseIfReferred(sheetId, referred, null);
         Claim added = new Claim(sheetId, personId, money(amount), dated, terms, dueBy, clean(note), corrects);
@@ -184,7 +184,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with lines takes its amount from them: " + claim.getAmount().toPlainString() + ".");
         }
-        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
         String referred = ref == null ? claim.getRef() : reference(ref);
         refuseIfReferred(sheetId, referred, claim.getId());
         claim.refer(referred);
@@ -431,6 +431,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim can only be restored on the day it was deleted, " + claim.deletedOn() + ".");
         }
+        if (claim.isCorrection()) {
+            refuseUnlessCorrects(sheetId, claim.getPersonId(), claim.getAmount(), claim.getCorrects(), claim.getId());
+        }
         claim.become(ClaimStatus.DRAFT);
         Person person = person(sheetId, claim.getPersonId());
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
@@ -660,7 +663,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
         }
         refuseIfRetired(to, claim.getDate());
-        refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects());
+        refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects(), claim.getId());
         claim.reassign(to.getId());
         claim.unbind();
         if (claim.getNumber() != null) {
@@ -830,9 +833,11 @@ public class ClaimService {
 
     /**
      * Refuse a correction (an amount below 0.00) unless it names, by number, a SETTLED claim of the
-     * same person; and refuse naming a claim to correct on any other claim.
+     * same person, and unless it is no more than what remains of that claim: its amount less the
+     * amounts of the corrections already made against it (VOID or DELETED ones, and the claim
+     * {@code self} itself, left out); and refuse naming a claim to correct on any other claim.
      */
-    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects, Long self) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -840,12 +845,24 @@ public class ClaimService {
             }
             return;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+        Claim target = corrects == null ? null : claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
                 .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
-                .isPresent();
-        if (!settled) {
+                .orElse(null);
+        if (target == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A correction must name the number of a SETTLED claim of the same person.");
+        }
+        BigDecimal remains = target.getAmount();
+        for (Claim made : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
+            if (corrects.equals(made.getCorrects()) && !made.getId().equals(self)
+                    && made.getStatus() != ClaimStatus.VOID && made.getStatus() != ClaimStatus.DELETED) {
+                remains = remains.add(made.getAmount());
+            }
+        }
+        if (money(amount).negate().compareTo(remains) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A correction may not exceed what remains of " + corrects + ": "
+                            + money(remains.max(BigDecimal.ZERO)).toPlainString() + ".");
         }
     }
 
