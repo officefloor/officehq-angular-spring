@@ -1,0 +1,38 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 3d81a27d..4d41dbd9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -165,7 +165,8 @@ public class PeriodService {
+      * from-date falls in it) that were OPEN or PENDING at the end of the old year's last period by their
+      * status log, each at the grade its person has in force on its date, leaving out the same claims as
+      * {@link #carried}; a person whose figure is nothing gets no line, and no one gets one when no period
+-     * was made. Refused for anyone but a steward,
++     * was made. Then soft-close, in from-date order, each period of the old year still open, exactly as
++     * {@link #softClose} would, each recorded PERIOD_SOFT_CLOSED after the ROLLOVER line. Refused for anyone but a steward,
+      * and when the old year has no periods. The rollover is kept, with the periods it made and the
+      * opening balances it set, so it can be undone (see {@link #undoRollover}). The periods made, in month order.
+      */
+@@ -206,6 +207,11 @@ public class PeriodService {
+                 });
+         rollovers.saveAndFlush(rollover);
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
++        for (Period period : old) {
++            if (!period.isFixed()) {
++                softCloseFixing(sheetId, user, period, today);
++            }
++        }
+         return made;
+     }
+ 
+@@ -316,6 +322,11 @@ public class PeriodService {
+         if (period.isFixed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed or soft-closed.");
+         }
++        return softCloseFixing(sheetId, user, period, today);
++    }
++
++    /** Soft-close an open period, fixing its figures as they stand now, and record PERIOD_SOFT_CLOSED. */
++    private Period softCloseFixing(String sheetId, String user, Period period, LocalDate today) {
+         period.softClose(totals(sheetId, period, today), carried(sheetId, period, today));
+         period.fixCuts(history.cutsNow(sheetId, today));
+         Period saved = periods.saveAndFlush(period);

@@ -1,0 +1,73 @@
+{
+  "checkpoint": 228,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    207,
+    215,
+    219
+  ],
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "request": {
+    "spec": "The rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ce570c021016c38fef0faa159180e72af1fe8953",
+  "reset_sha": "",
+  "preagent_sha": "09a02f3bfbca8b673796687de7198f5ea62780d0",
+  "prev_sha": "09a02f3bfbca8b673796687de7198f5ea62780d0",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.47261559999999997,
+    "input_tokens": 32,
+    "output_tokens": 5045,
+    "cache_read_tokens": 493978,
+    "cache_creation_tokens": 34099,
+    "num_turns": 17,
+    "duration_ms": 322482,
+    "duration_api_ms": 56023,
+    "model": "claude-opus-5-5",
+    "session_id": "820ce655-3bfe-4aed-98c6-a4c186becf0a",
+    "stop_reason": "success",
+    "result_text": "I added the change: rolling a fiscal year over now also soft-closes every period of that year that is still open, oldest first, right after the ROLLOVER audit line. The main rollover test passes, and so does scenario 2. Scenarios 1 and 3 still fail. Neither does a rollover, and I don't believe my change causes them, but I didn't run them against the unchanged code to prove it.\n\n**What changed** (all in `src/main/java/net/officefloor/hq/app/period/PeriodService.java`):\n- After writing the ROLLOVER line, `rollover` goes through the old year's periods by start date. Each one that is neither closed nor soft-closed is soft-closed and gets its own PERIOD_SOFT_CLOSED line. In the test, the hand-closed 2026-11 is skipped, as expected.\n- I moved the existing soft-close steps into a shared private method, `softCloseFixing`, so the rollover and the soft-close button do exactly the same thing. The button's checks and refusals are unchanged.\n- The front end needed nothing new: it already reloads after a rollover.\n\n**Two choices for you to confirm:**\n- **Permissions:** the rollover soft-closes these periods without checking whether the steward's role may close periods, because only a steward can roll over in the first place. If a steward may be barred from closing, you might want that check added.\n- **Undo:** undoing a rollover does not reopen the periods it soft-closed; they stay soft-closed. The request didn't cover this. Reopening them would mean storing which periods the rollover closed.\n\n**The two failing scenarios:**\n- **Scenario 1** (spec line 606) expects the sheet's parent to show the literal text `__SHEET__-p`. That looks like a placeholder in the test data that was never filled in.\n- **Scenario 3** (spec line 1946) has user wes watch Ada (line 1799), then expects Ada's row to show \"no\" for watched. The screen shows \"yes\", which is what that step should produce.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.47261559999999997,
+        "num_turns": 17,
+        "duration_ms": 322482,
+        "duration_api_ms": 56023,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp228.agent.jsonl",
+  "agent_diff_file": "cp228.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
