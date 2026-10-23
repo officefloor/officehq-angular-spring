@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5588c4ab41c86ff5578aa0f4065888ea00e5f26e",
+  "reset_sha": "",
+  "preagent_sha": "311d2de83616ce8c6d98741672c851ba49e4c787",
+  "prev_sha": "311d2de83616ce8c6d98741672c851ba49e4c787",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8696362,
+    "input_tokens": 44,
+    "output_tokens": 8602,
+    "cache_read_tokens": 1066861,
+    "cache_creation_tokens": 60506,
+    "num_turns": 24,
+    "duration_ms": 736264,
+    "duration_api_ms": 113629,
+    "model": "claude-opus-5-5",
+    "session_id": "541bb857-0425-4885-a01e-3760338f9c4a",
+    "stop_reason": "success",
+    "result_text": "I've added the rate calendar, but only 1 of the 4 tests in `bin/e2e` passes. The main \"rate calendar\" test passes; the three \"scenario\" tests fail on checks that aren't about the calendar.\n\n**What changed:** only `src/main/frontend/src/app/features/rates/rates.ts`. The Rates panel now has a calendar table with one row per grade (A, B, C) and one column per month of the year of the sheet's today. Each cell (`rate-month-<grade>-<yyyy-mm>`) shows the rate in force on the 1st of that month, or `n/a` if there is none. It uses the same lookup as the existing \"rate in force today\" column, so to-dates, inheriting from a parent sheet and the newest-version rule all work the same way. No server or database change was needed, and no new audit records were expected.\n\n**Why the three scenarios fail:**\n- **Scenarios 1 and 2** expect the parent-sheet field to show the literal text `\"__SHEET__-p\"` (spec lines 224 and 549). That looks like a placeholder the test generator didn't fill in. The app correctly shows the real parent id, such as `smvkfcbfcjqus-p`.\n- **Scenario 3** expects crew C1 and its pool to still exist after Cam, the crew's lead, is transferred to another sheet (spec line 1126 onward). The app currently deletes any crew whose lead leaves, along with its pool, and the code comments say that is intended. I haven't changed this because it's separate from the rate calendar.\n\n**Check:** I ran a temporary copy of the spec with only those lines fixed (the real sheet id in place of the placeholder, and the C1 crew/pool checks removed). All four tests passed, including every calendar cell and the audit records. I've deleted the copy, and the real spec is untouched.\n\n**Decision for you:** if keeping a crew without its lead after a transfer is the behaviour you want, I can change `CrewService.leave` to do that. It would change existing behaviour, so I'd want your go-ahead. The placeholder in scenarios 1 and 2 needs fixing in the spec, not the app.\n\nSomething else on this machine is already using port 3000, so a plain `bin/e2e` tests whatever app that is. Run it as `PORT=3917 bin/e2e`, which is how I got the results above.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8696362,
+        "num_turns": 24,
+        "duration_ms": 736264,
+        "duration_api_ms": 113629,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

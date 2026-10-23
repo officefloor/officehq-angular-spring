@@ -1,0 +1,252 @@
+diff --git a/.e2e.out b/.e2e.out
+index 29290950..2a9b4258 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,87 +2,116 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › person terms dated › person terms dated (10.7s)
+-  ✘  2 [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 (21.1s)
+-  ✘  3 [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 (15.3s)
+-  ✘  4 [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 (34.7s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate calendar › rate calendar (7.0s)
++  ✘  2 [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 (29.4s)
++  ✘  3 [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 (28.2s)
++  ✘  4 [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 (23.8s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 ─────
++  1) [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 ──────────────
+ 
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+-
+-    Expected: [32m0[39m
+-    Received: [31m1[39m
+-
+-      177 |     expect(await ui.periodAction(pg_vic, "2026-02", "close")).toBe(true);
+-      178 |     const c_ada_2 = ui.must(await ui.addClaim(pg_vic, p_ada, {"amount": "10.25", "tags": " c "}));
+-    > 179 |     expect(await ui.generatePlans(pg_vic)).toBe(0);
+-          |                                            ^
+-      180 |     await ui.refresh(pg_vic);
+-      181 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.40");
+-      182 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("1.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:179:44
+-
+-  2) [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 ────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+-
+-    Received: [31m"13"[39m
+-
+-      596 |     expect(await ui.editInline(pg_uma, c_cam_0, "99.95")).toBe(true);
+-      597 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
+-    > 598 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "3.33", "date": "2026-03-01", "note": "n"})).toBeNull();
+-          |                                                                                                     ^
+-      599 |     expect(await ui.addLine(pg_uma, c_cam_0, {"label": "y", "qty": "1", "unit": "0.01"})).toBe(true);
+-      600 |     expect(await ui.statement(pg_uma, p_dot)).toBe(true);
+-      601 |     expect(await ui.watch(pg_uma, p_fay, true)).toBe(true);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:598:101
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-  3) [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 ────
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvkfnur7g50r[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
++    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
++
++
++      222 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("yes");
++      223 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
++    > 224 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      225 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("3");
++      226 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      227 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:224:54
++
++  2) [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 ──────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkf8r29u1oq[27m-p"[39m
++    Received string: [31m"[7msmvkfoi82vkgc[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkf8r29u1oq-p</strong>[22m
+-    [2m  -   unexpected value "smvkf8r29u1oq-p"[22m
+-
+-
+-      1053 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      1054 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+-    > 1055 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1056 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+-      1057 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1058 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1055:54
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
++    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
++
++
++      547 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
++      548 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
++    > 549 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      550 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
++      551 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      552 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:549:54
++
++  3) [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 ──────────────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('pool-row-C1').getByTestId('pool-total-share')
++    Expected string: [32m"100.00"[39m
++    Received: <element(s) not found>
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')[22m
++
++
++      1124 |     await expect(pg_vic.getByTestId("pool-row-P2").getByTestId("pool-total-share")).toHaveText("0.00");
++      1125 |     await expect(pg_vic.getByTestId("pool-row-P2").getByTestId("pool-balanced")).toHaveText("no");
++    > 1126 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-total-share")).toHaveText("100.00");
++           |                                                                                     ^
++      1127 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("yes");
++      1128 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-share")).toHaveText("100.00");
++      1129 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-cut")).toHaveText("");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1126:85
+ 
+   3 failed
+-    [chromium] › acceptance.spec.ts:99:7 › person terms dated › person terms dated scenario 1 ──────
+-    [chromium] › acceptance.spec.ts:523:7 › person terms dated › person terms dated scenario 2 ─────
+-    [chromium] › acceptance.spec.ts:865:7 › person terms dated › person terms dated scenario 3 ─────
++    [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 ───────────────
++    [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 ───────────────
++    [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 ───────────────
+   1 passed (1.5m)
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index c718bfc6..b36f378b 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
+ 
+ // The sheet's rates: each grade's rate in force on the sheet's today, every rate by grade and
+ // from-date, and one form to set a grade's rate from a date (or from the beginning of time) through
+-// a to-date (or with no end).
++// a to-date (or with no end), and a calendar of each grade's rate on the first of each month of the
++// sheet's today's year.
+ @Component({
+   selector: 'app-rates',
+   imports: [FigurePipe],
+@@ -121,6 +122,27 @@ import { Session } from '../../core/session';
+           }
+         </tbody>
+       </table>
++      <table>
++        <caption>Rate calendar for {{ year() }}: the rate in force on the first of each month</caption>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            @for (m of months(); track m) {
++              <th scope="col">{{ m }}</th>
++            }
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            <tr>
++              <th scope="row">{{ g }}</th>
++              @for (m of months(); track m) {
++                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (monthOf(g, m) ?? noRate) | figure }}</td>
++              }
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table>
+         <caption>All rates</caption>
+         <thead>
+@@ -209,6 +231,19 @@ export class Rates {
+     ),
+   );
+ 
++  /** The calendar year of the sheet's today (yyyy). */
++  protected readonly year = computed(() => this.today().slice(0, 4));
++
++  /** The months (yyyy-mm) of the sheet's today's calendar year. */
++  protected readonly months = computed(() =>
++    Array.from({ length: 12 }, (_, i) => `${this.year()}-${String(i + 1).padStart(2, '0')}`),
++  );
++
++  /** The rate a grade has in force on the first day of a month (yyyy-mm). */
++  protected monthOf(grade: Grade, month: string): string | null {
++    return rateOn(this.rates(), grade, `${month}-01`, this.inherited());
++  }
++
+   protected currentOf(grade: Grade): string | null {
+     return rateOn(this.rates(), grade, this.today(), this.inherited());
+   }
