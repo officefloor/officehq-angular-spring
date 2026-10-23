@@ -387,6 +387,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
             @if (columns.shown('retired')) {
               <th scope="col">Retired</th>
             }
+            <th scope="col">Statement lines</th>
             <th scope="col">Snapshots</th>
             <th scope="col">Active</th>
             @if (columns.shown('hold')) {
@@ -513,6 +514,13 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   </ul>
                 </td>
               }
+              <td>
+                <ul aria-label="Statement lines">
+                  @for (s of p.statementLines ?? []; track $index) {
+                    <li data-testid="person-statement-line-line">{{ s.date }} {{ s.dueTotal }}</li>
+                  }
+                </ul>
+              </td>
               <td>
                 <ul aria-label="Snapshots">
                   @for (s of p.snapshots ?? []; track $index) {

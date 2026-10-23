@@ -50,7 +50,7 @@ public class PersonController {
             List<String> tagsUsed, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
-            String originSheetId, List<SnapshotView> snapshots) {
+            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
 
         public static PersonView of(Person person) {
             return of(person, false);
@@ -71,6 +71,10 @@ public class PersonController {
                     person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId(),
                     person.getSnapshots().stream()
                             .map(snapshot -> new SnapshotView(snapshot.getAsOf(), Rollups.shown(snapshot.getDueTotal())))
+                            .toList(),
+                    person.getStatements().stream()
+                            .map(statement -> new StatementLineView(statement.getTakenOn(),
+                                    Rollups.shown(statement.getTotal())))
                             .toList());
         }
     }
@@ -81,6 +85,10 @@ public class PersonController {
 
     /** A snapshot line of a person: the day being left and their due-total on it (n/a when no rate applied). */
     public record SnapshotView(LocalDate asOf, String dueTotal) {
+    }
+
+    /** A statement line of a person: the date it was taken as of and its due-total (n/a when no rate applied). */
+    public record StatementLineView(LocalDate date, String dueTotal) {
     }
 
     /** A hold on a person, from a date to a date (null: no end). */

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.statement;
 
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -47,9 +48,12 @@ public class StatementService {
     private final StatementRepository statements;
     private final RoleService roles;
     private final Audit audit;
+    private final EntityManager entities;
 
     public StatementService(PersonRepository people, ClaimRepository claims, Dues dues, SheetHistory history,
-            SheetService sheets, Rollups rollups, StatementRepository statements, RoleService roles, Audit audit) {
+            SheetService sheets, Rollups rollups, StatementRepository statements, RoleService roles, Audit audit,
+            EntityManager entities) {
+        this.entities = entities;
         this.rollups = rollups;
         this.statements = statements;
         this.roles = roles;
@@ -142,6 +146,8 @@ public class StatementService {
         person.stated(total, day);
         Person saved = people.saveAndFlush(person);
         statements.saveAndFlush(new Statement(sheetId, saved.getId(), saved.getStatementCount(), total, day));
+        // The person shows the statement just taken among their lines.
+        entities.refresh(saved);
         List<Claim> stated = claims.saveAllAndFlush(theirs);
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " due-total=" + (total != null ? total.toPlainString() : NO_RATE) + " claims=" + counted
@@ -168,6 +174,11 @@ public class StatementService {
             statements.saveAndFlush(statement);
         }
         into.absorbStatements(from);
+    }
+
+    /** Read a saved person again from the store, so they show the statements they now hold. */
+    public void reread(Person person) {
+        entities.refresh(person);
     }
 
     /** Move a person's statements with them to the sheet they are now on. */
@@ -213,6 +224,8 @@ public class StatementService {
         theirs.forEach(Claim::unbind);
         Person saved = people.saveAndFlush(person);
         List<Claim> live = claims.saveAllAndFlush(theirs);
+        // The person no longer shows the cancelled statement among their lines.
+        entities.refresh(saved);
         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " due-total=" + (cancelled != null ? cancelled.toPlainString() : NO_RATE));
         rollups.audit(sheetId, user, before);

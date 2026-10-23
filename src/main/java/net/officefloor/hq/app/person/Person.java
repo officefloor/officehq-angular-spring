@@ -10,9 +10,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import org.hibernate.annotations.SQLOrder;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.OptimisticLock;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -119,6 +121,17 @@ public class Person {
     @OrderColumn(name = "snapshot_order")
     @OptimisticLock(excluded = true)
     private List<Snapshot> snapshots = new ArrayList<>();
+
+    /**
+     * The statements still standing for the person, oldest first. Read only: they are taken, cancelled
+     * and moved through the statement repository, so this is never an edit of the person.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_statement", joinColumns = @JoinColumn(name = "person_id"))
+    @SQLOrder("seq")
+    @Immutable
+    @OptimisticLock(excluded = true)
+    private List<StatementLine> statements = new ArrayList<>();
 
     /**
      * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
@@ -311,6 +324,11 @@ public class Person {
     /** Keep the person's due-total (null: n/a) as it stood on a day the sheet's today moves on from. */
     public void snapshot(LocalDate asOf, BigDecimal dueTotal) {
         snapshots.add(new Snapshot(asOf, dueTotal));
+    }
+
+    /** The statements still standing for the person, oldest first. */
+    public List<StatementLine> getStatements() {
+        return Collections.unmodifiableList(statements);
     }
 
     /** The person's snapshot lines, oldest first. */

@@ -135,6 +135,7 @@ public class MergeService {
         people.delete(from);
         people.flush();
         Person saved = people.saveAndFlush(into);
+        statements.reread(saved);
 
         // The moved claims are listed after the other's own, in the order they were added.
         moved.forEach(claim -> claims.relist(claim.getId()));

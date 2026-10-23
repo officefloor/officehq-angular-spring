@@ -64,6 +64,14 @@ export interface PersonView {
   originSheetId?: string | null;
   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
   snapshots?: SnapshotView[];
+  /** The statements still standing for the person, oldest first; absent from a view kept before statement lines were. */
+  statementLines?: StatementLineView[];
+}
+
+/** A statement line of a person: the date (yyyy-mm-dd) it was taken as of and its due-total ('n/a' when no rate applied). */
+export interface StatementLineView {
+  date: string;
+  dueTotal: string;
 }
 
 /** A snapshot line of a person: the day being left (yyyy-mm-dd) and their due-total on it ('n/a' when no rate applied). */
