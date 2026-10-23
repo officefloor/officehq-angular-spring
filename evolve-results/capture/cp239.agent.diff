@@ -1,0 +1,171 @@
+diff --git a/.e2e.out b/.e2e.out
+index 055e46b4..4f86ce0e 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,53 +2,13 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › merge undo › merge undo (29.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:138:7 › merge undo › merge undo scenario 1 (38.0s)
+-  ✘  3 [chromium] › acceptance.spec.ts:874:7 › merge undo › merge undo scenario 2 (34.9s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1465:7 › merge undo › merge undo scenario 3 (32.2s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › period claim counts › period claim counts (14.0s)
++  ✘  2 [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 (41.5s)
++  ✘  3 [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 (21.5s)
++  ✓  4 [chromium] › acceptance.spec.ts:1324:7 › period claim counts › period claim counts scenario 3 (26.6s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:6:7 › merge undo › merge undo ─────────────────────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('person-row-2').getByTestId('person-name')
+-    Expected string: [32m"[7mCam[27m ([7mC[27m)"[39m
+-    Received string: [31m"[7mBen[27m ([7mB[27m)"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-2').getByTestId('person-name')[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ben (B)</td>[22m
+-    [2m  -   unexpected value "Ben (B)"[22m
+-
+-
+-      41 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-number")).toHaveText("");
+-      42 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-status")).toHaveText("OPEN");
+-    > 43 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-name")).toHaveText("Cam (C)");
+-         |                                                                                        ^
+-      44 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-aliases")).toHaveText("");
+-      45 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+-      46 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("n/a");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:43:88
+-
+-  2) [chromium] › acceptance.spec.ts:874:7 › merge undo › merge undo scenario 2 ────────────────────
++  1) [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 ───
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+@@ -78,17 +38,36 @@ Running 4 tests using 1 worker
+     [2m  -   unexpected value "0"[22m
+ 
+ 
+-      1090 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
+-      1091 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
+-    > 1092 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
+-           |                                                            ^
+-      1093 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+-      1094 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+-      1095 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
++      363 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
++      364 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
++    > 365 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
++          |                                                            ^
++      366 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
++      367 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
++      368 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:365:60
++
++  2) [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 ──
++
++    Error: save dated setting: neither a result nor an error appeared within 8000ms
++
++       at ../support/ui.ts:136
++
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1092:60
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1149:14)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1047:12
+ 
+   2 failed
+-    [chromium] › acceptance.spec.ts:6:7 › merge undo › merge undo ──────────────────────────────────
+-    [chromium] › acceptance.spec.ts:874:7 › merge undo › merge undo scenario 2 ─────────────────────
+-  2 passed (2.4m)
++    [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 ────
++    [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 ───
++  2 passed (1.9m)
++ 2212073
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2faf49a2..5759d09b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -113,6 +113,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+     <app-periods
+       [periods]="periods()"
+       [dueTotals]="periodDueTotals()"
++      [claimCounts]="periodClaimCounts()"
+       (saved)="periodSaved($event)"
+       (closed)="periodChanged($event)"
+       (reopened)="periodChanged($event)"
+@@ -1111,6 +1112,17 @@ export class People {
+         [...this.personPeriodCents()].map(([id, row]) => [id, money([...row.values()].reduce((a, b) => a + b, 0))]),
+       ),
+   );
++  /** Each period's count of the claims due by in it, VOID and DELETED claims left out, by period id. */
++  protected readonly periodClaimCounts = computed(() => {
++    const periods = this.periods();
++    const counts = new Map<number, number>();
++    for (const c of this.claims()) {
++      if (c.status === 'VOID' || c.status === 'DELETED') continue;
++      const own = periodOn(periods, c.dueBy);
++      if (own) counts.set(own.id, (counts.get(own.id) ?? 0) + 1);
++    }
++    return counts;
++  });
+   /**
+    * Per grade: the people not retired who have it in force on the sheet's today, and their due-totals
+    * added up, skipping those shown as n/a.
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 4abc3076..23cf2dc5 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -136,6 +136,7 @@ import { Session } from '../../core/session';
+             <th scope="col">Fiscal year</th>
+             <th scope="col">Cap</th>
+             <th scope="col">Locked</th>
++            <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -150,6 +151,7 @@ import { Session } from '../../core/session';
+               <td data-testid="period-fy">{{ fiscalYearOf(p.from, session.fiscalStartMonth()) }}</td>
+               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
++              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
+               <td>
+                 @if (!p.closed) {
+                   <button
+@@ -213,6 +215,8 @@ export class Periods {
+   readonly periods = input.required<PeriodView[]>();
+   /** Each period's due-total (the sum of the people's figures for it), by period id, with two decimals. */
+   readonly dueTotals = input.required<Map<number, string>>();
++  /** Each period's count of the claims due by in it, VOID and DELETED claims left out, by period id. */
++  readonly claimCounts = input.required<Map<number, number>>();
+   /** A period added through the form. */
+   readonly saved = output<PeriodView>();
+   /** A period closed through its row. */

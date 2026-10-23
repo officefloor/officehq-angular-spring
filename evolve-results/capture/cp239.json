@@ -1,0 +1,64 @@
+{
+  "checkpoint": 239,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp239_period-claim-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each period the count of claims belonging to it (VOID and DELETED claims left out).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each period the count of claims belonging to it (VOID and DELETED claims left out).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "06ebad49be2fc035d724aa13cf0e2363ad28c6d7",
+  "reset_sha": "",
+  "preagent_sha": "2513a8eba9d1c1af77375779bc0ee10bdb4db243",
+  "prev_sha": "2513a8eba9d1c1af77375779bc0ee10bdb4db243",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3983115999999998,
+    "input_tokens": 78,
+    "output_tokens": 13317,
+    "cache_read_tokens": 2441618,
+    "cache_creation_tokens": 80417,
+    "num_turns": 40,
+    "duration_ms": 545742,
+    "duration_api_ms": 156087,
+    "model": "claude-opus-5-5",
+    "session_id": "32003e6e-dcad-44fb-afdb-ce5f1ae693fd",
+    "stop_reason": "success",
+    "result_text": "Each period row now shows how many claims belong to it, but `bin/e2e` is not fully green: 2 of the 4 tests pass and 2 fail. Both failures are on checks unrelated to period counts.\n\n**What changed (front end only):**\n- A claim belongs to the period its due-by date falls in. That's how the app already assigns claims to periods for due totals and closing, and it's what the test data expects. VOID and DELETED claims are left out.\n- `features/people/people.ts`: a new `periodClaimCounts` value counts the claims per period and passes the counts to the periods table.\n- `features/periods/periods.ts`: a new \"Claims\" column with `data-testid=\"period-claims-count\"`, showing `0` when a period has no claims.\n- No server, schema or audit changes were needed. The page already loads every claim with its due-by date, and the test expects no new audit records.\n\n**Results:**\n- **Passing:** \"period claim counts\" and \"scenario 3\".\n- **Scenario 1, failing at spec line 365:** the test expects the steward dashboard's pending count to be blank for `wes` while an as-of date is set. The app shows `0`. The app's own comments say the dashboard keeps showing current counts to a steward while an as-of date is set, and the test made `wes` a steward.\n- **Scenario 2, failing at spec line 1047:** saving a floor from a future date expects \"Floor in force\" to read blank. The app always shows the floor in force there (`1.00` by default), so that check can never pass. I confirmed the save itself works and writes the expected audit line.\n\nTo check everything else, I ran a temporary copy of the spec with only those two checks changed: three dashboard lines removed, and the floor expected as `1.00`. All 4 scenarios passed, including every `period-claims-count` check and the full audit lists. I've deleted the copy, and the real spec is untouched.\n\nI didn't change the dashboard or the settings panel to make those checks pass. Doing so would go against the app's documented behaviour and is outside this change request. Tell me if you want it anyway.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3983115999999998,
+        "num_turns": 40,
+        "duration_ms": 545742,
+        "duration_api_ms": 156087,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp239.agent.jsonl",
+  "agent_diff_file": "cp239.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
