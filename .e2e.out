@@ -2,111 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › fiscal year › fiscal year (21.0s)
-  ✘  2 [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 (6.9s)
-  ✘  3 [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 (44.0s)
-  ✘  4 [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 (29.8s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › over threshold alert › over threshold alert (20.7s)
+  ✓  2 [chromium] › acceptance.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (28.4s)
+  ✘  3 [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 (27.8s)
+  ✓  4 [chromium] › acceptance.spec.ts:1278:7 › over threshold alert › over threshold alert scenario 3 (28.1s)
 
 
-  1) [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 ──────────────────
-
-    Error: the screen refused this action (its error element appeared)
-
-       at ../support/ui.ts:25
-
-      23 |  *  lands on the arranging line rather than on a later assertion. */
-      24 | export function must(id: string | null): string {
-    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
-         |                          ^
-      26 |   return id;
-      27 | }
-      28 |
-
-        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:165:24
-
-  2) [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 ──────────────────
+  1) [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvk6zbaf6xzj[27m-p"[39m
+    Locator: getByTestId('person-row-11').getByTestId('person-name')
+    Expected string: [32m"Cam"[39m
+    Received string: [31m"Ada"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+    [2m  -   unexpected value "Ada"[22m
 
 
-      751 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-      752 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
-    > 753 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-          |                                                      ^
-      754 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
-      755 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
-      756 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      862 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-batch")).toHaveText("");
+      863 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-lines-line")).toHaveText([]);
+    > 864 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Cam");
+          |                                                                                        ^
+      865 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-grade")).toHaveText("A");
+      866 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+      867 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:753:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:864:88
 
-  3) [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 ──────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('period-row-2026-02').getByTestId('period-closed')
-    Expected string: [32m"yes"[39m
-    Received string: [31m"no"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('period-row-2026-02').getByTestId('period-closed')[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
-    [2m  -   unexpected value "no"[22m
-
-
-      1276 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
-      1277 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-due-total")).toHaveText("0.00");
-    > 1278 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-closed")).toHaveText("yes");
-           |                                                                                         ^
-      1279 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-fy")).toHaveText("FY2026");
-      1280 |     await expect(pg_vic.getByTestId("period-row-2026-03").getByTestId("period-due-total")).toHaveText("0.00");
-      1281 |     await expect(pg_vic.getByTestId("period-row-2026-03").getByTestId("period-closed")).toHaveText("no");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1278:89
-
-  3 failed
-    [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 ───────────────────
-    [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 ───────────────────
-    [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 ───────────────────
-  1 passed (1.9m)
+  1 failed
+    [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 ─
+  3 passed (1.8m)

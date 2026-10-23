@@ -134,7 +134,8 @@ public class Rollups {
     /**
      * Record, once the change commits, one ROLLUP line per person whose figures moved since
      * {@code before} (a person new since then counts as moved), then a TOTALS line when any of the sheet's
-     * totals moved.
+     * totals moved, then one ALERT line per person, in list order, whose due-total went from at or below
+     * the sheet's alert threshold (or none) to above it.
      */
     public void audit(String sheetId, String user, Rollup before) {
         Rollup after = take(sheetId);
@@ -152,6 +153,21 @@ public class Rollups {
                     + " due-total=" + after.dueTotal().toPlainString()
                     + " overdue-total=" + after.overdueTotal().toPlainString());
         }
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold != null) {
+            after.people().forEach((id, figures) -> {
+                Figures was = before.people().get(id);
+                if (above(figures.dueTotal(), threshold) && !(was != null && above(was.dueTotal(), threshold))) {
+                    audit.recordFiguresOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
+                            + " due-total=" + figures.dueTotal().toPlainString());
+                }
+            });
+        }
+    }
+
+    /** Whether a due-total is above a threshold; n/a never is. */
+    private static boolean above(BigDecimal due, BigDecimal threshold) {
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     /**

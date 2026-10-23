@@ -76,13 +76,14 @@ public class SheetController {
      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
      * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
      * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
-     * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in. */
+     * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
+     * threshold with two decimals, null for off. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
-            String pot, String parent, int fiscalStartMonth) {
+            String pot, String parent, int fiscalStartMonth, String alertThreshold) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -97,7 +98,8 @@ public class SheetController {
                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
                     SheetView.graceHistory(sheet), gradeProofThresholds(sheet),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
-                    sheet.getFiscalStartMonth());
+                    sheet.getFiscalStartMonth(),
+                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -131,6 +133,16 @@ public class SheetController {
 
         /** The pot entered; null when blank. */
         BigDecimal pot() {
+            String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null : new BigDecimal(text);
+        }
+    }
+
+    /** The alert threshold as entered: up to two decimals, or blank (or null) for off. */
+    public record AlertThresholdChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value) {
+
+        /** The threshold entered; null when blank. */
+        BigDecimal threshold() {
             String text = value == null ? "" : value.trim();
             return text.isEmpty() ? null : new BigDecimal(text);
         }
@@ -469,6 +481,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PotChange change) {
         return SettingsView.of(service.setPot(id, SignedIn.name(user), change.pot()));
+    }
+
+    /** Change the sheet's alert threshold; a blank value means off. */
+    @PutMapping("/{id}/settings/alert-threshold")
+    public SettingsView setAlertThreshold(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AlertThresholdChange change) {
+        return SettingsView.of(service.setAlertThreshold(id, SignedIn.name(user), change.threshold()));
     }
 
     /** Change the sheet's parent; a blank value means none. */

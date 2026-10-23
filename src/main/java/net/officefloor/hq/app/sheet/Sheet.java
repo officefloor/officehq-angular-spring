@@ -111,6 +111,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The alert threshold: a person whose due-total crosses above it is alerted; null for off. Not dated. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -382,6 +386,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.entryDate = entryDate;
         then.pot = pot;
+        then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.archived = archived;
@@ -472,6 +477,15 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    /** The alert threshold as set, with two decimals; null when blank (off). */
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     /** The month, 1 to 12, the sheet's fiscal year starts in. */

@@ -1,11 +1,11 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days, the alert threshold and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
 // sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
@@ -222,6 +222,16 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'pot')"
           (keydown.backspace)="cleared($event, 'pot')"
         />
+        <label for="setting-alert-threshold">Alert threshold: a person whose due-total goes above it is alerted (empty: off)</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThresholdInput()"
+          (input)="alertThresholdInput.set(value($event)); alertThresholdEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'alertThreshold')"
+          (keydown.backspace)="cleared($event, 'alertThreshold')"
+        />
         <label for="setting-fiscal-start-month">Month the fiscal year starts in (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -277,6 +287,7 @@ import { Session } from '../../core/session';
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
+      <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       <p>Parent sheet in force: <span data-testid="setting-parent-current">{{ session.parent() }}</span></p>
       @for (a of permissionActions; track a) {
@@ -360,6 +371,8 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly potInput = signal('');
+  protected readonly alertThreshold = signal('');
+  protected readonly alertThresholdInput = signal('');
   protected readonly parentInput = signal('');
   protected readonly fiscalStartMonthInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
@@ -378,6 +391,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected potEdited = false;
+  protected alertThresholdEdited = false;
   protected parentEdited = false;
   protected fiscalStartMonthEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
@@ -422,6 +436,7 @@ export class Settings {
         this.periodNumberingFrom.set('');
         this.entryDate.set('');
         this.graceDays.set('');
+        this.alertThreshold.set('');
         this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
         this.fromInput.set(Settings.noFroms());
@@ -475,7 +490,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -498,6 +513,9 @@ export class Settings {
     } else if (setting === 'pot') {
       this.potInput.set('');
       this.potEdited = true;
+    } else if (setting === 'alertThreshold') {
+      this.alertThresholdInput.set('');
+      this.alertThresholdEdited = true;
     } else if (setting === 'parent') {
       this.parentInput.set('');
       this.parentEdited = true;
@@ -554,12 +572,13 @@ export class Settings {
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
     const pot = this.potInput().trim();
+    const alertThreshold = this.alertThresholdInput().trim();
     const parent = this.parentInput().trim();
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -577,6 +596,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const savePot = this.potEdited;
+    const saveAlertThreshold = this.alertThresholdEdited;
     const saveParent = this.parentEdited;
     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
@@ -659,6 +679,10 @@ export class Settings {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
     }
+    if (saveAlertThreshold && !ALERT_THRESHOLD.test(alertThreshold)) {
+      this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it empty for off.');
+      return;
+    }
     if (saveParent && !PARENT.test(parent)) {
       this.settingsError.set('Type a parent sheet id of letters, digits, dots, dashes or underscores, or leave it empty for none.');
       return;
@@ -687,6 +711,7 @@ export class Settings {
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
     if (savePot) this.potEdited = false;
+    if (saveAlertThreshold) this.alertThresholdEdited = false;
     if (saveParent) this.parentEdited = false;
     if (saveFiscalStartMonth) this.fiscalStartMonthEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
@@ -757,6 +782,11 @@ export class Settings {
           const view = await this.api.setPot(sheet, pot);
           this.session.pot.set(view.pot ?? '');
           if (!this.potEdited) this.potInput.set(view.pot ?? '');
+        }
+        if (saveAlertThreshold) {
+          const view = await this.api.setAlertThreshold(sheet, alertThreshold);
+          this.alertThreshold.set(view.alertThreshold ?? '');
+          if (!this.alertThresholdEdited) this.alertThresholdInput.set(view.alertThreshold ?? '');
         }
         if (saveParent) {
           const view = await this.api.setParent(sheet, parent);
@@ -871,6 +901,10 @@ export class Settings {
       this.session.pot.set(settings.pot ?? '');
       this.potInput.set(settings.pot ?? '');
       this.potEdited = false;
+      // The alert threshold starts at the one set, so clearing it is a change.
+      this.alertThreshold.set(settings.alertThreshold ?? '');
+      this.alertThresholdInput.set(settings.alertThreshold ?? '');
+      this.alertThresholdEdited = false;
       // The parent starts at the one set, so clearing it is a change.
       this.session.parent.set(settings.parent ?? '');
       this.parentInput.set(settings.parent ?? '');

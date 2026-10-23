@@ -278,6 +278,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's alert threshold (null: off), auditing the change. */
+    @Transactional
+    public Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
+        Sheet sheet = lock(id);
+        sheet.setAlertThreshold(threshold == null ? null : threshold.setScale(2, RoundingMode.UNNECESSARY));
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=alert-threshold value="
+                + (saved.getAlertThreshold() == null ? "" : saved.getAlertThreshold().toPlainString()));
+        return saved;
+    }
+
     /**
      * Change the sheet's parent (null: none), auditing the change and the figures it moves. The parent
      * must be a sheet that has been loaded, not this sheet, and not one that has this sheet as an ancestor.

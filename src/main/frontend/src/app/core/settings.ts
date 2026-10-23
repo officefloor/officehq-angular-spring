@@ -64,6 +64,8 @@ export interface SettingsView {
   parent: string | null;
   /** The month, 1 to 12, the fiscal year starts in; 1 unless set. */
   fiscalStartMonth: number;
+  /** The alert threshold with two decimals: a person whose due-total crosses above it is alerted; null when off. */
+  alertThreshold: string | null;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -117,6 +119,9 @@ export const GRACE_DAYS = /^(\d{1,4})?$/;
 
 /** A pot as the form takes it: up to two decimals, or blank for none. */
 export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
+
+/** An alert threshold as the form takes it: up to two decimals, or blank for off. */
+export const ALERT_THRESHOLD = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A parent sheet id as the form takes it, or blank for none. */
 export const PARENT = /^[A-Za-z0-9._-]{0,64}$/;
@@ -204,6 +209,11 @@ export class SettingsApi {
   /** Set the pot; a blank value means none. */
   setPot(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/pot`, { value }));
+  }
+
+  /** Set the alert threshold; a blank value means off. */
+  setAlertThreshold(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/alert-threshold`, { value }));
   }
 
   /** Set the parent sheet; a blank value means none. */
