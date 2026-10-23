@@ -90,18 +90,22 @@ public class Rollups {
         int overdueCount = 0;
         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
             Person person = entry.getValue();
-            List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
+            List<Claim> personClaims = byPerson.getOrDefault(entry.getKey(), List.of());
+            BigDecimal claimed = zero();
+            for (Claim claim : personClaims) {
+                // What is claimed counts a held claim, and leaves out claims that correct another.
+                if (person.countsClaimed(claim.getStatus(), claim.isStated(), claim.isDeferredOn(today), today)
+                        && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
+                    claimed = claimed.add(claim.getAmount());
+                }
+            }
+            List<Claim> counting = personClaims.stream()
                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today, claim.isHeld()))
                     .toList();
-            BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             boolean figured = false;
             for (Claim claim : counting) {
-                // What is claimed leaves out claims that correct another.
-                if (claim.getCorrects() == null || claim.getCorrects().isBlank()) {
-                    claimed = claimed.add(claim.getAmount());
-                }
                 String grade = person.gradeOn(claim.getDate());
                 boolean late = overdue(claim, sheet, grade);
                 if (late) {

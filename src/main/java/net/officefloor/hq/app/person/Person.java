@@ -463,6 +463,15 @@ public class Person {
         return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today, claimHeld));
     }
 
+    /**
+     * Whether a claim of the person in this status, dated on this date and bound by a statement or not,
+     * counts in what is claimed on the sheet's today: as in {@link #countsLive}, except that a hold (the
+     * person's or the claim's) does not take it out; only its due figures leave the totals while held.
+     */
+    public boolean countsClaimed(ClaimStatus status, boolean stated, boolean deferred, LocalDate today) {
+        return status.counts() && !deferred && !(status.isOpen() && !stated && retiredOn(today));
+    }
+
     /** Whether a claim may be dated on this date: not after the person's retirement. */
     public boolean canClaimOn(LocalDate date) {
         return retiredFrom == null || !date.isAfter(retiredFrom);

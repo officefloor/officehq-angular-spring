@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
+import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, retiredOn, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -41,6 +41,14 @@ type SortKey = (typeof SORT_KEYS)[number];
  */
 function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
   return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
+}
+
+/**
+ * Whether a person's claim counts in what they have claimed: as in countsLive, except that a hold (the
+ * person's or the claim's) does not take it out; only its due figures leave the totals while held.
+ */
+function countsClaimed(claim: ClaimView, person: PersonView, today: string): boolean {
+  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && retiredOn(person, today));
 }
 
 /**
@@ -1287,16 +1295,18 @@ export class People {
   }
 
   /**
-   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive),
-   * leaving out claims that correct another.
+   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsClaimed),
+   * held ones included, leaving out claims that correct another.
    */
   protected claimed(personId: number): string {
     return money(this.claimedCents(personId));
   }
 
   private claimedCents(personId: number): number {
-    return this.countingOf(personId)
-      .filter((c) => !c.corrects)
+    const person = this.people().find((p) => p.id === personId);
+    if (!person) return 0;
+    return this.claimsOf(personId)
+      .filter((c) => countsClaimed(c, person, this.today()) && !c.corrects)
       .reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
