@@ -524,6 +524,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
                 <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
+                <span>band <span data-testid="person-band">{{ bandOf(p) }}</span></span>
               </td>
               <td>
                 <ul>
@@ -1558,6 +1559,19 @@ export class People {
    */
   protected scoreOf(person: PersonView): string {
     return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
+  }
+
+  /**
+   * A person's band while both score thresholds are set: HIGH at or above the high one, MID at or
+   * above the mid one, else LOW; empty while either is blank.
+   */
+  protected bandOf(person: PersonView): string {
+    const mid = this.session.scoreMid();
+    const high = this.session.scoreHigh();
+    if (mid === '' || high === '') return '';
+    const score = Number(this.scoreOf(person));
+    if (score >= Number(high)) return 'HIGH';
+    return score >= Number(mid) ? 'MID' : 'LOW';
   }
 
   /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */

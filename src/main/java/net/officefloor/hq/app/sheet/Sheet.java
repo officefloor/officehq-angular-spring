@@ -127,6 +127,14 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null for none. Not dated. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null for none. Not dated. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The proof kinds: comma separated, a claim above the proof threshold needs a proof of each to be settled or approved; null for none. Not dated. */
     @Column(name = "proof_kinds")
     private String proofKinds;
@@ -448,6 +456,8 @@ public class Sheet {
         then.alertThreshold = alertThreshold;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.scoreMid = scoreMid;
+        then.scoreHigh = scoreHigh;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -596,6 +606,24 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    /** The mid score threshold; null when blank (none). */
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    /** The high score threshold; null when blank (none). */
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     /** The proof kinds as set, comma separated; null when blank (none). */

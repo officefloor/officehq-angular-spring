@@ -77,6 +77,10 @@ export interface SettingsView {
   escalateAfter: number | null;
   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
   reviewSla: number | null;
+  /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
+  scoreMid: number | null;
+  /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
+  scoreHigh: number | null;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled or approved; null when none. */
   proofKinds: string | null;
   /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null when none (A). */
@@ -144,6 +148,9 @@ export const DEFAULT_GRADE = /^[ABC]?$/;
 
 /** Grace days as the form takes them: a whole number of days, or blank for off. */
 export const GRACE_DAYS = /^(\d{1,4})?$/;
+
+/** A score threshold as the form takes it: a whole number, possibly negative, or blank for none. */
+export const SCORE = /^(-?\d{1,6})?$/;
 
 /** A pot as the form takes it: up to two decimals, or blank for none. */
 export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
@@ -277,6 +284,16 @@ export class SettingsApi {
   /** Set the review SLA in days; a blank value means none. */
   setReviewSla(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
+  }
+
+  /** Set the mid score threshold; a blank value means none. */
+  setScoreMid(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-mid`, { value }));
+  }
+
+  /** Set the high score threshold; a blank value means none. */
+  setScoreHigh(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-high`, { value }));
   }
 
   /** Set the default grade; a blank value means A. */

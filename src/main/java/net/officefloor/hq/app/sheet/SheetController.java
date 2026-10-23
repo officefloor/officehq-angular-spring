@@ -38,7 +38,8 @@ public class SheetController {
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
-            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds) {
+            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
+            Integer scoreMid, Integer scoreHigh) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -48,7 +49,7 @@ public class SheetController {
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
-                    sheet.getProofKinds());
+                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -82,7 +83,8 @@ public class SheetController {
      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
-     * each grade's clerk limit with two decimals, null for none (the sheet's applies). */
+     * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
+     * score thresholds, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
@@ -90,7 +92,8 @@ public class SheetController {
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
-            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits) {
+            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
+            Integer scoreHigh) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -110,7 +113,7 @@ public class SheetController {
                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
-                    sheet.getDefaultGrade(), gradeClerkLimits(sheet));
+                    sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh());
         }
 
         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
@@ -214,6 +217,16 @@ public class SheetController {
 
         /** The days entered; null when blank. */
         Integer days() {
+            String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null : Integer.valueOf(text);
+        }
+    }
+
+    /** A score threshold as entered: a whole number, possibly negative, or blank (or null) for none. */
+    public record ScoreChange(@Pattern(regexp = "\\s*(-?\\d{1,6})?\\s*") String value) {
+
+        /** The score entered; null when blank. */
+        Integer score() {
             String text = value == null ? "" : value.trim();
             return text.isEmpty() ? null : Integer.valueOf(text);
         }
@@ -561,6 +574,24 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GraceDaysChange change) {
         return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
+    }
+
+    /** Change the sheet's mid score threshold; a blank value means none. */
+    @PutMapping("/{id}/settings/score-mid")
+    public SettingsView setScoreMid(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ScoreChange change) {
+        return SettingsView.of(service.setScoreMid(id, SignedIn.name(user), change.score()));
+    }
+
+    /** Change the sheet's high score threshold; a blank value means none. */
+    @PutMapping("/{id}/settings/score-high")
+    public SettingsView setScoreHigh(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ScoreChange change) {
+        return SettingsView.of(service.setScoreHigh(id, SignedIn.name(user), change.score()));
     }
 
     /** Change the sheet's proof kinds; a blank value means none. */

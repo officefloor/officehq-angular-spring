@@ -1,7 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import {
-  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
+  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, SCORE, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -286,6 +286,26 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'reviewSla')"
           (keydown.backspace)="cleared($event, 'reviewSla')"
         />
+        <label for="setting-score-mid">Mid score threshold: a person scoring at or above it is MID (a whole number; empty: none)</label>
+        <input
+          id="setting-score-mid"
+          data-testid="setting-score-mid"
+          inputmode="numeric"
+          [value]="scoreMidInput()"
+          (input)="scoreMidInput.set(value($event)); scoreMidEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'scoreMid')"
+          (keydown.backspace)="cleared($event, 'scoreMid')"
+        />
+        <label for="setting-score-high">High score threshold: a person scoring at or above it is HIGH (a whole number; empty: none)</label>
+        <input
+          id="setting-score-high"
+          data-testid="setting-score-high"
+          inputmode="numeric"
+          [value]="scoreHighInput()"
+          (input)="scoreHighInput.set(value($event)); scoreHighEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'scoreHigh')"
+          (keydown.backspace)="cleared($event, 'scoreHigh')"
+        />
         <label for="setting-proof-kinds">Proof kinds a claim above the proof threshold needs one of each of (receipt, photo; comma separated; empty: none)</label>
         <input
           id="setting-proof-kinds"
@@ -386,6 +406,8 @@ import { Session } from '../../core/session';
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
+      <p>Mid score threshold in force: <span data-testid="setting-score-mid-current">{{ session.scoreMid() }}</span></p>
+      <p>High score threshold in force: <span data-testid="setting-score-high-current">{{ session.scoreHigh() }}</span></p>
       <p>Proof kinds in force: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
       <p>Default grade in force: <span data-testid="setting-default-grade-current">{{ defaultGrade() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
@@ -484,6 +506,8 @@ export class Settings {
   protected readonly defaultGrade = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
+  protected readonly scoreMidInput = signal('');
+  protected readonly scoreHighInput = signal('');
   protected readonly proofKindsInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThreshold = signal('');
@@ -511,6 +535,8 @@ export class Settings {
   protected escalateAfterEdited = false;
   protected defaultGradeEdited = false;
   protected reviewSlaEdited = false;
+  protected scoreMidEdited = false;
+  protected scoreHighEdited = false;
   protected proofKindsEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
@@ -624,7 +650,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -665,6 +691,12 @@ export class Settings {
     } else if (setting === 'reviewSla') {
       this.reviewSlaInput.set('');
       this.reviewSlaEdited = true;
+    } else if (setting === 'scoreMid') {
+      this.scoreMidInput.set('');
+      this.scoreMidEdited = true;
+    } else if (setting === 'scoreHigh') {
+      this.scoreHighInput.set('');
+      this.scoreHighEdited = true;
     } else if (setting === 'proofKinds') {
       this.proofKindsInput.set('');
       this.proofKindsEdited = true;
@@ -739,6 +771,8 @@ export class Settings {
     const escalateAfter = this.escalateAfterInput().trim();
     const defaultGrade = this.defaultGradeInput().trim();
     const reviewSla = this.reviewSlaInput().trim();
+    const scoreMid = this.scoreMidInput().trim();
+    const scoreHigh = this.scoreHighInput().trim();
     const proofKinds = this.proofKindsInput().trim();
     const pot = this.potInput().trim();
     const alertThreshold = this.alertThresholdInput().trim();
@@ -747,7 +781,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -771,6 +805,8 @@ export class Settings {
     const saveEscalateAfter = this.escalateAfterEdited;
     const saveDefaultGrade = this.defaultGradeEdited;
     const saveReviewSla = this.reviewSlaEdited;
+    const saveScoreMid = this.scoreMidEdited;
+    const saveScoreHigh = this.scoreHighEdited;
     const saveProofKinds = this.proofKindsEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
@@ -879,6 +915,10 @@ export class Settings {
       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
       return;
     }
+    if ((saveScoreMid && !SCORE.test(scoreMid)) || (saveScoreHigh && !SCORE.test(scoreHigh))) {
+      this.settingsError.set('Type a score threshold as a whole number, or leave it empty for none.');
+      return;
+    }
     if (saveProofKinds && !PROOF_KIND_LIST.test(proofKinds)) {
       this.settingsError.set('Type the proof kinds as receipt or photo, comma separated, or leave them empty for none.');
       return;
@@ -924,6 +964,8 @@ export class Settings {
     if (saveEscalateAfter) this.escalateAfterEdited = false;
     if (saveDefaultGrade) this.defaultGradeEdited = false;
     if (saveReviewSla) this.reviewSlaEdited = false;
+    if (saveScoreMid) this.scoreMidEdited = false;
+    if (saveScoreHigh) this.scoreHighEdited = false;
     if (saveProofKinds) this.proofKindsEdited = false;
     if (savePot) this.potEdited = false;
     if (saveAlertThreshold) this.alertThresholdEdited = false;
@@ -1024,6 +1066,16 @@ export class Settings {
           const view = await this.api.setReviewSla(sheet, reviewSla);
           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
           if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
+        }
+        if (saveScoreMid) {
+          const view = await this.api.setScoreMid(sheet, scoreMid);
+          this.session.scoreMid.set(view.scoreMid?.toString() ?? '');
+          if (!this.scoreMidEdited) this.scoreMidInput.set(view.scoreMid?.toString() ?? '');
+        }
+        if (saveScoreHigh) {
+          const view = await this.api.setScoreHigh(sheet, scoreHigh);
+          this.session.scoreHigh.set(view.scoreHigh?.toString() ?? '');
+          if (!this.scoreHighEdited) this.scoreHighInput.set(view.scoreHigh?.toString() ?? '');
         }
         if (saveProofKinds) {
           const view = await this.api.setProofKinds(sheet, proofKinds);
@@ -1174,6 +1226,13 @@ export class Settings {
       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaEdited = false;
+      // The score thresholds start at those set, so clearing one is a change.
+      this.session.scoreMid.set(settings.scoreMid?.toString() ?? '');
+      this.scoreMidInput.set(settings.scoreMid?.toString() ?? '');
+      this.scoreMidEdited = false;
+      this.session.scoreHigh.set(settings.scoreHigh?.toString() ?? '');
+      this.scoreHighInput.set(settings.scoreHigh?.toString() ?? '');
+      this.scoreHighEdited = false;
       // The proof kinds start at those set, so clearing them is a change.
       this.session.proofKinds.set(settings.proofKinds ?? '');
       this.proofKindsInput.set(settings.proofKinds ?? '');

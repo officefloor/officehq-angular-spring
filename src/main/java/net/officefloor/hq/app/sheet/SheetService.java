@@ -301,6 +301,28 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's mid score threshold (null: none), auditing the change. */
+    @Transactional
+    public Sheet setScoreMid(String id, String user, Integer score) {
+        Sheet sheet = lock(id);
+        sheet.setScoreMid(score);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-mid value="
+                + (saved.getScoreMid() == null ? "" : saved.getScoreMid().toString()));
+        return saved;
+    }
+
+    /** Change the sheet's high score threshold (null: none), auditing the change. */
+    @Transactional
+    public Sheet setScoreHigh(String id, String user, Integer score) {
+        Sheet sheet = lock(id);
+        sheet.setScoreHigh(score);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-high value="
+                + (saved.getScoreHigh() == null ? "" : saved.getScoreHigh().toString()));
+        return saved;
+    }
+
     /** Change the sheet's proof kinds, comma separated (null: none), auditing the change. */
     @Transactional
     public Sheet setProofKinds(String id, String user, String kinds) {

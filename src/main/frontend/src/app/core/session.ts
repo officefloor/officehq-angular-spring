@@ -55,6 +55,10 @@ export interface SheetView {
   roundingHistory?: DatedValue[];
   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
   reviewSla?: number | null;
+  /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
+  scoreMid?: number | null;
+  /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
+  scoreHigh?: number | null;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled; null when none. */
   proofKinds?: string | null;
 }
@@ -115,6 +119,10 @@ export class Session {
   readonly archived = signal(false);
   /** The active sheet's review SLA in days; empty when there is none. */
   readonly reviewSla = signal('');
+  /** The active sheet's mid score threshold; empty when there is none. */
+  readonly scoreMid = signal('');
+  /** The active sheet's high score threshold; empty when there is none. */
+  readonly scoreHigh = signal('');
   /** The active sheet's proof kinds, comma separated; empty when there are none. */
   readonly proofKinds = signal('');
   /** The number of the active sheet's last settle batch; null when there has been none. */
@@ -220,6 +228,8 @@ export class Session {
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
     this.reviewSla.set(view.reviewSla?.toString() ?? '');
+    this.scoreMid.set(view.scoreMid?.toString() ?? '');
+    this.scoreHigh.set(view.scoreHigh?.toString() ?? '');
     this.proofKinds.set(view.proofKinds ?? '');
   }
 }
