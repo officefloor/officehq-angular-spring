@@ -140,13 +140,14 @@ export function due(amountCents: number, pct: string | null): string {
 /**
  * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or the
  * due its person's last statement bound it to as shown then, late charge and floor included, or else
- * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
+ * the greater of the floor (in whole cents) and its figure, with the late charge worked out on that
+ * floored figure on top. Its figure is
  * the rate figure an older statement bound it to (see statedWhole), or else its amount
  * at the rate the grade has in force on the claim's date as the claim sees the rates (a forward-only
  * rate saved after it was added passed over); the late charge is, for every full 30 days
  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
- * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
- * like the claim, added up. The floor is applied last; the one
+ * ... days) of the floored figure plus the charges of the boundaries before it (compounding), each rounded
+ * like the claim, added up. The floor is applied first (before the late charge); the one
  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
  * roundsHalfUp), else half to even. A correction
  * has no floor and no late charge, and a claim whose late charge was waived no late charge. Null when
@@ -171,9 +172,10 @@ export function claimDueCents(
     figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
   }
   if (figure === null || isCorrection(claim)) return figure;
+  const floored = Math.max(figure, floorCents);
   const charge = claim.waived ? 0 : lateBoundaries(claim, late)
-    .reduce((sum, on) => sum + dueCents(figure + sum, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
-  return Math.max(figure + charge, floorCents);
+    .reduce((sum, on) => sum + dueCents(floored + sum, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+  return floored + charge;
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

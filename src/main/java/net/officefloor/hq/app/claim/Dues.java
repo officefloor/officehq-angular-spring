@@ -116,7 +116,7 @@ public class Dues {
 
     /**
      * The due a claim shows: the greater of the floor in force on its date and its figure (see
-     * {@link #figure}) with the late charge on top while it is overdue; a settled claim's figure is
+     * {@link #figure}), with the late charge worked out on that floored figure on top while it is overdue; a settled claim's figure is
      * frozen as it was settled, and a claim a statement bound shows the due it bound, its late charge no
      * longer following the sheet's today. Null (n/a) when it has no figure.
      */
@@ -132,7 +132,7 @@ public class Dues {
         if (boundWhole(claim)) {
             return claim.getStatedDue();
         }
-        return floored(claim, withLate(claim, grade, figure(claim, grade, basis), basis), basis);
+        return withLate(claim, grade, floored(claim, figure(claim, grade, basis), basis), basis);
     }
 
     /**
@@ -144,15 +144,15 @@ public class Dues {
     }
 
     /**
-     * The due a claim is settled at: the due a statement bound it to, else its live figure with the
-     * late charge it has on the sheet's today on top; null when it has no figure.
+     * The due a claim is settled at: the due a statement bound it to, else its live figure raised to
+     * the floor, with the late charge it has on the sheet's today worked out on that on top; null when it has no figure.
      */
     public BigDecimal settling(Claim claim, String grade) {
         if (boundWhole(claim)) {
             return claim.getStatedDue();
         }
         Basis basis = live(claim.getSheetId());
-        return floored(claim, withLate(claim, grade, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
+        return withLate(claim, grade, floored(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
     }
 
     /**
@@ -165,7 +165,7 @@ public class Dues {
 
     /**
      * The due a SETTLED claim is re-settled at: what it would show today as an OPEN claim bound by no
-     * statement, its live figure with the late charge it would have on the sheet's today on top (none
+     * statement, its live figure raised to the floor with the late charge it would have on the sheet's today on top (none
      * when its late charge was waived); null when it has no figure.
      */
     public BigDecimal resettling(Claim claim, String grade) {
@@ -174,7 +174,8 @@ public class Dues {
         if (figure == null || claim.isCorrection()) {
             return figure;
         }
-        return floored(claim, claim.isWaived() ? figure : lateOn(claim, grade, figure, basis), basis);
+        BigDecimal floored = floored(claim, figure, basis);
+        return claim.isWaived() ? floored : lateOn(claim, grade, floored, basis);
     }
 
     /**
@@ -219,8 +220,8 @@ public class Dues {
     }
 
     /**
-     * A due raised to the floor in force on the claim's date when below it, applied last (after the
-     * late charge); a correction has no floor, and null (n/a) stays null.
+     * A figure raised to the floor in force on the claim's date when below it, applied first (the late
+     * charge is worked out on the floored figure); a correction has no floor, and null (n/a) stays null.
      */
     private BigDecimal floored(Claim claim, BigDecimal due, Basis basis) {
         if (due == null || claim.isCorrection()) {
