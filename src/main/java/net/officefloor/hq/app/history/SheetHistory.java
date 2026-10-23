@@ -83,7 +83,12 @@ public class SheetHistory {
 
     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
-            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole, Boolean held) {
+            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole, Boolean held,
+            List<ShareState> shares) {
+    }
+
+    /** A share of a claim as kept (none in states kept before claims were shared). */
+    record ShareState(long personId, BigDecimal share) {
     }
 
     /**
@@ -343,6 +348,9 @@ public class SheetHistory {
                 claim.waive();
             }
             claim.hold(Boolean.TRUE.equals(c.held()));
+            if (c.shares() != null) {
+                c.shares().forEach(sh -> claim.share(sh.personId(), sh.share()));
+            }
             claims.put(c.id(), claim);
         }
         Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
@@ -384,6 +392,7 @@ public class SheetHistory {
     private static ClaimState kept(Claim c) {
         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
                 c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
-                c.isWaived(), c.isStatedWhole(), c.isHeld());
+                c.isWaived(), c.isStatedWhole(), c.isHeld(),
+                c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList());
     }
 }

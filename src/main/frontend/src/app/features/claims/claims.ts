@@ -383,6 +383,34 @@ const PAST: Record<ClaimAction, string> = {
           >
             Part-settle
           </button>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesOf(c) }}</span></span>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select
+            [id]="'claim-share-select-' + c.id"
+            data-testid="claim-share-select"
+            (change)="setShareWith(c.id, value($event))"
+          >
+            <option value="">Choose a person</option>
+            @for (other of people(); track other.id) {
+              <option [value]="other.id" [selected]="shareWith()[c.id] === other.id">{{ other.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input
+            [id]="'claim-share-pct-' + c.id"
+            data-testid="claim-share-pct"
+            inputmode="decimal"
+            [value]="sharePcts()[c.id] ?? ''"
+            (input)="setSharePct(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-share-add"
+            [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date"
+            (click)="share(c)"
+          >
+            Share
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -480,6 +508,10 @@ export class Claims {
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** The person chosen on each claim's row to reassign it to, by claim id. */
   protected readonly reassignTo = signal<Record<number, number>>({});
+  /** The person chosen on each claim's row to share it with, by claim id. */
+  protected readonly shareWith = signal<Record<number, number>>({});
+  /** The share percent typed on each claim's row, by claim id. */
+  protected readonly sharePcts = signal<Record<number, string>>({});
   /** The date entered on each claim's row to settle it as of (none: the sheet's today), by claim id. */
   protected readonly settleDates = signal<Record<number, string>>({});
   /** The date entered on each claim's row to defer it until, by claim id. */
@@ -1114,6 +1146,59 @@ export class Claims {
       if (show === this.timelineShows) this.timelines.update((shown) => ({ ...shown, [claim.id]: lines }));
     } catch {
       if (show === this.timelineShows) this.claimError.set({ id: claim.id, message: 'The timeline of the claim could not be read.' });
+    }
+  }
+
+  /** The people a claim is shared with, each as their name and share, comma and space separated. */
+  protected sharesOf(claim: ClaimView): string {
+    return (claim.shares ?? [])
+      .map((s) => `${this.people().find((p) => p.id === s.personId)?.name ?? ''} ${s.share}`)
+      .join(', ');
+  }
+
+  /** Choose the person to share a claim with; it clears any error left on the claim's row. */
+  protected setShareWith(id: number, personId: string): void {
+    this.shareWith.update((chosen) => ({ ...chosen, [id]: Number(personId) }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Type the share percent to share a claim at; it clears any error left on the claim's row. */
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((typed) => ({ ...typed, [id]: pct }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Share a claim with the person chosen on its row at the percent typed there; refused with an error on
+   * its row when none is chosen, when the percent is not above 0.00 with up to two decimals, and as the
+   * server refuses: for the claim's own person, one already holding a share, shares totalling more than
+   * 100.00, or a SETTLED, VOID or DELETED claim.
+   */
+  protected async share(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = this.shareWith()[claim.id];
+    const pct = (this.sharePcts()[claim.id] ?? '').trim();
+    if (!to) {
+      this.claimError.set({ id: claim.id, message: 'Choose a person to share the claim with.' });
+      return;
+    }
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(pct) || cents(pct) <= 0) {
+      this.claimError.set({ id: claim.id, message: 'Enter a share percent above 0.00, with up to two decimals.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.share(sheet, claim.id, to, pct));
+    } catch {
+      this.claimError.set({
+        id: claim.id,
+        message: claim.status === 'SETTLED' || claim.status === 'VOID' || claim.status === 'DELETED'
+          ? `A ${claim.status} claim cannot be shared.`
+          : to === claim.personId
+            ? "A claim cannot be shared with its own person."
+            : 'The claim could not be shared: the person may already hold a share, or the shares would total more than 100.00.',
+      });
     }
   }
 

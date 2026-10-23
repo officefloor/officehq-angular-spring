@@ -27,6 +27,12 @@ export function isOpen(claim: ClaimView): boolean {
 export const PROOF_KINDS = ['receipt', 'photo'] as const;
 export type ProofKind = (typeof PROOF_KINDS)[number];
 
+/** A share of a claim: the person holding it and their share percent with two decimals, e.g. "33.33". */
+export interface ClaimShareView {
+  personId: number;
+  share: string;
+}
+
 export interface ClaimView {
   id: number;
   personId: number;
@@ -104,6 +110,8 @@ export interface ClaimView {
   waived?: boolean;
   /** Whether the claim is held, leaving the live totals unless bound by a statement; false (or absent, as kept by an old snapshot) when not. */
   held?: boolean;
+  /** The people the claim is shared with, in the order they were added; absent as kept by an old snapshot. */
+  shares?: ClaimShareView[];
 }
 
 /** A line of a claim: its label, quantity and unit amount (two decimals). */
@@ -426,6 +434,11 @@ export class ClaimsApi {
    */
   timeline(sheet: string, id: number): Promise<string[]> {
     return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+  }
+
+  /** Share a claim with another person at a share percent; refused for a SETTLED, VOID or DELETED claim. */
+  share(sheet: string, id: number, personId: number, share: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/share`, { personId, share }));
   }
 
   /** Hold an OPEN or PENDING claim, or release it when held; refused for any other status. */

@@ -200,6 +200,12 @@ public class Claim {
     @OrderBy("id")
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** The people the claim is shared with, in the order they were added. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -605,6 +611,20 @@ public class Claim {
         lines.add(new ClaimLine(label, qty, unit));
         this.amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2);
+    }
+
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Share the claim with another person at a share percent; the caller checks the share is allowed. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
+    }
+
+    /** The holders' parts of a due figure, added up (see {@link ClaimShare#partOf}). */
+    public BigDecimal sharedPartsOf(BigDecimal due) {
+        return shares.stream().map(s -> s.partOf(due)).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Add a comment to the claim, by the user on the sheet's today. */

@@ -96,6 +96,27 @@ public class Rollups {
                 byPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
             }
         }
+        // The parts of shared claims their holders' due-totals count, by holder, from the claims that
+        // count for their own person; each claim's figure as read here.
+        Map<Claim, BigDecimal> shared = new java.util.IdentityHashMap<>();
+        Map<Long, BigDecimal> received = new LinkedHashMap<>();
+        for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
+            Person person = entry.getValue();
+            for (Claim claim : byPerson.getOrDefault(entry.getKey(), List.of())) {
+                if (claim.getShares().isEmpty()
+                        || !person.countsLive(claim.getStatus(), claim.isStated(), claim.isDeferredOn(today), today)) {
+                    continue;
+                }
+                BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()), basis);
+                if (figure == null) {
+                    continue;
+                }
+                shared.put(claim, figure);
+                for (var share : claim.getShares()) {
+                    received.merge(share.getPersonId(), share.partOf(figure), BigDecimal::add);
+                }
+            }
+        }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
@@ -129,7 +150,8 @@ public class Rollups {
                 }
                 BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {
-                    due = due.add(figure);
+                    // A shared claim's own person counts its figure less its holders' parts.
+                    due = due.add(shared.containsKey(claim) ? figure.subtract(claim.sharedPartsOf(figure)) : figure);
                     figured = true;
                     if (late) {
                         overdue = overdue.add(figure);
@@ -140,6 +162,11 @@ public class Rollups {
                         settled = settled.add(figure);
                     }
                 }
+            }
+            BigDecimal part = received.get(entry.getKey());
+            if (part != null) {
+                due = due.add(part);
+                figured = true;
             }
             // As on the screen: n/a when the grade in force today has no rate, unless a claim has a
             // figure (a fixed one, or one at the grade in force on its own date).

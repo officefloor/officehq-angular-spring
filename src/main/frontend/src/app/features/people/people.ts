@@ -1662,12 +1662,38 @@ export class People {
     return money(sum !== null && cap !== null && sum > cap ? sum - cap : 0);
   }
 
-  /** The sum of a person's due figures in whole cents before the cap, or null (n/a; see dueTotalCents). */
+  /**
+   * The sum of a person's due figures in whole cents before the cap, or null (n/a; see dueTotalCents): a
+   * claim they share counts its due less its holders' parts, and their parts of the claims others share
+   * with them count too (see sharedPartsCents).
+   */
   private dueSumCents(person: PersonView): number | null {
-    const dues = this.countingOf(person.id).map((c) => this.dueCents(c, person));
+    const dues = this.countingOf(person.id).map((c) => {
+      const due = this.dueCents(c, person);
+      return due === null ? null : due - (c.shares ?? []).reduce((sum, s) => sum + shareOf(due, cents(s.share)), 0);
+    });
+    const part = this.sharedPartsCents().get(person.id);
+    if (part !== undefined) dues.push(part);
     if (this.pctOf(this.gradeOf(person)) === null && dues.every((d) => d === null)) return null;
     return dues.reduce<number>((sum, d) => sum + (d ?? 0), 0);
   }
+
+  /**
+   * Each holder's parts of the shared claims that count for their own person, in whole cents by holder id:
+   * the claim's due times the holder's share over 100, rounded half to even.
+   */
+  private readonly sharedPartsCents = computed(() => {
+    const parts = new Map<number, number>();
+    for (const owner of this.people()) {
+      for (const c of this.countingOf(owner.id)) {
+        if (!c.shares?.length) continue;
+        const due = this.dueCents(c, owner);
+        if (due === null) continue;
+        for (const s of c.shares) parts.set(s.personId, (parts.get(s.personId) ?? 0) + shareOf(due, cents(s.share)));
+      }
+    }
+    return parts;
+  });
 
   /**
    * A claim's due in whole cents at the grade its person has in force on its date, with the floor

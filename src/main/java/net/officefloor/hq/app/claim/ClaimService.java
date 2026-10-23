@@ -670,6 +670,47 @@ public class ClaimService {
     }
 
     /**
+     * Share a claim with another person on the sheet at a share percent (above 0.00): from then on the
+     * holder's due-total counts their part of the claim's due and its own person's the rest. Refused when
+     * the claim is SETTLED, VOID or DELETED, for the claim's own person or one already holding a share,
+     * or when its shares would total more than 100.00.
+     */
+    @Transactional
+    public Claim share(String sheetId, String user, long claimId, long personId, BigDecimal share) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be shared.");
+        }
+        Person holder = person(sheetId, personId);
+        if (holder.getId().equals(claim.getPersonId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person.");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(holder.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    holder.getName() + " already holds a share of the claim.");
+        }
+        BigDecimal pct = money(share);
+        if (pct.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A share must be more than 0.00.");
+        }
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(pct, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's shares may not total more than 100.00.");
+        }
+        claim.share(holder.getId(), pct);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_SHARED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                " with=" + holder.getName() + " share=" + pct.toPlainString());
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
      * the late charge it has then. Only a steward or the person's approver approves, and not the user who opened or last edited the claim.
      */

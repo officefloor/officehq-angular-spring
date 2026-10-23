@@ -38,14 +38,16 @@ public class ClaimController {
      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
      * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived, and whether the
-     * figure it was bound to is its whole due as shown (late charge and floor included), and its proofs count of each kind, and whether it is held.
+     * figure it was bound to is its whole due as shown (late charge and floor included), and its proofs count of each kind, and whether it is held,
+     * and the people it is shared with, in the order they were added.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
             String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived,
-            boolean statedWhole, int proofsReceipt, int proofsPhoto, boolean held) {
+            boolean statedWhole, int proofsReceipt, int proofsPhoto, boolean held,
+            List<ShareView> shares) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -59,7 +61,7 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
                     claim.isWaived(), claim.isStatedWhole(), claim.getProofs("receipt"), claim.getProofs("photo"),
-                    claim.isHeld());
+                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList());
         }
     }
 
@@ -70,6 +72,18 @@ public class ClaimController {
             return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
                     line.getDue() == null ? "n/a" : line.getDue().toPlainString());
         }
+    }
+
+    /** A share of a claim: the person holding it and their share percent with two decimals. */
+    public record ShareView(long personId, String share) {
+
+        public static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), share.getShare().toPlainString());
+        }
+    }
+
+    /** A share as chosen on the claim: the person it is shared with and a share percent with up to two decimals. */
+    public record ShareForm(@NotNull Long personId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
     }
 
     /** A comment on a claim: by whom, on the sheet's today then, and its text. */
@@ -483,6 +497,17 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.toggleHold(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Share a claim with another person on the sheet at a share percent. */
+    @PostMapping("/claims/{claimId}/share")
+    public ClaimView share(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ShareForm form) {
+        return ClaimView.of(service.share(sheetId, SignedIn.name(user), claimId, form.personId(),
+                new BigDecimal(form.share())));
     }
 
     /** Defer an OPEN claim until a date after the sheet's today. */
