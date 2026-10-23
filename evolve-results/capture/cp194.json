@@ -1,0 +1,64 @@
+{
+  "checkpoint": 194,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp194_settle-as-of-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "69d4bcff58d43615f01544554459ca7c69332d10",
+  "reset_sha": "",
+  "preagent_sha": "dcf33a2f757164a2de1e212888a6222bafafb9be",
+  "prev_sha": "dcf33a2f757164a2de1e212888a6222bafafb9be",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1361941999999994,
+    "input_tokens": 94,
+    "output_tokens": 23502,
+    "cache_read_tokens": 3744691,
+    "cache_creation_tokens": 114605,
+    "num_turns": 48,
+    "duration_ms": 643278,
+    "duration_api_ms": 249061,
+    "model": "claude-opus-5-5",
+    "session_id": "14cea3b9-3f1c-4fe8-ab44-eb3025e8aa31",
+    "stop_reason": "success",
+    "result_text": "I've added settle-as-of-date. The main acceptance test and scenario 3 pass; scenarios 1 and 2 still fail, and neither can pass as the spec is written.\n\n**What changed:**\n- **Screen:** each claim row now has a \"Settle as of\" date box (`claim-settle-date`) next to the settle button. Settling with a date sends it to the server. If the date is refused, an error shows on the claim, and typing in the box clears it.\n- **Server:** settle now takes an optional date. If it's today or left empty, settling works as before. If it's earlier, the frozen figure is the claim's due as the sheet stood at the end of that day, worked out from the same saved history the as-of view uses (for example, a 20.00 claim settled as of 2026-03-01 freezes at 2.00). `CLAIM_SETTLED` then ends with `on=<date>`.\n- **Refusals:** a date after today, or a day the claim (or its person) didn't exist yet, is refused with nothing saved and nothing written to the audit file.\n\n**One fix outside the request:** a viewer's bulk void was blocked by `ViewerGuard.java` before it reached the code that should reply \"0 voided, 2 refused\", so the screen showed a general error. Bulk open and bulk settle were already let through, so I let bulk void through the same way. Scenario 1 needs this; it's a single line in `ViewerGuard.java` if you'd rather back it out.\n\n**Why scenarios 1 and 2 can't pass:**\n- **Both:** they check `sheet-parent` against the literal text `\"__SHEET__-p\"` (spec lines 211 and 719). The generator never filled in that placeholder, so the app can't match it. Scenario 1 now stops on this line.\n- **Scenario 2 also stops earlier, at line 544:** it expects the claim editor to open on a claim whose period P1 has been closed automatically (the expected audit includes that close). The screen and the server both refuse to edit claims in a closed period, so this step fails. This code has nothing to do with settling and I didn't change it. My guess is the test was recorded against an app that briefly filled in the form before the server's refusal arrived. I didn't change the app to copy that.\n\nI didn't edit the spec, since it's off limits. If you can regenerate it with the placeholder filled in, I can recheck scenario 2's editor step after that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1361941999999994,
+        "num_turns": 48,
+        "duration_ms": 643278,
+        "duration_api_ms": 249061,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp194.agent.jsonl",
+  "agent_diff_file": "cp194.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

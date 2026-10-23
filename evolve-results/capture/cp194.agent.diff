@@ -1,0 +1,321 @@
+diff --git a/.e2e.out b/.e2e.out
+index 85e5f6fc..0db6f7a3 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,11 +2,70 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (26.8s)
+-  ✓  2 [chromium] › acceptance.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (41.5s)
+-  ✓  3 [chromium] › acceptance.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (30.4s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (26.2s)
+-
+-  Slow test file: [chromium] › acceptance.spec.ts (2.1m)
+-  Consider splitting slow test files to speed up parallel execution
+-  4 passed (2.1m)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › settle as of date › settle as of date (12.2s)
++  ✘  2 [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 (41.5s)
++  ✘  3 [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 (17.7s)
++  ✓  4 [chromium] › acceptance.spec.ts:961:7 › settle as of date › settle as of date scenario 3 (24.9s)
++
++
++  1) [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ───────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvko8p8p84rq[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
++    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
++
++
++      209 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      210 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
++    > 211 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      212 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
++      213 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      214 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:211:54
++
++  2) [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ──────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++
++    Expected: [32mtrue[39m
++    Received: [31mfalse[39m
++
++      542 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00"})).toBe(true);
++      543 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "3.33", "tags": "a, B"})).toBeNull();
++    > 544 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);
++          |                                                     ^
++      545 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
++      546 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);
++      547 |     await ui.refresh(pg_uma);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:544:53
++
++  2 failed
++    [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ────────
++    [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ───────
++  2 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 6a2c8537..07c564c3 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -402,10 +402,12 @@ export class ClaimsApi {
+    * settling or approving it is the one who opened it or last edited it, and (403) when approving or rejecting it is
+    * not a steward. A reject carries its reason. Re-settling is a steward's (403 otherwise), of a
+    * SETTLED claim (409 otherwise). A void carries the reason chosen from the sheet's list (409 when
+-   * the list is not empty and none, or one not on it, is given).
++   * the list is not empty and none, or one not on it, is given). A settle carries the date it is
++   * settled as of when one is given (400 when it is after the sheet's today or the claim did not exist then).
+    */
+   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
+-    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
++    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null }
++      : action === 'settle' && reason ? { on: reason } : null;
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, body));
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 65124a88..66b617b7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -258,6 +258,14 @@ const PAST: Record<ClaimAction, string> = {
+               <option [value]="r.reason" [selected]="voidReasonsChosen()[c.id] === r.reason">{{ r.reason }}</option>
+             }
+           </select>
++          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++          <input
++            [id]="'claim-settle-date-' + c.id"
++            type="date"
++            data-testid="claim-settle-date"
++            [value]="settleDates()[c.id] ?? ''"
++            (input)="setSettleDate(c.id, value($event))"
++          />
+           @for (a of actions; track a.action) {
+             <button
+               type="button"
+@@ -472,6 +480,8 @@ export class Claims {
+   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+   /** The person chosen on each claim's row to reassign it to, by claim id. */
+   protected readonly reassignTo = signal<Record<number, number>>({});
++  /** The date entered on each claim's row to settle it as of (none: the sheet's today), by claim id. */
++  protected readonly settleDates = signal<Record<number, string>>({});
+   /** The date entered on each claim's row to defer it until, by claim id. */
+   protected readonly deferDates = signal<Record<number, string>>({});
+   /** The new date entered on each claim's row to re-date it to, by claim id. */
+@@ -731,6 +741,12 @@ export class Claims {
+     if (this.claimError()?.id === id) this.claimError.set(null);
+   }
+ 
++  /** Enter the date to settle a claim as of; it clears any error left on the claim's row. */
++  protected setSettleDate(id: number, date: string): void {
++    this.settleDates.update((dates) => ({ ...dates, [id]: date }));
++    if (this.claimError()?.id === id) this.claimError.set(null);
++  }
++
+   protected setDeferDate(id: number, date: string): void {
+     this.deferDates.update((dates) => ({ ...dates, [id]: date }));
+     if (this.claimError()?.id === id) this.claimError.set(null);
+@@ -1150,6 +1166,8 @@ export class Claims {
+     if (!sheet) return;
+     const reason = action === 'void'
+       ? (this.voidReasonsChosen()[claim.id] ?? '')
++      : action === 'settle'
++      ? (this.settleDates()[claim.id] ?? '').trim()
+       : (this.rejectReasons()[claim.id] ?? '').trim();
+     if (action === 'reject' && reason === '') {
+       this.claimError.set({ id: claim.id, message: 'Type a reason to reject the claim.' });
+@@ -1163,6 +1181,15 @@ export class Claims {
+       this.saved.emit(await this.api.act(sheet, claim.id, action, reason));
+       if (action === 'reject') this.rejectReasons.update((reasons) => ({ ...reasons, [claim.id]: '' }));
+     } catch (e) {
++      if (action === 'settle' && reason !== '' && e instanceof HttpErrorResponse && e.status === 400) {
++        this.claimError.set({
++          id: claim.id,
++          message: reason > (this.session.today() ?? '')
++            ? 'A claim cannot be settled as of a date after today.'
++            : `The claim did not exist on ${reason}, so it cannot be settled as of then.`,
++        });
++        return;
++      }
+       const me = this.session.user()?.trim();
+       const mine = claim.openedBy === me;
+       const edited = !mine && (claim.editedBy ?? null) === me;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c26aa749..12617d5c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -303,13 +303,21 @@ public class ClaimController {
+         return new BulkOpenView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+     }
+ 
+-    /** Settle an OPEN claim (PENDING when a clerk settles it above the clerk limit); refused for the user who opened it. */
++    /** The date a claim is settled as of; with none, the sheet's today. */
++    public record SettleForm(LocalDate on) {
++    }
++
++    /**
++     * Settle an OPEN claim (PENDING when a clerk settles it above the clerk limit), as of a date on or
++     * before the sheet's today when one is given; refused for the user who opened it.
++     */
+     @PostMapping("/claims/{claimId}/settle")
+     public ClaimView settle(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @PathVariable long claimId,
+-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+-        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.SETTLED));
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody(required = false) SettleForm form) {
++        return ClaimView.of(service.settle(sheetId, SignedIn.name(user), claimId, form == null ? null : form.on()));
+     }
+ 
+     /** Settle the selected claims together, in list order; those that cannot be settled are refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e87351fc..96136fb5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -6,6 +6,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.Retirement;
+@@ -42,11 +43,13 @@ public class ClaimService {
+     private final WatchService watches;
+     private final HolidayService holidays;
+     private final VoidReasonService voidReasons;
++    private final SheetHistory history;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
+             Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, HolidayService holidays,
+-            VoidReasonService voidReasons, Audit audit) {
++            VoidReasonService voidReasons, SheetHistory history, Audit audit) {
++        this.history = history;
+         this.watches = watches;
+         this.holidays = holidays;
+         this.voidReasons = voidReasons;
+@@ -304,6 +307,22 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason) {
++        return move(sheetId, user, claimId, next, reason, null);
++    }
++
++    /**
++     * Settle a claim as {@link #move(String, String, long, ClaimStatus)} does, as of a date (null: the
++     * sheet's today): its figure is frozen at the due it had at the end of that date, every change made
++     * while the sheet's today was after it left out and that date standing in for the sheet's today, and
++     * its audit record ends with the date. Refused for a date after the sheet's today, or one the claim
++     * did not yet exist on.
++     */
++    @Transactional
++    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
++        return move(sheetId, user, claimId, ClaimStatus.SETTLED, null, on);
++    }
++
++    private Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason, LocalDate on) {
+         // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
+         // sheet are serialised: each sees the other's committed claim and number.
+         LocalDate today = sheets.lock(sheetId).getToday();
+@@ -338,7 +357,7 @@ public class ClaimService {
+         }
+         Person person = person(sheetId, claim.getPersonId());
+         BigDecimal settledDue = next == ClaimStatus.SETTLED
+-                ? dues.settling(claim, person.gradeOn(claim.getDate()))
++                ? settlingOn(sheetId, claim, person, today, on)
+                 : null;
+         if (next == ClaimStatus.OPEN && person.flaggedOn(today)
+                 && !Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+@@ -390,6 +409,9 @@ public class ClaimService {
+         if (voidReason != null) {
+             suffix += " reason=" + voidReason;
+         }
++        if (next == ClaimStatus.SETTLED && on != null) {
++            suffix += " on=" + on;
++        }
+         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
+         if (next == ClaimStatus.SETTLED) {
+             watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+@@ -398,6 +420,31 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * The due a claim is settled at as of a date (null: the sheet's today, as it stands): on the sheet's
++     * today its live settling figure; before it, its due as the claim stood at the end of that date,
++     * read against the sheet as kept then. Refused for a date after the sheet's today, or one the claim
++     * (or its person) was not yet kept on.
++     */
++    private BigDecimal settlingOn(String sheetId, Claim claim, Person person, LocalDate today, LocalDate on) {
++        if (on == null || on.equals(today)) {
++            return dues.settling(claim, person.gradeOn(claim.getDate()));
++        }
++        if (today == null || on.isAfter(today)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A claim cannot be settled as of a date after today.");
++        }
++        ResponseStatusException notYet = new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "The claim did not exist on " + on + ": it cannot be settled as of then.");
++        SheetHistory.AsOf kept = history.at(sheetId, on).orElseThrow(() -> notYet);
++        Claim then = kept.claims().get(claim.getId());
++        Person personThen = then == null ? null : kept.people().get(then.getPersonId());
++        if (then == null || personThen == null) {
++            throw notYet;
++        }
++        return dues.due(then, personThen.gradeOn(then.getDate()), kept.basis());
++    }
++
+     /**
+      * Delete a DRAFT claim: it is DELETED, counts nowhere and cannot be edited, opened or voided, until
+      * it is restored. Refused when the claim is not a DRAFT or is due by inside a closed period.
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 988e688e..132cc988 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -16,7 +16,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * Refuse every change a viewer asks for on a sheet: any request other than a read, or the loading
+  * of the sheet, is turned away before it reaches its handler, so it writes nothing and audits nothing.
+- * A bulk move, a bulk grade, a bulk retire and a plan generate are the exceptions: each reaches its handler, which
++ * A bulk open, settle or void, a bulk grade, a bulk retire and a plan generate are the exceptions: each reaches its handler, which
+  * refuses each claim or person a viewer selected, or each claim a viewer's generate would make.
+  */
+ @Configuration
+@@ -33,7 +33,8 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+         // A bulk move answers how many claims it refused, and a bulk grade or retire how many people it changed,
+         // and a plan generate how many claims it made, so a viewer's is let through and refuses each.
+         registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").excludePathPatterns("/api/sheets/*/load",
+-                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/people/grade",
++                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/claims/void",
++                "/api/sheets/*/people/grade",
+                 "/api/sheets/*/people/retire", "/api/sheets/*/plans/generate");
+     }
+ 
