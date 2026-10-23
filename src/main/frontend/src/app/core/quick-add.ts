@@ -5,7 +5,7 @@ import { ClaimView } from './claims';
 import { PersonView } from './people';
 
 export interface QuickAddForm {
-  /** A person's name; when it is not on the sheet the person is added with grade A. */
+  /** A person's name; when it is not on the sheet the person is added with the sheet's default grade. */
   name: string;
   amount: string;
 }

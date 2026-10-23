@@ -1,7 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import {
-  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
+  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -276,6 +276,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'proofKinds')"
           (keydown.backspace)="cleared($event, 'proofKinds')"
         />
+        <label for="setting-default-grade">Default grade a quick-added or blank-graded imported person is given (A, B or C; empty: A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGradeInput()"
+          (input)="defaultGradeInput.set(value($event)); defaultGradeEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'defaultGrade')"
+          (keydown.backspace)="cleared($event, 'defaultGrade')"
+        />
         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
         <input
           id="setting-pot"
@@ -355,6 +364,7 @@ import { Session } from '../../core/session';
       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
       <p>Proof kinds in force: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
+      <p>Default grade in force: <span data-testid="setting-default-grade-current">{{ defaultGrade() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
@@ -445,6 +455,8 @@ export class Settings {
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterInput = signal('');
+  protected readonly defaultGrade = signal('');
+  protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
   protected readonly proofKindsInput = signal('');
   protected readonly potInput = signal('');
@@ -470,6 +482,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected escalateAfterEdited = false;
+  protected defaultGradeEdited = false;
   protected reviewSlaEdited = false;
   protected proofKindsEdited = false;
   protected potEdited = false;
@@ -521,6 +534,7 @@ export class Settings {
         this.entryDate.set('');
         this.graceDays.set('');
         this.escalateAfter.set('');
+        this.defaultGrade.set('');
         this.alertThreshold.set('');
         this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
@@ -577,7 +591,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -609,6 +623,9 @@ export class Settings {
     } else if (setting === 'alertThreshold') {
       this.alertThresholdInput.set('');
       this.alertThresholdEdited = true;
+    } else if (setting === 'defaultGrade') {
+      this.defaultGradeInput.set('');
+      this.defaultGradeEdited = true;
     } else if (setting === 'escalateAfter') {
       this.escalateAfterInput.set('');
       this.escalateAfterEdited = true;
@@ -676,6 +693,7 @@ export class Settings {
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
     const escalateAfter = this.escalateAfterInput().trim();
+    const defaultGrade = this.defaultGradeInput().trim();
     const reviewSla = this.reviewSlaInput().trim();
     const proofKinds = this.proofKindsInput().trim();
     const pot = this.potInput().trim();
@@ -685,7 +703,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -705,6 +723,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const saveEscalateAfter = this.escalateAfterEdited;
+    const saveDefaultGrade = this.defaultGradeEdited;
     const saveReviewSla = this.reviewSlaEdited;
     const saveProofKinds = this.proofKindsEdited;
     const savePot = this.potEdited;
@@ -801,6 +820,10 @@ export class Settings {
       this.settingsError.set('Type the escalation gap as a whole number of days, or leave it empty for off.');
       return;
     }
+    if (saveDefaultGrade && !DEFAULT_GRADE.test(defaultGrade)) {
+      this.settingsError.set('Type the default grade as A, B or C, or leave it empty for A.');
+      return;
+    }
     if (saveReviewSla && !GRACE_DAYS.test(reviewSla)) {
       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
       return;
@@ -847,6 +870,7 @@ export class Settings {
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
     if (saveEscalateAfter) this.escalateAfterEdited = false;
+    if (saveDefaultGrade) this.defaultGradeEdited = false;
     if (saveReviewSla) this.reviewSlaEdited = false;
     if (saveProofKinds) this.proofKindsEdited = false;
     if (savePot) this.potEdited = false;
@@ -931,6 +955,11 @@ export class Settings {
           const view = await this.api.setEscalateAfter(sheet, escalateAfter);
           this.escalateAfter.set(view.escalateAfter?.toString() ?? '');
           if (!this.escalateAfterEdited) this.escalateAfterInput.set(view.escalateAfter?.toString() ?? '');
+        }
+        if (saveDefaultGrade) {
+          const view = await this.api.setDefaultGrade(sheet, defaultGrade);
+          this.defaultGrade.set(view.defaultGrade ?? '');
+          if (!this.defaultGradeEdited) this.defaultGradeInput.set(view.defaultGrade ?? '');
         }
         if (saveReviewSla) {
           const view = await this.api.setReviewSla(sheet, reviewSla);
@@ -1074,6 +1103,10 @@ export class Settings {
       this.escalateAfter.set(settings.escalateAfter?.toString() ?? '');
       this.escalateAfterInput.set(settings.escalateAfter?.toString() ?? '');
       this.escalateAfterEdited = false;
+      // The default grade starts at the one set, so clearing it is a change.
+      this.defaultGrade.set(settings.defaultGrade ?? '');
+      this.defaultGradeInput.set(settings.defaultGrade ?? '');
+      this.defaultGradeEdited = false;
       // The review SLA starts at the one set, so clearing it is a change.
       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');

@@ -138,6 +138,10 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null for A. Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /**
      * The id of the sheet this one was cloned from: its rates apply where this sheet and its parents
      * have none in force; null when not cloned. Not dated.
@@ -425,6 +429,7 @@ public class Sheet {
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
         then.proofKinds = proofKinds;
+        then.defaultGrade = defaultGrade;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.clonedFrom = clonedFrom;
@@ -580,6 +585,20 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    /** The default grade as set; null when blank (A). */
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
+    }
+
+    /** The grade a person added without one is given: the default grade, else A. */
+    public String defaultGradeInForce() {
+        return defaultGrade == null ? "A" : defaultGrade;
     }
 
     /** The proof kinds as a list; empty when there are none. */

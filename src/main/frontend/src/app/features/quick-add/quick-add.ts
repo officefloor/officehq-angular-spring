@@ -5,7 +5,7 @@ import { QuickAddApi, QuickAddView } from '../../core/quick-add';
 import { Session } from '../../core/session';
 
 // The quick-add bar: a name and an amount make a DRAFT claim dated the sheet's today with an empty
-// note, adding the person with grade A first when the name is not on the sheet.
+// note, adding the person with the sheet's default grade first when the name is not on the sheet.
 @Component({
   selector: 'app-quick-add',
   template: `

@@ -74,6 +74,8 @@ export interface SettingsView {
   reviewSla: number | null;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled or approved; null when none. */
   proofKinds: string | null;
+  /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null when none (A). */
+  defaultGrade: string | null;
   /** The rounding mode in force (half-up or half-even): claims dated while it is in force round by it; null when none. */
   rounding: string | null;
   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
@@ -131,6 +133,9 @@ export const ENTRY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** Proof kinds as the form takes them: receipt or photo, comma separated, or blank for none. */
 export const PROOF_KIND_LIST = /^((receipt|photo)(\s*,\s*(receipt|photo))*)?$/;
+
+/** A default grade as the form takes it: A, B or C, or blank for none (A). */
+export const DEFAULT_GRADE = /^[ABC]?$/;
 
 /** Grace days as the form takes them: a whole number of days, or blank for off. */
 export const GRACE_DAYS = /^(\d{1,4})?$/;
@@ -262,6 +267,11 @@ export class SettingsApi {
   /** Set the review SLA in days; a blank value means none. */
   setReviewSla(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
+  }
+
+  /** Set the default grade; a blank value means A. */
+  setDefaultGrade(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/default-grade`, { value }));
   }
 
   /** Set the proof kinds, comma separated; a blank value means none. */

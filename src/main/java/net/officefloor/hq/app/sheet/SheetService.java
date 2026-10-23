@@ -306,6 +306,22 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's default grade (null: A), auditing the change; it changes no one's grade. */
+    @Transactional
+    public Sheet setDefaultGrade(String id, String user, String grade) {
+        Sheet sheet = lock(id);
+        sheet.setDefaultGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value="
+                + (grade == null ? "" : grade));
+        return saved;
+    }
+
+    /** The grade a person added without one on the sheet is given: its default grade, else A. */
+    public String defaultGrade(String id) {
+        return load(id).defaultGradeInForce();
+    }
+
     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

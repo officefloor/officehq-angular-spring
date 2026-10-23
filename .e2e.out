@@ -2,87 +2,69 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clone source rates › clone source rates (14.0s)
-  ✘  2 [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 (12.2s)
-  ✘  3 [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 (18.1s)
-  ✘  4 [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 (27.7s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › default grade › default grade (13.1s)
+  ✘  2 [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 (14.6s)
+  ✓  3 [chromium] › acceptance.spec.ts:472:7 › default grade › default grade scenario 2 (27.9s)
+  ✘  4 [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 (35.2s)
 
 
-  1) [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 ─────
+  1) [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 ──────────────
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
 
-    Received: [31m"8"[39m
+    Received: [31m"4"[39m
 
-      153 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
-      154 |     expect(await ui.addAlias(pg_vic, p_ben, "Bee")).toBe(true);
-    > 155 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "25.00", "ref": " r-1 "})).toBeNull();
-          |                                                                                   ^
-      156 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "10.25", "date": "2026-03-09", "note": "n"})).toBeNull();
-      157 |     expect(await ui.quickAdd(pg_vic, {"name": "Dot", "amount": "3.33"})).toBeNull();
-      158 |     expect(await ui.addAlias(pg_vic, p_ben, " ada ")).toBe(false);
+      165 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+      166 |     await expect(pg_wes.getByTestId("my-crew-due-total")).toHaveText("");
+    > 167 |     expect(await ui.quickAdd(pg_wes, {"name": "Ada", "amount": "7.77"})).toBeNull();
+          |                                                                          ^
+      168 |     await ui.setToday(pg_wes, "2026-03-31");
+      169 |     expect(await ui.setRate(pg_wes, {"grade": "C", "pct": "33.33"})).toBe(true);
+      170 |     await ui.refresh(pg_uma);
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:155:83
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:167:74
 
-  2) [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 ────
-
-    Error: flag: neither a result nor an error appeared within 8000ms
-
-       at ../support/ui.ts:136
-
-      134 |   if (await done()) return true;
-      135 |   if (await error.isVisible().catch(() => false)) return false;
-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
-          |         ^
-      137 | }
-      138 |
-      139 | async function sleep(ms: number): Promise<void> {
-
-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:625:12
-
-  3) [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 ───
+  2) [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 ─────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvklzen0u1ia[27m-p"[39m
+    Received string: [31m"[7msmvkm65xxb8nr[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
+    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
 
 
-      1210 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
-      1211 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
-    > 1212 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+      1216 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1217 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+    > 1218 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
            |                                                      ^
-      1213 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
-      1214 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1215 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      1219 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      1220 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1221 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1212:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1218:54
 
-  3 failed
-    [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 ──────
-    [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 ─────
-    [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 ────
-  1 passed (1.3m)
+  2 failed
+    [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 ───────────────
+    [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 ──────────────
+  2 passed (1.6m)

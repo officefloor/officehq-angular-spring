@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
  * The import box: lines of name,grade,terms,contact each add a person, in order, as the person form
  * would; a line whose name matches a person on the sheet, by name or alias as names are compared, instead
  * updates them as the person form would: their grade recorded from the sheet's today, and their terms and
- * contact set when the line gives them. The terms and the contact may be absent or blank. Every line is
+ * contact set when the line gives them. A blank grade is the sheet's default grade. The terms and the contact may be absent or blank. Every line is
  * held to the person form's rules, and a name, person or contact repeated within the paste is refused; it
  * is one change, so when any line is refused nothing is imported and nothing is recorded.
  */
@@ -39,10 +40,12 @@ public class ImportService {
 
     private final PersonService people;
     private final PersonRepository store;
+    private final SheetService sheets;
 
-    public ImportService(PersonService people, PersonRepository store) {
+    public ImportService(PersonService people, PersonRepository store, SheetService sheets) {
         this.people = people;
         this.store = store;
+        this.sheets = sheets;
     }
 
     /** Add or update a person per line of the text, in order; refused as a whole when any line is refused. */
@@ -75,12 +78,13 @@ public class ImportService {
         List<Person> added = new ArrayList<>();
         List<Person> updated = new ArrayList<>();
         Set<Long> matched = new HashSet<>();
+        String defaultGrade = sheets.defaultGrade(sheetId);
         int number = 0;
         for (Line line : lines) {
             number++;
             Person existing = store.findBySheetIdAndName(sheetId, line.name()).orElse(null);
             if (existing == null) {
-                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                added.add(people.add(sheetId, user, line.name(), line.grade() != null ? line.grade() : defaultGrade, line.terms(), line.contact()));
                 continue;
             }
             if (!matched.add(existing.getId())) {
@@ -89,7 +93,7 @@ public class ImportService {
             boolean termsGiven = line.terms() != null;
             boolean contactGiven = line.contact() != null;
             updated.add(people.edit(sheetId, user, existing.getId(), existing.getVersion(), existing.getName(),
-                    line.grade(), null, termsGiven ? line.terms() : existing.getTerms(),
+                    line.grade() != null ? line.grade() : defaultGrade, null, termsGiven ? line.terms() : existing.getTerms(),
                     contactGiven ? line.contact() : existing.getContact(), termsGiven, contactGiven));
         }
         return new Imported(added, updated);
@@ -111,8 +115,8 @@ public class ImportService {
             throw refused("Line " + number + ": the name is longer than " + TEXT_MAX + " characters.");
         }
         String grade = fields[1].trim();
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + number + ": the grade must be A, B or C.");
+        if (!grade.isEmpty() && !grade.matches("[ABC]")) {
+            throw refused("Line " + number + ": the grade must be A, B, C or blank.");
         }
         Integer terms = null;
         String days = fields.length > 2 ? fields[2].trim() : "";
@@ -126,7 +130,7 @@ public class ImportService {
         if (contact.length() > TEXT_MAX) {
             throw refused("Line " + number + ": the contact is longer than " + TEXT_MAX + " characters.");
         }
-        return new Line(name, grade, terms, contact.isEmpty() ? null : contact);
+        return new Line(name, grade.isEmpty() ? null : grade, terms, contact.isEmpty() ? null : contact);
     }
 
     private static ResponseStatusException refused(String reason) {
