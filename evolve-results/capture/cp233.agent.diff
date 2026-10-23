@@ -1,0 +1,341 @@
+diff --git a/.e2e.out b/.e2e.out
+index 2d03c9c0..bbc01772 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,30 +2,53 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › period export › period export (12.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:25:7 › period export › period export scenario 1 (40.3s)
+-  ✘  3 [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 (15.3s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1404:7 › period export › period export scenario 3 (40.6s)
+-
+-
+-  1) [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ──────────────
+-
+-    Error: the screen refused this action (its error element appeared)
+-
+-       at ../support/ui.ts:25
+-
+-      23 |  *  lands on the arranging line rather than on a later assertion. */
+-      24 | export function must(id: string | null): string {
+-    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+-         |                          ^
+-      26 |   return id;
+-      27 | }
+-      28 |
+-
+-        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:839:24
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › due by override › due by override (16.1s)
++  ✓  2 [chromium] › acceptance.spec.ts:94:7 › due by override › due by override scenario 1 (1.1m)
++  ✘  3 [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 (22.1s)
++  ✓  4 [chromium] › acceptance.spec.ts:1148:7 › due by override › due by override scenario 3 (36.2s)
++
++
++  1) [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ──────────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
++    Expected string: [32m"[7m3[27m.00"[39m
++    Received string: [31m"[7m2[27m.00"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
++    [2m  -   unexpected value "2.00"[22m
++
++
++      490 |     await ui.refresh(pg_vic);
++      491 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.04");
++    > 492 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("3.00");
++          |                                                                                             ^
++      493 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
++      494 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
++      495 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:492:93
+ 
+   1 failed
+-    [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ───────────────
+-  3 passed (1.9m)
+- 2117931
+\ No newline at end of file
++    [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ───────────
++  3 passed (2.5m)
++ 2133534
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 36926559..b8d171c8 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -533,6 +533,14 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/redate`, { date }));
+   }
+ 
++  /**
++   * Set a DRAFT, OPEN or PENDING claim's due-by directly; refused (403) when the user is not a steward,
++   * and (409) when the claim is any other status or either due-by is inside a closed period.
++   */
++  setDueBy(sheet: string, id: number, dueBy: string): Promise<ClaimView> {
++    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/due-by`, { dueBy }));
++  }
++
+   /**
+    * Move a DRAFT, OPEN or PENDING claim to another person on the sheet; refused (403) when the user is
+    * not a steward, and (409) when the claim is SETTLED or VOID or cannot go to that person.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 3fd74344..30268159 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -368,6 +368,22 @@ const PAST: Record<ClaimAction, string> = {
+           >
+             Re-date
+           </button>
++          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
++          <input
++            [id]="'claim-due-by-new-' + c.id"
++            type="date"
++            data-testid="claim-due-by-new"
++            [value]="newDueBys()[c.id] ?? ''"
++            (input)="setNewDueBy(c.id, value($event))"
++          />
++          <button
++            type="button"
++            data-testid="claim-set-due-by"
++            [attr.aria-label]="'Set due-by of claim of ' + c.amount + ' on ' + c.date"
++            (click)="setDueBy(c)"
++          >
++            Set due-by
++          </button>
+           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
+           <input
+             [id]="'claim-split-amount-' + c.id"
+@@ -535,6 +551,7 @@ export class Claims {
+   protected readonly deferDates = signal<Record<number, string>>({});
+   /** The new date entered on each claim's row to re-date it to, by claim id. */
+   protected readonly newDates = signal<Record<number, string>>({});
++  protected readonly newDueBys = signal<Record<number, string>>({});
+   /** The user typed on each claim's row to assign its review to, by claim id. */
+   protected readonly reviewUsers = signal<Record<number, string>>({});
+   /** The amount typed on each claim's row to split off it, by claim id. */
+@@ -610,7 +627,7 @@ export class Claims {
+     return figure === null ? NO_RATE : money(figure);
+   }
+ 
+-  /** A claim's due-by, fixed when it was added. */
++  /** A claim's due-by: fixed when it was added, or as a steward set it. */
+   protected dueByOf(claim: ClaimView): string {
+     return dueBy(claim);
+   }
+@@ -878,6 +895,41 @@ export class Claims {
+     }
+   }
+ 
++  /** Enter the due-by to set a claim's to; it clears any error left on the claim's row. */
++  protected setNewDueBy(id: number, date: string): void {
++    this.newDueBys.update((dates) => ({ ...dates, [id]: date }));
++    if (this.claimError()?.id === id) this.claimError.set(null);
++  }
++
++  /**
++   * Set a claim's due-by directly to the date entered on its row; refused with an error on its row when
++   * no date is entered, when the user is not a steward, when the claim is not DRAFT, OPEN or PENDING,
++   * or when its due-by or the new one is in a closed period.
++   */
++  protected async setDueBy(claim: ClaimView): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const date = (this.newDueBys()[claim.id] ?? '').trim();
++    if (date === '') {
++      this.claimError.set({ id: claim.id, message: 'Enter a due-by for the claim.' });
++      return;
++    }
++    try {
++      this.saved.emit(await this.api.setDueBy(sheet, claim.id, date));
++      this.newDueBys.update((dates) => ({ ...dates, [claim.id]: '' }));
++    } catch (e) {
++      this.claimError.set({
++        id: claim.id,
++        message: e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only a steward can set a claim\'s due-by.'
++          : claim.status !== 'DRAFT' && claim.status !== 'OPEN' && claim.status !== 'PENDING'
++            ? `A ${claim.status} claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.`
++            : 'The claim\'s due-by could not be set to that date.',
++      });
++    }
++  }
++
+   /** Type the user to assign a claim's review to; it clears any error left on the claim's row. */
+   protected setReviewUser(id: number, user: string): void {
+     this.reviewUsers.update((users) => ({ ...users, [id]: user }));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 4f927983..be98eb89 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -63,6 +63,10 @@ public class Claim {
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
++    /** Whether a steward set the claim's due-by directly: it then stays as set, a holiday added later does not move it. */
++    @Column(name = "due_by_set", nullable = false)
++    private boolean dueBySet;
++
+     /** The terms, in business days, fixed when the claim was added: those in force on the sheet's today then, from its person's own terms, else their grade's. */
+     @Column(name = "terms", nullable = false)
+     private int terms;
+@@ -260,6 +264,16 @@ public class Claim {
+         return dueBy;
+     }
+ 
++    public boolean isDueBySet() {
++        return dueBySet;
++    }
++
++    /** Set the claim's due-by directly: it stays as set from then on; the caller checks it may be set. */
++    public void setDueBy(LocalDate dueBy) {
++        this.dueBy = dueBy;
++        this.dueBySet = true;
++    }
++
+     public int getTerms() {
+         return terms;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index acd24e4d..b9485ad8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -155,6 +155,10 @@ public class ClaimController {
+     public record RedateForm(@NotNull LocalDate date) {
+     }
+ 
++    /** The due-by a steward sets a claim's to directly. */
++    public record DueByForm(@NotNull LocalDate dueBy) {
++    }
++
+     /** The user a REVIEW claim is assigned to for review; blank is refused by the service. */
+     public record AssignReviewForm(@NotNull @Size(max = 200) String user) {
+     }
+@@ -580,4 +584,14 @@ public class ClaimController {
+             @RequestBody @Valid RedateForm form) {
+         return ClaimView.of(service.redate(sheetId, SignedIn.name(user), claimId, form.date()));
+     }
++
++    /** Set a DRAFT, OPEN or PENDING claim's due-by directly; only a steward. */
++    @PostMapping("/claims/{claimId}/due-by")
++    public ClaimView setDueBy(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid DueByForm form) {
++        return ClaimView.of(service.setDueBy(sheetId, SignedIn.name(user), claimId, form.dueBy()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dab6a200..fa7971bc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -916,6 +916,35 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Set a DRAFT, OPEN or PENDING claim's due-by directly: it stays as set, a holiday added later does
++     * not move it, and its overdue, late charge, grace and period follow it. Only a steward sets it;
++     * refused when the claim is any other status, or when its due-by now or the new one is inside a
++     * closed period.
++     */
++    @Transactional
++    public Claim setDueBy(String sheetId, String user, long claimId, LocalDate dueBy) {
++        sheets.lock(sheetId);
++        Rollups.Rollup before = rollups.take(sheetId);
++        Claim claim = claim(sheetId, claimId);
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward sets a claim's due-by.");
++        }
++        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.");
++        }
++        periods.refuseIfClosed(sheetId, claim.getDueBy());
++        periods.refuseIfClosed(sheetId, dueBy);
++        Person person = person(sheetId, claim.getPersonId());
++        LocalDate old = claim.getDueBy();
++        claim.setDueBy(dueBy);
++        Claim saved = claims.saveAndFlush(claim);
++        audited("CLAIM_DUE_BY_SET", sheetId, user, person, saved, saved.getNumber(), " old=" + old + " new=" + dueBy);
++        rollups.audit(sheetId, user, before);
++        return saved;
++    }
++
+     /** What a split did: the original claim, as it is now, and the new claim split off it. */
+     public record Split(Claim original, Claim split) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index 40bc5754..cec98b9d 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -43,7 +43,7 @@ public class HolidayService {
+ 
+     /**
+      * Add a holiday to the sheet; refused when the date is already on its list. Every claim on the sheet
+-     * that is not SETTLED or VOID and is due by the holiday or later has its due-by worked out again from
++     * that is not SETTLED or VOID, whose due-by was not set directly, and is due by the holiday or later has its due-by worked out again from
+      * its date, with the terms it was fixed with, against the holidays now; the figures that moves are audited.
+      */
+     @Transactional
+@@ -58,7 +58,8 @@ public class HolidayService {
+         Set<LocalDate> days = days(sheetId);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             ClaimStatus status = claim.getStatus();
+-            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.getDueBy().isBefore(date)) {
++            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.isDueBySet()
++                    && !claim.getDueBy().isBefore(date)) {
+                 claim.workOutDueBy(days);
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 383afa4f..120feab6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -149,10 +149,10 @@ public class CloneService {
+             long to = insert("""
+                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held)
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held, due_by_set)
+                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held, due_by_set
+                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
+             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
+             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);
+diff --git a/src/main/resources/db/migration/V122__claim_due_by_set.sql b/src/main/resources/db/migration/V122__claim_due_by_set.sql
+new file mode 100644
+index 00000000..d47d7823
+--- /dev/null
++++ b/src/main/resources/db/migration/V122__claim_due_by_set.sql
+@@ -0,0 +1,3 @@
++-- Whether a steward set the claim's due-by directly: a due-by set this way stays as set, a holiday
++-- added later does not work it out again.
++ALTER TABLE claim ADD COLUMN due_by_set BOOLEAN NOT NULL DEFAULT FALSE;
