@@ -218,6 +218,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
       </p>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
@@ -2218,6 +2219,23 @@ export class People {
       ),
     ];
     this.download(lines, 'claims');
+  }
+
+  /**
+   * Download the period figures as a CSV file: a header line, then one line per person and period, people
+   * in list order (retired people included) and periods in the order added, with the figure and the
+   * carried figure as the rows show them. Each line ends with a line feed.
+   */
+  protected async exportPeriods(): Promise<void> {
+    await this.session.settled();
+    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
+    const lines = [
+      ['person', 'period', 'figure', 'carried'],
+      ...this.people().flatMap((p) =>
+        periods.map((period) => [p.name, period.name, this.periodTotalOf(period, p), this.carriedOf(period, p)]),
+      ),
+    ];
+    this.download(lines, 'periods');
   }
 
   /**
