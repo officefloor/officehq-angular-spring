@@ -1,0 +1,64 @@
+{
+  "checkpoint": 159,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp159_carried-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b4cdf6bd184cdee9a1433d5ffd0dd4843447caf0",
+  "reset_sha": "",
+  "preagent_sha": "09fc9d52518f4d6307b6052b1d7c5e45251a5f9f",
+  "prev_sha": "09fc9d52518f4d6307b6052b1d7c5e45251a5f9f",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5956984000000002,
+    "input_tokens": 40,
+    "output_tokens": 6088,
+    "cache_read_tokens": 731812,
+    "cache_creation_tokens": 40927,
+    "num_turns": 21,
+    "duration_ms": 468332,
+    "duration_api_ms": 63829,
+    "model": "claude-opus-5-5",
+    "session_id": "81a3c68d-4ae6-4bf3-a9d9-01d93150598d",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows a carried figure for every period, but `bin/e2e` does not fully pass: 3 of the 4 tests pass and \"scenario 3\" fails. The failure comes from the spec, not the app.\n\n**Why scenario 3 fails:** at `e2e/specs/acceptance.spec.ts:1016` the test sets the sheet's parent to `${sheet}-p`, the real sheet id plus `-p`. Then at line 1131 it expects `sheet-parent` to show the literal text `\"__SHEET__-p\"`, a placeholder that was never filled in. The app correctly shows the real id (e.g. `smvkcdbjd0oe0-p`), so no correct app can pass that line. I'm not allowed to edit the spec, so it needs fixing on the test side.\n\nTo check the rest of that scenario, I ran a temporary copy of the spec with only that one expectation corrected. Scenarios 1, 2 and 3 all passed, including every carried value and audit check; the first test had passed in the normal run. I then deleted the copy and put the original spec back unchanged.\n\n**The change:** it's all in `src/main/frontend/src/app/features/people/people.ts`, because the existing per-period figures are already computed in the front end. Nothing in the server or stored data needed to change.\n- For each period, the carried figure adds up the current due of a person's claims that:\n  - belong to an earlier period, by their due-by date, that ends before this period starts;\n  - were OPEN or PENDING at the end of this period's last day, according to the status log;\n  - still count under the existing rules for period figures, so held and deferred claims are left out.\n- Each period in the person's row now shows `carried` with `data-testid=\"person-period-<name>-carried\"`. A period with nothing carried shows `0.00`.\n\nThe carried figure is always worked out from the current data, even for a closed period. The request didn't say it should be frozen when a period closes the way the due-total is, so I didn't do that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5956984000000002,
+        "num_turns": 21,
+        "duration_ms": 468332,
+        "duration_api_ms": 63829,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp159.agent.jsonl",
+  "agent_diff_file": "cp159.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
