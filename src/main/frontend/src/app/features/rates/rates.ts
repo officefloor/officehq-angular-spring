@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
 
 // The sheet's rates: each grade's rate in force on the sheet's today, every rate by grade and
 // from-date, and one form to set a grade's rate from a date (or from the beginning of time) through
-// a to-date (or with no end).
+// a to-date (or with no end), and a calendar of each grade's rate on the first of each month of the
+// sheet's today's year.
 @Component({
   selector: 'app-rates',
   imports: [FigurePipe],
@@ -122,6 +123,27 @@ import { Session } from '../../core/session';
         </tbody>
       </table>
       <table>
+        <caption>Rate calendar for {{ year() }}: the rate in force on the first of each month</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of months(); track m) {
+              <th scope="col">{{ m }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of months(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (monthOf(g, m) ?? noRate) | figure }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
         <caption>All rates</caption>
         <thead>
           <tr>
@@ -208,6 +230,19 @@ export class Rates {
       a.grade !== b.grade ? a.grade.localeCompare(b.grade) : (a.from ?? '').localeCompare(b.from ?? ''),
     ),
   );
+
+  /** The calendar year of the sheet's today (yyyy). */
+  protected readonly year = computed(() => this.today().slice(0, 4));
+
+  /** The months (yyyy-mm) of the sheet's today's calendar year. */
+  protected readonly months = computed(() =>
+    Array.from({ length: 12 }, (_, i) => `${this.year()}-${String(i + 1).padStart(2, '0')}`),
+  );
+
+  /** The rate a grade has in force on the first day of a month (yyyy-mm). */
+  protected monthOf(grade: Grade, month: string): string | null {
+    return rateOn(this.rates(), grade, `${month}-01`, this.inherited());
+  }
 
   protected currentOf(grade: Grade): string | null {
     return rateOn(this.rates(), grade, this.today(), this.inherited());
