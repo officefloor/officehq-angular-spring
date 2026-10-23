@@ -1,7 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import {
-  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
+  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -267,6 +267,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'reviewSla')"
           (keydown.backspace)="cleared($event, 'reviewSla')"
         />
+        <label for="setting-proof-kinds">Proof kinds a claim above the proof threshold needs one of each of (receipt, photo; comma separated; empty: none)</label>
+        <input
+          id="setting-proof-kinds"
+          data-testid="setting-proof-kinds"
+          [value]="proofKindsInput()"
+          (input)="proofKindsInput.set(value($event)); proofKindsEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'proofKinds')"
+          (keydown.backspace)="cleared($event, 'proofKinds')"
+        />
         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
         <input
           id="setting-pot"
@@ -345,6 +354,7 @@ import { Session } from '../../core/session';
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
+      <p>Proof kinds in force: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
@@ -436,6 +446,7 @@ export class Settings {
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterInput = signal('');
   protected readonly reviewSlaInput = signal('');
+  protected readonly proofKindsInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -460,6 +471,7 @@ export class Settings {
   protected graceDaysEdited = false;
   protected escalateAfterEdited = false;
   protected reviewSlaEdited = false;
+  protected proofKindsEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
   protected parentEdited = false;
@@ -565,7 +577,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -603,6 +615,9 @@ export class Settings {
     } else if (setting === 'reviewSla') {
       this.reviewSlaInput.set('');
       this.reviewSlaEdited = true;
+    } else if (setting === 'proofKinds') {
+      this.proofKindsInput.set('');
+      this.proofKindsEdited = true;
     } else if (setting === 'parent') {
       this.parentInput.set('');
       this.parentEdited = true;
@@ -662,6 +677,7 @@ export class Settings {
     const graceDays = this.graceDaysInput().trim();
     const escalateAfter = this.escalateAfterInput().trim();
     const reviewSla = this.reviewSlaInput().trim();
+    const proofKinds = this.proofKindsInput().trim();
     const pot = this.potInput().trim();
     const alertThreshold = this.alertThresholdInput().trim();
     const parent = this.parentInput().trim();
@@ -669,7 +685,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -690,6 +706,7 @@ export class Settings {
     const saveGraceDays = this.graceDaysEdited;
     const saveEscalateAfter = this.escalateAfterEdited;
     const saveReviewSla = this.reviewSlaEdited;
+    const saveProofKinds = this.proofKindsEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
     const saveParent = this.parentEdited;
@@ -788,6 +805,10 @@ export class Settings {
       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
       return;
     }
+    if (saveProofKinds && !PROOF_KIND_LIST.test(proofKinds)) {
+      this.settingsError.set('Type the proof kinds as receipt or photo, comma separated, or leave them empty for none.');
+      return;
+    }
     if (savePot && !POT.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
@@ -827,6 +848,7 @@ export class Settings {
     if (saveGraceDays) this.graceDaysEdited = false;
     if (saveEscalateAfter) this.escalateAfterEdited = false;
     if (saveReviewSla) this.reviewSlaEdited = false;
+    if (saveProofKinds) this.proofKindsEdited = false;
     if (savePot) this.potEdited = false;
     if (saveAlertThreshold) this.alertThresholdEdited = false;
     if (saveParent) this.parentEdited = false;
@@ -914,6 +936,11 @@ export class Settings {
           const view = await this.api.setReviewSla(sheet, reviewSla);
           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
           if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
+        }
+        if (saveProofKinds) {
+          const view = await this.api.setProofKinds(sheet, proofKinds);
+          this.session.proofKinds.set(view.proofKinds ?? '');
+          if (!this.proofKindsEdited) this.proofKindsInput.set(view.proofKinds ?? '');
         }
         if (savePot) {
           const view = await this.api.setPot(sheet, pot);
@@ -1051,6 +1078,10 @@ export class Settings {
       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaEdited = false;
+      // The proof kinds start at those set, so clearing them is a change.
+      this.session.proofKinds.set(settings.proofKinds ?? '');
+      this.proofKindsInput.set(settings.proofKinds ?? '');
+      this.proofKindsEdited = false;
       // The pot starts at the one in force, so clearing it is a change.
       this.session.pot.set(settings.pot ?? '');
       this.potInput.set(settings.pot ?? '');

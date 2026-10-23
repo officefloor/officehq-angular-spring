@@ -126,6 +126,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The proof kinds: comma separated, a claim above the proof threshold needs a proof of each to be settled or approved; null for none. Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -413,6 +417,7 @@ public class Sheet {
         then.alertThreshold = alertThreshold;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.proofKinds = proofKinds;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.archived = archived;
@@ -558,6 +563,20 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    /** The proof kinds as set, comma separated; null when blank (none). */
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
+    }
+
+    /** The proof kinds as a list; empty when there are none. */
+    public List<String> proofKindList() {
+        return proofKinds == null ? List.of() : Arrays.asList(proofKinds.split(","));
     }
 
     /** The month, 1 to 12, the sheet's fiscal year starts in. */

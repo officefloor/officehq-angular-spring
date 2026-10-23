@@ -38,7 +38,7 @@ public class SheetController {
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
-            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla) {
+            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -47,7 +47,8 @@ public class SheetController {
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
-                    sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla());
+                    sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
+                    sheet.getProofKinds());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -79,14 +80,16 @@ public class SheetController {
      * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
      * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
-     * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none. */
+     * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
+     * and the proof kinds, comma separated, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
-            List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla) {
+            List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
+            String proofKinds) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -105,7 +108,7 @@ public class SheetController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
-                    sheet.getEscalateAfter(), sheet.getReviewSla());
+                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -160,6 +163,17 @@ public class SheetController {
         /** The parent sheet's id entered; null when blank. */
         String parent() {
             String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null : text;
+        }
+    }
+
+    /** Proof kinds as entered: receipt or photo, comma separated, or blank (or null) for none. */
+    public record ProofKindsChange(
+            @Size(max = 200) @Pattern(regexp = "\\s*((receipt|photo)(\\s*,\\s*(receipt|photo))*)?\\s*") String value) {
+
+        /** The proof kinds entered, comma separated with no spaces; null when blank. */
+        String kinds() {
+            String text = value == null ? "" : value.replaceAll("\\s", "");
             return text.isEmpty() ? null : text;
         }
     }
@@ -513,6 +527,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GraceDaysChange change) {
         return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
+    }
+
+    /** Change the sheet's proof kinds; a blank value means none. */
+    @PutMapping("/{id}/settings/proof-kinds")
+    public SettingsView setProofKinds(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ProofKindsChange change) {
+        return SettingsView.of(service.setProofKinds(id, SignedIn.name(user), change.kinds()));
     }
 
     /** Change the month the sheet's fiscal year starts in. */

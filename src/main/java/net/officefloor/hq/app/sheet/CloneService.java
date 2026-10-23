@@ -67,10 +67,10 @@ public class CloneService {
         jdbc.update("""
                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla)
+                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds)
                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla
+                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds
                 FROM sheet WHERE id = ?""", toSheetId, sheetId);
         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
@@ -145,10 +145,10 @@ public class CloneService {
             long from = row.getLong(1);
             long to = insert("""
                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
-                        edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
+                        edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
                         late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived)
                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
-                        edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
+                        edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
                         late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived
                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);

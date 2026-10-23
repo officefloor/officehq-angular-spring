@@ -38,14 +38,14 @@ public class ClaimController {
      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
      * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived, and whether the
-     * figure it was bound to is its whole due as shown (late charge and floor included).
+     * figure it was bound to is its whole due as shown (late charge and floor included), and its proofs count of each kind.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
             String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived,
-            boolean statedWhole) {
+            boolean statedWhole, int proofsReceipt, int proofsPhoto) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -58,7 +58,7 @@ public class ClaimController {
                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
-                    claim.isWaived(), claim.isStatedWhole());
+                    claim.isWaived(), claim.isStatedWhole(), claim.getProofs("receipt"), claim.getProofs("photo"));
         }
     }
 
@@ -120,6 +120,16 @@ public class ClaimController {
     /** The date an OPEN claim is deferred until. */
     /** A void as chosen on the claim: a reason from the sheet's list, or none (null or blank). */
     public record VoidForm(@Size(max = 100) String reason) {
+    }
+
+    /** A proof to add: its kind, receipt or photo; none chosen (null or blank) is a receipt. */
+    public record ProofForm(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
+
+        /** The kind chosen; null when none was. */
+        String chosen() {
+            String text = kind == null ? "" : kind.trim();
+            return text.isEmpty() ? null : text;
+        }
     }
 
     public record DeferForm(@NotNull LocalDate until) {
@@ -383,13 +393,14 @@ public class ClaimController {
         return ClaimView.of(service.restore(sheetId, SignedIn.name(user), claimId));
     }
 
-    /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
+    /** Add a proof of a kind (none chosen: a receipt) to a claim; refused for a SETTLED or VOID claim. */
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long claimId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.addProof(sheetId, SignedIn.name(user), claimId));
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) @Valid ProofForm proof) {
+        return ClaimView.of(service.addProof(sheetId, SignedIn.name(user), claimId, proof == null ? null : proof.chosen()));
     }
 
     /** Comment on a claim; refused when the comment is blank. */

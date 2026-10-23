@@ -295,6 +295,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's proof kinds, comma separated (null: none), auditing the change. */
+    @Transactional
+    public Sheet setProofKinds(String id, String user, String kinds) {
+        Sheet sheet = lock(id);
+        sheet.setProofKinds(kinds);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=proof-kinds value="
+                + (kinds == null ? "" : kinds));
+        return saved;
+    }
+
     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

@@ -150,6 +150,14 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are receipts. */
+    @Column(name = "proofs_receipt", nullable = false)
+    private int proofsReceipt;
+
+    /** How many of the claim's proofs are photos. */
+    @Column(name = "proofs_photo", nullable = false)
+    private int proofsPhoto;
+
     /** The last day (the sheet's today) a reminder was written for the claim; null when never reminded. */
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
@@ -510,8 +518,22 @@ public class Claim {
         return proofs;
     }
 
-    /** Raise the claim's proofs count by one; the caller checks the claim can take a proof. */
-    public void addProof() {
+    /** How many of the claim's proofs are of a kind (receipt or photo). */
+    public int getProofs(String kind) {
+        return switch (kind) {
+            case "receipt" -> proofsReceipt;
+            case "photo" -> proofsPhoto;
+            default -> throw new IllegalArgumentException("No such proof kind: " + kind);
+        };
+    }
+
+    /** Raise the claim's proofs count, and its count of the kind (receipt or photo), by one; the caller checks the claim can take a proof. */
+    public void addProof(String kind) {
+        switch (kind) {
+            case "receipt" -> proofsReceipt++;
+            case "photo" -> proofsPhoto++;
+            default -> throw new IllegalArgumentException("No such proof kind: " + kind);
+        }
         proofs++;
     }
 

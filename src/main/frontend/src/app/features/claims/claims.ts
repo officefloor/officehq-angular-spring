@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, cents, tagsText, deferred, dueBy, money, overdue, reviewLate, roundsHalfUp } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, PROOF_KINDS, ProofKind, cents, tagsText, deferred, dueBy, money, overdue, reviewLate, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -127,6 +127,8 @@ const PAST: Record<ClaimAction, string> = {
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span></span>
+          <span>Photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
@@ -265,6 +267,17 @@ const PAST: Record<ClaimAction, string> = {
               {{ a.label }}
             </button>
           }
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select
+            [id]="'claim-proof-kind-' + c.id"
+            data-testid="claim-proof-kind"
+            (change)="setProofKind(c.id, value($event))"
+          >
+            <option value="" [selected]="!proofKindsChosen()[c.id]">Receipt (default)</option>
+            @for (k of proofKinds; track k) {
+              <option [value]="k" [selected]="proofKindsChosen()[c.id] === k">{{ k }}</option>
+            }
+          </select>
           <button
             type="button"
             data-testid="claim-proof"
@@ -454,6 +467,10 @@ export class Claims {
   private timelineShows = 0;
   /** The reason chosen from the sheet's list on each claim's row for voiding it, by claim id. */
   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
+  /** The kinds a proof can be, as offered on each claim's row. */
+  protected readonly proofKinds = PROOF_KINDS;
+  /** The proof kind chosen on each claim's row; none (a receipt) when not chosen. */
+  protected readonly proofKindsChosen = signal<Record<number, ProofKind | ''>>({});
 
   constructor() {
     // A sheet load clears the timelines shown for the sheet before.
@@ -678,6 +695,12 @@ export class Claims {
   /** Enter the date to defer a claim until; it clears any error left on the claim's row. */
   protected setVoidReason(id: number, reason: string): void {
     this.voidReasonsChosen.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Choose the kind of the next proof added to a claim; it clears any error left on the claim's row. */
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKindsChosen.update((kinds) => ({ ...kinds, [id]: kind as ProofKind | '' }));
     if (this.claimError()?.id === id) this.claimError.set(null);
   }
 
@@ -927,13 +950,13 @@ export class Claims {
     }
   }
 
-  /** Raise a claim's proofs count by one; refused with an error on its row when the claim is SETTLED or VOID. */
+  /** Add a proof of the kind chosen on its row (none: a receipt) to a claim; refused with an error on its row when the claim is SETTLED or VOID. */
   protected async addProof(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     try {
-      this.saved.emit(await this.api.addProof(sheet, claim.id));
+      this.saved.emit(await this.api.addProof(sheet, claim.id, this.proofKindsChosen()[claim.id] || null));
     } catch {
       this.claimError.set({
         id: claim.id,
@@ -1032,6 +1055,12 @@ export class Claims {
     }
   }
 
+  /** The sheet's proof kinds the claim has no proof of yet. */
+  private missingProofKinds(claim: ClaimView): string[] {
+    const counts: Record<ProofKind, number> = { receipt: claim.proofsReceipt, photo: claim.proofsPhoto };
+    return this.session.proofKinds().split(',').filter((k) => k !== '' && counts[k as ProofKind] === 0);
+  }
+
   /**
    * Move a claim's status; a move its status does not allow is refused with an error on its row, as
    * is a reject without a reason. A clerk settling a claim above the clerk limit sends it PENDING.
@@ -1060,7 +1089,8 @@ export class Claims {
       const edited = !mine && (claim.editedBy ?? null) === me;
       const own = ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
         && (mine || edited);
-      const unproved = e instanceof HttpErrorResponse && e.status === 409 && claim.proofs === 0
+      const unkinded = this.missingProofKinds(claim);
+      const unproved = e instanceof HttpErrorResponse && e.status === 409 && (claim.proofs === 0 || unkinded.length > 0)
         && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
       const cap = action === 'open' ? periodOn(this.periods(), claim.dueBy) : null;
       const capped = e instanceof HttpErrorResponse && e.status === 409 && cap?.cap != null
@@ -1085,7 +1115,9 @@ export class Claims {
           : own
             ? `You ${edited ? 'last edited' : 'opened'} this claim, so someone else must ${action} it.`
             : unproved
-              ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+              ? claim.proofs === 0
+                ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+                : `The claim's due is above the proof threshold, so it needs a ${unkinded.join(' and a ')} proof before it can be ${PAST[action]}.`
             : capped
               ? `The person already has ${cap?.cap} open claims in period ${cap?.name}, its cap.`
             : unnoted

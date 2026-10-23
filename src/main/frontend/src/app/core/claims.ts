@@ -23,6 +23,10 @@ export function isOpen(claim: ClaimView): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
+/** The kinds a proof can be. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+export type ProofKind = (typeof PROOF_KINDS)[number];
+
 export interface ClaimView {
   id: number;
   personId: number;
@@ -73,6 +77,10 @@ export interface ClaimView {
   deferredUntil: string | null;
   /** How many proofs the claim has. Above the proof threshold, a claim with none cannot be settled or approved. */
   proofs: number;
+  /** How many of the claim's proofs are receipts. */
+  proofsReceipt: number;
+  /** How many of the claim's proofs are photos. */
+  proofsPhoto: number;
   /** The number of the claim this one was split from; null unless it was split off another. */
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when none does. */
@@ -428,9 +436,9 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/comments`, { text }));
   }
 
-  /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
-  addProof(sheet: string, id: number): Promise<ClaimView> {
-    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/proof`, {}));
+  /** Add a proof of a kind (none chosen: a receipt) to a claim; refused for a SETTLED or VOID claim. */
+  addProof(sheet: string, id: number, kind: ProofKind | null): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/proof`, { kind }));
   }
 
   defer(sheet: string, id: number, until: string): Promise<ClaimView> {

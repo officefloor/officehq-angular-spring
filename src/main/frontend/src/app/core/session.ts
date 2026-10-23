@@ -55,6 +55,8 @@ export interface SheetView {
   roundingHistory?: DatedValue[];
   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
   reviewSla?: number | null;
+  /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled; null when none. */
+  proofKinds?: string | null;
 }
 
 /**
@@ -113,6 +115,8 @@ export class Session {
   readonly archived = signal(false);
   /** The active sheet's review SLA in days; empty when there is none. */
   readonly reviewSla = signal('');
+  /** The active sheet's proof kinds, comma separated; empty when there are none. */
+  readonly proofKinds = signal('');
   /** The number of the active sheet's last settle batch; null when there has been none. */
   readonly lastSettleBatch = signal<number | null>(null);
   /**
@@ -216,5 +220,6 @@ export class Session {
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
     this.reviewSla.set(view.reviewSla?.toString() ?? '');
+    this.proofKinds.set(view.proofKinds ?? '');
   }
 }
