@@ -1,0 +1,474 @@
+diff --git a/.e2e.out b/.e2e.out
+index 86f20059..13213b85 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,69 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › statement binds late charge › statement binds late charge (17.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:143:7 › statement binds late charge › statement binds late charge scenario 1 (26.8s)
+-  ✘  3 [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 (24.3s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1281:7 › statement binds late charge › statement binds late charge scenario 3 (27.9s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › flags › flags (10.3s)
++  ✘  2 [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 (16.1s)
++  ✓  3 [chromium] › acceptance.spec.ts:527:7 › flags › flags scenario 2 (17.4s)
++  ✘  4 [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 (16.8s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 
++  1) [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"6"[39m
++
++      155 |     await ui.sortBy(pg_uma, "due-total");
++      156 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-04-02", "note": "n", "tags": "b,a,a"})).toBeNull();
++    > 157 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "10.35", "date": "2026-03-01"})).toBeNull();
++          |                                                                                         ^
++      158 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-03-15", "tags": " c "})).toBeNull();
++      159 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
++      160 |     expect(await ui.delegate(pg_vic, {"user": "uma", "from": "2026-02-10", "to": "2026-03-01"})).toBe(true);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:157:89
++
++  2) [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkhfynglmm7[27m-p"[39m
++    Received string: [31m"[7msmvkilkrzu3it[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
+-    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
+-
+-
+-      902 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      903 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-10");
+-    > 904 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      905 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+-      906 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      907 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:904:54
+-
+-  1 failed
+-    [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 
+-  3 passed (1.7m)
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
++    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
++
++
++      1063 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      1064 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
++    > 1065 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++           |                                                      ^
++      1066 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("4");
++      1067 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1068 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1065:54
++
++  2 failed
++    [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ────────────────────────────────
++    [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ───────────────────────────────
++  2 passed (1.1m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 8af4966a..385f36db 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -80,6 +80,10 @@ export interface PersonView {
+   aliases?: string[];
+   /** Whether the person's name or an alias is in use on another sheet of the sheet's tree; absent from a view kept before this was. */
+   clashing?: boolean;
++  /** Why a steward flagged the person; null when never, absent from a view kept before flags were. */
++  flagReason?: string | null;
++  /** The last day (yyyy-mm-dd) the person's flag is in force; null when never, absent from a view kept before flags were. */
++  flagUntil?: string | null;
+   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
+   originSheetId?: string | null;
+   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
+@@ -112,6 +116,11 @@ export interface HoldView {
+   to: string | null;
+ }
+ 
++/** The reason a person's flag shows on a date (yyyy-mm-dd): '' unless it is in force then. */
++export function flagOn(person: PersonView, date: string): string {
++  return person.flagReason && person.flagUntil && date <= person.flagUntil ? person.flagReason : '';
++}
++
+ /** Whether a date (yyyy-mm-dd) falls within any of a person's holds. */
+ export function heldOn(person: PersonView, date: string): boolean {
+   return person.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+@@ -238,6 +247,11 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/unretire`, null));
+   }
+ 
++  /** Flag a person with a reason until a date (yyyy-mm-dd); a steward only. */
++  flag(sheet: string, id: number, reason: string, until: string): Promise<PersonView> {
++    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/flag`, { reason, until }));
++  }
++
+   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
+   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/holds`, { from, to }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3fccc4ce..26e7531e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
+ import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+ import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+-import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive, termsOn } from '../../core/people';
++import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+@@ -404,6 +404,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+             }
+             <th scope="col">Statement lines</th>
+             <th scope="col">Snapshots</th>
++            <th scope="col">Flag</th>
+             <th scope="col">Active</th>
+             @if (columns.shown('hold')) {
+               <th scope="col">On hold</th>
+@@ -543,6 +544,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   }
+                 </ul>
+               </td>
++              <td data-testid="person-flag-shown">{{ flagShown(p) }}</td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               @if (columns.shown('hold')) {
+                 <td>
+@@ -730,6 +732,30 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Hold
+                 </button>
++                <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
++                <input
++                  type="text"
++                  [id]="'person-flag-reason-' + p.id"
++                  data-testid="person-flag-reason"
++                  [value]="flagDraft(p.id).reason"
++                  (input)="setFlagDraft(p.id, { reason: value($event) })"
++                />
++                <label [for]="'person-flag-until-' + p.id">Flag until</label>
++                <input
++                  type="date"
++                  [id]="'person-flag-until-' + p.id"
++                  data-testid="person-flag-until"
++                  [value]="flagDraft(p.id).until"
++                  (input)="setFlagDraft(p.id, { until: value($event) })"
++                />
++                <button
++                  type="button"
++                  data-testid="person-flag"
++                  [attr.aria-label]="'Flag ' + p.name"
++                  (click)="flag(p)"
++                >
++                  Flag
++                </button>
+                 <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                 <select
+                   [id]="'person-merge-into-' + p.id"
+@@ -833,6 +859,8 @@ export class People {
+   protected readonly inlineGrades = new Map<number, Grade>();
+   /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
+   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
++  /** The flag reason and until-date typed on each person's row, by person id. */
++  protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
+   /** The sheet's claims, newest first. */
+   protected readonly claims = signal<ClaimView[]>([]);
+   private readonly byPerson = computed(() => {
+@@ -1192,6 +1220,7 @@ export class People {
+         this.personError.set(null);
+         this.retireDates.clear();
+         this.holdDrafts.set(new Map());
++        this.flagDrafts.set(new Map());
+         this.patronError.set(null);
+         this.patronChoices.clear();
+         this.mergeChoices.clear();
+@@ -1760,6 +1789,52 @@ export class People {
+     }
+   }
+ 
++  /** The reason a person's flag shows on the sheet's today: blank unless it is in force. */
++  protected flagShown(person: PersonView): string {
++    return flagOn(person, this.session.today() ?? '');
++  }
++
++  /** The flag reason and until-date typed on a person's row. */
++  protected flagDraft(personId: number): { reason: string; until: string } {
++    return this.flagDrafts().get(personId) ?? { reason: '', until: '' };
++  }
++
++  /** Change the flag reason or until-date typed on a person's row. */
++  protected setFlagDraft(personId: number, change: { reason?: string; until?: string }): void {
++    this.flagDrafts.update((map) => new Map(map).set(personId, { ...this.flagDraft(personId), ...change }));
++    this.personError.set(null);
++  }
++
++  /** Flag a person with the reason typed until the date typed; a steward only, and a reason is needed. */
++  protected async flag(person: PersonView): Promise<void> {
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const draft = this.flagDraft(person.id);
++    const reason = draft.reason.trim();
++    const until = draft.until.trim();
++    if (reason === '') {
++      this.personError.set({ id: person.id, message: 'A flag needs a reason.' });
++      return;
++    }
++    if (until === '') {
++      this.personError.set({ id: person.id, message: 'A flag needs an until date.' });
++      return;
++    }
++    try {
++      const saved = await this.api.flag(sheet, person.id, reason, until);
++      if (this.session.sheet() !== sheet) return;
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.flagDrafts.update((map) => {
++        const next = new Map(map);
++        next.delete(person.id);
++        return next;
++      });
++    } catch {
++      this.personError.set({ id: person.id, message: 'The person could not be flagged.' });
++    }
++  }
++
+   /** Start or stop watching a person as the signed-in user. */
+   protected async toggleWatch(person: PersonView): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4e67e104..3643228c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -285,7 +285,8 @@ public class ClaimService {
+      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
+      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
+      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
+-     * deferred on the sheet's today be settled, nor a claim opened whose person already has as many OPEN
++     * deferred on the sheet's today be settled, nor a claim opened by anyone but a steward whose person is
++     * flagged on the sheet's today, nor a claim opened whose person already has as many OPEN
+      * or PENDING claims due by in its period as the period's claim cap. A claim opened whose due is above the
+      * sheet's review threshold in force on its date (a due of n/a is within any threshold) goes to REVIEW
+      * instead, with no number yet, audited as CLAIM_REVIEW (see {@link #review}). A SETTLED claim is voided only by a steward, within
+@@ -340,6 +341,11 @@ public class ClaimService {
+         BigDecimal settledDue = next == ClaimStatus.SETTLED
+                 ? dues.settling(claim, person.gradeOn(claim.getDate()))
+                 : null;
++        if (next == ClaimStatus.OPEN && person.flaggedOn(today)
++                && !Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    person.getName() + " is flagged (" + person.getFlagReason() + "): only a steward opens their claims.");
++        }
+         if (next == ClaimStatus.OPEN) {
+             periods.refuseIfCapped(sheetId, claim);
+             BigDecimal due = dues.due(claim, person.gradeOn(claim.getDate()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 1c8e5097..0e3bca98 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -100,6 +100,14 @@ public class Person {
+     @Column(name = "arrived_on")
+     private LocalDate arrivedOn;
+ 
++    /** Why a steward flagged the person; null when never flagged. */
++    @Column(name = "flag_reason")
++    private String flagReason;
++
++    /** The last day the person's flag is in force; null when never flagged. */
++    @Column(name = "flag_until")
++    private LocalDate flagUntil;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -349,6 +357,25 @@ public class Person {
+         return arrivedOn;
+     }
+ 
++    public String getFlagReason() {
++        return flagReason;
++    }
++
++    public LocalDate getFlagUntil() {
++        return flagUntil;
++    }
++
++    /** Whether the person's flag is in force on a day: they were flagged until it or a later day. */
++    public boolean flaggedOn(LocalDate day) {
++        return flagReason != null && flagUntil != null && !day.isAfter(flagUntil);
++    }
++
++    /** Flag the person with a reason until a date, replacing any flag they had. */
++    public void flag(String reason, LocalDate until) {
++        this.flagReason = reason;
++        this.flagUntil = until;
++    }
++
+     /** Whether the person arrived on their sheet by transfer on this day. */
+     public boolean arrivedOn(LocalDate day) {
+         return originSheetId != null && arrivedOn != null && arrivedOn.equals(day);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 8500d1b2..66ea5955 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -42,7 +42,8 @@ public class PersonController {
+      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
+      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
+      * in the order they were named, and whether their name or an alias is in use on another sheet of the
+-     * sheet's tree (clashing), and the sheet they were last transferred from (null when never).
++     * sheet's tree (clashing), and the sheet they were last transferred from (null when never), and their
++     * flag's reason and last day (both null when never flagged).
+      * Their grades are listed by the date each is in force from, the first with none (from the
+      * beginning of time). Their terms are their own from the beginning of time; the own terms recorded
+      * since are listed by the date each is in force from.
+@@ -52,7 +53,8 @@ public class PersonController {
+             List<String> tagsUsed, long version, int statementCount,
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
+             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+-            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
++            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines,
++            String flagReason, LocalDate flagUntil) {
+ 
+         public static PersonView of(Person person) {
+             return of(person, false);
+@@ -80,7 +82,8 @@ public class PersonController {
+                     person.getStatements().stream()
+                             .map(statement -> new StatementLineView(statement.getTakenOn(),
+                                     Rollups.shown(statement.getTotal())))
+-                            .toList());
++                            .toList(),
++                    person.getFlagReason(), person.getFlagUntil());
+         }
+     }
+ 
+@@ -307,6 +310,20 @@ public class PersonController {
+                 form == null ? null : form.from(), form == null ? null : form.to()));
+     }
+ 
++    /** A flag's reason and the last day it is in force. */
++    public record FlagForm(@Size(max = 200) String reason, @NotNull LocalDate until) {
++    }
++
++    /** Flag a person with a reason until a date; a steward only. */
++    @PostMapping("/{personId}/flag")
++    public PersonView flag(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid FlagForm form) {
++        return view(service.flag(sheetId, SignedIn.name(user), personId, form.reason(), form.until()));
++    }
++
+     /** The person named as a patron. */
+     public record PatronForm(@NotNull Long patronId) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 90fdb165..fe8c68bc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -7,6 +7,8 @@ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -24,9 +26,11 @@ public class PersonService {
+     private final SheetRepository sheetStore;
+     private final Rollups rollups;
+     private final Audit audit;
++    private final RoleService roles;
+ 
+     public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
+-            Audit audit) {
++            Audit audit, RoleService roles) {
++        this.roles = roles;
+         this.people = people;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+@@ -255,6 +259,29 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /**
++     * Flag a person with a reason until a date: while the sheet's today is on or before it, only a
++     * steward opens a claim of theirs. Refused unless the user is a steward, and for a blank reason.
++     */
++    @Transactional
++    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward flags a person.");
++        }
++        String trimmed = reason == null ? "" : reason.trim();
++        if (trimmed.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A flag needs a reason.");
++        }
++        person.flag(trimmed, until);
++        Person saved = people.saveAndFlush(person);
++        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user
++                + " name=" + saved.getName() + " reason=" + trimmed + " until=" + until);
++        return saved;
++    }
++
+     /**
+      * Name another person on the sheet as a patron of this one; refused for the person themselves and
+      * for someone already their patron.
+diff --git a/src/main/resources/db/migration/V101__person_flag.sql b/src/main/resources/db/migration/V101__person_flag.sql
+new file mode 100644
+index 00000000..75caf810
+--- /dev/null
++++ b/src/main/resources/db/migration/V101__person_flag.sql
+@@ -0,0 +1,4 @@
++-- A steward can flag a person with a reason until a date: while the sheet's today is on or before
++-- it, only a steward may open a claim of theirs. Both are null while the person was never flagged.
++ALTER TABLE person ADD COLUMN flag_reason VARCHAR(200);
++ALTER TABLE person ADD COLUMN flag_until DATE;
