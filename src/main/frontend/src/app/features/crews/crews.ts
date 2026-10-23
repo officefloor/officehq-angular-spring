@@ -2,12 +2,14 @@ import { Component, computed, effect, inject, input, model, signal, untracked } 
 import { FigurePipe } from '../../core/locale';
 import { money } from '../../core/claims';
 import { CrewView, CrewsApi, crewDueCents } from '../../core/crews';
-import { PersonView } from '../../core/people';
+import { PersonView, gradeOn } from '../../core/people';
 import { Session } from '../../core/session';
 
 /** A crew as shown: the crew and its due-total. */
 interface CrewLine {
   crew: CrewView;
+  /** The lead's name with the grade in force on the sheet's today. */
+  lead: string;
   dueTotal: string;
 }
 
@@ -46,7 +48,7 @@ interface CrewLine {
           <li [attr.data-testid]="'crew-row-' + line.crew.name">
             <h3>{{ line.crew.name }}</h3>
             <p>
-              Lead <span data-testid="crew-lead">{{ line.crew.lead }}</span>,
+              Lead <span data-testid="crew-lead">{{ line.lead }}</span>,
               due-total <span data-testid="crew-due-total">{{ line.dueTotal | figure }}</span>
             </p>
             <ul [attr.aria-label]="'Members of ' + line.crew.name">
@@ -85,6 +87,8 @@ export class Crews {
   readonly people = input.required<PersonView[]>();
   /** Each person's due-total in whole cents as shown, by person id; null when shown as n/a. */
   readonly dueTotals = input.required<Map<number, number | null>>();
+  /** The sheet's today (yyyy-mm-dd), to show each lead's grade in force on it. */
+  readonly today = input.required<string>();
 
   /** The sheet's crews as read from the store, shared with the screen around. */
   readonly crews = model<CrewView[]>([]);
@@ -99,10 +103,16 @@ export class Crews {
   /** Each crew with its due-total: its lead's and members' due-totals added up, n/a skipped. */
   protected readonly lines = computed<CrewLine[]>(() => {
     const dues = this.dueTotals();
-    return this.crews().map((crew) => ({
-      crew,
-      dueTotal: money(crewDueCents(crew, dues)),
-    }));
+    const people = new Map(this.people().map((p) => [p.id, p]));
+    const today = this.today();
+    return this.crews().map((crew) => {
+      const lead = people.get(crew.leadId);
+      return {
+        crew,
+        lead: lead ? `${crew.lead} (${gradeOn(lead.grades, today)})` : crew.lead,
+        dueTotal: money(crewDueCents(crew, dues)),
+      };
+    });
   });
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;

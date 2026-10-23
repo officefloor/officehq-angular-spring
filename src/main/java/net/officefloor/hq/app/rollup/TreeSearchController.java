@@ -16,8 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class TreeSearchController {
 
-    /** A person found as the screen shows them: their sheet, name and due-total (two decimals, or n/a). */
-    public record FoundView(String sheetId, String name, String dueTotal) {
+    /** A person found as the screen shows them: their sheet, name, grade in force on their sheet's today
+     * and due-total (two decimals, or n/a). */
+    public record FoundView(String sheetId, String name, String grade, String dueTotal) {
     }
 
     private final TreeSearch search;
@@ -32,7 +33,7 @@ public class TreeSearchController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
         return search.search(id, text).stream()
-                .map(found -> new FoundView(found.sheetId(), found.name(), Rollups.shown(found.dueTotal())))
+                .map(found -> new FoundView(found.sheetId(), found.name(), found.grade(), Rollups.shown(found.dueTotal())))
                 .toList();
     }
 }

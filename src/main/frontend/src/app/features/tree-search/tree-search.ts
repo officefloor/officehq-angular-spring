@@ -20,7 +20,7 @@ import { Session } from '../../core/session';
         <p>Found <strong data-testid="search-count">{{ lines.length }}</strong></p>
         <ul>
           @for (line of lines; track $index) {
-            <li data-testid="search-line">{{ line.sheetId }} {{ line.name }} {{ line.dueTotal }}</li>
+            <li data-testid="search-line">{{ line.sheetId }} {{ line.name }} ({{ line.grade }}) {{ line.dueTotal }}</li>
           }
         </ul>
       }

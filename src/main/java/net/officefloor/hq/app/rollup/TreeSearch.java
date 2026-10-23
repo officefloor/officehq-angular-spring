@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,8 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TreeSearch {
 
-    /** A person found: their sheet, name and due-total (null when n/a). */
-    public record Found(String sheetId, String name, BigDecimal dueTotal) {
+    /** A person found: their sheet, name, grade in force on their sheet's today and due-total (null when n/a). */
+    public record Found(String sheetId, String name, String grade, BigDecimal dueTotal) {
     }
 
     private final SheetService sheets;
@@ -44,10 +45,11 @@ public class TreeSearch {
         List<Found> found = new ArrayList<>();
         for (String id : order) {
             Rollups.Rollup rollup = rollups.take(id);
+            LocalDate today = sheets.today(id);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (matches(person, key)) {
                     Rollups.Figures figures = rollup.people().get(person.getId());
-                    found.add(new Found(id, person.getName(), figures == null ? null : figures.dueTotal()));
+                    found.add(new Found(id, person.getName(), person.gradeOn(today), figures == null ? null : figures.dueTotal()));
                 }
             }
         }

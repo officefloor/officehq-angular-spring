@@ -2,10 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-/** A person found over a sheet's tree: their sheet, name and due-total (two decimals, or n/a). */
+/** A person found over a sheet's tree: their sheet, name, grade in force on their sheet's today and due-total (two decimals, or n/a). */
 export interface FoundView {
   sheetId: string;
   name: string;
+  grade: string;
   dueTotal: string;
 }
 

@@ -468,7 +468,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ shownName(p) }}</td>
               <td data-testid="person-origin">{{ p.originSheetId ?? '' }}</td>
               @if (columns.shown('aliases')) {
                 <td>
@@ -842,7 +842,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       </table>
     </section>
     <app-pools [people]="people()" [today]="today()" [crews]="crews()" />
-    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
+    <app-crews [people]="people()" [today]="today()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
   `,
 })
 export class People {
@@ -1404,6 +1404,11 @@ export class People {
     return terms === null ? '' : String(terms);
   }
 
+  /** A person's name as the screen shows it: with the grade in force on the sheet's today. */
+  protected shownName(person: PersonView): string {
+    return `${person.name} (${this.gradeOf(person)})`;
+  }
+
   /** The grade a person has in force on the sheet's today. */
   protected gradeOf(person: PersonView): Grade {
     return gradeOn(person.grades, this.today());
@@ -1497,7 +1502,7 @@ export class People {
   /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
   protected patronsOf(person: PersonView): string {
     return this.patronShares(person)
-      .map(({ patron, share }) => ({ name: patron.name, text: `${patron.name} ${money(share)}` }))
+      .map(({ patron, share }) => ({ name: patron.name, text: `${this.shownName(patron)} ${money(share)}` }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((p) => p.text)
       .join(', ');
