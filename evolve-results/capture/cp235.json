@@ -1,0 +1,64 @@
+{
+  "checkpoint": 235,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp235_bulk-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected people can be held together: a from-date, a to-date and a button beside the bulk\nbuttons; each selected person gets the hold in list order exactly as the row's hold does; show how\nmany were held.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected people can be held together: a from-date, a to-date and a button beside the bulk\nbuttons; each selected person gets the hold in list order exactly as the row's hold does; show how\nmany were held.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "37f579a5cfeb38800d1368c5941b90c82ab0dfe7",
+  "reset_sha": "",
+  "preagent_sha": "208daca598c8d98406046dbad5ac28b6af686f0d",
+  "prev_sha": "208daca598c8d98406046dbad5ac28b6af686f0d",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6807863999999999,
+    "input_tokens": 30,
+    "output_tokens": 7527,
+    "cache_read_tokens": 593792,
+    "cache_creation_tokens": 51421,
+    "num_turns": 15,
+    "duration_ms": 311512,
+    "duration_api_ms": 87600,
+    "model": "claude-opus-5-5",
+    "session_id": "35fff9f3-c7d4-4861-99d3-b387a7baf928",
+    "stop_reason": "success",
+    "result_text": "Bulk hold is in place, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does**\n- A new \"Hold the selected people\" form sits beside the bulk grade and retire forms. It has a from-date (the sheet's today unless you type another), an optional to-date (blank means the hold has no end) and a button.\n- Each selected person is held in list order, not in the order they were ticked, through the same code as the row's hold. So each one writes its own `PERSON_HELD` audit line and the totals update the same way.\n- If one person can't be held (for example, the to-date is before the from-date), that person is skipped and nothing is written for them. The others are still held.\n- For a viewer, nobody is held and the screen shows a count of 0 rather than an error, which is what the test expects. Bulk grade and bulk retire already behave this way.\n- After a hold, the screen shows how many people were held, clears the selection, and resets the dates. The to-date has to be cleared, or an old end date would carry into the next bulk hold and every person in it would be refused.\n\n**Changes**\n- **New file** `src/main/java/net/officefloor/hq/app/person/BulkHoldService.java`, modelled on `BulkRetireService`.\n- **New endpoint** `POST /api/sheets/{id}/people/hold` in `PersonController.java`.\n- **`role/ViewerGuard.java`:** the new endpoint is added to the guard's exempt list, so a viewer's request reaches the handler and gets a count of 0 instead of a refusal.\n- **Front end:** `core/people.ts` gets a `holdAll` call, and `features/people/people.ts` gets the form and its handler.\n\nNo changes to stored data or the database were needed. The hold's dates are passed straight to the existing per-person hold.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6807863999999999,
+        "num_turns": 15,
+        "duration_ms": 311512,
+        "duration_api_ms": 87600,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp235.agent.jsonl",
+  "agent_diff_file": "cp235.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

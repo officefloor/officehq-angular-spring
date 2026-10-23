@@ -1,0 +1,338 @@
+diff --git a/.e2e.out b/.e2e.out
+index bbc01772..8a35a07a 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,53 +2,11 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › due by override › due by override (16.1s)
+-  ✓  2 [chromium] › acceptance.spec.ts:94:7 › due by override › due by override scenario 1 (1.1m)
+-  ✘  3 [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 (22.1s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1148:7 › due by override › due by override scenario 3 (36.2s)
+-
+-
+-  1) [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ──────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+-    Expected string: [32m"[7m3[27m.00"[39m
+-    Received string: [31m"[7m2[27m.00"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+-    [2m  -   unexpected value "2.00"[22m
+-
+-
+-      490 |     await ui.refresh(pg_vic);
+-      491 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.04");
+-    > 492 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("3.00");
+-          |                                                                                             ^
+-      493 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+-      494 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+-      495 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:492:93
+-
+-  1 failed
+-    [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ───────────
+-  3 passed (2.5m)
+- 2133534
+\ No newline at end of file
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › bulk hold › bulk hold (15.5s)
++  ✓  2 [chromium] › acceptance.spec.ts:87:7 › bulk hold › bulk hold scenario 1 (30.5s)
++  ✓  3 [chromium] › acceptance.spec.ts:681:7 › bulk hold › bulk hold scenario 2 (32.0s)
++  ✓  4 [chromium] › acceptance.spec.ts:1172:7 › bulk hold › bulk hold scenario 3 (29.0s)
++
++  Slow test file: [chromium] › acceptance.spec.ts (1.8m)
++  Consider splitting slow test files to speed up parallel execution
++  4 passed (1.8m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 2fbb4324..6f92f58e 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -264,6 +264,14 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/approver`, { user }));
+   }
+ 
++  /**
++   * Hold the selected people from a date (null: the sheet's today) to a date (null: no end) together,
++   * each as the row's hold would, in list order: the people held.
++   */
++  holdAll(sheet: string, personIds: number[], from: string | null, to: string | null): Promise<PersonView[]> {
++    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/hold`, { personIds, from, to }));
++  }
++
+   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
+   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/holds`, { from, to }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3b55ba0e..bc0ad451 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -412,6 +412,31 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+           <span role="alert" data-testid="person-error">{{ message }}</span>
+         }
+       </form>
++      <form (submit)="holdSelected($event)" aria-label="Hold the selected people">
++        <label for="bulk-hold-from">Hold the selected people from</label>
++        <input
++          type="date"
++          id="bulk-hold-from"
++          data-testid="bulk-hold-from"
++          [value]="bulkHoldFrom()"
++          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set(null)"
++        />
++        <label for="bulk-hold-to">to</label>
++        <input
++          type="date"
++          id="bulk-hold-to"
++          data-testid="bulk-hold-to"
++          [value]="bulkHoldTo()"
++          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-hold">Hold selected people</button>
++        @if (bulkHeld() !== null) {
++          <span role="status">Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></span>
++        }
++        @if (bulkHoldError(); as message) {
++          <span role="alert" data-testid="person-error">{{ message }}</span>
++        }
++      </form>
+       <fieldset>
+         <legend>Columns shown</legend>
+         @for (c of peopleColumns; track c) {
+@@ -1365,6 +1390,13 @@ export class People {
+   /** How many people the last bulk retire retired; null until one is done. */
+   protected readonly bulkRetired = signal<number | null>(null);
+   protected readonly bulkRetireError = signal<string | null>(null);
++  /** The date the selected people are held from; the sheet's today unless another is typed. */
++  protected readonly bulkHoldFrom = linkedSignal(() => this.sheetToday());
++  /** The last date the selected people are held to; none (no end) unless one is typed. */
++  protected readonly bulkHoldTo = signal('');
++  /** How many people the last bulk hold held; null until one is done. */
++  protected readonly bulkHeld = signal<number | null>(null);
++  protected readonly bulkHoldError = signal<string | null>(null);
+ 
+   constructor() {
+     // A new parent changes the rates a grade with none in force on the sheet falls back to.
+@@ -1421,6 +1453,10 @@ export class People {
+         this.bulkRetired.set(null);
+         this.bulkRetireError.set(null);
+         this.bulkRetireDate.set(this.sheetToday());
++        this.bulkHeld.set(null);
++        this.bulkHoldError.set(null);
++        this.bulkHoldFrom.set(this.sheetToday());
++        this.bulkHoldTo.set('');
+         if (sheet) void this.reload(sheet);
+       });
+     });
+@@ -2290,6 +2326,8 @@ export class People {
+     this.bulkGradeError.set(null);
+     this.bulkRetired.set(null);
+     this.bulkRetireError.set(null);
++    this.bulkHeld.set(null);
++    this.bulkHoldError.set(null);
+   }
+ 
+   /**
+@@ -2354,6 +2392,38 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Hold the selected people over the dates together: each is held as the row's hold would, in list
++   * order; how many were held is shown, and the selection cleared.
++   */
++  protected async holdSelected(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.bulkHeld.set(null);
++    this.bulkHoldError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const ids = [...this.selectedPeople()];
++    if (ids.length === 0) {
++      this.bulkHoldError.set('Select the people to hold.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const held = await this.api.holdAll(sheet, ids, this.bulkHoldFrom() || null, this.bulkHoldTo() || null);
++      if (this.session.sheet() !== sheet) return;
++      this.people.update((list) => list.map((p) => held.find((h) => h.id === p.id) ?? p));
++      this.selectedPeople.set(new Set());
++      this.bulkHoldFrom.set(this.sheetToday());
++      this.bulkHoldTo.set('');
++      this.bulkHeld.set(held.length);
++    } catch {
++      this.bulkHoldError.set('The people could not be held.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   /** Tick (on) or clear a claim's checkbox. */
+   protected selectClaim(id: number, on: boolean): void {
+     this.selectedClaims.update((set) => {
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java b/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java
+new file mode 100644
+index 00000000..0d7b46cd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Holding the selected people together, from a date (null: the sheet's today) to a date (null: no end).
++ * Each is held on its own, as the row's hold would, in list order: the people by their position. A
++ * person who cannot be held (or is not on the sheet) is left as they are, writing nothing; the others
++ * are still held. For a viewer, nobody is held.
++ */
++@Service
++public class BulkHoldService {
++
++    private final PersonService service;
++    private final PersonRepository people;
++    private final RoleService roles;
++
++    public BulkHoldService(PersonService service, PersonRepository people, RoleService roles) {
++        this.service = service;
++        this.people = people;
++        this.roles = roles;
++    }
++
++    /** Hold the selected people over the dates: the people held, in the order they were held. */
++    public List<Person> hold(String sheetId, String user, Collection<Long> personIds, LocalDate from, LocalDate to) {
++        Set<Long> selected = new HashSet<>(personIds);
++        List<Person> held = new ArrayList<>();
++        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return held;
++        }
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            if (!selected.contains(person.getId())) {
++                continue;
++            }
++            try {
++                held.add(service.hold(sheetId, user, person.getId(), from, to));
++            } catch (ResponseStatusException refused) {
++                // left as they are: their hold wrote nothing
++            }
++        }
++        return held;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 7a578222..d586dffa 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -152,6 +152,13 @@ public class PersonController {
+             LocalDate from) {
+     }
+ 
++    /** The people selected to be held together, and the hold's dates: from (none: the sheet's today) and to (none: no end). */
++    public record BulkHoldForm(
++            @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
++            LocalDate from,
++            LocalDate to) {
++    }
++
+     /** The import box's text: lines of name,grade,terms,contact. */
+     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+     }
+@@ -160,18 +167,20 @@ public class PersonController {
+     private final ImportService imports;
+     private final BulkGradeService bulkGrade;
+     private final BulkRetireService bulkRetire;
++    private final BulkHoldService bulkHold;
+     private final WatchService watches;
+     private final MergeService merges;
+     private final TransferService transfers;
+     private final SheetHistory history;
+ 
+     public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade,
+-            BulkRetireService bulkRetire, WatchService watches,
++            BulkRetireService bulkRetire, BulkHoldService bulkHold, WatchService watches,
+             MergeService merges, TransferService transfers, SheetHistory history) {
+         this.service = service;
+         this.imports = imports;
+         this.bulkGrade = bulkGrade;
+         this.bulkRetire = bulkRetire;
++        this.bulkHold = bulkHold;
+         this.watches = watches;
+         this.merges = merges;
+         this.transfers = transfers;
+@@ -264,6 +273,16 @@ public class PersonController {
+                 .map(PersonView::of).toList();
+     }
+ 
++    /** Hold the selected people over a span of dates together, each as the row's hold would: the people held. */
++    @PostMapping("/hold")
++    public List<PersonView> holdAll(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkHoldForm form) {
++        return bulkHold.hold(sheetId, SignedIn.name(user), form.personIds(), form.from(), form.to()).stream()
++                .map(PersonView::of).toList();
++    }
++
+     /** Swap a person with the one above them in the list (up) or below them (down). */
+     @PostMapping("/{personId}/move/{direction}")
+     public PersonView move(
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 132cc988..77e7754a 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -16,7 +16,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * Refuse every change a viewer asks for on a sheet: any request other than a read, or the loading
+  * of the sheet, is turned away before it reaches its handler, so it writes nothing and audits nothing.
+- * A bulk open, settle or void, a bulk grade, a bulk retire and a plan generate are the exceptions: each reaches its handler, which
++ * A bulk open, settle or void, a bulk grade, a bulk retire, a bulk hold and a plan generate are the exceptions: each reaches its handler, which
+  * refuses each claim or person a viewer selected, or each claim a viewer's generate would make.
+  */
+ @Configuration
+@@ -30,12 +30,12 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+ 
+     @Override
+     public void addInterceptors(InterceptorRegistry registry) {
+-        // A bulk move answers how many claims it refused, and a bulk grade or retire how many people it changed,
++        // A bulk move answers how many claims it refused, and a bulk grade, retire or hold how many people it changed,
+         // and a plan generate how many claims it made, so a viewer's is let through and refuses each.
+         registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").excludePathPatterns("/api/sheets/*/load",
+                 "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/claims/void",
+                 "/api/sheets/*/people/grade",
+-                "/api/sheets/*/people/retire", "/api/sheets/*/plans/generate");
++                "/api/sheets/*/people/retire", "/api/sheets/*/people/hold", "/api/sheets/*/plans/generate");
+     }
+ 
+     @Override
