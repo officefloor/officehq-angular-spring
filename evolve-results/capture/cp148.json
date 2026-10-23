@@ -1,0 +1,78 @@
+{
+  "checkpoint": 148,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp148_claimed-without-corrections",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    32,
+    36,
+    51,
+    56,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+    "cp30_corrections.spec.ts::corrections",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 1"
+  ],
+  "request": {
+    "spec": "A person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d9572d539502322ba505da6b0723b5a615c41234",
+  "reset_sha": "",
+  "preagent_sha": "f4db293f842b8b5e08ae1fa6bfaeacd74fb88a18",
+  "prev_sha": "f4db293f842b8b5e08ae1fa6bfaeacd74fb88a18",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5602196,
+    "input_tokens": 28,
+    "output_tokens": 4143,
+    "cache_read_tokens": 500638,
+    "cache_creation_tokens": 47140,
+    "num_turns": 15,
+    "duration_ms": 766164,
+    "duration_api_ms": 43830,
+    "model": "claude-opus-5-5",
+    "session_id": "08fa9e4a-20a4-4fdb-bbb6-522d2658f566",
+    "stop_reason": "success",
+    "result_text": "The core change is in, but `bin/e2e` doesn't fully pass: 3 of the 4 tests pass, and \"scenario 3\" fails on a check that I don't think any version of the app could pass.\n\n**What changed:**\n- **Server**, `src/main/java/net/officefloor/hq/app/rollup/Rollups.java`: a person's claimed figure now leaves out claims that correct another. The sheet's claimed-total is the sum of those figures, so it follows, and so do the `ROLLUP`/`TOTALS` audit lines. Due and overdue figures are calculated exactly as before.\n- **Front end**, `src/main/frontend/src/app/features/people/people.ts`: the person's claimed figure (`person-claimed`) applies the same rule, and the sheet's claimed-total (`rollup-claimed-total`) follows from it.\n\nI checked the other places that add up claim amounts (statements, periods, consolidation). They only work with due figures, so they didn't need changing.\n\n**The failing test** is at `e2e/specs/acceptance.spec.ts:1115`. The spec checks the `claim-amount` of the same claim row (`c_cam_1`) twice with no action between the checks:\n- line 1060 expects `\"3.33\"`, and that check passes;\n- line 1115 expects `\"0.40\"`, and that check fails because the row still shows 3.33.\n\nOne row can't show two different amounts at once, so this looks like a slip in the spec. The 0.40 belongs to the other claim, `c_cam_0`, which was edited inline to 0.40 earlier in the test. Every claimed and claimed-total check in that scenario that runs before line 1115 passes. I'm not allowed to edit the spec, so it needs fixing on your side, probably by changing that line to point at `c_cam_0`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5602196,
+        "num_turns": 15,
+        "duration_ms": 766164,
+        "duration_api_ms": 43830,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp148.agent.jsonl",
+  "agent_diff_file": "cp148.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
