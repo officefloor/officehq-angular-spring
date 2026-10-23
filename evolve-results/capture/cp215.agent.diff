@@ -1,0 +1,217 @@
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index 71a53f91..813318a8 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -22,6 +22,12 @@ export interface ConsolidatedView {
+   statusCounts: Record<string, number>;
+ }
+ 
++/** A sheet's own summary due-total per grade, with two decimals (a grade nobody has left out); not found when no sheet has the id. */
++export interface GradeDueTotalsView {
++  found: boolean;
++  gradeDueTotals: Record<string, string>;
++}
++
+ // The consolidated figures, read from the store.
+ @Injectable({ providedIn: 'root' })
+ export class ConsolidatedApi {
+@@ -30,4 +36,11 @@ export class ConsolidatedApi {
+   get(sheet: string): Promise<ConsolidatedView> {
+     return firstValueFrom(this.http.get<ConsolidatedView>(`/api/sheets/${encodeURIComponent(sheet)}/consolidated`));
+   }
++
++  /** Another sheet's own summary due-totals per grade, as it stands now. */
++  gradeDueTotals(sheet: string): Promise<GradeDueTotalsView> {
++    return firstValueFrom(
++      this.http.get<GradeDueTotalsView>(`/api/sheets/${encodeURIComponent(sheet)}/grade-due-totals`),
++    );
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 18b1de9d..643f0459 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,6 +13,7 @@ import { RoleName, SettingsApi } from '../../core/settings';
+ import { Claims } from '../claims/claims';
+ import { Header } from '../header/header';
+ import { Consolidated } from '../consolidated/consolidated';
++import { ConsolidatedApi, GradeDueTotalsView } from '../../core/consolidated';
+ import { Dashboard } from '../dashboard/dashboard';
+ import { Periods } from '../periods/periods';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+@@ -249,6 +250,19 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+           }
+         </ul>
+       }
++      <form (submit)="compareSheet($event)" aria-label="Compare with another sheet">
++        <label for="compare-sheet">Compare this sheet with sheet</label>
++        <input type="text" id="compare-sheet" data-testid="compare-sheet" [value]="compareWith()"
++          (input)="compareWith.set(value($event))" />
++        <button type="submit" data-testid="compare">Compare sheets</button>
++      </form>
++      @if (compareLines().length > 0) {
++        <ul aria-label="Sheet comparison">
++          @for (line of compareLines(); track $index) {
++            <li data-testid="compare-line">{{ line }}</li>
++          }
++        </ul>
++      }
+       @if (monthTotals().length > 0) {
+         <ul aria-label="Due by month">
+           @for (m of monthTotals(); track m.month) {
+@@ -893,6 +907,7 @@ export class People {
+   private readonly ratesApi = inject(RatesApi);
+   private readonly periodsApi = inject(PeriodsApi);
+   private readonly settingsApi = inject(SettingsApi);
++  private readonly consolidatedApi = inject(ConsolidatedApi);
+   protected readonly voidReasons = inject(VoidReasons);
+   protected readonly columns = inject(Columns);
+   protected readonly peopleColumns = PEOPLE_COLUMNS;
+@@ -958,6 +973,10 @@ export class People {
+   protected readonly snapshotTo = signal('');
+   /** The last comparison made, one line per person in list order: name, then and now due-totals. */
+   protected readonly snapshotLines = signal<string[]>([]);
++  /** The id of the other sheet typed to compare this one with. */
++  protected readonly compareWith = signal('');
++  /** The last sheet comparison made, one line per grade: this sheet's and the other's summary due-totals. */
++  protected readonly compareLines = signal<string[]>([]);
+   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
+   protected readonly retireDates = new Map<number, string>();
+   /** The grade chosen on each person's row. */
+@@ -1335,6 +1354,7 @@ export class People {
+         this.people.set([]);
+         this.myRole.set(null);
+         this.snapshotLines.set([]);
++        this.compareLines.set([]);
+         this.watched.set(new Set());
+         this.claims.set([]);
+         this.rates.set([]);
+@@ -1531,6 +1551,28 @@ export class People {
+     );
+   }
+ 
++  /**
++   * Compare this sheet with another: per grade, this sheet's summary due-total and the other sheet's
++   * (0.00 for a grade nobody there has); no lines when the other sheet does not exist.
++   */
++  protected async compareSheet(event: Event): Promise<void> {
++    event.preventDefault();
++    const sheet = this.session.sheet();
++    const other = this.compareWith().trim();
++    this.compareLines.set([]);
++    if (!sheet || other === '') return;
++    let theirs: GradeDueTotalsView;
++    try {
++      theirs = await this.consolidatedApi.gradeDueTotals(other);
++    } catch {
++      return;
++    }
++    if (this.session.sheet() !== sheet || !theirs.found) return;
++    this.compareLines.set(
++      this.gradeSummary().map((g) => `${g.grade} ${g.dueTotal} ${theirs.gradeDueTotals[g.grade] ?? '0.00'}`),
++    );
++  }
++
+   protected dueTotalOf(person: PersonView): string {
+     const total = this.dueTotalCents(person);
+     return total === null ? NO_RATE : money(total);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+index 9838ca8e..7c73a2df 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+@@ -9,6 +9,7 @@ import java.util.Iterator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.Set;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.claim.Claim;
+@@ -97,15 +98,7 @@ public class Consolidation {
+                     persons.add(keys(person));
+                 }
+             });
+-            LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
+-            taken.people().forEach((personId, person) -> {
+-                Rollups.Figures figures = rollup.people().get(personId);
+-                if (person.getRetiredFrom() != null || today == null || figures == null) {
+-                    return;
+-                }
+-                BigDecimal figure = figures.dueTotal() == null ? BigDecimal.ZERO.setScale(2) : figures.dueTotal();
+-                grades.merge(person.gradeOn(today), figure, BigDecimal::add);
+-            });
++            addGradeDueTotals(taken, grades);
+             for (Claim claim : taken.claims()) {
+                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
+             }
+@@ -114,6 +107,34 @@ public class Consolidation {
+                 grades, statuses);
+     }
+ 
++    /**
++     * The sheet's own summary due-total per grade, as it stands now: the due-totals of the people not
++     * retired who have it in force on its today (those shown as n/a skipped) added up; a grade nobody has
++     * is left out. Empty when no sheet has the id.
++     */
++    @Transactional(readOnly = true)
++    public Optional<Map<String, BigDecimal>> gradeDueTotals(String sheetId) {
++        if (sheets.findById(sheetId).isEmpty()) {
++            return Optional.empty();
++        }
++        Map<String, BigDecimal> grades = new TreeMap<>();
++        addGradeDueTotals(now(sheetId), grades);
++        return Optional.of(grades);
++    }
++
++    /** Add a sheet's people's due-totals to the per-grade totals (see {@link Consolidated}). */
++    private static void addGradeDueTotals(Taken taken, Map<String, BigDecimal> grades) {
++        LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
++        taken.people().forEach((personId, person) -> {
++            Rollups.Figures figures = taken.rollup().people().get(personId);
++            if (person.getRetiredFrom() != null || today == null || figures == null) {
++                return;
++            }
++            BigDecimal figure = figures.dueTotal() == null ? BigDecimal.ZERO.setScale(2) : figures.dueTotal();
++            grades.merge(person.gradeOn(today), figure, BigDecimal::add);
++        });
++    }
++
+     /** A person's name and aliases, each as names are compared. */
+     private static Set<String> keys(Person person) {
+         Set<String> keys = new HashSet<>();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+index 47a6c6fa..bff22cbf 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+@@ -26,6 +26,13 @@ public class ConsolidationController {
+             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
+     }
+ 
++    /**
++     * A sheet's own summary due-total per grade, with two decimals (a grade nobody has left out); not
++     * found when no sheet has the id.
++     */
++    public record GradeDueTotalsView(boolean found, Map<String, String> gradeDueTotals) {
++    }
++
+     private final Consolidation consolidation;
+ 
+     public ConsolidationController(Consolidation consolidation) {
+@@ -46,4 +53,17 @@ public class ConsolidationController {
+         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
+                 figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
+     }
++
++    /** A sheet's own summary due-totals per grade as it stands now, to compare another sheet with it. */
++    @GetMapping("/{id}/grade-due-totals")
++    public GradeDueTotalsView gradeDueTotals(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
++        return consolidation.gradeDueTotals(id)
++                .map(totals -> {
++                    Map<String, String> grades = new LinkedHashMap<>();
++                    totals.forEach((grade, due) -> grades.put(grade, due.toPlainString()));
++                    return new GradeDueTotalsView(true, grades);
++                })
++                .orElseGet(() -> new GradeDueTotalsView(false, Map.of()));
++    }
+ }
