@@ -136,6 +136,7 @@ import { Session } from '../../core/session';
             <th scope="col">Fiscal year</th>
             <th scope="col">Cap</th>
             <th scope="col">Locked</th>
+            <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -150,6 +151,7 @@ import { Session } from '../../core/session';
               <td data-testid="period-fy">{{ fiscalYearOf(p.from, session.fiscalStartMonth()) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 @if (!p.closed) {
                   <button
@@ -213,6 +215,8 @@ export class Periods {
   readonly periods = input.required<PeriodView[]>();
   /** Each period's due-total (the sum of the people's figures for it), by period id, with two decimals. */
   readonly dueTotals = input.required<Map<number, string>>();
+  /** Each period's count of the claims due by in it, VOID and DELETED claims left out, by period id. */
+  readonly claimCounts = input.required<Map<number, number>>();
   /** A period added through the form. */
   readonly saved = output<PeriodView>();
   /** A period closed through its row. */

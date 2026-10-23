@@ -113,6 +113,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
     <app-periods
       [periods]="periods()"
       [dueTotals]="periodDueTotals()"
+      [claimCounts]="periodClaimCounts()"
       (saved)="periodSaved($event)"
       (closed)="periodChanged($event)"
       (reopened)="periodChanged($event)"
@@ -1111,6 +1112,17 @@ export class People {
         [...this.personPeriodCents()].map(([id, row]) => [id, money([...row.values()].reduce((a, b) => a + b, 0))]),
       ),
   );
+  /** Each period's count of the claims due by in it, VOID and DELETED claims left out, by period id. */
+  protected readonly periodClaimCounts = computed(() => {
+    const periods = this.periods();
+    const counts = new Map<number, number>();
+    for (const c of this.claims()) {
+      if (c.status === 'VOID' || c.status === 'DELETED') continue;
+      const own = periodOn(periods, c.dueBy);
+      if (own) counts.set(own.id, (counts.get(own.id) ?? 0) + 1);
+    }
+    return counts;
+  });
   /**
    * Per grade: the people not retired who have it in force on the sheet's today, and their due-totals
    * added up, skipping those shown as n/a.
