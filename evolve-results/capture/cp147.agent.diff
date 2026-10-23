@@ -1,0 +1,368 @@
+diff --git a/.e2e.out b/.e2e.out
+index 7f2c0dde..bb851fa1 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › over threshold alert › over threshold alert (20.7s)
+-  ✓  2 [chromium] › acceptance.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (28.4s)
+-  ✘  3 [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 (27.8s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1278:7 › over threshold alert › over threshold alert scenario 3 (28.1s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › snapshot lines › snapshot lines (11.4s)
++  ✘  2 [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 (37.1s)
++  ✘  3 [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 (26.6s)
++  ✓  4 [chromium] › acceptance.spec.ts:1144:7 › snapshot lines › snapshot lines scenario 3 (27.2s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
++  1) [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ─────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('person-row-11').getByTestId('person-name')
+-    Expected string: [32m"Cam"[39m
+-    Received string: [31m"Ada"[39m
++    Locator: getByTestId('person-row-7').getByTestId('person-name')
++    Expected string: [32m"Ben"[39m
++    Received string: [31m"Dot"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
+-    [2m  -   unexpected value "Ada"[22m
+-
+-
+-      862 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-batch")).toHaveText("");
+-      863 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-lines-line")).toHaveText([]);
+-    > 864 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Cam");
++    [2m  - waiting for getByTestId('person-row-7').getByTestId('person-name')[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
++    [2m  -   unexpected value "Dot"[22m
++
++
++      388 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-batch")).toHaveText("");
++      389 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-lines-line")).toHaveText([]);
++    > 390 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Ben");
+           |                                                                                        ^
+-      865 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-grade")).toHaveText("A");
+-      866 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+-      867 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
++      391 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("A");
++      392 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
++      393 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:390:88
++
++  2) [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ────────────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvk7xa3ue4lu[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
++    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
++
++
++      724 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      725 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-09");
++    > 726 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      727 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
++      728 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
++      729 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:864:88
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:726:54
+ 
+-  1 failed
+-    [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 ─
+-  3 passed (1.8m)
++  2 failed
++    [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ──────────────
++    [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ─────────────
++  2 passed (1.8m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index d9035d25..2b1a1771 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -62,6 +62,14 @@ export interface PersonView {
+   clashing?: boolean;
+   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
+   originSheetId?: string | null;
++  /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
++  snapshots?: SnapshotView[];
++}
++
++/** A snapshot line of a person: the day being left (yyyy-mm-dd) and their due-total on it ('n/a' when no rate applied). */
++export interface SnapshotView {
++  asOf: string;
++  dueTotal: string;
+ }
+ 
+ /** A past retirement of a person, from its date to the day they were unretired (yyyy-mm-dd). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9cc083e7..cb8b2045 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -437,6 +437,11 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                   }
+                 </ul>
++                <ul aria-label="Snapshots">
++                  @for (s of p.snapshots ?? []; track $index) {
++                    <li data-testid="person-snapshot-line">{{ s.asOf }} {{ s.dueTotal }}</li>
++                  }
++                </ul>
+               </td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               <td>
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index fa976c94..0ae78869 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
++import org.hibernate.annotations.OptimisticLock;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+@@ -109,6 +110,16 @@ public class Person {
+     @OrderColumn(name = "retirement_order")
+     private List<Retirement> retirements = new ArrayList<>();
+ 
++    /**
++     * The person's snapshot lines, oldest first: one kept each time the sheet's today moves on. Keeping
++     * one is not an edit of the person, so it leaves their version alone.
++     */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
++    @OrderColumn(name = "snapshot_order")
++    @OptimisticLock(excluded = true)
++    private List<Snapshot> snapshots = new ArrayList<>();
++
+     /**
+      * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
+      * one, unless bound by a statement, count in no live total.
+@@ -297,6 +308,16 @@ public class Person {
+         return Collections.unmodifiableList(retirements);
+     }
+ 
++    /** Keep the person's due-total (null: n/a) as it stood on a day the sheet's today moves on from. */
++    public void snapshot(LocalDate asOf, BigDecimal dueTotal) {
++        snapshots.add(new Snapshot(asOf, dueTotal));
++    }
++
++    /** The person's snapshot lines, oldest first. */
++    public List<Snapshot> getSnapshots() {
++        return Collections.unmodifiableList(snapshots);
++    }
++
+     /** Whether the person has any hold, whatever its dates. */
+     public boolean isHeld() {
+         return !holds.isEmpty();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index b58e679d..e666fc81 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -14,6 +14,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.SignedIn;
++import net.officefloor.hq.app.rollup.Rollups;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.dao.OptimisticLockingFailureException;
+ import org.springframework.http.HttpStatus;
+@@ -49,7 +50,7 @@ public class PersonController {
+             List<String> tagsUsed, long version, int statementCount,
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
+             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+-            String originSheetId) {
++            String originSheetId, List<SnapshotView> snapshots) {
+ 
+         public static PersonView of(Person person) {
+             return of(person, false);
+@@ -67,7 +68,10 @@ public class PersonController {
+                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                     person.isHeld(),
+                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
+-                    person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId());
++                    person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId(),
++                    person.getSnapshots().stream()
++                            .map(snapshot -> new SnapshotView(snapshot.getAsOf(), Rollups.shown(snapshot.getDueTotal())))
++                            .toList());
+         }
+     }
+ 
+@@ -75,6 +79,10 @@ public class PersonController {
+     public record RetirementView(LocalDate from, LocalDate to) {
+     }
+ 
++    /** A snapshot line of a person: the day being left and their due-total on it (n/a when no rate applied). */
++    public record SnapshotView(LocalDate asOf, String dueTotal) {
++    }
++
+     /** A hold on a person, from a date to a date (null: no end). */
+     public record HoldView(LocalDate from, LocalDate to) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Snapshot.java b/src/main/java/net/officefloor/hq/app/person/Snapshot.java
+new file mode 100644
+index 00000000..8f99c58f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/Snapshot.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A person's due-total as it stood on a day the sheet's today moved on from (null: n/a). */
++@Embeddable
++public class Snapshot {
++
++    @Column(name = "as_of", nullable = false)
++    private LocalDate asOf;
++
++    @Column(name = "due_total", precision = 14, scale = 2)
++    private BigDecimal dueTotal;
++
++    protected Snapshot() {
++    }
++
++    public Snapshot(LocalDate asOf, BigDecimal dueTotal) {
++        this.asOf = asOf;
++        this.dueTotal = dueTotal;
++    }
++
++    /** The day being left. */
++    public LocalDate getAsOf() {
++        return asOf;
++    }
++
++    /** The due-total on that day; null when n/a. */
++    public BigDecimal getDueTotal() {
++        return dueTotal;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index cfaee469..db3bd8cd 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+@@ -22,9 +23,12 @@ public class SheetService {
+     private final Rollups rollups;
+     private final Audit audit;
+     private final ApplicationEventPublisher events;
++    private final PersonRepository people;
+ 
+-    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events) {
++    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events,
++            PersonRepository people) {
+         this.sheets = sheets;
++        this.people = people;
+         this.rollups = rollups;
+         this.audit = audit;
+         this.events = events;
+@@ -73,7 +77,7 @@ public class SheetService {
+ 
+     /**
+      * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
+-     * as it stood on the day being left is audited first, in list order, and the sheet as it stood at
++     * as it stood on the day being left is audited first, in list order, and kept as one of their snapshot lines, and the sheet as it stood at
+      * the end of that day is kept (see {@link TodayLeaving}). The periods it puts past their grace
+      * days are closed (see {@link TodayChanged}) before those figures are audited.
+      */
+@@ -82,8 +86,12 @@ public class SheetService {
+         Sheet sheet = load(id);
+         Rollups.Rollup before = rollups.take(id);
+         if (!today.equals(sheet.getToday())) {
+-            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+-                    + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal())));
++            LocalDate leaving = sheet.getToday();
++            before.people().forEach((personId, figures) -> {
++                people.findById(personId).ifPresent(person -> person.snapshot(leaving, figures.dueTotal()));
++                audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
++                        + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal()));
++            });
+             events.publishEvent(new TodayLeaving(id, sheet.getToday()));
+         }
+         sheet.setToday(today);
+diff --git a/src/main/resources/db/migration/V82__person_snapshot.sql b/src/main/resources/db/migration/V82__person_snapshot.sql
+new file mode 100644
+index 00000000..08f5cf43
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__person_snapshot.sql
+@@ -0,0 +1,9 @@
++-- Each time the sheet's today moves on, each person's due-total as it stood on the day being left
++-- (null: n/a) is kept as one of their snapshot lines, oldest first.
++CREATE TABLE person_snapshot (
++    person_id      BIGINT        NOT NULL REFERENCES person (id),
++    snapshot_order INT           NOT NULL,
++    as_of          DATE          NOT NULL,
++    due_total      DECIMAL(14,2),
++    PRIMARY KEY (person_id, snapshot_order)
++);
