@@ -104,6 +104,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
       [myCrewDueTotal]="myCrewDueTotal()"
       [myReviewsCount]="myReviewsCount()"
+      [watchedDueTotal]="watchedDueTotal()"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
@@ -1137,6 +1138,15 @@ export class People {
     if (led.length === 0) return '';
     const dues = this.crewDueTotals();
     return money(led.reduce((sum, c) => sum + crewDueCents(c, dues), 0));
+  });
+  /** The due-totals of the people the signed-in user watches, added up, skipping those shown as n/a. */
+  protected readonly watchedDueTotal = computed(() => {
+    const watched = this.watched();
+    return money(
+      this.people()
+        .filter((p) => watched.has(p.id))
+        .reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
+    );
   });
   /** Everyone's due-total added up with no trimming, skipping those shown as n/a. */
   protected readonly classicDueTotal = computed(() =>
