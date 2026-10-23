@@ -13,6 +13,8 @@ export interface RateView {
   from: string | null;
   /** The last date (yyyy-mm-dd) the rate applies on; null when it has no end. */
   to: string | null;
+  /** How many versions the rate has, its newest in force; null (one) in views kept before versions. */
+  versions: number | null;
 }
 
 /**

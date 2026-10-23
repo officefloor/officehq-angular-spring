@@ -2,109 +2,110 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › imported claims open › imported claims open (6.5s)
-  ✘  2 [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 (16.0s)
-  ✘  3 [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 (18.9s)
-  ✘  4 [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 (17.8s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate versions › rate versions (11.6s)
+  ✘  2 [chromium] › acceptance.spec.ts:101:7 › rate versions › rate versions scenario 1 (27.8s)
+  ✘  3 [chromium] › acceptance.spec.ts:443:7 › rate versions › rate versions scenario 2 (31.6s)
+  ✘  4 [chromium] › acceptance.spec.ts:784:7 › rate versions › rate versions scenario 3 (22.7s)
 
 
-  1) [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 
-
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
-
-    Received: [31m"9"[39m
-
-      216 |     expect(await ui.statementAsOf(pg_vic, p_cam, "2026-02-10")).toBe(false);
-      217 |     expect(await ui.claimAction(pg_vic, c_ada_0, "settle")).toBe(false);
-    > 218 |     expect(await ui.addClaim(pg_vic, p_cam, {"amount": "12.50", "date": "2026-03-15"})).toBeNull();
-          |                                                                                         ^
-      219 |     await ui.setAsOf(pg_vic, "2026-03-20");
-      220 |     await ui.refresh(pg_vic);
-      221 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:218:89
-
-  2) [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 
+  1) [chromium] › acceptance.spec.ts:101:7 › rate versions › rate versions scenario 1 ──────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('plan-row-1').getByTestId('plan-generated')
-    Expected string: [32m"0"[39m
-    Received: <element(s) not found>
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk9sijnzlyc[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-generated')[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9sijnzlyc-p</strong>[22m
+    [2m  -   unexpected value "smvk9sijnzlyc-p"[22m
 
 
-      1093 |     await expect(pg_vic.getByTestId("month-2026-02-due-total")).toHaveText("1.00");
-      1094 |     await expect(pg_vic.getByTestId("month-2026-03-due-total")).toHaveText("2.50");
-    > 1095 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
-           |                                                                                            ^
-      1096 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
-      1097 |     await ui.expectAudit(sheet, [
-      1098 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+      204 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      205 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+    > 206 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      207 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+      208 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      209 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1095:92
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:206:54
 
-  3) [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 
+  2) [chromium] › acceptance.spec.ts:443:7 › rate versions › rate versions scenario 2 ──────────────
 
-    Error: audit lines for smvk9fw6s5gdz:
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=clerk-limit value=3.00
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=late-pct value=5.00
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=terms-B value=3
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=cap value=2.00
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=perm-open value=steward
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=grace-days value=0
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=entry-date value=2026-03-01
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=grace-B value=5
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=proof-threshold-A value=0.50
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=pot value=33.33
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=rounding value=half-even from=2026-03-01
-    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=A rate=5.00
-    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=B rate=12.50
-    PERIOD_ADDED sheet=smvk9fw6s5gdz by=uma period=P1 from=2026-03-01 to=2026-03-15
-    PERIOD_ADDED sheet=smvk9fw6s5gdz by=uma period=P2 from=2026-03-16 to=2026-03-31
-    PERSON_ADDED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A terms=20 contact=ben@x
-    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
-    PERSON_ADDED sheet=smvk9fw6s5gdz by=uma name=Ben grade=C contact=ada@x
-    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
-    PERIOD_SOFT_CLOSED sheet=smvk9fw6s5gdz by=uma period=P1 total=0.00
-    CLAIM_ADDED sheet=smvk9fw6s5gdz by=uma person=Ben amount=0.40 date=2026-02-25 tags=a,b
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=floor value=3.00 from=2026-03-09
-    CLAIM_ADDED sheet=smvk9fw6s5gdz by=uma person=Ben amount=0.40 date=2026-03-28
-    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A terms=
-    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=note-threshold value=1.00 from=2026-03-28
-    STATEMENT sheet=smvk9fw6s5gdz by=uma name=Ada due-total=0.00 claims=0
-    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A
-    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ben grade=B
-    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
-    PERSON_WATCHED sheet=smvk9fw6s5gdz by=uma name=Ben
-    STATEMENT sheet=smvk9fw6s5gdz by=uma name=Ada due-total=0.00 claims=0
-    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ben grade=C
-    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
-    PERSON_HELD sheet=smvk9fw6s5gdz by=uma name=Ben from=2026-03-20
-    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=B rate=33.33
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk9t4x9ku37[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9t4x9ku37-p</strong>[22m
+    [2m  -   unexpected value "smvk9t4x9ku37-p"[22m
 
-    Expected: [32m36[39m
-    Received: [31m35[39m
 
-       at ../support/ui.ts:1556
+      564 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      565 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 566 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      567 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+      568 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      569 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-      1554 |     lines = auditFor(sheet);
-      1555 |   }
-    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
-           |                                                                          ^
-      1557 |   lines.forEach((line, i) => {
-      1558 |     const e = expected[i];
-      1559 |     const ok = line === e || line.startsWith(e + ' ');
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:566:54
 
-        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1556:74)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1292:5
+  3) [chromium] › acceptance.spec.ts:784:7 › rate versions › rate versions scenario 3 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"10"[39m
+
+      906 |     expect(await ui.claimAction(pg_wes, c_ben_0, "open")).toBe(true);
+      907 |     expect(await ui.periodAction(pg_wes, "P1", "close")).toBe(true);
+    > 908 |     expect(await ui.addClaim(pg_wes, p_ada, {"amount": "-4.00", "corrects": "X-1"})).toBeNull();
+          |                                                                                      ^
+      909 |     expect(await ui.importPeople(pg_wes, "Eve,A")).toMatchObject({"added": 1, "updated": 0});
+      910 |     const p_eve = await ui.personId(pg_wes, "Eve");
+      911 |     expect(await ui.setRate(pg_wes, {"grade": "B", "pct": "7.50"})).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:908:86
 
   3 failed
-    [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 ─
-    [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 ─
-    [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 
-  1 passed (1.0m)
+    [chromium] › acceptance.spec.ts:101:7 › rate versions › rate versions scenario 1 ───────────────
+    [chromium] › acceptance.spec.ts:443:7 › rate versions › rate versions scenario 2 ───────────────
+    [chromium] › acceptance.spec.ts:784:7 › rate versions › rate versions scenario 3 ───────────────
+  1 passed (1.7m)

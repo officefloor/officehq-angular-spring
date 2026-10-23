@@ -107,6 +107,7 @@ import { Session } from '../../core/session';
           <tr>
             <th scope="col">Grade</th>
             <th scope="col">Rate (%)</th>
+            <th scope="col">Versions</th>
           </tr>
         </thead>
         <tbody>
@@ -126,6 +127,7 @@ import { Session } from '../../core/session';
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
+            <th scope="col">Versions</th>
           </tr>
         </thead>
         <tbody>
@@ -135,6 +137,7 @@ import { Session } from '../../core/session';
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.versions ?? 1 }}</td>
             </tr>
           }
         </tbody>
@@ -180,11 +183,16 @@ export class Rates {
   private busy = false;
 
   constructor() {
-    // A sheet load starts the import box afresh.
+    // A sheet load starts the rate form and the import box afresh, so nothing typed (or refused) on
+    // the sheet as it was is carried into a rate set on the sheet as it is re-read.
     effect(() => {
       this.session.sheet();
       this.session.loads();
       untracked(() => {
+        this.pct.set('');
+        this.from.set('');
+        this.to.set('');
+        this.error.set(null);
         this.importText.set('');
         this.importSet.set(null);
         this.importError.set(null);

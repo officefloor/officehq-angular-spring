@@ -32,10 +32,12 @@ public class RateService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final Dues dues;
+    private final RateVersionRepository versions;
 
     public RateService(RateRepository rates, SheetService sheets, Rollups rollups, Audit audit, PersonRepository people,
-            ClaimRepository claims, Dues dues) {
+            ClaimRepository claims, Dues dues, RateVersionRepository versions) {
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.rollups = rollups;
         this.audit = audit;
@@ -96,9 +98,10 @@ public class RateService {
     }
 
     /**
-     * Set the rate for a grade from a date (null: from the beginning of time), replacing any the
-     * grade had from that same date, applying through a to-date (null: no end); a to-date before the
-     * from-date is refused.
+     * Set the rate for a grade from a date (null: from the beginning of time), applying through a
+     * to-date (null: no end); a to-date before the from-date is refused. When the grade already has a
+     * rate from that same date, its value is kept as an older version and the new one becomes its
+     * newest version, the one in force.
      */
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to,
@@ -109,10 +112,13 @@ public class RateService {
         sheets.load(sheetId);
         Rollups.Rollup before = rollups.take(sheetId);
         BigDecimal percent = pct.setScale(2, RoundingMode.UNNECESSARY);
-        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
-                .orElseGet(() -> new Rate(sheetId, grade, from, percent));
-        rate.setPct(percent);
-        rate.setToDate(to);
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
+        if (rate == null) {
+            rate = new Rate(sheetId, grade, from, percent);
+            rate.setToDate(to);
+        } else {
+            versions.save(rate.replace(percent, to));
+        }
         Rate saved = rates.saveAndFlush(rate);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getPct().toPlainString()

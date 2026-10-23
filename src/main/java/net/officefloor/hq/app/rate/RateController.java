@@ -29,13 +29,14 @@ public class RateController {
 
     /**
      * What the screen is told about a grade's rate; the percent with two decimals, and the date it
-     * applies from (null: from the beginning of time) and through (null: no end).
+     * applies from (null: from the beginning of time) and through (null: no end), and how many
+     * versions it has (null in views kept before rates had versions: one).
      */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, Integer versions) {
 
         public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate(),
-                    rate.getToDate());
+                    rate.getToDate(), rate.getVersion());
         }
     }
 
@@ -91,8 +92,8 @@ public class RateController {
     }
 
     /**
-     * Set the rate for a grade from a date (through a to-date, if given), replacing any it had from
-     * that date; a to-date before the from-date is refused.
+     * Set the rate for a grade from a date (through a to-date, if given), as a new version of any it
+     * had from that date; a to-date before the from-date is refused.
      */
     @PutMapping("/{grade}")
     public RateView set(

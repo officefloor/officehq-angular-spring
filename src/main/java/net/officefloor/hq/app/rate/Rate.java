@@ -37,6 +37,9 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -81,6 +84,23 @@ public class Rate {
     /** Whether the rate has ended by a date: it has a to-date before the date. */
     public boolean endedBy(LocalDate date) {
         return toDate != null && toDate.isBefore(date);
+    }
+
+    /** The number of the version the rate holds, its newest: 1 for a rate never replaced. */
+    public int getVersion() {
+        return version;
+    }
+
+    /**
+     * Replace the rate's value with a new version: the value it held is returned as an older version
+     * to keep, and the rate holds the new value as the next version.
+     */
+    public RateVersion replace(BigDecimal pct, LocalDate toDate) {
+        RateVersion older = new RateVersion(id, version, this.pct, this.toDate);
+        this.pct = pct;
+        this.toDate = toDate;
+        this.version++;
+        return older;
     }
 
     public BigDecimal getPct() {
