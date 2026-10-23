@@ -88,6 +88,28 @@ public class Rollups {
     }
 
     /**
+     * The sheet's figures over its records as they stand now, read as if its today were a preview day
+     * (null: its own today), held in no store.
+     */
+    public Rollup take(String sheetId, LocalDate preview) {
+        Sheet now = sheets.findById(sheetId).orElse(null);
+        if (preview == null || now == null) {
+            return take(sheetId);
+        }
+        Sheet then = now.asOf(preview, now.getDated(), now.getPolicyDate());
+        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+        return take(then, previewBasis(then), sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                cuts.personCuts(then, sheetPeople.values()));
+    }
+
+    /** The basis a sheet held in no store, with a preview day as its today, reads its dues against: its live one. */
+    public Dues.Basis previewBasis(Sheet then) {
+        Dues.Basis live = dues.live(then.getId());
+        return new Dues.Basis(then, live.rates(), live.inherited(), live.corrected());
+    }
+
+    /**
      * A sheet's figures read from what is given, as {@link #take(Sheet, Dues.Basis, Map, Iterable, Map)}
      * with no one's cuts.
      */

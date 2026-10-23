@@ -6,6 +6,7 @@ import java.util.Map;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.PreviewDate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,13 +42,16 @@ public class ConsolidationController {
 
     /**
      * The sheet's figures over it and all its descendants, as each stands now, or while an as-of date is
-     * set, as each stood at the end of that date.
+     * set, as each stood at the end of that date, or while a preview date is set, as each stands now read
+     * as if its today were that date.
      */
     @GetMapping("/{id}/consolidated")
     public ConsolidatedView consolidated(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
-        Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf));
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
+            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+        Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf),
+                PreviewDate.date(asOf, preview));
         Map<String, String> grades = new LinkedHashMap<>();
         figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),

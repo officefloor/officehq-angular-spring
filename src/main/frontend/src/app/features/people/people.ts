@@ -1178,6 +1178,8 @@ export class People {
   /** The number of the sheet's last settle batch; null when there has been none. */
   protected readonly lastSettleBatch = computed(() => this.session.lastSettleBatch());
   protected readonly today = computed(() => this.session.today() ?? '');
+  /** The sheet's own today, which changes use (the today above is the preview date while one is set). */
+  protected readonly sheetToday = computed(() => this.session.sheetToday() ?? '');
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
   );
@@ -1346,12 +1348,12 @@ export class People {
   /** The grade to give the selected people. */
   protected readonly bulkGrade = signal<Grade>('A');
   /** The date the selected people's grade is in force from; the sheet's today unless another is typed. */
-  protected readonly bulkGradeFrom = linkedSignal(() => this.today());
+  protected readonly bulkGradeFrom = linkedSignal(() => this.sheetToday());
   /** How many people the last bulk grade changed; null until one is done. */
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal<string | null>(null);
   /** The date the selected people are retired from; the sheet's today unless another is typed. */
-  protected readonly bulkRetireDate = linkedSignal(() => this.today());
+  protected readonly bulkRetireDate = linkedSignal(() => this.sheetToday());
   /** How many people the last bulk retire retired; null until one is done. */
   protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkRetireError = signal<string | null>(null);
@@ -1407,17 +1409,17 @@ export class People {
         this.selectedPeople.set(new Set());
         this.bulkGraded.set(null);
         this.bulkGradeError.set(null);
-        this.bulkGradeFrom.set(this.today());
+        this.bulkGradeFrom.set(this.sheetToday());
         this.bulkRetired.set(null);
         this.bulkRetireError.set(null);
-        this.bulkRetireDate.set(this.today());
+        this.bulkRetireDate.set(this.sheetToday());
         if (sheet) void this.reload(sheet);
       });
     });
     // A change to the sheet's today may close periods past their grace days: re-read them.
     let shownToday: string | null = null;
     effect(() => {
-      const today = this.session.today();
+      const today = this.session.sheetToday();
       untracked(() => {
         const sheet = this.session.sheet();
         const changed = shownToday !== null && today !== shownToday;
@@ -2287,7 +2289,7 @@ export class People {
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => list.map((p) => changed.find((c) => c.id === p.id) ?? p));
       this.selectedPeople.set(new Set());
-      this.bulkGradeFrom.set(this.today());
+      this.bulkGradeFrom.set(this.sheetToday());
       this.bulkGraded.set(changed.length);
     } catch {
       this.bulkGradeError.set('The people could not be graded.');
@@ -2318,7 +2320,7 @@ export class People {
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => list.map((p) => retired.find((r) => r.id === p.id) ?? p));
       this.selectedPeople.set(new Set());
-      this.bulkRetireDate.set(this.today());
+      this.bulkRetireDate.set(this.sheetToday());
       this.bulkRetired.set(retired.length);
     } catch {
       this.bulkRetireError.set('The people could not be retired.');
@@ -2577,8 +2579,8 @@ export class People {
     this.version.set(person.version);
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
-    this.gradeFrom.set(this.today());
-    this.terms.set(this.termsText(termsOn(person, this.today())));
+    this.gradeFrom.set(this.sheetToday());
+    this.terms.set(this.termsText(termsOn(person, this.sheetToday())));
     this.termsFrom.set('');
     this.contact.set(person.contact ?? '');
     this.tags.set((person.tags ?? []).join(', '));
@@ -2592,7 +2594,7 @@ export class People {
     this.editing.set(null);
     this.name.set('');
     this.grade.set('A');
-    this.gradeFrom.set(this.today());
+    this.gradeFrom.set(this.sheetToday());
     this.terms.set('');
     this.termsFrom.set('');
     this.contact.set('');
@@ -2677,7 +2679,7 @@ export class People {
       this.version.set(current.version);
       this.name.set(current.name);
       this.grade.set(this.gradeOf(current));
-      this.terms.set(this.termsText(termsOn(current, this.today())));
+      this.terms.set(this.termsText(termsOn(current, this.sheetToday())));
       this.contact.set(current.contact ?? '');
       this.tags.set((current.tags ?? []).join(', '));
     } catch {

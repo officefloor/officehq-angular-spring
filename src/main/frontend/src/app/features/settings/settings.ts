@@ -629,7 +629,7 @@ export class Settings {
     // A change to the sheet's today changes which dated values are in force.
     let shownToday: string | null = null;
     effect(() => {
-      const today = this.session.today();
+      const today = this.session.sheetToday();
       untracked(() => {
         const sheet = this.session.sheet();
         const changed = shownToday !== null && today !== shownToday;

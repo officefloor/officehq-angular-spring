@@ -78,6 +78,15 @@ public class Consolidation {
      */
     @Transactional(readOnly = true)
     public Consolidated of(String sheetId, LocalDate asOf) {
+        return of(sheetId, asOf, null);
+    }
+
+    /**
+     * As {@link #of(String, LocalDate)}; with no as-of date but a preview day, each sheet's figures over its
+     * records as they stand now, read as if its today were that day.
+     */
+    @Transactional(readOnly = true)
+    public Consolidated of(String sheetId, LocalDate asOf, LocalDate preview) {
         List<String> all = new ArrayList<>();
         all.add(sheetId);
         all.addAll(sheets.descendants(sheetId));
@@ -87,7 +96,7 @@ public class Consolidation {
         Map<String, BigDecimal> grades = new TreeMap<>();
         Map<String, Integer> statuses = new TreeMap<>();
         for (String id : all) {
-            Taken taken = asOf == null ? now(id) : asOf(id, asOf);
+            Taken taken = asOf != null ? asOf(id, asOf) : preview != null ? preview(id, preview) : now(id);
             Rollups.Rollup rollup = taken.rollup();
             rollup.people().values().forEach(figures -> {
                 if (figures.dueTotal() != null) {
@@ -174,6 +183,20 @@ public class Consolidation {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims,
                 cuts.personCuts(sheet, sheetPeople.values())), sheetPeople, sheetClaims);
+    }
+
+    /** A sheet's figures over its records as they stand now, read as if its today were a preview day. */
+    private Taken preview(String sheetId, LocalDate day) {
+        Sheet now = sheets.findById(sheetId).orElse(null);
+        if (now == null) {
+            return now(sheetId);
+        }
+        Sheet then = now.asOf(day, now.getDated(), now.getPolicyDate());
+        LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims,
+                cuts.personCuts(then, sheetPeople.values())), sheetPeople, sheetClaims);
     }
 
     /**

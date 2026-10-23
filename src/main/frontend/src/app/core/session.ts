@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, WritableSignal, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 /** A setting's value from a date (yyyy-mm-dd); from null for its starting value, before every from-date. */
@@ -61,6 +61,10 @@ export interface SheetView {
   scoreHigh?: number | null;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled; null when none. */
   proofKinds?: string | null;
+  /** The sheet's own today, the one changes use: differs from today while a preview date is set. */
+  sheetToday?: string | null;
+  /** The preview date the figures are read on (today then being it); null when none is set. */
+  preview?: string | null;
 }
 
 /**
@@ -80,8 +84,13 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
-  /** The active sheet's today; features use it, never the real clock. */
+  /**
+   * The day the active sheet's figures are read on: its today, or the preview date while one is set.
+   * Features use it, never the real clock.
+   */
   readonly today = signal<string | null>(null);
+  /** The active sheet's own today: every change, and every default date of one, uses it, never the preview date. */
+  readonly sheetToday = signal<string | null>(null);
   /** The active sheet's floor in force on its today, with two decimals. */
   readonly floor = signal('1.00');
   /** The active sheet's floor by from-date: a claim's live due is at least the one in force on its date. */
@@ -133,11 +142,17 @@ export class Session {
    * and every change is refused.
    */
   readonly asOf = signal('');
+  /**
+   * The date (yyyy-mm-dd) this user's screen shows the sheet's figures as if it were the sheet's today;
+   * empty when none is set. The figures are read over the sheet's current records; changes still use
+   * the sheet's own today.
+   */
+  readonly preview = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
   /** The sheet load whose people and claims are on screen; it equals loads once the latest has arrived. */
   readonly loaded = signal(0);
-  /** A change of the as-of date whose sheet load is still in flight; null when none is. */
+  /** A change of the as-of or preview date whose sheet load is still in flight; null when none is. */
   private asOfLoading: Promise<void> | null = null;
 
   signIn(name: string): void {
@@ -155,16 +170,26 @@ export class Session {
 
   /** Show the active sheet as of a date (empty: as it stands), re-reading it from the store. */
   async setAsOf(date: string): Promise<void> {
+    await this.reloadWith(this.asOf, date);
+  }
+
+  /** Show the active sheet's figures as if its today were a date (empty: its own today), re-reading it from the store. */
+  async setPreview(date: string): Promise<void> {
+    await this.reloadWith(this.preview, date);
+  }
+
+  /** Set a date this screen reads the sheet with, re-reading it; put back when the read fails. */
+  private async reloadWith(day: WritableSignal<string>, date: string): Promise<void> {
     const id = this.sheet();
     if (!id) throw new Error('No sheet is loaded.');
-    const was = this.asOf();
-    this.asOf.set(date);
+    const was = day();
+    day.set(date);
     const loading = this.loadSheet(id);
     this.asOfLoading = loading;
     try {
       await loading;
     } catch (e) {
-      this.asOf.set(was);
+      day.set(was);
       throw e;
     } finally {
       if (this.asOfLoading === loading) this.asOfLoading = null;
@@ -213,6 +238,7 @@ export class Session {
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);
+    this.sheetToday.set(view.sheetToday ?? view.today);
     this.floor.set(view.floor);
     this.terms.set(view.terms);
     this.latePct.set(view.latePct);

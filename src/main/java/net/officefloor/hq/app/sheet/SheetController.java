@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.PreviewDate;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -39,9 +40,17 @@ public class SheetController {
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
             int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
-            Integer scoreMid, Integer scoreHigh) {
+            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview) {
 
         static SheetView of(Sheet sheet) {
+            return of(sheet, sheet.getToday(), null);
+        }
+
+        /**
+         * The sheet as shown, its today being the day its figures are read on, with the sheet's own today
+         * (the one changes use) and the preview date, null for none.
+         */
+        static SheetView of(Sheet sheet, LocalDate sheetToday, LocalDate preview) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
@@ -49,7 +58,7 @@ public class SheetController {
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
-                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh());
+                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh(), sheetToday, preview);
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -345,13 +354,23 @@ public class SheetController {
 
     /**
      * Load a sheet by id, starting an empty one if the id was never used; with an as-of date, the sheet
-     * as it stood at the end of that date, with that date as its today.
+     * as it stood at the end of that date, with that date as its today; else with a preview date, the
+     * sheet as it stands with that date as the today its figures are read on (its own today still told).
      */
     @PostMapping("/{id}/load")
     public SheetView load(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
-        return SheetView.of(history.sheet(service.load(id), AsOfGuard.date(asOf)));
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
+            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+        Sheet now = service.load(id);
+        LocalDate day = PreviewDate.date(asOf, preview);
+        return day != null ? previewed(now, day) : SheetView.of(history.sheet(now, AsOfGuard.date(asOf)));
+    }
+
+    /** The sheet as it stands, its figures read on a preview day (null: on its own today). */
+    private static SheetView previewed(Sheet now, LocalDate day) {
+        return day == null ? SheetView.of(now)
+                : SheetView.of(now.asOf(day, now.getDated(), now.getPolicyDate()), now.getToday(), day);
     }
 
     /** Change the sheet's today. */
@@ -359,20 +378,22 @@ public class SheetController {
     public SheetView setToday(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview,
             @RequestBody @Valid TodayChange change) {
-        return SheetView.of(service.setToday(id, SignedIn.name(user), change.today()));
+        return previewed(service.setToday(id, SignedIn.name(user), change.today()), PreviewDate.date(preview));
     }
 
     /** Archive the sheet: only a steward may. */
     @PostMapping("/{id}/archive")
     public SheetView archive(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
         String name = SignedIn.name(user);
         if (!Role.STEWARD.equals(roles.roleOf(id, name))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet.");
         }
-        return SheetView.of(service.archive(id, name));
+        return previewed(service.archive(id, name), PreviewDate.date(preview));
     }
 
     /** Clone the sheet to another id, which must never have been used: only a steward may. */

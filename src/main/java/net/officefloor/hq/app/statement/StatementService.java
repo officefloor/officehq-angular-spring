@@ -85,11 +85,16 @@ public class StatementService {
         Person then;
         // Their claims as they stood then, by id.
         Map<Long, Claim> theirsThen = new LinkedHashMap<>();
+        // Everyone's claims and people as they stood then, for the parts of others' claims shared with them.
+        Iterable<Claim> allThen;
+        Map<Long, Person> peopleThen = new HashMap<>();
         Dues.Basis basis;
         Sheet sheet;
         if (day.equals(today)) {
             then = person;
             claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).forEach(c -> theirsThen.put(c.getId(), c));
+            allThen = claims.findBySheetIdOrderByIdDesc(sheetId);
+            people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> peopleThen.put(p.getId(), p));
             basis = dues.live(sheetId);
             sheet = sheets.load(sheetId);
         } else {
@@ -103,6 +108,8 @@ public class StatementService {
                     theirsThen.put(id, c);
                 }
             });
+            allThen = kept.claims().values();
+            peopleThen.putAll(kept.people());
             basis = kept.basis();
             sheet = kept.sheet();
         }
@@ -125,7 +132,27 @@ public class StatementService {
             bound.put(entry.getKey(), due);
             counted++;
             if (due != null) {
-                total = total.add(due);
+                // As in the live totals: a shared claim counts its figure less its holders' parts.
+                total = total.add(claim.getShares().isEmpty() ? due : due.subtract(claim.sharedPartsOf(due)));
+            }
+        }
+        // As in the live totals: their parts of others' shared claims that count for their own person.
+        for (Claim claim : allThen) {
+            Person owner = peopleThen.get(claim.getPersonId());
+            if (claim.getPersonId() == personId || owner == null || !claim.getStatus().counts()
+                    || claim.getShares().stream().noneMatch(share -> share.getPersonId() == personId)
+                    || !owner.countsLive(claim.getStatus(), claim.isStated(), claim.isDeferredOn(day), day)) {
+                continue;
+            }
+            BigDecimal figure = dues.due(claim, owner.gradeOn(claim.getDate()), basis);
+            if (figure == null) {
+                continue;
+            }
+            figured = true;
+            for (var share : claim.getShares()) {
+                if (share.getPersonId() == personId) {
+                    total = total.add(share.partOf(figure));
+                }
             }
         }
         // As on the screen: n/a when the grade in force on the day has no rate, unless a claim has a figure.

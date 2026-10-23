@@ -59,7 +59,7 @@ import { TreeSearch } from '../tree-search/tree-search';
               <strong data-testid="sheet-current-id">{{ sheet }}</strong>
             }
           </p>
-          <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+          <p>Today <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
           <form (submit)="saveToday($event)">
             <label for="sheet-today-input">Change today</label>
             <input
@@ -84,6 +84,19 @@ import { TreeSearch } from '../tree-search/tree-search';
             <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as-of date</button>
           </form>
           <p>As of <strong data-testid="sheet-asof">{{ session.asOf() }}</strong></p>
+          <form (submit)="setPreview($event)">
+            <label for="preview-date">Preview as if today were</label>
+            <input
+              id="preview-date"
+              type="date"
+              data-testid="preview-date"
+              [value]="previewInput()"
+              (input)="previewInput.set(value($event)); sheetError.set(null)"
+            />
+            <button type="submit" data-testid="preview-set">Set preview date</button>
+            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview date</button>
+          </form>
+          <p>Preview <strong data-testid="sheet-preview">{{ session.preview() }}</strong></p>
           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
           <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
@@ -142,6 +155,7 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
+  protected readonly previewInput = signal('');
   protected readonly cloneInput = signal('');
   /** The id the sheet on screen was last cloned to from this screen; empty when none since it was loaded. */
   protected readonly clonedTo = signal('');
@@ -249,6 +263,31 @@ export class Home {
       await this.session.setAsOf('');
     } catch {
       this.sheetError.set('The as-of date could not be cleared.');
+    }
+  }
+
+  protected async setPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.sheetError.set(null);
+    const date = this.previewInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.sheetError.set('Pick a date to preview the sheet on.');
+      return;
+    }
+    try {
+      await this.session.setPreview(date);
+    } catch {
+      this.sheetError.set(`The sheet could not be previewed on ${date}.`);
+    }
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.sheetError.set(null);
+    this.previewInput.set('');
+    try {
+      await this.session.setPreview('');
+    } catch {
+      this.sheetError.set('The preview date could not be cleared.');
     }
   }
 

@@ -819,7 +819,7 @@ export class Claims {
     try {
       this.saved.emit(await this.api.defer(sheet, claim.id, until));
     } catch {
-      const today = this.session.today() ?? '';
+      const today = this.session.sheetToday() ?? '';
       const period = periodOn(this.periods(), claim.dueBy);
       this.claimError.set({
         id: claim.id,
@@ -976,7 +976,7 @@ export class Claims {
     const refuse = (): string =>
       claim.status !== 'OPEN'
         ? `A ${claim.status} claim cannot be split; only an OPEN one can.`
-        : deferred(claim, this.session.today() ?? '')
+        : deferred(claim, this.session.sheetToday() ?? '')
           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be split.`
           : period?.closed
             ? `Period ${period.name} is closed, so its claims cannot be split.`
@@ -1321,7 +1321,7 @@ export class Claims {
       if (action === 'settle' && reason !== '' && e instanceof HttpErrorResponse && e.status === 400) {
         this.claimError.set({
           id: claim.id,
-          message: reason > (this.session.today() ?? '')
+          message: reason > (this.session.sheetToday() ?? '')
             ? 'A claim cannot be settled as of a date after today.'
             : `The claim did not exist on ${reason}, so it cannot be settled as of then.`,
         });
@@ -1353,7 +1353,7 @@ export class Claims {
         id: claim.id,
         message: forbidden
           ? `Your role is not allowed to ${action} a claim.`
-          : action === 'settle' && deferred(claim, this.session.today() ?? '')
+          : action === 'settle' && deferred(claim, this.session.sheetToday() ?? '')
           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
           : own
             ? `You ${edited ? 'last edited' : 'opened'} this claim, so someone else must ${action} it.`
