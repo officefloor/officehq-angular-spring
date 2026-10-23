@@ -78,6 +78,16 @@ public class ImportService {
         List<Person> added = new ArrayList<>();
         List<Person> updated = new ArrayList<>();
         Set<Long> matched = new HashSet<>();
+        for (int i = 0; i < lines.size(); i++) {
+            String grade = lines.get(i).grade();
+            if (grade != null) {
+                try {
+                    people.requireGradeOpen(sheetId, grade);
+                } catch (ResponseStatusException retired) {
+                    throw refused("Line " + (i + 1) + ": the grade " + grade + " is retired.");
+                }
+            }
+        }
         String defaultGrade = sheets.defaultGrade(sheetId);
         int number = 0;
         for (Line line : lines) {

@@ -28,6 +28,7 @@ import { Rates } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
+import { GradesStore } from '../../core/grades';
 
 /** The statuses the summary counts claims by, in the order it lists them. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
@@ -904,6 +905,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 })
 export class People {
   private readonly session = inject(Session);
+  private readonly gradeStore = inject(GradesStore);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
@@ -2612,6 +2614,12 @@ export class People {
       return;
     }
     const id = this.editing();
+    // People on a retired grade keep it, but it cannot be chosen for anyone.
+    if ((id === null || form.gradeGiven) && this.gradeStore.retired(form.grade)) {
+      this.reset();
+      this.error.set(`The grade ${form.grade} is retired.`);
+      return;
+    }
     const contactKey = form.contact.trim().toLowerCase();
     if (contactKey !== '' && this.people().some((p) => p.id !== id && p.contact === contactKey)) {
       // As when the store refuses it: a refused add leaves nothing typed behind.

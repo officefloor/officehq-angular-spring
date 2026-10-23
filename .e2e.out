@@ -2,52 +2,70 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan amount reaches drafts › plan amount reaches drafts (9.5s)
-  ✓  2 [chromium] › acceptance.spec.ts:54:7 › plan amount reaches drafts › plan amount reaches drafts scenario 1 (48.8s)
-  ✓  3 [chromium] › acceptance.spec.ts:705:7 › plan amount reaches drafts › plan amount reaches drafts scenario 2 (38.6s)
-  ✘  4 [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 (36.6s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › grade retire › grade retire (23.1s)
+  ✓  2 [chromium] › acceptance.spec.ts:72:7 › grade retire › grade retire scenario 1 (27.9s)
+  ✘  3 [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 (32.8s)
+  ✘  4 [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 (34.0s)
 
 
-  1) [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
+  1) [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ────────────────
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:694:24
+
+  2) [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ───────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('person-row-13').getByTestId('person-claimed')
-    Expected string: [32m"0.00"[39m
-    Received string: [31m"7.77"[39m
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkx4bzz1tm9[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-claimed')[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
-    [2m  -   unexpected value "7.77"[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
 
 
-      1472 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-claimed")).toHaveText("0.00");
-      1473 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-due-total")).toHaveText("0.00");
-    > 1474 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
-           |                                                                                           ^
-      1475 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
-      1476 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("7.77");
-      1477 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("1.00");
+      1224 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1225 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 1226 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1227 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+      1228 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1229 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1474:91
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1226:54
 
-  Slow test file: [chromium] › acceptance.spec.ts (2.2m)
-  Consider splitting slow test files to speed up parallel execution
-  1 failed
-    [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
-  3 passed (2.3m)
+  2 failed
+    [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ─────────────────
+    [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ────────────────
+  2 passed (2.1m)

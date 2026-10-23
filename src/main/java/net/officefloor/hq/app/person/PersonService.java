@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
@@ -27,10 +28,12 @@ public class PersonService {
     private final Rollups rollups;
     private final Audit audit;
     private final RoleService roles;
+    private final RetiredGradeRepository retiredGrades;
 
     public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
-            Audit audit, RoleService roles) {
+            Audit audit, RoleService roles, RetiredGradeRepository retiredGrades) {
         this.roles = roles;
+        this.retiredGrades = retiredGrades;
         this.people = people;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
@@ -77,6 +80,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tags) {
         sheets.load(sheetId);
+        requireGradeOpen(sheetId, grade);
         requireNameFree(sheetId, name, null);
         requireContactFree(sheetId, contact, null);
         Rollups.Rollup before = rollups.take(sheetId);
@@ -131,6 +135,11 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                     "Someone else has saved this person since it was opened.");
         }
+        // People on a retired grade keep it, but it cannot be chosen for them, nor given to anyone else.
+        LocalDate gradeOn = gradeFrom != null ? gradeFrom : sheets.today(sheetId);
+        if (gradeGiven || !grade.equals(person.gradeOn(gradeOn))) {
+            requireGradeOpen(sheetId, grade);
+        }
         requireNameFree(sheetId, name, person.getId());
         if (person.getAliases().stream().map(Person::keyOf).anyMatch(treeKeys(sheetId)::contains)) {
             throw nameInUse();
@@ -165,6 +174,13 @@ public class PersonService {
         audited("PERSON_EDITED", sheetId, user, saved, today, withTerms, withContact);
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /** Refuse a grade retired on the sheet. */
+    public void requireGradeOpen(String sheetId, String grade) {
+        if (retiredGrades.existsBySheetIdAndGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The grade " + grade + " is retired.");
+        }
     }
 
     /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */

@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,10 +25,12 @@ public class SheetService {
     private final Audit audit;
     private final ApplicationEventPublisher events;
     private final PersonRepository people;
+    private final RetiredGradeRepository retiredGrades;
 
     public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events,
-            PersonRepository people) {
+            PersonRepository people, RetiredGradeRepository retiredGrades) {
         this.sheets = sheets;
+        this.retiredGrades = retiredGrades;
         this.people = people;
         this.rollups = rollups;
         this.audit = audit;
@@ -371,9 +374,10 @@ public class SheetService {
         return saved;
     }
 
-    /** The grade a person added without one on the sheet is given: its default grade, else A. */
+    /** The grade a person added without one on the sheet is given: its default grade, else (or when it is retired) A. */
     public String defaultGrade(String id) {
-        return load(id).defaultGradeInForce();
+        String grade = load(id).defaultGradeInForce();
+        return retiredGrades.existsBySheetIdAndGrade(id, grade) ? "A" : grade;
     }
 
     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */

@@ -7,6 +7,7 @@ import { Settings } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
+import { Grades } from '../grades/grades';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
 import { TemplatesList } from '../templates/templates';
 import { AuditViewer } from '../audit/audit';
@@ -17,7 +18,7 @@ import { TreeSearch } from '../tree-search/tree-search';
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
+  imports: [People, Settings, Delegation, Holidays, Notes, Grades, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -101,6 +102,7 @@ import { TreeSearch } from '../tree-search/tree-search';
           <app-delegation />
           <app-holidays />
           <app-notes />
+          <app-grades />
           <app-void-reasons />
           <app-templates />
           <app-people />
