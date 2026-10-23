@@ -164,8 +164,6 @@ public class ClaimService {
         Sheet sheet = sheets.lock(sheetId);
         int terms = terms(sheet, person, dated, sheet.getToday());
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
-        // Whether a new claim lands in a closed period is judged by its terms in calendar days from its date.
-        periods.refuseIfClosed(sheetId, dated.plusDays(terms));
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
         String referred = reference(ref);

@@ -107,7 +107,8 @@ public class SheetController {
      * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
      * score thresholds, null for none, and the score log switch, on or blank (off), and the maximum of OPEN
      * or PENDING claims per person, null for none, and the pending SLA in days, null for none, and the cap's
-     * values by from-date, and the current policy version with each policy version's from-date (see SheetView). */
+     * values by from-date, and the current policy version with each policy version's from-date (see SheetView), and
+     * the terms' values by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
@@ -117,7 +118,7 @@ public class SheetController {
             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
             Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla, List<DatedValue> capHistory,
-            int policyVersion, List<LocalDate> policyVersionsFrom) {
+            int policyVersion, List<LocalDate> policyVersionsFrom, List<DatedValue> termsHistory) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -139,7 +140,8 @@ public class SheetController {
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh(),
                     sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen(), sheet.getPendingSla(),
-                    DatedValue.of(sheet.capHistory()), sheet.getPolicyVersion(), SheetView.policyVersionsFrom(sheet));
+                    DatedValue.of(sheet.capHistory()), sheet.getPolicyVersion(), SheetView.policyVersionsFrom(sheet),
+                    DatedValue.of(sheet.termsHistory()));
         }
 
         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */

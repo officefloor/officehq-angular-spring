@@ -4,7 +4,7 @@ import {
   ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, SCORE, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, SWITCH, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
-import { Session, recordedOn } from '../../core/session';
+import { DatedValue, Session, recordedOn } from '../../core/session';
 
 // The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days, the alert threshold and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
@@ -419,7 +419,7 @@ import { Session, recordedOn } from '../../core/session';
       <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floorRecorded() | figure }}</span></p>
-      <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+      <p>Terms in force: <span data-testid="setting-terms-current">{{ termsRecorded() }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} in force:
           <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</span></p>
@@ -497,6 +497,10 @@ export class Settings {
   protected readonly floorRecorded = computed(() => recordedOn(this.session.floorHistory(), this.session.today() ?? ''));
   /** The late percent recorded in force on the sheet's today (a policy version set it); empty before any is. */
   protected readonly latePctRecorded = computed(() => recordedOn(this.session.latePctHistory(), this.session.today() ?? ''));
+  /** The terms' values by from-date, in days. */
+  private readonly termsHistory = signal<DatedValue[]>([]);
+  /** The terms recorded in force on the sheet's today (a policy version set them); empty before any are. */
+  protected readonly termsRecorded = computed(() => recordedOn(this.termsHistory(), this.session.today() ?? ''));
   private readonly api = inject(SettingsApi);
 
   protected readonly roleNames = ROLES.join(' or ');
@@ -1255,6 +1259,7 @@ export class Settings {
     this.session.floor.set(view.floor);
     this.session.floorHistory.set(view.floorHistory);
     this.session.terms.set(view.terms);
+    this.termsHistory.set(view.termsHistory);
     this.gradeTerms.set({ A: view.termsA, B: view.termsB, C: view.termsC });
     this.gradeGrace.set({ A: view.graceA, B: view.graceB, C: view.graceC });
     this.session.graceHistory.set(view.graceHistory);

@@ -479,7 +479,7 @@ public class Sheet {
         dated.removeIf(d -> d.getKey().equals(key) && d.getFromDate().equals(from));
         dated.add(new DatedSetting(key, from, value));
         if (POLICY_KEYS.contains(key)) {
-            policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from));
+            policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from, value));
         }
     }
 
@@ -566,6 +566,11 @@ public class Sheet {
     /** The floor's values (see {@link #history}). */
     public List<DatedSetting> floorHistory() {
         return history(FLOOR, plain(floor));
+    }
+
+    /** The terms' values, in days (see {@link #history}). */
+    public List<DatedSetting> termsHistory() {
+        return history(TERMS, Integer.toString(terms));
     }
 
     /** The rounding mode's values (see {@link #history}), none before every from-date. */

@@ -51,7 +51,7 @@ public class SheetHistory {
             List<PolicyVersionState> policyVersions) {
     }
 
-    record PolicyVersionState(int number, String key, LocalDate from) {
+    record PolicyVersionState(int number, String key, LocalDate from, String value) {
     }
 
     /** The sheet's pot as kept; its value null for none. */
@@ -172,7 +172,7 @@ public class SheetHistory {
                 sheetPeople.stream().map(SheetHistory::kept).toList(),
                 sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()),
                 sheet.getPolicyVersions().stream()
-                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFromDate())).toList());
+                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFromDate(), v.getValue())).toList());
         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
                 sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
                 periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
@@ -318,7 +318,7 @@ public class SheetHistory {
                 state.settings().stream().map(s -> new DatedSetting(s.key(), s.from(), s.value())).toList(),
                 state.policyDate(), state.policyVersions() == null ? List.of()
                         : state.policyVersions().stream()
-                                .map(v -> new PolicyVersion(v.number(), v.key(), v.from())).toList());
+                                .map(v -> new PolicyVersion(v.number(), v.key(), v.from(), v.value())).toList());
         if (state.pot() != null) {
             sheet.setPot(state.pot().value());
         }

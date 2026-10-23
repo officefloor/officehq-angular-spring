@@ -103,6 +103,8 @@ export interface SettingsView {
   policyVersion: number;
   /** Each policy version's from-date (yyyy-mm-dd), in the order made; null for one in force always. */
   policyVersionsFrom: (string | null)[];
+  /** The terms' values by from-date, in days, their starting value first. */
+  termsHistory: DatedValue[];
 }
 
 /** The actions the permission matrix covers. */

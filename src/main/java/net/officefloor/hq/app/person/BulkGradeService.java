@@ -43,8 +43,8 @@ public class BulkGradeService {
             }
             try {
                 changed.add(service.edit(sheetId, user, person.getId(), person.getVersion(), person.getName(), grade,
-                        from, person.getTerms(), person.getContact(),
-                        false, false));
+                        from, person.getTerms(), null, person.getContact(),
+                        false, false, null, true));
             } catch (ResponseStatusException refused) {
                 // left as they are: their edit wrote nothing
             }

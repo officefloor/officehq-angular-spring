@@ -15,11 +15,12 @@ import { AuditViewer } from '../audit/audit';
 import { Activity } from '../audit/activity';
 import { Duplicates } from '../claims/duplicates';
 import { TreeSearch } from '../tree-search/tree-search';
+import { PolicyVersions } from '../policy/policy';
 
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People, Settings, Delegation, Holidays, Notes, Grades, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
+  imports: [People, Settings, Delegation, Holidays, Notes, Grades, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates, PolicyVersions],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -114,6 +115,7 @@ import { TreeSearch } from '../tree-search/tree-search';
           </form>
           <p>Last clone made <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></p>
           <app-settings />
+          <app-policy-versions />
           <app-delegation />
           <app-holidays />
           <app-notes />
