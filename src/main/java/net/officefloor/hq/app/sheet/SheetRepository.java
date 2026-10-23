@@ -26,6 +26,30 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
         return chain;
     }
 
+    /**
+     * The sheets whose rates a grade with no rate in force on this sheet falls back to, in order: its
+     * ancestors (up to so many levels), then the sheet it was cloned from, that sheet's ancestors, the
+     * sheet that one was cloned from, and so on; each sheet once, never this one.
+     */
+    default List<String> rateSources(String id, int parentLevels) {
+        List<String> chain = new ArrayList<>();
+        String sheet = id;
+        while (sheet != null) {
+            for (String ancestor : ancestors(sheet).stream().limit(parentLevels).toList()) {
+                if (!ancestor.equals(id) && !chain.contains(ancestor)) {
+                    chain.add(ancestor);
+                }
+            }
+            String source = findById(sheet).map(Sheet::getClonedFrom).orElse(null);
+            if (source == null || source.equals(id) || chain.contains(source)) {
+                break;
+            }
+            chain.add(source);
+            sheet = source;
+        }
+        return chain;
+    }
+
     /** The sheets naming this one as their parent. */
     List<Sheet> findByParentIdOrderByIdAsc(String parentId);
 

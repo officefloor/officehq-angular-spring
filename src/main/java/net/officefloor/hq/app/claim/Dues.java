@@ -40,7 +40,7 @@ public class Dues {
 
         /**
          * The rate in force for a grade on a date (see {@link RateRepository#findInForce}); when the sheet
-         * has none, its parent's, then its parent's parent's, and so on.
+         * has none, its parent's, then its parent's parent's, and so on; then the sheet it was cloned from.
          */
         public Optional<Rate> rateInForce(String grade, LocalDate date) {
             Optional<Rate> rate = RateRepository.inForce(rates, grade, date);
@@ -53,7 +53,7 @@ public class Dues {
         /**
          * The rate in force for a grade on a claim's date as the claim sees the rates: a forward-only rate
          * saved after the claim was added is passed over (see {@link RateRepository#inForceFor}); when the
-         * sheet has none, its parent's, then its parent's parent's, and so on.
+         * sheet has none, its parent's, then its parent's parent's, and so on; then the sheet it was cloned from.
          */
         public Optional<Rate> rateInForceFor(Claim claim, String grade) {
             Optional<Rate> rate = RateRepository.inForceFor(rates, grade, claim.getDate(), claim.getAdded());
@@ -74,9 +74,13 @@ public class Dues {
                 inherited(sheetId), claim -> claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects()));
     }
 
-    /** The rates of the sheet's ancestors as the store holds them now, nearest first, up to {@link #PARENT_LEVELS}. */
+    /**
+     * The rates of the sheet's ancestors as the store holds them now, nearest first, up to
+     * {@link #PARENT_LEVELS}; then, for a cloned sheet, those of the sheet it was cloned from, its
+     * ancestors and its source, and so on (see {@link SheetRepository#rateSources}).
+     */
     public List<List<Rate>> inherited(String sheetId) {
-        return sheets.ancestors(sheetId).stream().limit(PARENT_LEVELS)
+        return sheets.rateSources(sheetId, PARENT_LEVELS).stream()
                 .map(rates::findBySheetIdOrderByGradeAscFromDateAscIdAsc).toList();
     }
 

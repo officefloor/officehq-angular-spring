@@ -138,6 +138,13 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /**
+     * The id of the sheet this one was cloned from: its rates apply where this sheet and its parents
+     * have none in force; null when not cloned. Not dated.
+     */
+    @Column(name = "cloned_from")
+    private String clonedFrom;
+
     /** Archived: everything on the sheet stays visible but nothing on it may change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -420,6 +427,7 @@ public class Sheet {
         then.proofKinds = proofKinds;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
+        then.clonedFrom = clonedFrom;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
         then.permissions = new HashMap<>(permissions);
@@ -600,6 +608,11 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    /** The id of the sheet this one was cloned from; null when not cloned. */
+    public String getClonedFrom() {
+        return clonedFrom;
     }
 
     /** The date a new claim with no date of its own is given: the entry date while set, else the sheet's today. */

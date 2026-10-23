@@ -252,11 +252,13 @@ public class SheetHistory {
      * The rates of the sheet's ancestors, nearest first, up to {@link Dues#PARENT_LEVELS}, each as it
      * stood at the end of a date (null: as it stands): an ancestor's rates as kept for the last snapshot
      * on or before that date when it is before the ancestor's today (none when nothing was kept by
-     * then), else as they stand. The parent itself is not dated: the chain is the one set now.
+     * then), else as they stand; then, for a cloned sheet, those of the sheet it was cloned from, its
+     * ancestors and its source, and so on, each likewise. The parent itself is not dated: the chain is
+     * the one set now.
      */
     @Transactional(readOnly = true)
     public List<List<Rate>> inherited(String sheetId, LocalDate day) {
-        return sheets.ancestors(sheetId).stream().limit(Dues.PARENT_LEVELS)
+        return sheets.rateSources(sheetId, Dues.PARENT_LEVELS).stream()
                 .map(ancestor -> past(ancestor, day) ? keptRates(ancestor, day)
                         : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(ancestor))
                 .toList();
