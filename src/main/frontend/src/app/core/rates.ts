@@ -15,6 +15,20 @@ export interface RateView {
   to: string | null;
   /** How many versions the rate has, its newest in force; null (one) in views kept before versions. */
   versions: number | null;
+  /**
+   * Where a forward-only rate was saved in the order claims are added: it applies only to claims added
+   * after; null (or absent, in views kept before forward-only rates) when it applies to every claim.
+   */
+  forwardAfter?: number | null;
+  /** The rate's older versions, newest first: what a claim added before a forward-only version falls back to. */
+  older?: OlderRateView[] | null;
+}
+
+/** An older version of a rate (see RateView). */
+export interface OlderRateView {
+  pct: string;
+  to: string | null;
+  forwardAfter: number | null;
 }
 
 /**
@@ -49,14 +63,35 @@ export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * The rate a grade has in force on a date (yyyy-mm-dd): of its rates with no from-date or one on or
  * before the date, the one with the latest; null when the date is before every rate of the grade, or
  * after that one's to-date. When the sheet has none, its parent's rate for the grade and date, then
- * its parent's parent's, and so on (`inherited`, nearest first).
+ * its parent's parent's, and so on (`inherited`, nearest first). For a claim, `added` is its place in
+ * the order claims are added: a forward-only rate saved after it was added is passed over (see seenBy);
+ * undefined (the rate in force, as the rates panel shows it) or null (a claim not yet stored) passes none.
  */
-export function rateOn(rates: RateView[], grade: Grade, date: string, inherited: RateView[][] = []): string | null {
+export function rateOn(
+  rates: RateView[],
+  grade: Grade,
+  date: string,
+  inherited: RateView[][] = [],
+  added?: number | null,
+): string | null {
   for (const level of [rates, ...inherited]) {
-    const pct = ownRateOn(level, grade, date);
+    const seen = level.flatMap((r) => (r.grade === grade ? seenBy(r, added) : []));
+    const pct = ownRateOn(seen, grade, date);
     if (pct !== null) return pct;
   }
   return null;
+}
+
+/**
+ * A rate as a claim added at a place sees it: its newest version unless that is forward-only and saved
+ * after the claim was added, else its newest older version that applies to the claim; none when none does.
+ */
+function seenBy(rate: RateView, added: number | null | undefined): RateView[] {
+  const applies = (forwardAfter: number | null | undefined) =>
+    forwardAfter === null || forwardAfter === undefined || added === null || added === undefined || added > forwardAfter;
+  if (applies(rate.forwardAfter)) return [rate];
+  const older = (rate.older ?? []).find((v) => applies(v.forwardAfter));
+  return older === undefined ? [] : [{ ...rate, pct: older.pct, to: older.to, forwardAfter: older.forwardAfter, older: [] }];
 }
 
 /** The rate a grade has in force on a date among one sheet's rates alone (see rateOn). */
@@ -106,7 +141,8 @@ export function due(amountCents: number, pct: string | null): string {
  * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
  * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
  * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
- * at the rate the grade has in force on the claim's date; the late charge is, for every full 30 days
+ * at the rate the grade has in force on the claim's date as the claim sees the rates (a forward-only
+ * rate saved after it was added passed over); the late charge is, for every full 30 days
  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
  * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
  * like the claim, added up. The floor is applied last; the one
@@ -128,7 +164,7 @@ export function claimDueCents(
   if (claim.stated && claim.status !== 'PENDING') {
     figure = claim.statedDue === null ? null : cents(claim.statedDue);
   } else {
-    const pct = rateOn(rates, grade, claim.date, inherited);
+    const pct = rateOn(rates, grade, claim.date, inherited, claim.added ?? null);
     figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
   }
   if (figure === null || isCorrection(claim)) return figure;

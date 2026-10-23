@@ -82,6 +82,11 @@ export interface ClaimView {
   comments?: ClaimComment[] | null;
   /** The claim's lines, in the order they were added; empty (or absent, as kept by an old snapshot) for none. */
   lines?: ClaimLine[] | null;
+  /**
+   * The claim's place in the order claims are added (a forward-only rate applies only to claims added
+   * after it was saved); null (newer than every rate) when not yet stored, or absent as kept by an old snapshot.
+   */
+  added?: number | null;
 }
 
 /** A line of a claim: its label, quantity and unit amount (two decimals). */

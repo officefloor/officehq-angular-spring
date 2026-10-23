@@ -20,6 +20,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query(value = "update claim set listed = next value for claim_listed_seq where id = :id", nativeQuery = true)
     int relist(@Param("id") Long id);
 
+    /** Give the claim the next place in the order claims are added: it arrives on a sheet as newly added. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "update claim set added_seq = next value for claim_added_seq where id = :id", nativeQuery = true)
+    int arrive(@Param("id") Long id);
+
     /** A person's claims on the sheet, newest first. */
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 

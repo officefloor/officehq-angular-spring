@@ -20,6 +20,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersion;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -46,7 +47,15 @@ public class SheetHistory {
     record SettingState(String key, LocalDate from, String value) {
     }
 
-    record RateState(String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+    /**
+     * A rate as kept: where it was saved in the order claims are added when forward-only, and its older
+     * versions newest first (both null in states kept before forward-only rates).
+     */
+    record RateState(String grade, LocalDate from, LocalDate to, BigDecimal pct, Long forwardAfter,
+            List<RateVersionState> older) {
+    }
+
+    record RateVersionState(int version, BigDecimal pct, LocalDate to, Long forwardAfter) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -65,7 +74,7 @@ public class SheetHistory {
 
     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
-            LocalDate deferredUntil) {
+            LocalDate deferredUntil, Long added) {
     }
 
     /**
@@ -117,7 +126,7 @@ public class SheetHistory {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         State state = new State(sheet.getPolicyDate(),
                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
-                sheetRates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
+                sheetRates.stream().map(SheetHistory::kept).toList(),
                 sheetPeople.stream().map(SheetHistory::kept).toList(),
                 sheetClaims.stream().map(SheetHistory::kept).toList());
         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
@@ -238,6 +247,7 @@ public class SheetHistory {
                 claim.bind(c.statedDue());
             }
             claim.defer(c.deferredUntil());
+            claim.keepAdded(c.added());
             claims.put(c.id(), claim);
         }
         Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
@@ -252,6 +262,11 @@ public class SheetHistory {
         return state.rates().stream().map(r -> {
             Rate rate = new Rate(sheetId, r.grade(), r.from(), r.pct());
             rate.setToDate(r.to());
+            rate.setForwardAfter(r.forwardAfter());
+            if (r.older() != null) {
+                rate.keepOlder(r.older().stream()
+                        .map(v -> new RateVersion(null, v.version(), v.pct(), v.to(), v.forwardAfter())).toList());
+            }
             return rate;
         }).toList();
     }
@@ -264,8 +279,14 @@ public class SheetHistory {
                 p.getRetirements().stream().map(r -> new RetirementState(r.getFromDate(), r.getToDate())).toList());
     }
 
+    private static RateState kept(Rate r) {
+        return new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct(), r.getForwardAfter(),
+                r.getOlder().stream().map(v -> new RateVersionState(v.getVersion(), v.getPct(), v.getToDate(),
+                        v.getForwardAfter())).toList());
+    }
+
     private static ClaimState kept(Claim c) {
         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
-                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil());
+                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded());
     }
 }

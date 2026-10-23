@@ -4,15 +4,23 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * A rate for a grade (A, B or C) on a sheet: a percent with two decimals, applying from its
  * from-date, or from the beginning of time when it has none, through its to-date, or on with no end
- * when it has none.
+ * when it has none. A rate saved with a from-date on or after the sheet's today is forward-only: it
+ * applies only to claims added after it was saved (see {@link #seenBy}).
  */
 @Entity
 @Table(name = "rate")
@@ -39,6 +47,19 @@ public class Rate {
 
     @Column(name = "version", nullable = false)
     private int version = 1;
+
+    /**
+     * Where in the order claims are added the newest version was saved when it is forward-only: it
+     * applies only to claims added after; null when it applies to every claim.
+     */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
+    /** The rate's older versions, newest first. */
+    @OneToMany(fetch = FetchType.EAGER)
+    @JoinColumn(name = "rate_id", insertable = false, updatable = false)
+    @OrderBy("version DESC")
+    private List<RateVersion> older = new ArrayList<>();
 
     protected Rate() {
     }
@@ -95,12 +116,53 @@ public class Rate {
      * Replace the rate's value with a new version: the value it held is returned as an older version
      * to keep, and the rate holds the new value as the next version.
      */
-    public RateVersion replace(BigDecimal pct, LocalDate toDate) {
-        RateVersion older = new RateVersion(id, version, this.pct, this.toDate);
+    public RateVersion replace(BigDecimal pct, LocalDate toDate, Long forwardAfter) {
+        RateVersion replaced = new RateVersion(id, version, this.pct, this.toDate, this.forwardAfter);
+        older.add(0, replaced);
         this.pct = pct;
         this.toDate = toDate;
+        this.forwardAfter = forwardAfter;
         this.version++;
-        return older;
+        return replaced;
+    }
+
+    /** Where the newest version was saved in the order claims are added when forward-only; else null. */
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
+    public void setForwardAfter(Long forwardAfter) {
+        this.forwardAfter = forwardAfter;
+    }
+
+    /** The rate's older versions, newest first. */
+    public List<RateVersion> getOlder() {
+        return List.copyOf(older);
+    }
+
+    /** Hold these older versions (newest first), for a rate held in no store. */
+    public void keepOlder(List<RateVersion> versions) {
+        older = new ArrayList<>(versions);
+    }
+
+    /**
+     * The rate as a claim added at a place in the order claims are added sees it (null: a claim not yet
+     * stored, added after every rate): its newest version unless that is forward-only and saved after the
+     * claim was added, else its newest older version that applies to the claim; empty when none does.
+     */
+    public Optional<Rate> seenBy(Long added) {
+        if (appliesTo(forwardAfter, added)) {
+            return Optional.of(this);
+        }
+        return older.stream().filter(v -> appliesTo(v.getForwardAfter(), added)).findFirst().map(v -> {
+            Rate seen = new Rate(sheetId, grade, fromDate, v.getPct());
+            seen.setToDate(v.getToDate());
+            return seen;
+        });
+    }
+
+    private static boolean appliesTo(Long forwardAfter, Long added) {
+        return forwardAfter == null || added == null || added > forwardAfter;
     }
 
     public BigDecimal getPct() {

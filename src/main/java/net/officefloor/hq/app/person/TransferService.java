@@ -28,7 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
  * and logs kept); each claim that had a number takes the other sheet's next, in the order the claims
  * were opened, keeps any figure a statement bound and loses its reference. Their statements go with
  * them. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
- * patrons, holds, pool memberships and watchers are dropped. When someone on the other sheet already
+ * patrons, holds, pool memberships and watchers are dropped. Their claims count as added to the other
+ * sheet when they arrive, so every forward-only rate saved there before applies to them. When someone on the other sheet already
  * goes by their name or an alias, they are merged into that person there: their claims listed after
  * the other's own, their name and aliases joined to the other's aliases, their statements joined to
  * the other's (the other's last staying the other's, or, the other having none, becoming theirs), and
@@ -154,6 +155,8 @@ public class TransferService {
             // The arriving claims are listed after the other's own, in the order they were added.
             moved.stream().map(Claim::getId).sorted().forEach(claims::relist);
         }
+        // The arriving claims are added to the other sheet now: a forward-only rate saved there applies to them.
+        moved.stream().map(Claim::getId).sorted().forEach(claims::arrive);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + name
                 + " to=" + toSheetId);
         rollups.audit(sheetId, user, before);

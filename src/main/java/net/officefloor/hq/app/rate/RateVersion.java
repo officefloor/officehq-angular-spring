@@ -30,11 +30,16 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** Where in the order claims are added the version was saved when forward-only; null: every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateVersion() {
     }
 
-    public RateVersion(Long rateId, int version, BigDecimal pct, LocalDate toDate) {
+    public RateVersion(Long rateId, int version, BigDecimal pct, LocalDate toDate, Long forwardAfter) {
         this.rateId = rateId;
+        this.forwardAfter = forwardAfter;
         this.version = version;
         this.pct = pct;
         this.toDate = toDate;
@@ -59,5 +64,10 @@ public class RateVersion {
     /** The last date the version applied on; null when it had no end. */
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** Where the version was saved in the order claims are added when forward-only; else null. */
+    public Long getForwardAfter() {
+        return forwardAfter;
     }
 }

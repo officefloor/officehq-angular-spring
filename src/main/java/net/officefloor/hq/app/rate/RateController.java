@@ -30,13 +30,26 @@ public class RateController {
     /**
      * What the screen is told about a grade's rate; the percent with two decimals, and the date it
      * applies from (null: from the beginning of time) and through (null: no end), and how many
-     * versions it has (null in views kept before rates had versions: one).
+     * versions it has (null in views kept before rates had versions: one). A forward-only rate carries
+     * where it was saved in the order claims are added (null: it applies to every claim), and its older
+     * versions, newest first, are what a claim added before it was saved falls back to (null in views
+     * kept before forward-only rates: none).
      */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to, Integer versions) {
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, Integer versions,
+            Long forwardAfter, List<OlderView> older) {
 
         public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate(),
-                    rate.getToDate(), rate.getVersion());
+                    rate.getToDate(), rate.getVersion(), rate.getForwardAfter(),
+                    rate.getOlder().stream().map(OlderView::of).toList());
+        }
+    }
+
+    /** An older version of a rate: its percent with two decimals, to-date, and where it was saved when forward-only. */
+    public record OlderView(String pct, LocalDate to, Long forwardAfter) {
+
+        public static OlderView of(RateVersion version) {
+            return new OlderView(version.getPct().toPlainString(), version.getToDate(), version.getForwardAfter());
         }
     }
 

@@ -50,6 +50,19 @@ public class Dues {
             return rate;
         }
 
+        /**
+         * The rate in force for a grade on a claim's date as the claim sees the rates: a forward-only rate
+         * saved after the claim was added is passed over (see {@link RateRepository#inForceFor}); when the
+         * sheet has none, its parent's, then its parent's parent's, and so on.
+         */
+        public Optional<Rate> rateInForceFor(Claim claim, String grade) {
+            Optional<Rate> rate = RateRepository.inForceFor(rates, grade, claim.getDate(), claim.getAdded());
+            for (int level = 0; rate.isEmpty() && level < inherited.size(); level++) {
+                rate = RateRepository.inForceFor(inherited.get(level), grade, claim.getDate(), claim.getAdded());
+            }
+            return rate;
+        }
+
         LocalDate today() {
             return sheet == null ? null : sheet.getToday();
         }
@@ -197,7 +210,8 @@ public class Dues {
     }
 
     /**
-     * A claim's rate figure: its amount at the rate the grade has in force on the claim's date, rounded
+     * A claim's rate figure: its amount at the rate the grade has in force on the claim's date as the
+     * claim sees the rates (a forward-only rate saved after it was added passed over), rounded
      * by the claim's date against the policy date, with no floor; null when it has no rate.
      */
     public BigDecimal live(Claim claim, String grade) {
@@ -206,7 +220,7 @@ public class Dues {
 
     private BigDecimal live(Claim claim, String grade, Basis basis) {
         RoundingMode rounding = rounding(claim, basis);
-        return basis.rateInForce(grade, claim.getDate())
+        return basis.rateInForceFor(claim, grade)
                 .map(rate -> due(claim.getAmount(), rate, rounding))
                 .orElse(null);
     }

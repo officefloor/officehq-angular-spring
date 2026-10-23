@@ -75,7 +75,7 @@ public class CloneService {
         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
         copyRows("sheet_role", "user_name, role", toSheetId, sheetId);
-        copyRows("rate", "grade, pct, from_date, to_date", toSheetId, sheetId);
+        copyRows("rate", "grade, pct, from_date, to_date, forward_after", toSheetId, sheetId);
         copyRows("holiday", "holiday_date", toSheetId, sheetId);
         copyRows("void_reason", "reason", toSheetId, sheetId);
         copyRows("claim_template", "name, amount, note", toSheetId, sheetId);
@@ -128,10 +128,10 @@ public class CloneService {
             long to = insert("""
                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
-                        late_entry, reminded_on, ref, ref_key, tags, tags_used, void_reason)
+                        late_entry, reminded_on, ref, ref_key, tags, tags_used, void_reason, added_seq)
                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
-                        late_entry, reminded_on, ref, ref_key, tags, tags_used, void_reason
+                        late_entry, reminded_on, ref, ref_key, tags, tags_used, void_reason, added_seq
                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);

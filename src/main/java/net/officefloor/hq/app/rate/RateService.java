@@ -101,7 +101,10 @@ public class RateService {
      * Set the rate for a grade from a date (null: from the beginning of time), applying through a
      * to-date (null: no end); a to-date before the from-date is refused. When the grade already has a
      * rate from that same date, its value is kept as an older version and the new one becomes its
-     * newest version, the one in force.
+     * newest version, the one in force. A rate saved with a from-date on or after the sheet's today is
+     * forward-only: it applies only to claims added after it is saved, those already on the sheet keeping
+     * the rates that applied to them; one with no from-date, or one before the sheet's today, applies to
+     * every claim.
      */
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to,
@@ -109,15 +112,17 @@ public class RateService {
         if (from != null && to != null && to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate's to-date cannot be before its from-date.");
         }
-        sheets.load(sheetId);
+        LocalDate today = sheets.load(sheetId).getToday();
         Rollups.Rollup before = rollups.take(sheetId);
         BigDecimal percent = pct.setScale(2, RoundingMode.UNNECESSARY);
+        Long forwardAfter = from != null && !from.isBefore(today) ? rates.nextAddedPlace() : null;
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
         if (rate == null) {
             rate = new Rate(sheetId, grade, from, percent);
             rate.setToDate(to);
+            rate.setForwardAfter(forwardAfter);
         } else {
-            versions.save(rate.replace(percent, to));
+            versions.save(rate.replace(percent, to, forwardAfter));
         }
         Rate saved = rates.saveAndFlush(rate);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user

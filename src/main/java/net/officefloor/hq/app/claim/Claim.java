@@ -42,6 +42,14 @@ public class Claim {
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
 
+    /**
+     * The claim's place in the order claims are added: given by the store when added to a sheet, and
+     * again when transferred to another; null until stored (newer than every rate). A forward-only rate
+     * applies only to claims added after it was saved.
+     */
+    @Column(name = "added_seq", insertable = false, updatable = false)
+    private Long added;
+
     @Column(name = "amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal amount;
 
@@ -183,6 +191,16 @@ public class Claim {
 
     public Long getId() {
         return id;
+    }
+
+    /** The claim's place in the order claims are added; null until stored. */
+    public Long getAdded() {
+        return added;
+    }
+
+    /** Hold the place in the order claims are added kept for the claim, for a claim held in no store. */
+    public void keepAdded(Long added) {
+        this.added = added;
     }
 
     public String getSheetId() {
