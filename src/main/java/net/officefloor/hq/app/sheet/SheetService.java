@@ -305,6 +305,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's maximum of open claims per person (null: none), auditing the change. */
+    @Transactional
+    public Sheet setMaxOpen(String id, String user, Integer max) {
+        Sheet sheet = lock(id);
+        sheet.setMaxOpen(max);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=max-open value="
+                + (saved.getMaxOpen() == null ? "" : saved.getMaxOpen().toString()));
+        return saved;
+    }
+
     /** Change the sheet's mid score threshold (null: none), auditing the change. */
     @Transactional
     public Sheet setScoreMid(String id, String user, Integer score) {

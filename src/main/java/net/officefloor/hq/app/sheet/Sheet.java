@@ -127,6 +127,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The most OPEN or PENDING claims a person may have: opening one more is refused; null for none. Not dated. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null for none. Not dated. */
     @Column(name = "score_mid")
     private Integer scoreMid;
@@ -460,6 +464,7 @@ public class Sheet {
         then.alertThreshold = alertThreshold;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.maxOpen = maxOpen;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
         then.scoreLog = scoreLog;
@@ -611,6 +616,15 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    /** The most OPEN or PENDING claims a person may have; null when blank (none). */
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     /** The mid score threshold; null when blank (none). */

@@ -356,7 +356,8 @@ public class ClaimService {
     private Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason, LocalDate on) {
         // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
-        LocalDate today = sheets.lock(sheetId).getToday();
+        Sheet sheet = sheets.lock(sheetId);
+        LocalDate today = sheet.getToday();
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         periods.refuseIfClosed(sheetId, claim.getDueBy());
@@ -397,6 +398,7 @@ public class ClaimService {
         }
         if (next == ClaimStatus.OPEN) {
             periods.refuseIfCapped(sheetId, claim);
+            refuseOverMaxOpen(sheetId, sheet.getMaxOpen(), claim, person);
             BigDecimal due = dues.due(claim, person.gradeOn(claim.getDate()));
             refuseUnnoted(sheetId, claim, due);
             if (overReviewThreshold(sheetId, claim, due)) {
@@ -908,6 +910,23 @@ public class ClaimService {
         Split split = split(sheetId, user, claimId, amount);
         Claim settled = move(sheetId, user, split.split().getId(), ClaimStatus.SETTLED);
         return new Split(split.original(), settled);
+    }
+
+    /**
+     * Refuse opening a claim whose person already has as many OPEN or PENDING claims as the sheet's
+     * maximum of open claims per person (null: none).
+     */
+    private void refuseOverMaxOpen(String sheetId, Integer maxOpen, Claim claim, Person person) {
+        if (maxOpen == null) {
+            return;
+        }
+        long open = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()) && c.getStatus().isOpen())
+                .count();
+        if (open >= maxOpen) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " already has " + maxOpen + " open claims, the sheet's maximum.");
+        }
     }
 
     /**

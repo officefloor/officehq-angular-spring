@@ -84,7 +84,8 @@ public class SheetController {
      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
      * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
-     * score thresholds, null for none, and the score log switch, on or blank (off). */
+     * score thresholds, null for none, and the score log switch, on or blank (off), and the maximum of OPEN
+     * or PENDING claims per person, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
@@ -93,7 +94,7 @@ public class SheetController {
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
-            Integer scoreHigh, String scoreLog) {
+            Integer scoreHigh, String scoreLog, Integer maxOpen) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -114,7 +115,7 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh(),
-                    sheet.isScoreLog() ? "on" : "");
+                    sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen());
         }
 
         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
@@ -584,6 +585,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GraceDaysChange change) {
         return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
+    }
+
+    /** Change the sheet's maximum of open claims per person; a blank value means none. */
+    @PutMapping("/{id}/settings/max-open")
+    public SettingsView setMaxOpen(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GraceDaysChange change) {
+        return SettingsView.of(service.setMaxOpen(id, SignedIn.name(user), change.days()));
     }
 
     /** Change the sheet's mid score threshold; a blank value means none. */

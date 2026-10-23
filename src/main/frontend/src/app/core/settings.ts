@@ -77,6 +77,8 @@ export interface SettingsView {
   escalateAfter: number | null;
   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
   reviewSla: number | null;
+  /** The most OPEN or PENDING claims a person may have: opening one more is refused; null when none. */
+  maxOpen: number | null;
   /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
   scoreMid: number | null;
   /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
@@ -284,6 +286,11 @@ export class SettingsApi {
   /** Set the escalation gap in days; a blank value turns escalating reminders off. */
   setEscalateAfter(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/escalate-after`, { value }));
+  }
+
+  /** Set the maximum of OPEN or PENDING claims per person; a blank value means none. */
+  setMaxOpen(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/max-open`, { value }));
   }
 
   /** Set the review SLA in days; a blank value means none. */
