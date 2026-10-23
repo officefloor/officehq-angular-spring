@@ -102,20 +102,42 @@ public class PeriodService {
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
         List<Period> made = new ArrayList<>();
         for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
-            String name = month.toString();
-            LocalDate first = month.atDay(1);
-            LocalDate last = month.atEndOfMonth();
-            if (existing.stream().anyMatch(p -> p.getName().toLowerCase(Locale.ROOT).equals(Period.keyOf(name))
-                    || p.overlaps(first, last))) {
-                continue;
-            }
-            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
-            existing.add(period);
-            made.add(period);
-            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
-                    + " from=" + period.getFromDate() + " to=" + period.getToDate());
+            addGenerated(sheetId, user, month.toString(), month.atDay(1), month.atEndOfMonth(), existing, made);
         }
         return made;
+    }
+
+    /**
+     * Generate the four calendar quarters of {@code year}, each running from the first day of its first
+     * month to the last day of its third and named yyyy-Q1 to yyyy-Q4, in order. A quarter whose name is
+     * already a period on the sheet, or whose days overlap one, is left out and the others are still made.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        // Take the sheet's lock first, so no period added meanwhile slips past the checks.
+        sheets.lock(sheetId);
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            YearMonth start = YearMonth.of(year, quarter * 3 - 2);
+            addGenerated(sheetId, user, year + "-Q" + quarter, start.atDay(1), start.plusMonths(2).atEndOfMonth(),
+                    existing, made);
+        }
+        return made;
+    }
+
+    /** Add a generated period unless its name is taken or its days overlap an existing one, as the form would. */
+    private void addGenerated(String sheetId, String user, String name, LocalDate first, LocalDate last,
+            List<Period> existing, List<Period> made) {
+        if (existing.stream().anyMatch(p -> p.getName().toLowerCase(Locale.ROOT).equals(Period.keyOf(name))
+                || p.overlaps(first, last))) {
+            return;
+        }
+        Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+        existing.add(period);
+        made.add(period);
+        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
+                + " from=" + period.getFromDate() + " to=" + period.getToDate());
     }
 
     /**

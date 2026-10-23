@@ -67,6 +67,9 @@ export function periodOn(periods: PeriodView[], date: string): PeriodView | null
 /** A fiscal year as the generate form takes it: the calendar year its first day falls in, four digits. */
 export const FISCAL_YEAR = /^\d{4}$/;
 
+/** A calendar year as the quarters form takes it: four digits. */
+export const CALENDAR_YEAR = /^\d{4}$/;
+
 /**
  * The name of the fiscal year a date (yyyy-mm-dd) falls in, FY<yyyy> by the calendar year its first
  * day falls in, for a fiscal year starting on the first of a month (1 to 12).
@@ -104,6 +107,11 @@ export class PeriodsApi {
   /** Generate the fiscal year's twelve monthly periods as generate does; the periods made. */
   generateFiscalYear(sheet: string, year: string): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-fy`, { year }));
+  }
+
+  /** Generate the calendar year's four quarters, named yyyy-Q1 to yyyy-Q4, as generate does; the periods made. */
+  generateQuarters(sheet: string, year: string): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-quarters`, { year }));
   }
 
   /** Close a period, fixing its due-total; refused when it is already closed. */

@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { FISCAL_YEAR, PERIOD_CAP, PERIOD_DATE, PeriodView, PeriodsApi, fiscalYearOf } from '../../core/periods';
+import { CALENDAR_YEAR, FISCAL_YEAR, PERIOD_CAP, PERIOD_DATE, PeriodView, PeriodsApi, fiscalYearOf } from '../../core/periods';
 import { Session } from '../../core/session';
 
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
@@ -11,7 +11,8 @@ import { Session } from '../../core/session';
 // but its claims can still change; a soft-closed period can then be closed or reopened. A permitted role (a steward by default) can reopen a
 // closed period, making its due-total live again. A second form generates a period per calendar month
 // over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period;
-// a third does the same for the twelve months of a fiscal year. Each period shows the fiscal year its
+// a third does the same for the twelve months of a fiscal year, and a fourth for the four calendar
+// quarters of a year, named yyyy-Q1 to yyyy-Q4. Each period shows the fiscal year its
 // from-date falls in. A period may cap the OPEN or PENDING claims due by in it each person may have.
 // A steward can lock a period, so it cannot be reopened, and unlock it again.
 @Component({
@@ -92,6 +93,17 @@ import { Session } from '../../core/session';
           (input)="fiscalYear.set(value($event)); generateReset()"
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      <form (submit)="generateQuarters($event)" aria-label="Generate a year's quarterly periods">
+        <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          [value]="quartersYear()"
+          (input)="quartersYear.set(value($event)); generateReset()"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
       </form>
       <table>
         <thead>
@@ -198,6 +210,7 @@ export class Periods {
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
   protected readonly fiscalYear = signal('');
+  protected readonly quartersYear = signal('');
   /** How many periods the last generate made; null before one, or once its range is changed. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -337,6 +350,30 @@ export class Periods {
       this.generated.set(made.length);
     } catch {
       this.generateError.set('The fiscal year\'s periods could not be generated.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Generate the year's four calendar quarters; how many were made is shown, a refusal as an error. */
+  protected async generateQuarters(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.generateReset();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.quartersYear().trim();
+    if (!CALENDAR_YEAR.test(year)) {
+      this.generateError.set('Type the year as four digits.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const made = await this.api.generateQuarters(sheet, year);
+      made.forEach((period) => this.saved.emit(period));
+      this.generated.set(made.length);
+    } catch {
+      this.generateError.set('The quarters could not be generated.');
     } finally {
       this.busy = false;
     }

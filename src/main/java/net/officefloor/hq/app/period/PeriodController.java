@@ -126,6 +126,20 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** A calendar year to generate quarterly periods for: four digits. */
+    public record QuartersForm(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
+    /** Generate the year's four calendar quarters as periods named yyyy-Q1 to yyyy-Q4; the periods made, in order. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid QuartersForm form) {
+        return service.generateQuarters(sheetId, SignedIn.name(user), Integer.parseInt(form.year().trim())).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** The opening balances import's text: lines of name,period,amount. */
     public record OpeningsForm(@NotNull @Size(max = 200_000) String text) {
     }
