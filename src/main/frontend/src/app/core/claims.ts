@@ -112,6 +112,8 @@ export interface ClaimView {
   held?: boolean;
   /** The people the claim is shared with, in the order they were added; absent as kept by an old snapshot. */
   shares?: ClaimShareView[];
+  /** The user a steward assigned the claim to for review; null (or absent, as kept by an old snapshot) until one is. */
+  reviewAssigned?: string | null;
 }
 
 /** A line of a claim: its label, quantity and unit amount (two decimals). */
@@ -492,6 +494,14 @@ export class ClaimsApi {
    */
   settlePart(sheet: string, id: number, amount: string): Promise<SplitView> {
     return firstValueFrom(this.http.post<SplitView>(`${this.url(sheet)}/claims/${id}/settle-part`, { amount }));
+  }
+
+  /**
+   * Assign a REVIEW claim to a user for review; refused (403) when the user is not a steward, (400)
+   * when the user assigned is blank, and (409) when the claim is not REVIEW.
+   */
+  assignReview(sheet: string, id: number, user: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/assign-review`, { user }));
   }
 
   /**

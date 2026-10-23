@@ -5,7 +5,7 @@ import { StatusSummary } from '../summary/summary';
 // The sheet's header: its counters, each repeating a figure shown elsewhere on the screen — the people
 // on the sheet (retired people included), the summary's claim count per status, and the sheet's
 // due-total and overdue-total; and the signed-in user's own figures, when a person goes by their name,
-// with the due-total of the crews that person leads.
+// with the due-total of the crews that person leads, and the REVIEW claims assigned to the user.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -22,6 +22,7 @@ import { StatusSummary } from '../summary/summary';
       <p>My due <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong></p>
       <p>My overdue <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
       <p>My crews <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>My reviews <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></p>
     </header>
   `,
 })
@@ -35,4 +36,6 @@ export class Header {
   readonly myOverdueTotal = input.required<string>();
   /** The due-totals of the crews led by the person going by the user's name, added up; empty when they lead none. */
   readonly myCrewDueTotal = input.required<string>();
+  /** The REVIEW claims assigned to the signed-in user for review. */
+  readonly myReviewsCount = input.required<number>();
 }

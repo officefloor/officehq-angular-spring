@@ -103,6 +103,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       [myDueTotal]="me() ? dueTotalOf(me()!) : ''"
       [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
       [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
@@ -1248,6 +1249,12 @@ export class People {
   protected readonly overdueTotal = computed(() =>
     money(trimmedCents(this.people().map((p) => this.overdueCents(p)))),
   );
+  /** The REVIEW claims on the sheet assigned to the signed-in user for review. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim();
+    if (!user) return 0;
+    return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssigned === user).length;
+  });
   /** The person on the sheet who goes by the signed-in user's name, by name or alias as names are compared; null when none does. */
   protected readonly me = computed(() => {
     const key = (name: string) => name.trim().toLowerCase();

@@ -765,6 +765,32 @@ public class ClaimService {
     }
 
     /**
+     * Assign a REVIEW claim to a user for review, replacing any user it was assigned to; audited as
+     * REVIEW_ASSIGNED ending user=&lt;user&gt;. Only a steward assigns; refused when the user is blank or
+     * the claim is not REVIEW.
+     */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward assigns a claim for review.");
+        }
+        String name = assignee == null ? "" : assignee.trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name the user to assign the review to.");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not awaiting review.");
+        }
+        claim.assignReview(name);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("REVIEW_ASSIGNED", sheetId, user, person(sheetId, saved.getPersonId()), saved, null, " user=" + name);
+        return saved;
+    }
+
+    /**
      * Re-settle a SETTLED claim: its due is fixed again at the figure it would have today as an OPEN
      * claim bound by no statement (today's rates, grades, floor and late charge). Only a steward
      * re-settles; refused when the claim is not SETTLED or is due by inside a closed period.

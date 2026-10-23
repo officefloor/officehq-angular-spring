@@ -146,6 +146,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim to for review; null until one is assigned. */
+    @Column(name = "review_assigned", length = 200)
+    private String reviewAssigned;
+
     /** The number of the claim this one was split from; null unless it was split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -513,6 +517,15 @@ public class Claim {
     /** Hold or release the claim; the caller checks the claim may be. */
     public void hold(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    /** Assign the claim to a user for review; the caller checks the claim may be. */
+    public void assignReview(String user) {
+        this.reviewAssigned = user;
     }
 
     public String getSplitFrom() {

@@ -47,7 +47,7 @@ public class ClaimController {
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
             String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived,
             boolean statedWhole, int proofsReceipt, int proofsPhoto, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssigned) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -61,7 +61,8 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
                     claim.isWaived(), claim.isStatedWhole(), claim.getProofs("receipt"), claim.getProofs("photo"),
-                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList());
+                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList(),
+                    claim.getReviewAssigned());
         }
     }
 
@@ -152,6 +153,10 @@ public class ClaimController {
 
     /** The new date of a re-dated claim. */
     public record RedateForm(@NotNull LocalDate date) {
+    }
+
+    /** The user a REVIEW claim is assigned to for review; blank is refused by the service. */
+    public record AssignReviewForm(@NotNull @Size(max = 200) String user) {
     }
 
     /** The amount split off an OPEN claim: above 0.00, with up to two decimals. */
@@ -312,6 +317,16 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.review(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Assign a REVIEW claim to a user for review; only a steward assigns. */
+    @PostMapping("/claims/{claimId}/assign-review")
+    public ClaimView assignReview(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AssignReviewForm form) {
+        return ClaimView.of(service.assignReview(sheetId, SignedIn.name(user), claimId, form.user()));
     }
 
     /** Open the selected claims together, in list order; those that cannot be opened are refused. */
