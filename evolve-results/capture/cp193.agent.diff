@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1e19291e..494c67bf 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -229,6 +229,10 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong>,
+         open in total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+       <p>Cut in total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
++      <p>Due by age
++        0&ndash;30 <strong data-testid="rollup-aged-0-30">{{ agedTotal()[0] | figure }}</strong>,
++        31&ndash;60 <strong data-testid="rollup-aged-31-60">{{ agedTotal()[1] | figure }}</strong>,
++        61+ <strong data-testid="rollup-aged-61">{{ agedTotal()[2] | figure }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <ul aria-label="Due by tag">
+           @for (t of tagTotals(); track t.tag) {
+@@ -1101,6 +1105,14 @@ export class People {
+   protected readonly cutTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0)),
+   );
++  /** Everyone's age buckets added up, bucket by bucket (not trimmed). */
++  protected readonly agedTotal = computed(() => {
++    const totals = [0, 0, 0];
++    for (const p of this.people()) {
++      this.agedCents(p).forEach((c, i) => (totals[i] += c));
++    }
++    return [money(totals[0]), money(totals[1]), money(totals[2])] as const;
++  });
+   /** Everyone's open-total added up (not trimmed). */
+   protected readonly openTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
+@@ -1376,13 +1388,19 @@ export class People {
+    * (days from the claim's date): 0 to 30, 31 to 60 and 61 or more. A claim dated after today is 0 to 30.
+    */
+   protected agedOf(person: PersonView): [string, string, string] {
+-    const buckets = [0, 0, 0];
++    const [young, middle, old] = this.agedCents(person);
++    return [money(young), money(middle), money(old)];
++  }
++
++  /** A person's age buckets (see agedOf) in whole cents. */
++  private agedCents(person: PersonView): [number, number, number] {
++    const buckets: [number, number, number] = [0, 0, 0];
+     const today = Date.parse(this.today());
+     for (const c of this.countingOf(person.id).filter(isOpen)) {
+       const days = Number.isNaN(today) ? 0 : (today - Date.parse(c.date)) / 86_400_000;
+       buckets[days <= 30 ? 0 : days <= 60 ? 1 : 2] += this.dueCents(c, person) ?? 0;
+     }
+-    return [money(buckets[0]), money(buckets[1]), money(buckets[2])];
++    return buckets;
+   }
+ 
+   /** The sort key chosen in the sort select. */
