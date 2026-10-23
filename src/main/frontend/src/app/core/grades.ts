@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Grade } from './people';
+import { GRADES, Grade } from './people';
 import { Session } from './session';
 
 /** A grade of the sheet, and whether it is retired there. */
@@ -25,6 +25,11 @@ export class GradesApi {
   /** The sheet's grades, in order. */
   list(sheet: string): Promise<GradeStateView[]> {
     return firstValueFrom(this.http.get<GradeStateView[]>(this.url(sheet)));
+  }
+
+  /** Add a grade (its code trimmed): the sheet's grades as they are now. Refused when it is not one to three capital letters, or is already a grade. */
+  add(sheet: string, grade: string): Promise<GradeStateView[]> {
+    return firstValueFrom(this.http.post<GradeStateView[]>(this.url(sheet), { grade }));
   }
 
   /** Retire a grade: the sheet's grades as they are now. Refused when it is already retired. */
@@ -52,6 +57,11 @@ export class GradesStore {
   private readonly api = inject(GradesApi);
 
   readonly grades = signal<GradeStateView[]>([]);
+  /** The sheet's grade codes, in order: A, B and C until the sheet's own list is read. */
+  readonly codes = computed<readonly Grade[]>(() => {
+    const grades = this.grades();
+    return grades.length ? grades.map((g) => g.grade) : GRADES;
+  });
 
   constructor() {
     effect(() => {
@@ -67,6 +77,12 @@ export class GradesStore {
   /** Whether the grade is retired on the loaded sheet. */
   retired(grade: Grade): boolean {
     return this.grades().some((g) => g.grade === grade && g.retired);
+  }
+
+  /** Add a grade to the loaded sheet; throws when the store refuses it. */
+  async add(sheet: string, grade: string): Promise<void> {
+    const grades = await this.api.add(sheet, grade);
+    if (this.session.sheet() === sheet) this.grades.set(grades);
   }
 
   /** Retire a grade on the loaded sheet; throws when the store refuses it. */

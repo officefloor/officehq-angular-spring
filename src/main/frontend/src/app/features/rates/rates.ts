@@ -1,7 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { GRADES, Grade } from '../../core/people';
+import { GradesStore } from '../../core/grades';
+import { Grade } from '../../core/people';
 import { FROM_DATE, NO_RATE, PERCENT, RatePreview, RateView, RatesApi, rateOn } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -23,7 +24,7 @@ import { Session } from '../../core/session';
           [value]="grade()"
           (change)="grade.set(gradeOf($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -81,7 +82,7 @@ import { Session } from '../../core/session';
           [value]="previewGrade()"
           (change)="previewGrade.set(gradeOf($event)); clearPreview()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -114,7 +115,7 @@ import { Session } from '../../core/session';
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (currentOf(g) ?? noRate) | figure }}</td>
@@ -133,7 +134,7 @@ import { Session } from '../../core/session';
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               @for (m of months(); track m) {
@@ -184,7 +185,7 @@ export class Rates {
   /** The sheet's rates after an import. */
   readonly imported = output<RateView[]>();
 
-  protected readonly grades = GRADES;
+  protected readonly grades = inject(GradesStore).codes;
   protected readonly noRate = NO_RATE;
   protected readonly grade = signal<Grade>('A');
   protected readonly pct = signal('');

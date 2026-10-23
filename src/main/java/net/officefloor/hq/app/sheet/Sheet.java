@@ -359,7 +359,8 @@ public class Sheet {
             case "A" -> termsA;
             case "B" -> termsB;
             case "C" -> termsC;
-            default -> throw new IllegalArgumentException("No such grade: " + grade);
+            // A grade added to the sheet has no starting terms of its own.
+            default -> null;
         };
         String value = valueOn(gradeTermsKey(grade), date, start == null ? null : start.toString());
         return value == null ? null : Integer.valueOf(value);

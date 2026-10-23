@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import { ConsolidatedApi, ConsolidatedView } from '../../core/consolidated';
-import { GRADES } from '../../core/people';
+import { GradesStore } from '../../core/grades';
 import { Session } from '../../core/session';
 
 /** The statuses the consolidated figures count claims by, in the order they list them. */
@@ -60,6 +60,7 @@ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as co
 export class Consolidated {
   private readonly session = inject(Session);
   private readonly api = inject(ConsolidatedApi);
+  private readonly gradeStore = inject(GradesStore);
 
   /** The sheet's own figures as shown: a move in any of them re-reads the consolidated ones. */
   readonly peopleCount = input.required<number>();
@@ -70,7 +71,12 @@ export class Consolidated {
   /** Per grade, its consolidated due-total; empty until the figures are read. */
   protected readonly grades = computed(() => {
     const figures = this.figures();
-    return GRADES.map((grade) => ({
+    // The sheet's own grades, then any other grade one of its descendants has.
+    const codes = [...this.gradeStore.codes()];
+    for (const grade of Object.keys(figures?.gradeDueTotals ?? {})) {
+      if (!codes.includes(grade)) codes.push(grade);
+    }
+    return codes.map((grade) => ({
       grade,
       dueTotal: figures ? (figures.gradeDueTotals[grade] ?? '0.00') : '',
     }));

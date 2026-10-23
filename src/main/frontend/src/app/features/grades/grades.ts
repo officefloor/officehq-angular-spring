@@ -1,14 +1,26 @@
 import { Component, inject, signal } from '@angular/core';
 import { GradesStore } from '../../core/grades';
-import { GRADES, Grade } from '../../core/people';
+import { Grade } from '../../core/people';
 import { Session } from '../../core/session';
 
-// The sheet's grades, each shown retired or not, and a form to retire one; a retired grade is refused.
+// The sheet's grades, each shown retired or not, with forms to add one, retire one and merge one into another.
 @Component({
   selector: 'app-grades',
   template: `
     <section aria-labelledby="grades-heading">
       <h2 id="grades-heading">Grades</h2>
+      <form (submit)="add($event)" aria-label="Add a grade">
+        <label for="grade-add-code">Grade to add</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          maxlength="20"
+          autocomplete="off"
+          [value]="code()"
+          (input)="code.set(typed($event)); error.set(null)"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form (submit)="retire($event)" aria-label="Retire a grade">
         <label for="grade-retire-select">Grade to retire</label>
         <select
@@ -17,14 +29,11 @@ import { Session } from '../../core/session';
           [value]="grade()"
           (change)="grade.set(chosen($event)); error.set(null)"
         >
-          @for (g of codes; track g) {
+          @for (g of store.codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
         <button type="submit" data-testid="grade-retire">Retire grade</button>
-        @if (error(); as message) {
-          <p role="alert" data-testid="grade-error">{{ message }}</p>
-        }
       </form>
       <form (submit)="merge($event)" aria-label="Merge a grade into another">
         <label for="grade-merge-from">Merge grade</label>
@@ -34,7 +43,7 @@ import { Session } from '../../core/session';
           [value]="mergeFrom()"
           (change)="mergeFrom.set(chosen($event)); error.set(null)"
         >
-          @for (g of codes; track g) {
+          @for (g of store.codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -45,7 +54,7 @@ import { Session } from '../../core/session';
           [value]="mergeInto()"
           (change)="mergeInto.set(chosen($event)); error.set(null)"
         >
-          @for (g of codes; track g) {
+          @for (g of store.codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -56,6 +65,9 @@ import { Session } from '../../core/session';
           }
         </span>
       </form>
+      @if (error(); as message) {
+        <p role="alert" data-testid="grade-error">{{ message }}</p>
+      }
       <table>
         <thead>
           <tr>
@@ -79,7 +91,8 @@ export class Grades {
   private readonly session = inject(Session);
   protected readonly store = inject(GradesStore);
 
-  protected readonly codes = GRADES;
+  /** The grade code typed to add, as typed. */
+  protected readonly code = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly error = signal<string | null>(null);
   protected readonly mergeFrom = signal<Grade>('A');
@@ -88,6 +101,37 @@ export class Grades {
   protected readonly merged = signal('');
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
+
+  protected typed(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  /** Add the grade typed: one to three capital letters (trimmed) not yet a grade; anything else is refused. */
+  protected async add(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const grade = this.code().trim();
+    if (!/^[A-Z]{1,3}$/.test(grade)) {
+      this.error.set('A grade is one to three capital letters.');
+      return;
+    }
+    if (this.store.codes().includes(grade)) {
+      this.error.set(`${grade} is already a grade.`);
+      return;
+    }
+    this.busy = true;
+    try {
+      await this.store.add(sheet, grade);
+      this.code.set('');
+    } catch {
+      this.error.set(`The grade ${grade} could not be added.`);
+    } finally {
+      this.busy = false;
+    }
+  }
 
   protected chosen(event: Event): Grade {
     return (event.target as HTMLSelectElement).value as Grade;

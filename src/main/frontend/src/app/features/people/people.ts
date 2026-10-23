@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
+import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -138,7 +138,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           [value]="grade()"
           (change)="grade.set(gradeChosen($event)); gradeGiven.set(true); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -374,7 +374,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           [value]="bulkGrade()"
           (change)="bulkGrade.set(gradeChosen($event)); bulkGradeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -749,7 +749,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   data-testid="person-inline-grade"
                   (change)="inlineGrades.set(p.id, $any(value($event))); personError.set(null)"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
                   }
                 </select>
@@ -906,6 +906,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 export class People {
   private readonly session = inject(Session);
   private readonly gradeStore = inject(GradesStore);
+  /** The sheet's grades, for every grade select and the summary. */
+  protected readonly grades = this.gradeStore.codes;
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
@@ -916,7 +918,7 @@ export class People {
   protected readonly columns = inject(Columns);
   protected readonly peopleColumns = PEOPLE_COLUMNS;
 
-  protected readonly grades = GRADES;
+
   protected readonly people = signal<PersonView[]>([]);
   /** Whether retired people are listed; off when the screen opens, and kept across sheet loads. */
   protected readonly showRetired = signal(false);
@@ -1079,7 +1081,7 @@ export class People {
    */
   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
     const current = this.people().filter((p) => p.retiredFrom === null);
-    return GRADES.map((grade) => {
+    return this.grades().map((grade) => {
       const on = current.filter((p) => this.gradeOf(p) === grade);
       return {
         grade,

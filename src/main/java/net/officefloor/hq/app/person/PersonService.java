@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.grade.AddedGradeRepository;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -29,10 +31,12 @@ public class PersonService {
     private final Audit audit;
     private final RoleService roles;
     private final RetiredGradeRepository retiredGrades;
+    private final AddedGradeRepository addedGrades;
 
     public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
-            Audit audit, RoleService roles, RetiredGradeRepository retiredGrades) {
+            Audit audit, RoleService roles, RetiredGradeRepository retiredGrades, AddedGradeRepository addedGrades) {
         this.roles = roles;
+        this.addedGrades = addedGrades;
         this.retiredGrades = retiredGrades;
         this.people = people;
         this.sheets = sheets;
@@ -176,8 +180,11 @@ public class PersonService {
         return saved;
     }
 
-    /** Refuse a grade retired on the sheet. */
+    /** Refuse a grade that is not one of the sheet's, or is retired on it. */
     public void requireGradeOpen(String sheetId, String grade) {
+        if (!GradeService.GRADES.contains(grade) && !addedGrades.existsBySheetIdAndGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no grade " + grade + ".");
+        }
         if (retiredGrades.existsBySheetIdAndGrade(sheetId, grade)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The grade " + grade + " is retired.");
         }

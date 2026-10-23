@@ -28,9 +28,11 @@ public class GradeMergeService {
     private final SheetService sheets;
     private final Rollups rollups;
     private final Audit audit;
+    private final GradeService grades;
 
     public GradeMergeService(PersonService service, PersonRepository people, RoleService roles, SheetService sheets,
-            Rollups rollups, Audit audit) {
+            Rollups rollups, Audit audit, GradeService grades) {
+        this.grades = grades;
         this.service = service;
         this.people = people;
         this.roles = roles;
@@ -42,7 +44,7 @@ public class GradeMergeService {
     /** Merge the grade from into the grade into: the number of people given it. */
     @Transactional
     public int merge(String sheetId, String user, String from, String into) {
-        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
+        if (!grades.isGrade(sheetId, from) || !grades.isGrade(sheetId, into)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no such grade.");
         }
         if (from.equals(into)) {

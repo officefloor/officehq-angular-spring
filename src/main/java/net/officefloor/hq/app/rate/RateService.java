@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import net.officefloor.hq.app.grade.GradeService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +35,11 @@ public class RateService {
     private final Dues dues;
     private final RateVersionRepository versions;
 
+    private final GradeService grades;
+
     public RateService(RateRepository rates, SheetService sheets, Rollups rollups, Audit audit, PersonRepository people,
-            ClaimRepository claims, Dues dues, RateVersionRepository versions) {
+            ClaimRepository claims, Dues dues, RateVersionRepository versions, GradeService grades) {
+        this.grades = grades;
         this.rates = rates;
         this.versions = versions;
         this.sheets = sheets;
@@ -61,6 +65,7 @@ public class RateService {
      */
     @Transactional(readOnly = true)
     public Preview preview(String sheetId, String grade, BigDecimal pct) {
+        grades.requireGrade(sheetId, grade);
         Dues.Basis current = dues.live(sheetId);
         List<Rate> candidate = new ArrayList<>(current.rates().stream()
                 .filter(rate -> !rate.getGrade().equals(grade)).toList());
@@ -109,6 +114,7 @@ public class RateService {
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to,
             BigDecimal pct) {
+        grades.requireGrade(sheetId, grade);
         if (from != null && to != null && to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate's to-date cannot be before its from-date.");
         }

@@ -204,8 +204,8 @@ public class SheetController {
         }
     }
 
-    /** A default grade as entered: A, B or C, or blank (or null) for none (A). */
-    public record DefaultGradeChange(@Pattern(regexp = "\\s*([ABC])?\\s*") String value) {
+    /** A default grade as entered: one of the sheet's grades, or blank (or null) for none (A). */
+    public record DefaultGradeChange(@Pattern(regexp = "\\s*([A-Z]{1,3})?\\s*") String value) {
 
         /** The grade entered; null when blank. */
         String grade() {

@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.grade.AddedGradeRepository;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollups;
@@ -27,8 +29,11 @@ public class SheetService {
     private final PersonRepository people;
     private final RetiredGradeRepository retiredGrades;
 
+    private final AddedGradeRepository addedGrades;
+
     public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events,
-            PersonRepository people, RetiredGradeRepository retiredGrades) {
+            PersonRepository people, RetiredGradeRepository retiredGrades, AddedGradeRepository addedGrades) {
+        this.addedGrades = addedGrades;
         this.sheets = sheets;
         this.retiredGrades = retiredGrades;
         this.people = people;
@@ -363,10 +368,16 @@ public class SheetService {
         return saved;
     }
 
-    /** Change the sheet's default grade (null: A), auditing the change; it changes no one's grade. */
+    /**
+     * Change the sheet's default grade (null: A), auditing the change; it changes no one's grade.
+     * Refused for a grade that is not one of the sheet's.
+     */
     @Transactional
     public Sheet setDefaultGrade(String id, String user, String grade) {
         Sheet sheet = lock(id);
+        if (grade != null && !GradeService.GRADES.contains(grade) && !addedGrades.existsBySheetIdAndGrade(id, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no grade " + grade + ".");
+        }
         sheet.setDefaultGrade(grade);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value="

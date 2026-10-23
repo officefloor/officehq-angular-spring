@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Cloning a sheet to another id: a steward only, and only to an id never used. The clone gets the
- * sheet's today, settings, roles, rates, holidays, void reasons, templates, people (grades, terms,
+ * sheet's today, settings, roles, added grades, rates, holidays, void reasons, templates, people (grades, terms,
  * contacts, aliases, holds, retirements and patrons), pools, periods (all open) and claims (status,
  * fixed figures, dates, notes, logs, comments and lines); each claim that had a number takes the clone's next,
  * in the order the claims were opened (people in list order on the same day). Statements, and so any
@@ -77,6 +77,7 @@ public class CloneService {
         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
         copyRows("sheet_role", "user_name, role", toSheetId, sheetId);
+        copyRows("grade_added", "grade, added_by", toSheetId, sheetId);
         copyRows("rate", "grade, pct, from_date, to_date, forward_after", toSheetId, sheetId);
         copyRows("holiday", "holiday_date", toSheetId, sheetId);
         copyRows("void_reason", "reason", toSheetId, sheetId);

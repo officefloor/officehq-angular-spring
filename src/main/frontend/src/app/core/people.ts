@@ -3,8 +3,10 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ClaimView } from './claims';
 
-export const GRADES = ['A', 'B', 'C'] as const;
-export type Grade = (typeof GRADES)[number];
+/** The grades every sheet has; a sheet's own list (see GradesStore) adds those added to it. */
+export const GRADES: readonly string[] = ['A', 'B', 'C'];
+/** A grade: one to three capital letters. */
+export type Grade = string;
 
 /** A grade a person has, from a date (yyyy-mm-dd); null from the beginning of time. */
 export interface GradeView {

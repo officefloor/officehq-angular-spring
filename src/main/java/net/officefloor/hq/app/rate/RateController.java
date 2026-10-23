@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.rate;
 
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
@@ -111,7 +112,7 @@ public class RateController {
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateForm form) {
         return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
@@ -142,7 +143,7 @@ public class RateController {
     @GetMapping("/{grade}/preview")
     public PreviewView preview(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade,
             @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct) {
         RateService.Preview preview = service.preview(sheetId, grade, new BigDecimal(pct));
         return new PreviewView(preview.count(), preview.diff().toPlainString());

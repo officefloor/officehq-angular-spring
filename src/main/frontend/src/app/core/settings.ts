@@ -148,7 +148,7 @@ export const ENTRY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 export const PROOF_KIND_LIST = /^((receipt|photo)(\s*,\s*(receipt|photo))*)?$/;
 
 /** A default grade as the form takes it: A, B or C, or blank for none (A). */
-export const DEFAULT_GRADE = /^[ABC]?$/;
+export const DEFAULT_GRADE = /^([A-Z]{1,3})?$/;
 
 /** Grace days as the form takes them: a whole number of days, or blank for off. */
 export const GRACE_DAYS = /^(\d{1,4})?$/;

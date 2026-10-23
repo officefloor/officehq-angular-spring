@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.grade.GradeService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,8 +68,8 @@ public class RateImportService {
             throw refused("Line " + number + " has more than grade,rate,from,to.");
         }
         String grade = fields[0].trim();
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + number + ": the grade must be A, B or C.");
+        if (!grade.matches(GradeService.CODE)) {
+            throw refused("Line " + number + ": the grade must be one to three capital letters.");
         }
         String pct = fields[1].trim();
         if (!PERCENT.matcher(pct).matches()) {

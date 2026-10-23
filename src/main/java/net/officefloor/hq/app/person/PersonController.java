@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
@@ -122,7 +123,7 @@ public class PersonController {
      */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade,
             LocalDate gradeFrom,
             @PositiveOrZero @Max(36500) Integer terms,
             LocalDate termsFrom,
@@ -137,12 +138,12 @@ public class PersonController {
     /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
     public record BulkGradeForm(
             @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade,
             LocalDate from) {
     }
 
     /** A grade chosen on a person's row, from the version of the person the row shows. */
-    public record RowGradeForm(@NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+    public record RowGradeForm(@NotNull @Pattern(regexp = GradeService.CODE) String grade, @NotNull Long version) {
     }
 
     /** The people selected to be retired together, and the date they are retired from (none: the sheet's today). */

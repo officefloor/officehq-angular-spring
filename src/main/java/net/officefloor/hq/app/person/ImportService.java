@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -125,8 +126,8 @@ public class ImportService {
             throw refused("Line " + number + ": the name is longer than " + TEXT_MAX + " characters.");
         }
         String grade = fields[1].trim();
-        if (!grade.isEmpty() && !grade.matches("[ABC]")) {
-            throw refused("Line " + number + ": the grade must be A, B, C or blank.");
+        if (!grade.isEmpty() && !grade.matches(GradeService.CODE)) {
+            throw refused("Line " + number + ": the grade must be one to three capital letters or blank.");
         }
         Integer terms = null;
         String days = fields.length > 2 ? fields[2].trim() : "";
