@@ -24,6 +24,7 @@ import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rate.RateVersion;
 import net.officefloor.hq.app.sheet.DatedSetting;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.TodayLeaving;
@@ -41,9 +42,16 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class SheetHistory {
 
-    /** A sheet's figures-bearing state, as kept (its pot null in states kept before the pot was). */
+    /**
+     * A sheet's figures-bearing state, as kept (its pot null in states kept before the pot was, its policy
+     * versions null in states kept before they were).
+     */
     record State(LocalDate policyDate, List<SettingState> settings, List<RateState> rates,
-            List<PersonState> people, List<ClaimState> claims, PotState pot) {
+            List<PersonState> people, List<ClaimState> claims, PotState pot,
+            List<PolicyVersionState> policyVersions) {
+    }
+
+    record PolicyVersionState(int number, String key, LocalDate from) {
     }
 
     /** The sheet's pot as kept; its value null for none. */
@@ -162,7 +170,9 @@ public class SheetHistory {
                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
                 sheetRates.stream().map(SheetHistory::kept).toList(),
                 sheetPeople.stream().map(SheetHistory::kept).toList(),
-                sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()));
+                sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()),
+                sheet.getPolicyVersions().stream()
+                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFromDate())).toList());
         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
                 sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
                 periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
@@ -202,7 +212,7 @@ public class SheetHistory {
             return now.asOf(asOf, now.getDated(), now.getPolicyDate());
         }
         Sheet then = at(now.getId(), asOf).map(AsOf::sheet)
-                .orElseGet(() -> now.asOf(asOf, List.of(), null));
+                .orElseGet(() -> now.asOf(asOf, List.of(), null, List.of()));
         then.setArchived(views(now.getId(), asOf).orElse(Views.EMPTY).archived());
         return then;
     }
@@ -306,7 +316,9 @@ public class SheetHistory {
     private static AsOf restored(Sheet now, LocalDate day, State state, List<List<Rate>> inherited) {
         Sheet sheet = now.asOf(day,
                 state.settings().stream().map(s -> new DatedSetting(s.key(), s.from(), s.value())).toList(),
-                state.policyDate());
+                state.policyDate(), state.policyVersions() == null ? List.of()
+                        : state.policyVersions().stream()
+                                .map(v -> new PolicyVersion(v.number(), v.key(), v.from())).toList());
         if (state.pot() != null) {
             sheet.setPot(state.pot().value());
         }

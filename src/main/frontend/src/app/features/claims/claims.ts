@@ -5,7 +5,7 @@ import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, 
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
-import { Session, graceOn, valueOn } from '../../core/session';
+import { Session, graceOn, policyVersionOn, valueOn } from '../../core/session';
 import { Templates, TemplatesApi } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 
@@ -115,6 +115,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ tagsOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
+          <span>Policy version <span data-testid="claim-policy">{{ policyOf(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
@@ -625,6 +626,11 @@ export class Claims {
     const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today, this.session.roundingHistory());
     const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp, this.inherited());
     return figure === null ? NO_RATE : money(figure);
+  }
+
+  /** The policy version in force on a claim's date. */
+  protected policyOf(claim: ClaimView): number {
+    return policyVersionOn(this.session.policyVersionsFrom(), claim.date);
   }
 
   /** A claim's due-by: fixed when it was added, or as a steward set it. */

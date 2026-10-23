@@ -21,6 +21,14 @@ export function valueOn(history: DatedValue[], date: string, start: string): str
   return best === null ? start : best.value;
 }
 
+/**
+ * The value recorded for a dated setting in force on a date (yyyy-mm-dd): the one with the latest
+ * from-date on or before it; empty when none is (its starting value is not a recorded one).
+ */
+export function recordedOn(history: DatedValue[], date: string): string {
+  return valueOn(history.filter((d) => d.from !== null), date, '') ?? '';
+}
+
 export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses it. */
@@ -67,6 +75,20 @@ export interface SheetView {
   sheetToday?: string | null;
   /** The preview date the figures are read on (today then being it); null when none is set. */
   preview?: string | null;
+  /** The cap's values by from-date (a value null when none), its starting value first. */
+  capHistory?: DatedValue[];
+  /** The current policy version: how many policy versions have been made; 0 before any. */
+  policyVersion?: number;
+  /** Each policy version's from-date (yyyy-mm-dd), in the order made; null for one in force always. */
+  policyVersionsFrom?: (string | null)[];
+}
+
+/**
+ * The policy version in force on a date (yyyy-mm-dd): how many policy versions have a from-date on or
+ * before it, those with none counting always.
+ */
+export function policyVersionOn(versionsFrom: (string | null)[], date: string): number {
+  return versionsFrom.filter((from) => from === null || from <= date).length;
 }
 
 /**
@@ -120,6 +142,15 @@ export class Session {
   readonly policyDate = signal('');
   /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
   readonly cap = signal('');
+  /**
+   * The active sheet's cap by from-date (a value null when none): a person's due-total is at most the one
+   * in force on the date of their latest claim that counts.
+   */
+  readonly capHistory = signal<DatedValue[]>([]);
+  /** The active sheet's current policy version; 0 before any. */
+  readonly policyVersion = signal(0);
+  /** Each of the active sheet's policy versions' from-dates, in the order made (null: in force always). */
+  readonly policyVersionsFrom = signal<(string | null)[]>([]);
   /** The active sheet's pot with two decimals: split among each balanced pool's members as their cuts; empty when there is none. */
   readonly pot = signal('');
   /** The active sheet's parent sheet id; empty when there is none. */
@@ -251,6 +282,9 @@ export class Session {
     this.policyDate.set(view.policyDate ?? '');
     this.roundingHistory.set(view.roundingHistory ?? []);
     this.cap.set(view.cap ?? '');
+    this.capHistory.set(view.capHistory ?? []);
+    this.policyVersion.set(view.policyVersion ?? 0);
+    this.policyVersionsFrom.set(view.policyVersionsFrom ?? []);
     this.pot.set(view.pot ?? '');
     this.parent.set(view.parent ?? '');
     this.fiscalStartMonth.set(view.fiscalStartMonth ?? 1);

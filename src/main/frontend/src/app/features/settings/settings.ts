@@ -1,10 +1,10 @@
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import {
   ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, SCORE, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, SWITCH, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
-import { Session } from '../../core/session';
+import { Session, recordedOn } from '../../core/session';
 
 // The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days, the alert threshold and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
@@ -418,7 +418,7 @@ import { Session } from '../../core/session';
       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</span></p>
       <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
-      <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() | figure }}</span></p>
+      <p>Floor in force: <span data-testid="setting-floor-current">{{ floorRecorded() | figure }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} in force:
@@ -428,7 +428,7 @@ import { Session } from '../../core/session';
         <p>Grace days for grade {{ g }} in force:
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
       }
-      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() | figure }}</span></p>
+      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePctRecorded() | figure }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
@@ -493,6 +493,10 @@ import { Session } from '../../core/session';
 })
 export class Settings {
   protected readonly session = inject(Session);
+  /** The floor recorded in force on the sheet's today (a policy version set it); empty before any is. */
+  protected readonly floorRecorded = computed(() => recordedOn(this.session.floorHistory(), this.session.today() ?? ''));
+  /** The late percent recorded in force on the sheet's today (a policy version set it); empty before any is. */
+  protected readonly latePctRecorded = computed(() => recordedOn(this.session.latePctHistory(), this.session.today() ?? ''));
   private readonly api = inject(SettingsApi);
 
   protected readonly roleNames = ROLES.join(' or ');
@@ -1239,6 +1243,9 @@ export class Settings {
     this.clerkLimit.set(view.clerkLimit);
     this.gradeClerkLimit.set({ A: view.gradeClerkLimits['A'], B: view.gradeClerkLimits['B'], C: view.gradeClerkLimits['C'] });
     this.session.cap.set(view.cap ?? '');
+    this.session.capHistory.set(view.capHistory);
+    this.session.policyVersion.set(view.policyVersion);
+    this.session.policyVersionsFrom.set(view.policyVersionsFrom);
     this.proofThreshold.set(view.proofThreshold);
     this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
     this.noteThreshold.set(view.noteThreshold);

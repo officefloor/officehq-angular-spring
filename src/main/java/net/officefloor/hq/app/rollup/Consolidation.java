@@ -227,7 +227,7 @@ public class Consolidation {
                             then.people(), then.claims().values(),
                             cuts.personCuts(then.sheet(), then.people().values())))
                     .orElseGet(() -> {
-                        Sheet empty = now.asOf(day, List.of(), null);
+                        Sheet empty = now.asOf(day, List.of(), null, List.of());
                         return new Taken(empty, rollups.take(empty, dues.live(sheetId), new LinkedHashMap<>(),
                                 List.of()), Map.of(), List.of(), Map.of());
                     });

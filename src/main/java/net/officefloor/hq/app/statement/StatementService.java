@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -118,6 +119,7 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean figured = false;
         int counted = 0;
+        List<LocalDate> countingDates = new ArrayList<>();
         for (Map.Entry<Long, Claim> entry : theirsThen.entrySet()) {
             Claim claim = entry.getValue();
             // As in the live totals: an OPEN or PENDING claim of a person whose retirement date is reached,
@@ -131,6 +133,7 @@ public class StatementService {
             figured |= due != null;
             bound.put(entry.getKey(), due);
             counted++;
+            countingDates.add(claim.getDate());
             if (due != null) {
                 // As in the live totals: a shared claim counts its figure less its holders' parts.
                 total = total.add(claim.getShares().isEmpty() ? due : due.subtract(claim.sharedParts(share -> {
@@ -164,8 +167,9 @@ public class StatementService {
         if (basis.rateInForce(then.gradeOn(day), day).isEmpty() && !figured) {
             total = null;
         }
-        // A due-total is at most the cap in force on the day. The claims they have now are bound by id.
-        total = sheet.capped(total);
+        // A due-total is at most their cap: the one in force on their latest counting claim's date. The
+        // claims they have now are bound by id.
+        total = sheet.capped(total, countingDates);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         for (Claim claim : theirs) {
             if (bound.containsKey(claim.getId())) {

@@ -99,6 +99,7 @@ import { TreeSearch } from '../tree-search/tree-search';
           </form>
           <p>Preview <strong data-testid="sheet-preview">{{ session.preview() }}</strong></p>
           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
+          <p>Policy version <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
           <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           <form (submit)="cloneSheet($event)">

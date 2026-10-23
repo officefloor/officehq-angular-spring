@@ -408,7 +408,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
         }
-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person.gradeOn(today), settledDue)) {
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person.gradeOn(claim.getDate()), claim.getDate(), settledDue)) {
             next = ClaimStatus.PENDING;
             settledDue = null;
         }
@@ -1137,11 +1137,11 @@ public class ClaimService {
     }
 
     /**
-     * Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's
-     * today: its person's grade's when one is set, else the sheet's.
+     * Whether a clerk is settling a claim whose due is above the clerk limit in force on the claim's
+     * date: its person's grade's (the one in force on that date) when one is set, else the sheet's.
      */
-    private boolean overClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
-        BigDecimal limit = sheets.clerkLimit(sheetId, grade);
+    private boolean overClerkLimit(String sheetId, String user, String grade, LocalDate date, BigDecimal due) {
+        BigDecimal limit = sheets.clerkLimit(sheetId, grade, date);
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }

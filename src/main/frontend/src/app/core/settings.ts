@@ -97,6 +97,12 @@ export interface SettingsView {
   roundingHistory: DatedValue[];
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
+  /** The cap's values by from-date (a value null when none), its starting value first. */
+  capHistory: DatedValue[];
+  /** The current policy version: how many policy versions have been made; 0 before any. */
+  policyVersion: number;
+  /** Each policy version's from-date (yyyy-mm-dd), in the order made; null for one in force always. */
+  policyVersionsFrom: (string | null)[];
 }
 
 /** The actions the permission matrix covers. */

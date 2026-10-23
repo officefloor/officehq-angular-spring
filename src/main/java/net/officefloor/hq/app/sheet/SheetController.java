@@ -35,12 +35,16 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class SheetController {
 
-    /** What the screen is told about a loaded sheet. */
+    /**
+     * What the screen is told about a loaded sheet, with the cap's values by from-date, the current policy
+     * version and each policy version's from-date in the order made (null for one in force always).
+     */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
             int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
-            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview, Integer pendingSla) {
+            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview, Integer pendingSla,
+            List<DatedValue> capHistory, int policyVersion, List<LocalDate> policyVersionsFrom) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, sheet.getToday(), null);
@@ -59,7 +63,14 @@ public class SheetController {
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
                     sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh(), sheetToday, preview,
-                    sheet.getPendingSla());
+                    sheet.getPendingSla(), DatedValue.of(sheet.capHistory()), sheet.getPolicyVersion(),
+                    policyVersionsFrom(sheet));
+        }
+
+        /** Each policy version's from-date, in the order made; null for one in force always. */
+        static List<LocalDate> policyVersionsFrom(Sheet sheet) {
+            return sheet.getPolicyVersions().stream().map(PolicyVersion::getFromDate)
+                    .collect(java.util.stream.Collectors.toList());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -95,7 +106,8 @@ public class SheetController {
      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
      * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
      * score thresholds, null for none, and the score log switch, on or blank (off), and the maximum of OPEN
-     * or PENDING claims per person, null for none, and the pending SLA in days, null for none. */
+     * or PENDING claims per person, null for none, and the pending SLA in days, null for none, and the cap's
+     * values by from-date, and the current policy version with each policy version's from-date (see SheetView). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
@@ -104,7 +116,8 @@ public class SheetController {
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
-            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {
+            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla, List<DatedValue> capHistory,
+            int policyVersion, List<LocalDate> policyVersionsFrom) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -125,7 +138,8 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh(),
-                    sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen(), sheet.getPendingSla());
+                    sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen(), sheet.getPendingSla(),
+                    DatedValue.of(sheet.capHistory()), sheet.getPolicyVersion(), SheetView.policyVersionsFrom(sheet));
         }
 
         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */

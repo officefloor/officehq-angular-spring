@@ -39,6 +39,8 @@ public class Sheet {
     public static final String GRACE = "grace";
     /** The key of the rounding mode: half-up or half-even, dated; none before every from-date. */
     public static final String ROUNDING = "rounding";
+    /** The keys of the policy settings, versioned together: every change to one of them is a new policy version. */
+    public static final List<String> POLICY_KEYS = List.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
 
     /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
@@ -187,6 +189,11 @@ public class Sheet {
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> dated = new ArrayList<>();
 
+    /** The policy versions, in the order made (see {@link PolicyVersion}). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_policy_version", joinColumns = @JoinColumn(name = "sheet_id"))
+    private List<PolicyVersion> policyVersions = new ArrayList<>();
+
     /** The permission matrix: for an action, the comma separated roles that may take it; an action with none keeps its standing rule. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -236,40 +243,72 @@ public class Sheet {
 
     /** The clerk limit in force on the sheet's today, with two decimals; null when there is none. */
     public BigDecimal getClerkLimit() {
-        return decimal(valueOn(CLERK_LIMIT, today, plain(clerkLimit)));
+        return clerkLimitOn(today);
+    }
+
+    /** The clerk limit in force on a date, with two decimals; null when there is none. */
+    public BigDecimal clerkLimitOn(LocalDate date) {
+        return decimal(valueOn(CLERK_LIMIT, date, plain(clerkLimit)));
+    }
+
+    /** A grade's clerk limit in force on a date, with two decimals; null when it has none (the sheet's applies). */
+    public BigDecimal gradeClerkLimitOn(String grade, LocalDate date) {
+        return decimal(valueOn(gradeClerkLimitKey(grade), date, null));
     }
 
     /** A grade's clerk limit in force on the sheet's today, with two decimals; null when it has none (the sheet's applies). */
     public BigDecimal getGradeClerkLimit(String grade) {
-        return decimal(valueOn(gradeClerkLimitKey(grade), today, null));
+        return gradeClerkLimitOn(grade, today);
     }
 
     /**
-     * The clerk limit for a grade's claims: the grade's own in force on the sheet's today when it has
-     * one, else the sheet's; null when there is none.
+     * The clerk limit for a grade's claims dated on a date: the grade's own in force on that date when it
+     * has one, else the sheet's; null when there is none.
      */
-    public BigDecimal clerkLimitFor(String grade) {
-        BigDecimal own = grade == null ? null : getGradeClerkLimit(grade);
-        return own != null ? own : getClerkLimit();
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        BigDecimal own = grade == null ? null : gradeClerkLimitOn(grade, date);
+        return own != null ? own : clerkLimitOn(date);
     }
 
     /** The cap in force on the sheet's today, with two decimals; null when there is none. */
     public BigDecimal getCap() {
-        return decimal(valueOn(CAP, today, plain(cap)));
+        return capOn(today);
     }
 
-    /** A sum of figures held to the cap in force today: the cap when the sum is above it; null (n/a) stays null. */
-    public BigDecimal capped(BigDecimal sum) {
-        BigDecimal cap = getCap();
+    /** The cap in force on a date, with two decimals; null when there is none. */
+    public BigDecimal capOn(LocalDate date) {
+        return decimal(valueOn(CAP, date, plain(cap)));
+    }
+
+    /** The cap's values (see {@link #history}). */
+    public List<DatedSetting> capHistory() {
+        return history(CAP, plain(cap));
+    }
+
+    /**
+     * A person's cap: the one in force on the latest of the dates of their claims that count, else (with
+     * none) the one in force on the sheet's today; null when there is none.
+     */
+    public BigDecimal capFor(List<LocalDate> countingDates) {
+        return capOn(countingDates.stream().max(Comparator.naturalOrder()).orElse(today));
+    }
+
+    /**
+     * A sum of figures held to a person's cap (see {@link #capFor}): the cap when the sum is above it; null
+     * (n/a) stays null.
+     */
+    public BigDecimal capped(BigDecimal sum, List<LocalDate> countingDates) {
+        BigDecimal cap = capFor(countingDates);
         return sum != null && cap != null && sum.compareTo(cap) > 0 ? cap : sum;
     }
 
     /**
-     * A sum of figures held to the cap in force today less a cut total: the cap covers the sum and the cut
-     * total, so the sum is at most the cap less the cut total, not below 0.00; null (n/a) stays null.
+     * A sum of figures held to a person's cap (see {@link #capFor}) less a cut total: the cap covers the
+     * sum and the cut total, so the sum is at most the cap less the cut total, not below 0.00; null (n/a)
+     * stays null.
      */
-    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
-        BigDecimal cap = getCap();
+    public BigDecimal capped(BigDecimal sum, BigDecimal cut, List<LocalDate> countingDates) {
+        BigDecimal cap = capFor(countingDates);
         if (sum == null || cap == null) {
             return sum;
         }
@@ -439,6 +478,24 @@ public class Sheet {
     public void record(String key, LocalDate from, String value) {
         dated.removeIf(d -> d.getKey().equals(key) && d.getFromDate().equals(from));
         dated.add(new DatedSetting(key, from, value));
+        if (POLICY_KEYS.contains(key)) {
+            policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from));
+        }
+    }
+
+    /** The current policy version: the number of policy versions made; 0 before any. */
+    public int getPolicyVersion() {
+        return policyVersions.size();
+    }
+
+    /** The policy version in force on a date: the number of versions in force on it. */
+    public int policyVersionOn(LocalDate date) {
+        return (int) policyVersions.stream().filter(v -> v.inForceOn(date)).count();
+    }
+
+    /** The policy versions, in the order made. */
+    public List<PolicyVersion> getPolicyVersions() {
+        return List.copyOf(policyVersions);
     }
 
     /**
@@ -463,6 +520,12 @@ public class Sheet {
      * now, that date as its today, and the values recorded from a date and the policy date it had then.
      */
     public Sheet asOf(LocalDate day, List<DatedSetting> datedThen, LocalDate policyDateThen) {
+        return asOf(day, datedThen, policyDateThen, policyVersions);
+    }
+
+    /** The sheet as it stood on a past date (see above), with the policy versions it had then. */
+    public Sheet asOf(LocalDate day, List<DatedSetting> datedThen, LocalDate policyDateThen,
+            List<PolicyVersion> policyVersionsThen) {
         Sheet then = new Sheet(id, createdAt, day);
         then.lastClaimNumber = lastClaimNumber;
         then.clerkLimit = clerkLimit;
@@ -494,6 +557,7 @@ public class Sheet {
         then.clonedFrom = clonedFrom;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
+        then.policyVersions = new ArrayList<>(policyVersionsThen);
         then.permissions = new HashMap<>(permissions);
         then.lastFiscalClaimNumbers = new HashMap<>(lastFiscalClaimNumbers);
         return then;

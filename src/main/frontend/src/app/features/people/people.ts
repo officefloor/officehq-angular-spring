@@ -1259,8 +1259,6 @@ export class People {
       count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
     })),
   );
-  /** The sheet's cap in whole cents: a person's due-total is at most it; null when there is none. */
-  private readonly capCents = computed(() => (this.session.cap() === '' ? null : cents(this.session.cap())));
   /** The sheet's today, on which each grade's rate in force is read. */
   /** The number of the sheet's last settle batch; null when there has been none. */
   protected readonly lastSettleBatch = computed(() => this.session.lastSettleBatch());
@@ -1702,7 +1700,7 @@ export class People {
   }
 
   /**
-   * A person's due-total in whole cents, at most the sheet's cap less their cut total (not below 0): the sum of the due figures of their OPEN and SETTLED claims
+   * A person's due-total in whole cents, at most their cap (see capCentsOf) less their cut total (not below 0): the sum of the due figures of their OPEN and SETTLED claims
    * (0 with none; see countsLive). Null (n/a) when the grade they have in force on the sheet's today has no
    * rate, unless a claim has a figure (a fixed one, or one at the grade in force on its own date): then it
    * is the sum of the figures there are.
@@ -1779,7 +1777,7 @@ export class People {
   }
 
   /**
-   * A person's excess: by how much the sum of their figures is above the cap less their cut total (not below
+   * A person's excess: by how much the sum of their figures is above their cap less their cut total (not below
    * 0.00), else 0.00 (n/a is not capped).
    */
   protected excessOf(person: PersonView): string {
@@ -1788,9 +1786,19 @@ export class People {
     return money(sum !== null && room !== null && sum > room ? sum - room : 0);
   }
 
-  /** What the cap leaves a person's due-total once it covers their cut total, not below 0, in whole cents; null: no cap. */
+  /**
+   * A person's cap in whole cents: the one in force on the date of their latest claim that counts, else
+   * (with none) the one in force on the sheet's today; null when there is none.
+   */
+  private capCentsOf(person: PersonView): number | null {
+    const latest = this.countingOf(person.id).reduce((max, c) => (c.date > max ? c.date : max), '');
+    const cap = valueOn(this.session.capHistory(), latest || this.today(), '');
+    return cap ? cents(cap) : null;
+  }
+
+  /** What their cap leaves a person's due-total once it covers their cut total, not below 0, in whole cents; null: no cap. */
   private capRoomCents(person: PersonView): number | null {
-    const cap = this.capCents();
+    const cap = this.capCentsOf(person);
     return cap === null ? null : Math.max(0, cap - (this.cutCents().get(person.id) ?? 0));
   }
 

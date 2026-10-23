@@ -132,10 +132,13 @@ public class SheetService {
         return saved;
     }
 
-    /** The clerk limit for a grade's claims: the grade's own in force when set, else the sheet's; null when there is none. */
+    /**
+     * The clerk limit for a grade's claims dated on a date: the grade's own in force on that date when
+     * set, else the sheet's; null when there is none.
+     */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimit(String id, String grade) {
-        return load(id).clerkLimitFor(grade);
+    public BigDecimal clerkLimit(String id, String grade, LocalDate date) {
+        return load(id).clerkLimitFor(grade, date);
     }
 
     /** Record the sheet's clerk limit (null: no limit) from a date (null: the sheet's today), auditing the change. */

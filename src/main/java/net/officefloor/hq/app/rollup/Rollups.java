@@ -224,9 +224,11 @@ public class Rollups {
             if (!rated && !figured) {
                 due = null;
             }
-            // A due-total is at most the sheet's cap less their cut total, not below 0.00.
+            // A due-total is at most their cap (the one in force on their latest counting claim's date)
+            // less their cut total, not below 0.00.
             if (sheet != null) {
-                due = sheet.capped(due, personCuts.getOrDefault(entry.getKey(), zero()));
+                due = sheet.capped(due, personCuts.getOrDefault(entry.getKey(), zero()),
+                        counting.stream().map(Claim::getDate).toList());
             }
             figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue,
                     settledShown, openShown));
