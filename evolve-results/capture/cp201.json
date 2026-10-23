@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "72e78fc3c864d1879c081f9c1c77c2b6b66af916",
+  "reset_sha": "",
+  "preagent_sha": "ff3bee574544f17c63ae29b49d941d48f3ee3f4f",
+  "prev_sha": "ff3bee574544f17c63ae29b49d941d48f3ee3f4f",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8002627999999999,
+    "input_tokens": 46,
+    "output_tokens": 10485,
+    "cache_read_tokens": 935854,
+    "cache_creation_tokens": 50401,
+    "num_turns": 24,
+    "duration_ms": 372867,
+    "duration_api_ms": 131622,
+    "model": "claude-opus-5-5",
+    "session_id": "aced1615-e1dc-4d29-8887-b9a9bfb231b5",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now show, for each grade A\u2013C, the due-totals of the non-retired people on it added up over the whole tree, and for each status the number of claims in it over the tree. `bin/e2e` passes 3 of the 4 tests. Scenario 1 fails because of a typo in the spec itself, not because of the app.\n\n**The spec bug:** at `e2e/specs/acceptance.spec.ts:261` the test expects `sheet-parent` to show the literal text `\"__SHEET__-p\"`. That's a placeholder that never got filled in: line 143 sets the parent to `${sheet}-p`, and the app correctly shows the real id (`smvkqaca0vysu-p`). I'm not allowed to edit the spec, so I ran a temporary copy with only that line changed to `${sheet}-p`. Scenario 1 then passed in full, including all its consolidated grade, status and audit checks. I deleted the temporary copy afterwards. To make `bin/e2e` pass outright, someone needs to fix line 261 to expect `` `${sheet}-p` ``.\n\n**What changed:**\n- **Server** (`rollup/Consolidation.java`, `ConsolidationController.java`): for each sheet in the tree, it adds each non-retired person's due-total under the grade they have on that sheet's today. Someone shown as n/a counts as 0. It also counts every claim by its status. The `/consolidated` response gains `gradeDueTotals` and `statusCounts`. When an as-of date is set, these come from the same people and claims as the existing consolidated figures, so the two agree.\n- **Front end** (`core/consolidated.ts`, `features/consolidated/consolidated.ts`): two new tables, \"Consolidated by grade\" and \"Consolidated by status\", with the test ids `consolidated-grade-<G>-due-total` and `consolidated-status-<S>-count`. A grade or status with nothing in it shows `0.00` or `0`.\n\nNo database or audit changes were needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8002627999999999,
+        "num_turns": 24,
+        "duration_ms": 372867,
+        "duration_api_ms": 131622,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

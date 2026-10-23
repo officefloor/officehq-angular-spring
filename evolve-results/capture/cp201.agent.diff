@@ -1,0 +1,383 @@
+diff --git a/.e2e.out b/.e2e.out
+index 23f8274e..2deb7914 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,89 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › approvers › approvers (15.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:74:7 › approvers › approvers scenario 1 (31.8s)
+-  ✘  3 [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 (25.6s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 (22.9s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › consolidated grades › consolidated grades (13.1s)
++  ✘  2 [chromium] › acceptance.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 (32.5s)
++  ✓  3 [chromium] › acceptance.spec.ts:685:7 › consolidated grades › consolidated grades scenario 2 (29.1s)
++  ✓  4 [chromium] › acceptance.spec.ts:1075:7 › consolidated grades › consolidated grades scenario 3 (23.4s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 ──────────────────────
++  1) [chromium] › acceptance.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 ──
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkpfk0mzzll[27m-p"[39m
++    Received string: [31m"[7msmvkqaca0vysu[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
+-    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
+-
+-
+-      868 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      869 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 870 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqaca0vysu-p</strong>[22m
++    [2m  -   unexpected value "smvkqaca0vysu-p"[22m
++
++
++      259 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      260 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
++    > 261 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      871 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+-      872 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      873 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:870:54
+-
+-  2) [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 ─────────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('person-row-9').getByTestId('person-statement-line-line')
+-    [32m- Expected  - 0[39m
+-    [31m+ Received  + 1[39m
+-
+-    [2m  Array [[22m
+-    [31m+   "2026-04-05 n/a",[39m
+-    [2m    "2026-04-05 0.00",[22m
+-    [2m  ][22m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-statement-line-line')[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-    [2m  -   locator resolved to 2 elements[22m
+-
+-
+-      1267 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-tags")).toHaveText("a, b");
+-      1268 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-snapshot-line")).toHaveText([]);
+-    > 1269 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-statement-line-line")).toHaveText(["2026-04-05 0.00"]);
+-           |                                                                                                       ^
+-      1270 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-flag-shown")).toHaveText("");
+-      1271 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-approver")).toHaveText("");
+-      1272 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-period-P1-due-total")).toHaveText("0.00");
++      262 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
++      263 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("10.00");
++      264 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("10.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1269:103
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:261:54
+ 
+-  2 failed
+-    [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 ───────────────────────
+-    [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 ──────────────────────
+-  2 passed (1.7m)
++  1 failed
++    [chromium] › acceptance.spec.ts:119:7 › consolidated grades › consolidated grades scenario 1 ───
++  3 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index 38ac8488..71a53f91 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -13,6 +13,13 @@ export interface ConsolidatedView {
+   dueTotal: string;
+   /** The sheets' overdue-totals added up, with two decimals. */
+   overdueTotal: string;
++  /**
++   * Per grade, the due-totals of the people not retired who have it in force on their sheet's today
++   * added up, with two decimals; a grade nobody has is left out.
++   */
++  gradeDueTotals: Record<string, string>;
++  /** Per status, how many claims have it; a status no claim has is left out. */
++  statusCounts: Record<string, number>;
+ }
+ 
+ // The consolidated figures, read from the store.
+diff --git a/src/main/frontend/src/app/features/consolidated/consolidated.ts b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+index 9c29e1a0..477af523 100644
+--- a/src/main/frontend/src/app/features/consolidated/consolidated.ts
++++ b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+@@ -1,11 +1,16 @@
+-import { Component, effect, inject, input, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+ import { FigurePipe } from '../../core/locale';
+ import { ConsolidatedApi, ConsolidatedView } from '../../core/consolidated';
++import { GRADES } from '../../core/people';
+ import { Session } from '../../core/session';
+ 
++/** The statuses the consolidated figures count claims by, in the order they list them. */
++const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
++
+ // The sheet's figures consolidated over it and all its descendants: the number of people, and each
+ // sheet's due-total and overdue-total, as that sheet shows them (as of the as-of date while one is set),
+-// added up. Re-read on every sheet load
++// added up; per grade the due-totals of the people on it (retired people left out) added up, and per
++// status the count of claims in it, over the tree. Re-read on every sheet load
+ // and whenever the sheet's own figures move.
+ @Component({
+   selector: 'app-consolidated',
+@@ -15,6 +20,40 @@ import { Session } from '../../core/session';
+       <p>Consolidated people <strong data-testid="consolidated-people-count">{{ figures()?.peopleCount }}</strong></p>
+       <p>Consolidated due <strong data-testid="consolidated-due-total">{{ (figures()?.dueTotal) | figure }}</strong></p>
+       <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ (figures()?.overdueTotal) | figure }}</strong></p>
++      <table>
++        <caption>Consolidated by grade</caption>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            <th scope="col">Due</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>Consolidated by status</caption>
++        <thead>
++          <tr>
++            <th scope="col">Status</th>
++            <th scope="col">Claims</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (s of statuses(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
+     </section>
+   `,
+ })
+@@ -28,6 +67,22 @@ export class Consolidated {
+   readonly overdueTotal = input.required<string>();
+ 
+   protected readonly figures = signal<ConsolidatedView | null>(null);
++  /** Per grade, its consolidated due-total; empty until the figures are read. */
++  protected readonly grades = computed(() => {
++    const figures = this.figures();
++    return GRADES.map((grade) => ({
++      grade,
++      dueTotal: figures ? (figures.gradeDueTotals[grade] ?? '0.00') : '',
++    }));
++  });
++  /** Per status, its consolidated count of claims; empty until the figures are read. */
++  protected readonly statuses = computed(() => {
++    const figures = this.figures();
++    return STATUSES.map((status) => ({
++      status,
++      count: figures ? String(figures.statusCounts[status] ?? 0) : '',
++    }));
++  });
+   /** Counts reads, so only the answer to the latest one is shown. */
+   private reads = 0;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+index b1b5e4d4..39759f76 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+@@ -5,6 +5,9 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
++import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.history.SheetHistory;
+@@ -23,8 +26,17 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class Consolidation {
+ 
+-    /** The number of people, and the due-totals and overdue-totals added up. */
+-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    /**
++     * The number of people, the due-totals and overdue-totals added up, per grade the due-totals of the
++     * people not retired who have it in force on their sheet's today (those shown as n/a skipped) added
++     * up, and per status how many claims have it.
++     */
++    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
++            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
++    }
++
++    /** A sheet's figures with the people and claims they were read from. */
++    private record Taken(Sheet sheet, Rollups.Rollup rollup, Map<Long, Person> people, Iterable<Claim> claims) {
+     }
+ 
+     private final SheetRepository sheets;
+@@ -62,35 +74,66 @@ public class Consolidation {
+         int count = 0;
+         BigDecimal due = BigDecimal.ZERO.setScale(2);
+         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        Map<String, BigDecimal> grades = new TreeMap<>();
++        Map<String, Integer> statuses = new TreeMap<>();
+         for (String id : all) {
+-            Rollups.Rollup rollup = asOf == null ? rollups.take(id) : asOf(id, asOf);
++            Taken taken = asOf == null ? now(id) : asOf(id, asOf);
++            Rollups.Rollup rollup = taken.rollup();
+             count += rollup.people().size();
+             due = due.add(rollup.dueTotal());
+             overdue = overdue.add(rollup.overdueTotal());
++            LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
++            taken.people().forEach((personId, person) -> {
++                Rollups.Figures figures = rollup.people().get(personId);
++                if (person.getRetiredFrom() != null || today == null || figures == null) {
++                    return;
++                }
++                BigDecimal figure = figures.dueTotal() == null ? BigDecimal.ZERO.setScale(2) : figures.dueTotal();
++                grades.merge(person.gradeOn(today), figure, BigDecimal::add);
++            });
++            for (Claim claim : taken.claims()) {
++                statuses.merge(claim.getStatus().name(), 1, Integer::sum);
++            }
+         }
+-        return new Consolidated(count, due, overdue);
++        return new Consolidated(count, due, overdue, grades, statuses);
++    }
++
++    /** A sheet's figures as it stands now. */
++    private Taken now(String sheetId) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
++        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims), sheetPeople,
++                sheetClaims);
+     }
+ 
+     /**
+      * A sheet's figures as it stood at the end of a date, with that date as its today: before its today,
+      * as kept for that date (none when nothing was kept by then); else as it stands.
+      */
+-    private Rollups.Rollup asOf(String sheetId, LocalDate day) {
++    private Taken asOf(String sheetId, LocalDate day) {
+         Sheet now = sheets.findById(sheetId).orElse(null);
+         if (now == null) {
+-            return rollups.take(sheetId);
++            return now(sheetId);
+         }
+         if (day.isBefore(now.getToday())) {
+             return history.at(sheetId, day)
+-                    .map(then -> rollups.take(then.sheet(), then.basis(), then.people(), then.claims().values()))
+-                    .orElseGet(() -> rollups.take(now.asOf(day, List.of(), null), dues.live(sheetId),
+-                            new LinkedHashMap<>(), List.of()));
++                    .map(then -> new Taken(then.sheet(),
++                            rollups.take(then.sheet(), then.basis(), then.people(), then.claims().values()),
++                            then.people(), then.claims().values()))
++                    .orElseGet(() -> {
++                        Sheet empty = now.asOf(day, List.of(), null);
++                        return new Taken(empty, rollups.take(empty, dues.live(sheetId), new LinkedHashMap<>(),
++                                List.of()), Map.of(), List.of());
++                    });
+         }
+         Sheet then = now.asOf(day, now.getDated(), now.getPolicyDate());
+         Dues.Basis live = dues.live(sheetId);
+         Dues.Basis basis = new Dues.Basis(then, live.rates(), history.inherited(sheetId, day), live.corrected());
+         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
+         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+-        return rollups.take(then, basis, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId));
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        return new Taken(then, rollups.take(then, basis, sheetPeople, sheetClaims), sheetPeople, sheetClaims);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+index f9fa184c..47a6c6fa 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.rollup;
+ 
+ import jakarta.validation.constraints.NotBlank;
++import java.util.LinkedHashMap;
++import java.util.Map;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.history.AsOfGuard;
+@@ -16,8 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class ConsolidationController {
+ 
+-    /** What the screen is told about the consolidated figures: the due amounts with two decimals. */
+-    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal) {
++    /**
++     * What the screen is told about the consolidated figures: the due amounts with two decimals, per grade
++     * found the due-totals, and per status found the count of claims.
++     */
++    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
+     }
+ 
+     private final Consolidation consolidation;
+@@ -35,7 +41,9 @@ public class ConsolidationController {
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+         Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf));
++        Map<String, String> grades = new LinkedHashMap<>();
++        figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
+         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
+-                figures.overdueTotal().toPlainString());
++                figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
+     }
+ }
