@@ -258,6 +258,14 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/${id}/transfer`, { toSheetId }));
   }
 
+  /**
+   * Undo the transfer that brought a person to this sheet on its today (a steward only): they go back
+   * to the sheet they came from.
+   */
+  transferUndo(sheet: string, id: number): Promise<void> {
+    return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/${id}/transfer-undo`, {}));
+  }
+
   /** Merge a person into another on the sheet (a steward only): the person merged into, after it. */
   merge(sheet: string, id: number, intoId: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge`, { intoId }));

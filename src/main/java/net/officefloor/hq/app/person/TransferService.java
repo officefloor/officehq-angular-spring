@@ -118,7 +118,7 @@ public class TransferService {
 
         if (into == null) {
             int last = people.findMaxPositionBySheetId(toSheetId);
-            person.transferTo(toSheetId);
+            person.transferTo(toSheetId, sheets.today(toSheetId));
             person.setPosition(last + 1);
             people.saveAndFlush(person);
             statements.follow(sheetId, person);
@@ -172,5 +172,35 @@ public class TransferService {
                     + " into=" + into.getName());
         }
         rollups.audit(toSheetId, user, toBefore);
+    }
+
+    /**
+     * Undo the transfer that brought a person to this sheet: they are transferred back to the sheet they
+     * came from by exactly the transfer's rules and records, and this sheet then records the undo. Refused
+     * unless the user is a steward on this sheet and the person arrived here by transfer on the sheet's today.
+     */
+    @Transactional
+    public void undo(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        String fromSheetId = person.getOriginSheetId();
+        if (fromSheetId != null) {
+            Stream.of(sheetId, fromSheetId).sorted().forEach(sheets::lock);
+        } else {
+            sheets.lock(sheetId);
+        }
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward undoes a transfer.");
+        }
+        if (!person.arrivedOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a transfer that brought the person here today can be undone.");
+        }
+        String name = person.getName();
+        Rollups.Rollup before = rollups.take(sheetId);
+        transfer(sheetId, user, personId, fromSheetId);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
+                + " to=" + fromSheetId);
+        rollups.audit(sheetId, user, before);
     }
 }

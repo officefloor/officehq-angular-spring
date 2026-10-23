@@ -365,6 +365,19 @@ public class PersonController {
     }
 
     /**
+     * Undo the transfer that brought a person to this sheet on its today; a steward only. They go back
+     * to the sheet they came from.
+     */
+    @PostMapping("/{personId}/transfer-undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transferUndo(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        transfers.undo(sheetId, SignedIn.name(user), personId);
+    }
+
+    /**
      * The ids of the people on the sheet the signed-in user watches; none while the sheet is shown as
      * of a date, as watches are not kept in the sheet's history.
      */

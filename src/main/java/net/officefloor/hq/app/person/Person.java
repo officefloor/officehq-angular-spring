@@ -96,6 +96,10 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The sheet's today on which the person arrived by transfer; null when they did not arrive so. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -341,6 +345,15 @@ public class Person {
         return originSheetId;
     }
 
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
+    }
+
+    /** Whether the person arrived on their sheet by transfer on this day. */
+    public boolean arrivedOn(LocalDate day) {
+        return originSheetId != null && arrivedOn != null && arrivedOn.equals(day);
+    }
+
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }
@@ -490,10 +503,12 @@ public class Person {
 
     /**
      * Move the person to another sheet: they keep their grades, terms, contact, aliases and
-     * statements, but name no patrons and have no holds. They show the sheet they came from.
+     * statements, but name no patrons and have no holds. They show the sheet they came from, and
+     * keep the other sheet's today they arrived on.
      */
-    public void transferTo(String sheetId) {
+    public void transferTo(String sheetId, LocalDate arrivedOn) {
         this.originSheetId = this.sheetId;
+        this.arrivedOn = arrivedOn;
         this.sheetId = sheetId;
         this.patronIds.clear();
         this.holds.clear();

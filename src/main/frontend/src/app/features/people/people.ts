@@ -762,6 +762,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 >
                   Transfer
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-transfer-undo"
+                  [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
+                  (click)="transferUndo(p)"
+                >
+                  Undo transfer
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -1575,6 +1583,31 @@ export class People {
           ? 'Only a steward may transfer people.'
           : 'The person could not be transferred: they may not be retired, and their name, aliases and contact must be free on the other sheet.',
       );
+    }
+  }
+
+  /**
+   * Undo the transfer that brought a person to this sheet today (a steward only): they go back to the
+   * sheet they came from and leave the list, and the people and claims show what the store holds after it.
+   */
+  protected async transferUndo(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      await this.api.transferUndo(sheet, person.id);
+      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
+      if (this.session.sheet() !== sheet) return;
+      this.claims.set(claims);
+      this.people.set(people);
+    } catch (e) {
+      this.personError.set({
+        id: person.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward may undo a transfer.'
+            : 'The transfer could not be undone: only one that brought the person here today can be, by the transfer rules.',
+      });
     }
   }
 
