@@ -163,6 +163,11 @@ public class Plan {
         return made.containsKey(date);
     }
 
+    /** The claims the plan has made, in the order of their plan dates. */
+    public List<Long> getMadeClaimIds() {
+        return new TreeMap<>(made).values().stream().toList();
+    }
+
     /** Record the claim the plan made for the date. */
     public void made(LocalDate date, long claimId) {
         made.put(date, claimId);

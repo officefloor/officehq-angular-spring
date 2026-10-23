@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
@@ -34,17 +36,19 @@ public class PlanService {
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final ClaimService claims;
+    private final ClaimRepository claimStore;
     private final RoleService roles;
     private final TransactionTemplate eachClaim;
     private final Audit audit;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, ClaimService claims, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
+            SheetRepository sheetStore, ClaimService claims, ClaimRepository claimStore, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
         this.plans = plans;
         this.people = people;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.claims = claims;
+        this.claimStore = claimStore;
         this.roles = roles;
         this.eachClaim = new TransactionTemplate(transactions);
         this.audit = audit;
@@ -135,24 +139,43 @@ public class PlanService {
 
     /**
      * Change a plan's amount (not below 0.00) on the sheet's today: the claims generated from then on take it,
-     * those already made keep theirs.
+     * and so do those it made that are still DRAFT, each edited as the claim form would edit it (its date,
+     * note and the number it corrects kept) and audited as CLAIM_EDITED, after the plan's change, in the order
+     * of their plan dates. Each is edited on its own: one the form refuses keeps its amount. Claims in any
+     * other status keep theirs.
      */
-    @Transactional
     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
         if (amount.signum() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
         }
-        Sheet sheet = sheets.lock(sheetId);
-        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
-        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
-        plan.changeAmount(sheet.getToday(), money);
-        Plan saved = plans.saveAndFlush(plan);
-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " start=" + plan.getStart() + " amount=" + money.toPlainString());
-        return saved;
+        Plan saved = eachClaim.execute(status -> {
+            Sheet sheet = sheets.lock(sheetId);
+            Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+            Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+            plan.changeAmount(sheet.getToday(), money);
+            Plan changed = plans.saveAndFlush(plan);
+            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                    + " start=" + plan.getStart() + " amount=" + money.toPlainString());
+            return changed;
+        });
+        String claimSheet = saved.getTargetSheetId() != null ? saved.getTargetSheetId() : sheetId;
+        for (Long claimId : saved.getMadeClaimIds()) {
+            try {
+                eachClaim.executeWithoutResult(status -> {
+                    Claim claim = claimStore.findByIdAndSheetId(claimId, claimSheet).orElse(null);
+                    if (claim != null && claim.getStatus() == ClaimStatus.DRAFT) {
+                        claims.edit(claimSheet, user, claimId, money, claim.getDate(), claim.getNote(),
+                                claim.getCorrects(), null, null);
+                    }
+                });
+            } catch (ResponseStatusException refused) {
+                // the claim form refuses this edit: the claim keeps its amount
+            }
+        }
+        return plans.findByIdAndSheetId(planId, sheetId).orElse(saved);
     }
 
     /**
