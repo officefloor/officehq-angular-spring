@@ -1,0 +1,380 @@
+diff --git a/.e2e.out b/.e2e.out
+index 732c6d8f..86f20059 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,70 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo (24.1s)
+-  ✓  2 [chromium] › acceptance.spec.ts:103:7 › transfer undo › transfer undo scenario 1 (37.8s)
+-  ✘  3 [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 (23.3s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1111:7 › transfer undo › transfer undo scenario 3 (50.4s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › statement binds late charge › statement binds late charge (17.0s)
++  ✓  2 [chromium] › acceptance.spec.ts:143:7 › statement binds late charge › statement binds late charge scenario 1 (26.8s)
++  ✘  3 [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 (24.3s)
++  ✓  4 [chromium] › acceptance.spec.ts:1281:7 › statement binds late charge › statement binds late charge scenario 3 (27.9s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo ───────────────────────────
++  1) [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('person-row-2').getByTestId('person-origin')
+-    Expected string: [32m"__SHEET__"[39m
+-    Received string: [31m"smvkh1isi9c1f"[39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvkhfynglmm7[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-2').getByTestId('person-origin')[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
+-    [2m  -   unexpected value "smvkh1isi9c1f"[22m
+-
+-
+-      38 |     await ui.refresh(pg_wes);
+-      39 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-name")).toHaveText("Ben");
+-    > 40 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-origin")).toHaveText("__SHEET__");
+-         |                                                                                            ^
+-      41 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-statement-count")).toHaveText("0");
+-      42 |     await expect(pg_wes.getByTestId("rollup-claimed-total")).toHaveText("0.00");
+-      43 |     await expect(pg_wes.getByTestId("rollup-due-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:40:92
+-
+-  2) [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ──────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+-
+-    Expected: [32mfalse[39m
+-    Received: [31mtrue[39m
+-
+-      745 |     expect(await ui.inlineGrade(pg_vic, p_ada, "B")).toBe(true);
+-      746 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
+-    > 747 |     expect(await ui.editInline(pg_vic, c_ben_0, "4.00")).toBe(false);
+-          |                                                          ^
+-      748 |     expect(await ui.pasteClaims(pg_vic, "Ben,10.35,2026-02-25,\nBen,25.00,2026-03-20,")).toBeNull();
+-      749 |     await ui.refresh(pg_vic);
+-      750 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:747:58
+-
+-  2 failed
+-    [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo ────────────────────────────
+-    [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ───────────────
+-  2 passed (2.4m)
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkhfynglmm7-p</strong>[22m
++    [2m  -   unexpected value "smvkhfynglmm7-p"[22m
++
++
++      902 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      903 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-10");
++    > 904 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      905 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
++      906 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      907 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:904:54
++
++  1 failed
++    [chromium] › acceptance.spec.ts:786:7 › statement binds late charge › statement binds late charge scenario 2 
++  3 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 525d9b43..7eb09577 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -54,6 +54,11 @@ export interface ClaimView {
+   stated: boolean;
+   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
+   statedDue: string | null;
++  /**
++   * Whether the figure the statement bound is the claim's whole due as shown, late charge and floor
++   * included; false (or absent, as kept by an old snapshot) when it is the rate figure alone.
++   */
++  statedWhole?: boolean;
+   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
+   corrects: string | null;
+   /** The claim's external reference; null when it has none. */
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 14a10d4e..a5a29610 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -138,16 +138,17 @@ export function due(amountCents: number, pct: string | null): string {
+ }
+ 
+ /**
+- * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
++ * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or the
++ * due its person's last statement bound it to as shown then, late charge and floor included, or else
+  * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
+- * the rate figure its person's last statement bound it to, or else its amount
++ * the rate figure an older statement bound it to (see statedWhole), or else its amount
+  * at the rate the grade has in force on the claim's date as the claim sees the rates (a forward-only
+  * rate saved after it was added passed over); the late charge is, for every full 30 days
+  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
+  * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
+  * like the claim, added up. The floor is applied last; the one
+  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
+- * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
++ * roundsHalfUp), else half to even. A correction
+  * has no floor and no late charge, and a claim whose late charge was waived no late charge. Null when
+  * there is no figure.
+  */
+@@ -161,6 +162,7 @@ export function claimDueCents(
+   inherited: RateView[][] = [],
+ ): number | null {
+   if (claim.settledDue !== null) return cents(claim.settledDue);
++  if (claim.stated && claim.statedWhole) return claim.statedDue === null ? null : cents(claim.statedDue);
+   let figure: number | null;
+   if (claim.stated) {
+     figure = claim.statedDue === null ? null : cents(claim.statedDue);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6124a599..2600a65b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -107,6 +107,13 @@ public class Claim {
+     @Column(name = "stated_due", precision = 14, scale = 2)
+     private BigDecimal statedDue;
+ 
++    /**
++     * Whether the bound figure is the claim's whole due as shown, late charge and floor included;
++     * false for a figure bound before statements bound the late charge (the rate figure alone).
++     */
++    @Column(name = "stated_whole", nullable = false)
++    private boolean statedWhole;
++
+     /** The number of the claim this one corrects; null unless it is a correction. */
+     @Column(name = "corrects")
+     private String corrects;
+@@ -390,10 +397,20 @@ public class Claim {
+         return statedDue;
+     }
+ 
+-    /** Bind the claim to its due figure (null when n/a) as a statement is taken. */
++    public boolean isStatedWhole() {
++        return statedWhole;
++    }
++
++    /** Bind the claim to its due as shown, late charge and floor included (null when n/a), as a statement is taken. */
+     public void bind(BigDecimal due) {
++        bind(due, true);
++    }
++
++    /** Bind the claim to a figure (null when n/a): its whole due as shown, or its rate figure alone. */
++    public void bind(BigDecimal due, boolean whole) {
+         this.stated = true;
+         this.statedDue = due;
++        this.statedWhole = whole;
+     }
+ 
+     /** Move the claim to a new date; its due-by, number and any bound figure are kept. */
+@@ -442,6 +459,7 @@ public class Claim {
+     public void unbind() {
+         this.stated = false;
+         this.statedDue = null;
++        this.statedWhole = false;
+     }
+ 
+     public LocalDate getDeferredUntil() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index fbdb1c89..3338954c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -37,13 +37,15 @@ public class ClaimController {
+      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
+      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
+      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
+-     * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived.
++     * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived, and whether the
++     * figure it was bound to is its whole due as shown (late charge and floor included).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
+-            String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived) {
++            String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived,
++            boolean statedWhole) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -56,7 +58,7 @@ public class ClaimController {
+                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
+                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
+-                    claim.isWaived());
++                    claim.isWaived(), claim.isStatedWhole());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 380e3552..da7d2f9f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -95,7 +95,8 @@ public class Dues {
+ 
+     /**
+      * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
+-     * else the rate figure its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
++     * else the figure its person's last statement bound it to (its whole due as shown then, late charge
++     * included), else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
+      */
+     public BigDecimal figure(Claim claim, String grade) {
+         return figure(claim, grade, live(claim.getSheetId()));
+@@ -112,7 +113,8 @@ public class Dues {
+     /**
+      * The due a claim shows: the greater of the floor in force on its date and its figure (see
+      * {@link #figure}) with the late charge on top while it is overdue; a settled claim's figure is
+-     * frozen as it was settled. Null (n/a) when it has no figure.
++     * frozen as it was settled, and a claim a statement bound shows the due it bound, its late charge no
++     * longer following the sheet's today. Null (n/a) when it has no figure.
+      */
+     public BigDecimal due(Claim claim, String grade) {
+         return due(claim, grade, live(claim.getSheetId()));
+@@ -123,14 +125,28 @@ public class Dues {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
++        if (boundWhole(claim)) {
++            return claim.getStatedDue();
++        }
+         return floored(claim, withLate(claim, grade, figure(claim, grade, basis), basis), basis);
+     }
+ 
+     /**
+-     * The due a claim is settled at: the figure a statement bound it to, else its live figure, with
+-     * the late charge it has on the sheet's today on top; null when it has no figure.
++     * Whether a statement bound the claim's whole due as shown, late charge and floor included (a
++     * figure bound before statements bound the late charge is the rate figure alone).
++     */
++    private static boolean boundWhole(Claim claim) {
++        return claim.isStated() && claim.isStatedWhole();
++    }
++
++    /**
++     * The due a claim is settled at: the due a statement bound it to, else its live figure with the
++     * late charge it has on the sheet's today on top; null when it has no figure.
+      */
+     public BigDecimal settling(Claim claim, String grade) {
++        if (boundWhole(claim)) {
++            return claim.getStatedDue();
++        }
+         Basis basis = live(claim.getSheetId());
+         return floored(claim, withLate(claim, grade, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
+     }
+@@ -160,7 +176,7 @@ public class Dues {
+     /**
+      * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
+      * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
+-     * against the policy date. The charge is never bound: it always follows the sheet's today.
++     * against the policy date. The charge follows the sheet's today until a statement binds it with the figure.
+      * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue),
+      * nor a claim whose late charge was waived.
+      */
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index c39fd324..0b1cdd59 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -81,7 +81,7 @@ public class SheetHistory {
+ 
+     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+-            LocalDate deferredUntil, Long added, Boolean waived) {
++            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole) {
+     }
+ 
+     /**
+@@ -257,7 +257,7 @@ public class SheetHistory {
+             claim.number(c.number());
+             claim.settleDue(c.settledDue());
+             if (c.stated()) {
+-                claim.bind(c.statedDue());
++                claim.bind(c.statedDue(), Boolean.TRUE.equals(c.statedWhole()));
+             }
+             claim.defer(c.deferredUntil());
+             claim.keepAdded(c.added());
+@@ -305,6 +305,6 @@ public class SheetHistory {
+     private static ClaimState kept(Claim c) {
+         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
+                 c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
+-                c.isWaived());
++                c.isWaived(), c.isStatedWhole());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index e87c3302..d8c64fa2 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -26,7 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * A person's statements: taking one records their due-total on the sheet's today (or a date before it), binds each of
+- * their counting claims to the due figure it shows then, and leaves the rest unbound. A steward may
++ * their counting claims to the due it shows then (late charge included), and leaves the rest unbound. A steward may
+  * cancel the last one: the claims it bound are live again, and the person shows the one before it.
+  */
+ @Service
+@@ -119,12 +119,12 @@ public class StatementService {
+             if (!then.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(day), day)) {
+                 continue;
+             }
+-            // The statement binds the rate figure; the late charge and floor stay live, but count in its total.
+-            BigDecimal figure = dues.figure(claim, then.gradeOn(claim.getDate()), basis);
+-            figured |= figure != null;
+-            bound.put(entry.getKey(), figure);
+-            counted++;
++            // The statement binds the due as shown, late charge and floor included: a figure an earlier
++            // statement bound stays as it is.
+             BigDecimal due = dues.due(claim, then.gradeOn(claim.getDate()), basis);
++            figured |= due != null;
++            bound.put(entry.getKey(), due);
++            counted++;
+             if (due != null) {
+                 total = total.add(due);
+             }
+diff --git a/src/main/resources/db/migration/V99__claim_stated_whole.sql b/src/main/resources/db/migration/V99__claim_stated_whole.sql
+new file mode 100644
+index 00000000..04eeba19
+--- /dev/null
++++ b/src/main/resources/db/migration/V99__claim_stated_whole.sql
+@@ -0,0 +1,4 @@
++-- Whether the figure a statement bound the claim to is its whole due as shown, late charge and floor
++-- included (so neither follows the sheet's today while it is bound). Claims bound before this were
++-- bound to their rate figure alone, the late charge and floor staying live on top.
++ALTER TABLE claim ADD COLUMN stated_whole BOOLEAN NOT NULL DEFAULT FALSE;
