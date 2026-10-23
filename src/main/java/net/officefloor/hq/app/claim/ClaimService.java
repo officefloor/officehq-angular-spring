@@ -162,7 +162,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
         Sheet sheet = sheets.lock(sheetId);
-        int terms = terms(sheet, person, sheet.getToday());
+        int terms = terms(sheet, person, dated, sheet.getToday());
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         // Whether a new claim lands in a closed period is judged by its terms in calendar days from its date.
         periods.refuseIfClosed(sheetId, dated.plusDays(terms));
@@ -312,8 +312,8 @@ public class ClaimService {
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
      * the person's grade has in force on the claim's date, or at the figure a statement bound it to,
      * with the late charge it has then frozen in.
-     * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
-     * is never reused. The user who opened a claim,
+     * Opening records who opened the claim; settling numbers it (see {@link #numberAtSettlement}), and a
+     * voided claim keeps any number it had, which is never reused. The user who opened a claim,
      * or last edited it, is refused when settling it. A clerk settling a claim whose due is above the sheet's clerk limit
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
@@ -411,14 +411,12 @@ public class ClaimService {
             settledDue = null;
         }
         claim.become(next);
-        if (next == ClaimStatus.OPEN) {
-            claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
-        }
         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
             claim.settleDue(settledDue);
+            numberAtSettlement(sheetId, claim);
         }
         if (next == ClaimStatus.VOID) {
             claim.voidedWith(voidReason);
@@ -687,6 +685,7 @@ public class ClaimService {
         refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), approvedDue);
         claim.settleDue(approvedDue);
         claim.become(ClaimStatus.SETTLED);
+        numberAtSettlement(sheetId, claim);
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
                 " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
@@ -696,8 +695,8 @@ public class ClaimService {
     }
 
     /**
-     * Review a REVIEW claim: it becomes OPEN, numbered now, keeping who opened it; audited as
-     * CLAIM_REVIEWED, then CLAIM_OPENED with its number. Only a steward reviews; refused when the claim
+     * Review a REVIEW claim: it becomes OPEN, keeping who opened it; audited as
+     * CLAIM_REVIEWED, then CLAIM_OPENED. It is numbered when settled. Only a steward reviews; refused when the claim
      * is not REVIEW, or is due by inside a closed period.
      */
     @Transactional
@@ -715,7 +714,6 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         Person person = person(sheetId, claim.getPersonId());
         claim.become(ClaimStatus.OPEN);
-        claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
         audited("CLAIM_REVIEWED", sheetId, user, person, saved, null, "");
         audited("CLAIM_OPENED", sheetId, user, person, saved);
@@ -856,7 +854,7 @@ public class ClaimService {
     /**
      * Split an amount (above 0.00 and below the claim's amount) off an OPEN claim: it keeps the rest
      * of its amount and loses any figure a statement bound it to; a new OPEN claim with the split-off
-     * amount, the same date and note, the next number, opened by the user and due by a date fixed now
+     * amount, the same date and note, no number until it is settled, opened by the user and due by a date fixed now
      * from the terms in force on the sheet's today (the day it is created), names the original's number as the one it was split from;
      * it is a late entry when that due-by is inside a soft-closed period. Refused when the claim is not
      * OPEN, is deferred on the sheet's today, or when its due-by or the new claim's is inside a closed
@@ -883,18 +881,17 @@ public class ClaimService {
                     "The amount split off must be above 0.00 and below the claim's " + claim.getAmount().toPlainString() + ".");
         }
         Person person = person(sheetId, claim.getPersonId());
-        int terms = terms(sheet, person, today);
+        int terms = terms(sheet, person, claim.getDate(), today);
         LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate(), terms);
         periods.refuseIfClosed(sheetId, dueBy);
         Claim split = claim.split(off, terms, dueBy);
         if (periods.softClosedOn(sheetId, dueBy)) {
             split.markLateEntry();
         }
-        split.number(periods.nextClaimNumber(sheetId, split.getDueBy()));
         split.openedBy(user);
         Claim original = claims.saveAndFlush(claim);
         split = logged(claims.saveAndFlush(split), user, person);
-        audited("CLAIM_SPLIT", sheetId, user, person, original, original.getNumber(), " into=" + split.getNumber());
+        audited("CLAIM_SPLIT", sheetId, user, person, original, original.getNumber(), " into=" + (split.getNumber() != null ? split.getNumber() : ""));
         audited("CLAIM_OPENED", sheetId, user, person, split);
         rollups.audit(sheetId, user, before);
         return new Split(original, split);
@@ -1103,13 +1100,13 @@ public class ClaimService {
     }
 
     /**
-     * The terms, in business days, a claim of the person created on a day (the sheet's today then) is fixed
-     * with, whatever its date: the first of the person's own terms, their grade's terms and the sheet's terms
-     * in force on that day.
+     * The terms, in business days, a claim of the person dated on a date and created on a day (the sheet's
+     * today then) is fixed with: the first of the person's own terms, the terms of the grade they have on the
+     * claim's date and the sheet's terms, each as in force on the day it is created.
      */
-    private static int terms(Sheet sheet, Person person, LocalDate date) {
-        Integer own = person.termsOn(date);
-        return own != null ? own : sheet.termsFor(person.gradeOn(date), date);
+    private static int terms(Sheet sheet, Person person, LocalDate dated, LocalDate created) {
+        Integer own = person.termsOn(created);
+        return own != null ? own : sheet.termsFor(person.gradeOn(dated), created);
     }
 
     private Person person(String sheetId, long personId) {
@@ -1124,6 +1121,16 @@ public class ClaimService {
     private Claim logged(Claim claim, String user, Person person) {
         claim.logged(user, sheets.today(claim.getSheetId()), dues.due(claim, person.gradeOn(claim.getDate())));
         return claims.saveAndFlush(claim);
+    }
+
+    /**
+     * Give a claim being settled or approved the next number in its sequence, by the due-by that places it
+     * now; a claim already numbered (before numbering moved to settlement) keeps its number.
+     */
+    private void numberAtSettlement(String sheetId, Claim claim) {
+        if (claim.getNumber() == null) {
+            claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
+        }
     }
 
     /** Record the change to the claim once it is committed; a claim with a number carries it. */

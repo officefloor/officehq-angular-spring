@@ -406,7 +406,7 @@ public class PeriodService {
     }
 
     /**
-     * Give out the number for a claim due by a date (its due-by) as it is opened, holding the sheet's lock until
+     * Give out the number for a claim due by a date (its due-by) as it is settled or approved, holding the sheet's lock until
      * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
      * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
      * when it falls in none; otherwise it is the next sheet-wide number of the sheet's tree within the

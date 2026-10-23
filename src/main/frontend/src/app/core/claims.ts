@@ -39,8 +39,8 @@ export interface ClaimView {
   note: string;
   status: ClaimStatus;
   /**
-   * The number given when the claim was opened: sheet-wide (e.g. "3"), or under period numbering
-   * within its period (e.g. "P1-2", or "X-1" in no period); null while DRAFT, and kept once VOID.
+   * The number given when the claim was settled or approved: sheet-wide (e.g. "3"), or under period numbering
+   * within its period (e.g. "P1-2", or "X-1" in no period); null until then, and kept once VOID.
    */
   number: string | null;
   /**

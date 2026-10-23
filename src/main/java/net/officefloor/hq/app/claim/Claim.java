@@ -78,7 +78,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number given to the claim when opened; null while DRAFT, and kept once VOID. */
+    /** The sheet's number given to the claim when settled or approved; null before then, and kept once VOID. */
     @Column(name = "claim_number")
     private String number;
 
@@ -330,7 +330,7 @@ public class Claim {
         this.voidReason = reason;
     }
 
-    /** Give the claim its number when it is opened; it keeps it from then on. */
+    /** Give the claim its number when it is settled or approved; it keeps it from then on. */
     public void number(String number) {
         this.number = number;
     }

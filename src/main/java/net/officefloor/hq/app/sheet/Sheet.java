@@ -659,7 +659,7 @@ public class Sheet {
         return entryDate != null ? entryDate : today;
     }
 
-    /** Whether a claim opened now is numbered within its period: the setting is a date on or before today. */
+    /** Whether a claim settled now is numbered within its period: the setting is a date on or before today. */
     public boolean numbersByPeriod() {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
     }
