@@ -785,6 +785,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 </button>
                 <button
                   type="button"
+                  data-testid="person-export"
+                  [attr.aria-label]="'Export the row for ' + p.name + ' as CSV'"
+                  (click)="exportPerson(p)"
+                >
+                  Export row
+                </button>
+                <button
+                  type="button"
                   data-testid="person-unstate"
                   [attr.aria-label]="'Cancel the last statement for ' + p.name"
                   (click)="unstate(p)"
@@ -2384,6 +2392,29 @@ export class People {
         }),
     ];
     this.download(lines, 'statement');
+  }
+
+  /**
+   * Download a person's row as a CSV file: a header line, then one line per cell, in a fixed order,
+   * with the value as the row shows it. Each line ends with a line feed.
+   */
+  protected async exportPerson(person: PersonView): Promise<void> {
+    await this.session.settled();
+    this.personError.set(null);
+    const lines = [
+      ['cell', 'value'],
+      ['person-name', this.shownName(person)],
+      ['person-grade', this.gradeOf(person)],
+      ['person-claimed', this.claimed(person.id)],
+      ['person-due-total', this.dueTotalOf(person)],
+      ['person-statement-count', String(person.statementCount)],
+      ['person-overdue-total', this.overdueTotalOf(person)],
+      ['person-hold', person.held ? 'yes' : 'no'],
+      ['person-retired', person.retiredFrom === null ? 'no' : 'yes'],
+      ['person-aliases', this.aliasesOf(person)],
+      ['person-score', this.scoreOf(person)],
+    ];
+    this.download(lines, 'person');
   }
 
   private download(lines: string[][], name: string): void {
