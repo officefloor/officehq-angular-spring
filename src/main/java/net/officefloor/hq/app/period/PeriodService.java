@@ -217,7 +217,7 @@ public class PeriodService {
             }
             ClaimStatus then = claim.statusAt(period.getToDate());
             if (then == null || !then.counts() || claim.isDeferredOn(today)
-                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today, claim.isHeld()))) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
@@ -250,7 +250,7 @@ public class PeriodService {
             }
             ClaimStatus then = claim.statusAt(period.getToDate());
             if (then == null || !then.isOpen() || claim.isDeferredOn(today)
-                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today, claim.isHeld()))) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));

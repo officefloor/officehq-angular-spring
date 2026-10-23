@@ -2,69 +2,11 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › flags › flags (10.3s)
-  ✘  2 [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 (16.1s)
-  ✓  3 [chromium] › acceptance.spec.ts:527:7 › flags › flags scenario 2 (17.4s)
-  ✘  4 [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 (16.8s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › claim hold › claim hold (7.2s)
+  ✓  2 [chromium] › acceptance.spec.ts:123:7 › claim hold › claim hold scenario 1 (20.2s)
+  ✓  3 [chromium] › acceptance.spec.ts:828:7 › claim hold › claim hold scenario 2 (24.2s)
+  ✓  4 [chromium] › acceptance.spec.ts:1316:7 › claim hold › claim hold scenario 3 (26.2s)
 
-
-  1) [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
-
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
-
-    Received: [31m"6"[39m
-
-      155 |     await ui.sortBy(pg_uma, "due-total");
-      156 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-04-02", "note": "n", "tags": "b,a,a"})).toBeNull();
-    > 157 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "10.35", "date": "2026-03-01"})).toBeNull();
-          |                                                                                         ^
-      158 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-03-15", "tags": " c "})).toBeNull();
-      159 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
-      160 |     expect(await ui.delegate(pg_vic, {"user": "uma", "from": "2026-02-10", "to": "2026-03-01"})).toBe(true);
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:157:89
-
-  2) [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkilkrzu3it[27m-p"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
-
-
-      1063 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-      1064 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
-    > 1065 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-           |                                                      ^
-      1066 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("4");
-      1067 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1068 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1065:54
-
-  2 failed
-    [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ────────────────────────────────
-    [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ───────────────────────────────
-  2 passed (1.1m)
+  Slow test file: [chromium] › acceptance.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.3m)

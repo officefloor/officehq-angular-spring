@@ -91,7 +91,7 @@ public class Rollups {
         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
             Person person = entry.getValue();
             List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
-                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today))
+                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today, claim.isHeld()))
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();

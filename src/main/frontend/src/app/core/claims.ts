@@ -102,6 +102,8 @@ export interface ClaimView {
   added?: number | null;
   /** Whether a steward waived the claim's late charge; false (or absent, as kept by an old snapshot) when not. */
   waived?: boolean;
+  /** Whether the claim is held, leaving the live totals unless bound by a statement; false (or absent, as kept by an old snapshot) when not. */
+  held?: boolean;
 }
 
 /** A line of a claim: its label, quantity and unit amount (two decimals). */
@@ -411,6 +413,11 @@ export class ClaimsApi {
    */
   timeline(sheet: string, id: number): Promise<string[]> {
     return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held; refused for any other status. */
+  hold(sheet: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/hold`, {}));
   }
 
   /** Waive an OPEN or PENDING claim's late charge; only a steward, and refused when already waived. */

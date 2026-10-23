@@ -117,6 +117,7 @@ public class PersonController {
      * from the beginning of time. Their own terms are a whole number of days, none for no terms of
      * their own; on an edit they are recorded from their date (none: from the beginning of time). A contact is kept trimmed and lower-cased, blank for none. Tags are comma separated
      * (blank: none; none at all keep the person's own). An edit says whether the
+     * grade was chosen on the form (it is then recorded from its date even when already in force there), and whether the
      * terms and the contact were typed on the form (PERSON_EDITED then carries them), and carries the version of the person the form loaded.
      */
     public record PersonForm(
@@ -129,7 +130,8 @@ public class PersonController {
             boolean termsGiven,
             boolean contactGiven,
             Long version,
-            @Size(max = 1000) String tags) {
+            @Size(max = 1000) String tags,
+            boolean gradeGiven) {
     }
 
     /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
@@ -228,7 +230,7 @@ public class PersonController {
         }
         return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
                 form.grade(), form.gradeFrom(), form.terms(), form.termsFrom(), form.contact(), form.termsGiven(),
-                form.contactGiven(), form.tags()));
+                form.contactGiven(), form.tags(), form.gradeGiven()));
     }
 
     /** Give the selected people a grade from a date together, each as the person form would: the people changed. */

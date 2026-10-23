@@ -132,6 +132,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
@@ -301,6 +302,14 @@ const PAST: Record<ClaimAction, string> = {
             (click)="waive(c)"
           >
             Waive late charge
+          </button>
+          <button
+            type="button"
+            data-testid="claim-hold"
+            [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date"
+            (click)="toggleHold(c)"
+          >
+            {{ c.held ? 'Release' : 'Hold' }}
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -999,6 +1008,23 @@ export class Claims {
           : claim.status === 'OPEN' || claim.status === 'PENDING'
             ? "The claim's late charge could not be waived; only a steward waives it."
             : `A ${claim.status} claim's late charge cannot be waived; only an OPEN or PENDING one's can.`,
+      });
+    }
+  }
+
+  /** Hold a claim, or release it when held; refused with an error on its row unless it is OPEN or PENDING. */
+  protected async toggleHold(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.saved.emit(await this.api.hold(sheet, claim.id));
+    } catch {
+      this.claimError.set({
+        id: claim.id,
+        message: claim.status === 'OPEN' || claim.status === 'PENDING'
+          ? `The claim could not be ${claim.held ? 'released' : 'held'}.`
+          : `A ${claim.status} claim cannot be held or released; only an OPEN or PENDING one can.`,
       });
     }
   }

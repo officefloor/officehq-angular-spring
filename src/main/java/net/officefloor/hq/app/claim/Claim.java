@@ -142,6 +142,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: held, an OPEN or PENDING one leaves the live totals unless bound by a statement; false when added. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** The number of the claim this one was split from; null unless it was split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -494,6 +498,15 @@ public class Claim {
     /** Waive the claim's late charge; the caller checks the waiver is allowed. */
     public void waive() {
         this.waived = true;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Hold or release the claim; the caller checks the claim may be. */
+    public void hold(boolean held) {
+        this.held = held;
     }
 
     public String getSplitFrom() {

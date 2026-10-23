@@ -571,6 +571,26 @@ public class ClaimService {
     }
 
     /**
+     * Hold an OPEN or PENDING claim, or release it when held: held, it leaves the live totals as a held
+     * person's claims do, unless bound by a statement. Refused when the claim is not OPEN or PENDING.
+     */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be held or released; only an OPEN or PENDING one can.");
+        }
+        claim.hold(!claim.isHeld());
+        Claim saved = claims.saveAndFlush(claim);
+        audited(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
      */

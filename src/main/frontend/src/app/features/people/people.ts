@@ -35,12 +35,12 @@ type SortKey = (typeof SORT_KEYS)[number];
 
 /**
  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
- * OPEN or PENDING one dated within one of the person's holds or once their retirement date is reached,
+ * OPEN or PENDING one held, or dated within one of the person's holds, or once their retirement date is reached,
  * unless a statement has bound it, nor
  * one deferred on the sheet's today.
  */
 function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
-  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
+  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
 }
 
 /**
@@ -53,7 +53,7 @@ function countsInPeriod(claim: ClaimView, person: PersonView, today: string, per
   const then = statusAt(claim, period.to);
   if (then === null) return false;
   const countedThen = then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
-  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
+  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
 }
 
 /**
@@ -130,7 +130,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           id="person-form-grade"
           data-testid="person-form-grade"
           [value]="grade()"
-          (change)="grade.set(gradeChosen($event)); error.set(null)"
+          (change)="grade.set(gradeChosen($event)); gradeGiven.set(true); error.set(null)"
         >
           @for (g of grades; track g) {
             <option [value]="g">{{ g }}</option>
@@ -1140,6 +1140,8 @@ export class People {
   protected readonly tags = signal('');
   /** Whether the terms or the contact were taken up on the form since it was opened. */
   protected readonly termsGiven = signal(false);
+  /** Whether the grade was chosen on the form since it was filled. */
+  protected readonly gradeGiven = signal(false);
   protected readonly contactGiven = signal(false);
   /** The id of the person open in the form, or null when the form adds a new person. */
   protected readonly editing = signal<number | null>(null);
@@ -2218,6 +2220,7 @@ export class People {
     this.contact.set(person.contact ?? '');
     this.tags.set((person.tags ?? []).join(', '));
     this.termsGiven.set(false);
+    this.gradeGiven.set(false);
     this.contactGiven.set(false);
     this.error.set(null);
   }
@@ -2232,6 +2235,7 @@ export class People {
     this.contact.set('');
     this.tags.set('');
     this.termsGiven.set(false);
+    this.gradeGiven.set(false);
     this.contactGiven.set(false);
     this.error.set(null);
   }
@@ -2250,7 +2254,7 @@ export class People {
       return;
     }
     const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms),
-      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
+      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven(), gradeGiven: this.gradeGiven() };
     if (!form.name.trim()) {
       this.error.set('Type a name for the person.');
       return;

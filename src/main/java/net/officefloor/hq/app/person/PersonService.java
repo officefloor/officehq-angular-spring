@@ -113,6 +113,18 @@ public class PersonService {
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, boolean termsGiven,
             boolean contactGiven, String tags) {
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, termsFrom, contact, termsGiven,
+                contactGiven, tags, false);
+    }
+
+    /**
+     * Edit a person as {@link #edit} does; a grade chosen on the form (gradeGiven) is recorded from its
+     * date even when it is already in force there.
+     */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, boolean termsGiven,
+            boolean contactGiven, String tags, boolean gradeGiven) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (person.getVersion() != version) {
@@ -142,9 +154,10 @@ public class PersonService {
             person.tag(Claim.tagsOf(tags));
         }
         // A grade already in force from the sheet's today is not recorded again, so it does not hold over a
-        // grade recorded later from an earlier date; one given from another date is recorded from it.
+        // grade recorded later from an earlier date, unless it was chosen on the form; one given from another
+        // date is recorded from it.
         LocalDate from = gradeFrom != null ? gradeFrom : today;
-        boolean dated = !from.equals(today) && !grade.equals(person.getGradesFrom().get(from));
+        boolean dated = (gradeGiven || !from.equals(today)) && !grade.equals(person.getGradesFrom().get(from));
         if (dated || !grade.equals(person.gradeOn(from))) {
             person.gradeFrom(grade, from);
         }
