@@ -160,8 +160,8 @@ public class Person {
     private List<StatementLine> statements = new ArrayList<>();
 
     /**
-     * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
-     * one, unless bound by a statement, count in no live total.
+     * The person's holds, in the order they were added: held on the sheet's today, the person gets no
+     * pool cut, their share spread over the others; their claims still count in every total.
      */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
@@ -457,32 +457,22 @@ public class Person {
     }
 
     /**
-     * Whether an OPEN or PENDING claim of the person dated on this date, not bound by a statement, is
-     * left out of the live totals on the sheet's today: when the claim itself is held, when dated within
-     * a hold, or once the person's retirement date is reached.
+     * Whether an OPEN or PENDING claim of the person, not bound by a statement, is left out of the live
+     * totals on the sheet's today: once the person's retirement date is reached. A hold (the person's or
+     * the claim's) does not take a claim out of any total; it only takes the person out of pool cuts.
      */
-    public boolean leavesLive(LocalDate date, LocalDate today, boolean claimHeld) {
-        return claimHeld || heldOn(date) || retiredOn(today);
+    public boolean leavesLive(LocalDate today) {
+        return retiredOn(today);
     }
 
     /**
-     * Whether a claim of the person in this status, dated on this date and bound by a statement or
-     * not, counts in a live total on the sheet's today: OPEN, PENDING and SETTLED claims do, but not an
-     * OPEN or PENDING one held, or dated within a hold, or once the person's retirement date is reached, unless a
-     * statement has bound it, nor one deferred on the sheet's today.
+     * Whether a claim of the person in this status, bound by a statement or not, counts in a live total
+     * on the sheet's today — what is claimed included: OPEN, PENDING and SETTLED claims do, held or not,
+     * but not an OPEN or PENDING one once the person's retirement date is reached, unless a statement
+     * has bound it, nor one deferred on the sheet's today.
      */
-    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated, boolean deferred, LocalDate today,
-            boolean claimHeld) {
-        return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today, claimHeld));
-    }
-
-    /**
-     * Whether a claim of the person in this status, dated on this date and bound by a statement or not,
-     * counts in what is claimed on the sheet's today: as in {@link #countsLive}, except that a hold (the
-     * person's or the claim's) does not take it out; only its due figures leave the totals while held.
-     */
-    public boolean countsClaimed(ClaimStatus status, boolean stated, boolean deferred, LocalDate today) {
-        return status.counts() && !deferred && !(status.isOpen() && !stated && retiredOn(today));
+    public boolean countsLive(ClaimStatus status, boolean stated, boolean deferred, LocalDate today) {
+        return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(today));
     }
 
     /** Whether a claim may be dated on this date: not after the person's retirement. */

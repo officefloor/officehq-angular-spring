@@ -164,7 +164,8 @@ public class ClaimService {
         Sheet sheet = sheets.lock(sheetId);
         int terms = terms(sheet, person, sheet.getToday());
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
-        periods.refuseIfClosed(sheetId, dueBy);
+        // Whether a new claim lands in a closed period is judged by its terms in calendar days from its date.
+        periods.refuseIfClosed(sheetId, dated.plusDays(terms));
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
         String referred = reference(ref);
@@ -193,8 +194,8 @@ public class ClaimService {
     /**
      * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
-     * was added, and so its period. Refused when the claim's due-by, or the due-by a new date would give it
-     * (the terms-th business day after it), is inside a closed period, or when it
+     * was added, and so its period. Refused when the claim's due-by, or a new date plus its terms in
+     * calendar days, is inside a closed period, or when it
      * would be a correction that does not name a SETTLED claim of the same person, or when its external
      * reference (null: kept as it is; blank: none) is already used by another claim on the sheet. Its tags
      * (null: kept as they are) are set from the comma separated text (see {@link Claim#tagsOf}).
@@ -209,7 +210,7 @@ public class ClaimService {
         if (date != null) {
             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
             if (!date.equals(claim.getDate())) {
-                periods.refuseIfClosed(sheetId, holidays.dueBy(sheetId, date, claim.getTerms()));
+                periods.refuseIfClosed(sheetId, date.plusDays(claim.getTerms()));
             }
         }
         if (!claim.getLines().isEmpty() && money(amount).compareTo(claim.getAmount()) != 0) {
@@ -649,8 +650,8 @@ public class ClaimService {
     }
 
     /**
-     * Hold an OPEN or PENDING claim, or release it when held: held, it leaves the live totals as a held
-     * person's claims do, unless bound by a statement. Refused when the claim is not OPEN or PENDING.
+     * Hold an OPEN or PENDING claim, or release it when held: held, it still counts in every total, as a held
+     * person's claims do. Refused when the claim is not OPEN or PENDING.
      */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long claimId) {

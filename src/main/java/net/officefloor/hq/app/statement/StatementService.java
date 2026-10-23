@@ -113,10 +113,9 @@ public class StatementService {
         int counted = 0;
         for (Map.Entry<Long, Claim> entry : theirsThen.entrySet()) {
             Claim claim = entry.getValue();
-            // As in the live totals: an OPEN or PENDING claim held or dated within a hold, or of a person whose
-            // retirement date is reached, and not bound, is left
-            // out, as is a claim deferred on the day.
-            if (!then.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(day), day, claim.isHeld())) {
+            // As in the live totals: an OPEN or PENDING claim of a person whose retirement date is reached,
+            // and not bound, is left out, as is a claim deferred on the day; a held one counts.
+            if (!then.countsLive(claim.getStatus(), claim.isStated(), claim.isDeferredOn(day), day)) {
                 continue;
             }
             // The statement binds the due as shown, late charge and floor included: a figure an earlier

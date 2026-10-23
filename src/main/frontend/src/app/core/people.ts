@@ -72,7 +72,7 @@ export interface PersonView {
   retirements?: RetirementView[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
-  /** The person's holds in the order they were added: their unbound OPEN claims dated within one count in no live total. */
+  /** The person's holds in the order they were added: a person held on the sheet's today gets no pool cut. */
   holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
@@ -134,12 +134,12 @@ export function retiredOn(person: PersonView, today: string): boolean {
 }
 
 /**
- * Whether a person's OPEN or PENDING claim dated on a date, unbound by a statement, is left out of the
- * live totals on the sheet's today: when the claim itself is held, dated within one of their holds, or once
- * their retirement date is reached.
+ * Whether a person's OPEN or PENDING claim, unbound by a statement, is left out of the live totals on the
+ * sheet's today: once their retirement date is reached. A hold (the person's or the claim's) takes no claim
+ * out of any total; it only takes the person out of pool cuts.
  */
-export function leavesLive(person: PersonView, date: string, today: string, claimHeld = false): boolean {
-  return claimHeld || heldOn(person, date) || retiredOn(person, today);
+export function leavesLive(person: PersonView, today: string): boolean {
+  return retiredOn(person, today);
 }
 
 /** A statement taken: the person as stated and their claims, newest first. */

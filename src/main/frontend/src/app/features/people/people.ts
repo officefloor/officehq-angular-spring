@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, retiredOn, termsOn } from '../../core/people';
+import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -34,34 +34,25 @@ const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
 /**
- * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
- * OPEN or PENDING one held, or dated within one of the person's holds, or once their retirement date is reached,
- * unless a statement has bound it, nor
- * one deferred on the sheet's today.
+ * Whether a person's claim counts in the live totals, what they have claimed included: OPEN, PENDING and
+ * SETTLED claims do, held or not, but not an OPEN or PENDING one once their retirement date is reached,
+ * unless a statement has bound it, nor one deferred on the sheet's today.
  */
 function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
-  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
-}
-
-/**
- * Whether a person's claim counts in what they have claimed: as in countsLive, except that a hold (the
- * person's or the claim's) does not take it out; only its due figures leave the totals while held.
- */
-function countsClaimed(claim: ClaimView, person: PersonView, today: string): boolean {
-  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && retiredOn(person, today));
+  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, today));
 }
 
 /**
  * Whether a person's claim counts in a period's live figures: it counts by the status it had at the
  * end of the period's last day (see statusAt), one added after then not counting, and is left out,
  * as in the live totals, when deferred on today or when it is still OPEN or PENDING, unbound by a
- * statement and dated within one of the person's holds or of a person whose retirement date is reached.
+ * statement and of a person whose retirement date is reached.
  */
 function countsInPeriod(claim: ClaimView, person: PersonView, today: string, period: PeriodView): boolean {
   const then = statusAt(claim, period.to);
   if (then === null) return false;
   const countedThen = then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
-  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
+  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, today));
 }
 
 /**
@@ -944,7 +935,7 @@ export class People {
    * Each person's due-total for each period, in whole cents, by period id then person id. While the
    * period is open it is live: the sum of the due figures, as shown now, of the person's claims due by in
    * it that were OPEN, PENDING or SETTLED at the end of its last day, each at the grade in force on its
-   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed or soft-closed it is the figure fixed then,
+   * date (a claim with no figure adds nothing), leaving out those deferred (see countsInPeriod). Once closed or soft-closed it is the figure fixed then,
    * 0 for a person added since.
    */
   private readonly personPeriodCents = computed(() => {
@@ -1369,7 +1360,7 @@ export class People {
   }
 
   /**
-   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsClaimed),
+   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive),
    * held ones included, leaving out claims that correct another.
    */
   protected claimed(personId: number): string {
@@ -1380,7 +1371,7 @@ export class People {
     const person = this.people().find((p) => p.id === personId);
     if (!person) return 0;
     return this.claimsOf(personId)
-      .filter((c) => countsClaimed(c, person, this.today()) && !c.corrects)
+      .filter((c) => countsLive(c, person, this.today()) && !c.corrects)
       .reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
