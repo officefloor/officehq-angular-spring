@@ -266,6 +266,14 @@ public class Person {
         gradesFrom.put(from, grade);
     }
 
+    /** Every grade record of the person on one grade, the first included, becomes another grade. */
+    public void regrade(String from, String into) {
+        if (from.equals(grade)) {
+            grade = into;
+        }
+        gradesFrom.replaceAll((date, recorded) -> from.equals(recorded) ? into : recorded);
+    }
+
     /** The person's own terms in days from the beginning of time; null when they have none. */
     public Integer getTerms() {
         return terms;

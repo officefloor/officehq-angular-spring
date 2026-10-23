@@ -17,7 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Merging a grade into another: every person whose grade in force on the sheet's today is the merged
  * grade is given the other from the sheet's today, each edited as the person form would, in list order,
- * then the figures the whole merge moved. A steward only; refused for the same grade twice. Should any edit be refused, nothing is merged.
+ * and then every grade record of theirs on the merged grade, whatever its date, becomes the other; then
+ * the figures the whole merge moved. A steward only; refused for the same grade twice. Should any edit be refused, nothing is merged.
  */
 @Service
 public class GradeMergeService {
@@ -64,6 +65,11 @@ public class GradeMergeService {
             }
             service.edit(sheetId, user, person.getId(), person.getVersion(), person.getName(), into, null,
                     person.getTerms(), person.getContact(), false, false);
+            // Retroactive: every grade record of theirs on the merged grade becomes the other.
+            people.findById(person.getId()).ifPresent(moved -> {
+                moved.regrade(from, into);
+                people.saveAndFlush(moved);
+            });
             merged++;
         }
         rollups.audit(sheetId, user, before);
