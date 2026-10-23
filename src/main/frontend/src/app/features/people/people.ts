@@ -2137,6 +2137,8 @@ export class People {
     const id = this.editing();
     const contactKey = form.contact.trim().toLowerCase();
     if (contactKey !== '' && this.people().some((p) => p.id !== id && p.contact === contactKey)) {
+      // As when the store refuses it: a refused add leaves nothing typed behind.
+      if (id === null) this.reset();
       this.error.set('That contact is already in use on this sheet.');
       return;
     }

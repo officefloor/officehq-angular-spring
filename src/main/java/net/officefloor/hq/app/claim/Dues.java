@@ -95,8 +95,7 @@ public class Dues {
 
     /**
      * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
-     * else (unless it is PENDING, which is not bound) the rate figure its person's last statement bound it
-     * to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
+     * else the rate figure its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
      */
     public BigDecimal figure(Claim claim, String grade) {
         return figure(claim, grade, live(claim.getSheetId()));
@@ -107,7 +106,7 @@ public class Dues {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue() : live(claim, grade, basis);
+        return claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis);
     }
 
     /**
@@ -137,12 +136,11 @@ public class Dues {
     }
 
     /**
-     * The due a PENDING claim is approved at: its live figure (a statement does not bind it while
-     * PENDING) with the late charge it has on the sheet's today on top; null when it has no figure.
+     * The due a PENDING claim is approved at: the figure a statement bound it to, else its live figure,
+     * with the late charge it has on the sheet's today on top; null when it has no figure.
      */
     public BigDecimal approving(Claim claim, String grade) {
-        Basis basis = live(claim.getSheetId());
-        return floored(claim, withLate(claim, grade, live(claim, grade, basis), basis), basis);
+        return settling(claim, grade);
     }
 
     /**

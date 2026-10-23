@@ -538,7 +538,7 @@ public class ClaimService {
     }
 
     /**
-     * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at its live figure with
+     * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
      */
     @Transactional
