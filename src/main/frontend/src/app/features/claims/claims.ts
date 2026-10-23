@@ -1229,7 +1229,9 @@ export class Claims {
             : unnoted
               ? "The claim's due is above the note threshold, so it needs a note before it can be opened."
             : steward
-              ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
+              ? action === 'approve' || action === 'reject'
+                ? `Only a steward or the person's approver can ${action} a ${claim.status} claim.`
+                : `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
             : lateVoid
               ? 'A SETTLED claim can only be voided within 7 days of its settlement, outside a closed period.'
             : action === 'delete' && claim.status === 'DRAFT'

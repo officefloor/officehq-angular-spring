@@ -670,7 +670,7 @@ public class ClaimService {
 
     /**
      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
-     * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
+     * the late charge it has then. Only a steward or the person's approver approves, and not the user who opened or last edited the claim.
      */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
@@ -754,7 +754,7 @@ public class ClaimService {
 
     /**
      * Reject a PENDING claim with a reason: it is OPEN again, bound again by its person's last
-     * statement when that statement included it. Only a steward rejects.
+     * statement when that statement included it. Only a steward or the person's approver rejects.
      */
     @Transactional
     public Claim reject(String sheetId, String user, long claimId, String reason) {
@@ -944,8 +944,8 @@ public class ClaimService {
     }
 
     /**
-     * The PENDING claim a steward approves or rejects; refused when it is not PENDING, when its date
-     * is inside a closed period, or when the user is not a steward.
+     * The PENDING claim a steward, or its person's approver, approves or rejects; refused when it is not
+     * PENDING, when its date is inside a closed period, or when the user is neither.
      */
     private Claim pending(String sheetId, String user, long claimId) {
         Claim claim = claim(sheetId, claimId);
@@ -954,8 +954,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim is not pending approval.");
         }
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim.");
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))
+                && !user.equals(person(sheetId, claim.getPersonId()).getApprover())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward or the person's approver approves or rejects a claim.");
         }
         return claim;
     }

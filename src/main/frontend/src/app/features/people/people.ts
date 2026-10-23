@@ -443,6 +443,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
             <th scope="col">Statement lines</th>
             <th scope="col">Snapshots</th>
             <th scope="col">Flag</th>
+            <th scope="col">Approver</th>
             <th scope="col">Active</th>
             @if (columns.shown('hold')) {
               <th scope="col">On hold</th>
@@ -583,6 +584,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 </ul>
               </td>
               <td data-testid="person-flag-shown">{{ flagShown(p) }}</td>
+              <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               @if (columns.shown('hold')) {
                 <td>
@@ -802,6 +804,22 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 >
                   Flag
                 </button>
+                <label [for]="'person-approver-input-' + p.id">Approver</label>
+                <input
+                  type="text"
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  [value]="approverDrafts().get(p.id) ?? ''"
+                  (input)="setApproverDraft(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-approver-save"
+                  [attr.aria-label]="'Set approver of ' + p.name"
+                  (click)="setApprover(p)"
+                >
+                  Set approver
+                </button>
                 <label [for]="'person-merge-into-' + p.id">Merge into</label>
                 <select
                   [id]="'person-merge-into-' + p.id"
@@ -907,6 +925,8 @@ export class People {
   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
   /** The flag reason and until-date typed on each person's row, by person id. */
   protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
+  /** The approver user name typed on each person's row, by person id. */
+  protected readonly approverDrafts = signal(new Map<number, string>());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly byPerson = computed(() => {
@@ -1282,6 +1302,7 @@ export class People {
         this.retireDates.clear();
         this.holdDrafts.set(new Map());
         this.flagDrafts.set(new Map());
+        this.approverDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
         this.mergeChoices.clear();
@@ -1909,6 +1930,32 @@ export class People {
       });
     } catch {
       this.personError.set({ id: person.id, message: 'The person could not be flagged.' });
+    }
+  }
+
+  /** Change the approver user name typed on a person's row. */
+  protected setApproverDraft(personId: number, user: string): void {
+    this.approverDrafts.update((map) => new Map(map).set(personId, user));
+    this.personError.set(null);
+  }
+
+  /** Set the user name typed as the person's approver: they may approve or reject the person's PENDING claims. */
+  protected async setApprover(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = (this.approverDrafts().get(person.id) ?? '').trim();
+    try {
+      const saved = await this.api.setApprover(sheet, person.id, user);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.approverDrafts.update((map) => {
+        const next = new Map(map);
+        next.delete(person.id);
+        return next;
+      });
+    } catch {
+      this.personError.set({ id: person.id, message: "The person's approver could not be set." });
     }
   }
 

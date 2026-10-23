@@ -43,7 +43,7 @@ public class PersonController {
      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
      * in the order they were named, and whether their name or an alias is in use on another sheet of the
      * sheet's tree (clashing), and the sheet they were last transferred from (null when never), and their
-     * flag's reason and last day (both null when never flagged).
+     * flag's reason and last day (both null when never flagged), and their approver (null when none).
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time). Their terms are their own from the beginning of time; the own terms recorded
      * since are listed by the date each is in force from.
@@ -54,7 +54,7 @@ public class PersonController {
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
             String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines,
-            String flagReason, LocalDate flagUntil) {
+            String flagReason, LocalDate flagUntil, String approver) {
 
         public static PersonView of(Person person) {
             return of(person, false);
@@ -83,7 +83,7 @@ public class PersonController {
                             .map(statement -> new StatementLineView(statement.getTakenOn(),
                                     Rollups.shown(statement.getTotal())))
                             .toList(),
-                    person.getFlagReason(), person.getFlagUntil());
+                    person.getFlagReason(), person.getFlagUntil(), person.getApprover());
         }
     }
 
@@ -324,6 +324,20 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FlagForm form) {
         return view(service.flag(sheetId, SignedIn.name(user), personId, form.reason(), form.until()));
+    }
+
+    /** The user name set as a person's approver; blank for none. */
+    public record ApproverForm(@Size(max = 200) String user) {
+    }
+
+    /** Set the user name that may approve or reject a person's PENDING claims. */
+    @PostMapping("/{personId}/approver")
+    public PersonView setApprover(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ApproverForm form) {
+        return view(service.setApprover(sheetId, SignedIn.name(user), personId, form.user()));
     }
 
     /** The person named as a patron. */

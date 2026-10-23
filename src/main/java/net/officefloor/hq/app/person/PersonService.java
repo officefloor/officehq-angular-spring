@@ -297,6 +297,23 @@ public class PersonService {
     }
 
     /**
+     * Set the user name that may approve or reject the person's PENDING claims as a steward may; a
+     * blank name sets none.
+     */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long personId, String approver) {
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        String trimmed = approver == null ? "" : approver.trim();
+        person.setApprover(trimmed.isEmpty() ? null : trimmed);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " user=" + trimmed);
+        return saved;
+    }
+
+    /**
      * Name another person on the sheet as a patron of this one; refused for the person themselves and
      * for someone already their patron.
      */

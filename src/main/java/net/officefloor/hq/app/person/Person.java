@@ -108,6 +108,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user name that may approve or reject the person's PENDING claims as a steward may; null when none. */
+    @Column(name = "approver")
+    private String approver;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -363,6 +367,15 @@ public class Person {
 
     public LocalDate getFlagUntil() {
         return flagUntil;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    /** Set the user name that may approve or reject the person's PENDING claims; null for none. */
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     /** Whether the person's flag is in force on a day: they were flagged until it or a later day. */

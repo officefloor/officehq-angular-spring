@@ -84,6 +84,8 @@ export interface PersonView {
   flagReason?: string | null;
   /** The last day (yyyy-mm-dd) the person's flag is in force; null when never, absent from a view kept before flags were. */
   flagUntil?: string | null;
+  /** The user name that may approve or reject the person's PENDING claims; null when none, absent from a view kept before approvers were. */
+  approver?: string | null;
   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
   originSheetId?: string | null;
   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
@@ -253,6 +255,11 @@ export class PeopleApi {
   /** Flag a person with a reason until a date (yyyy-mm-dd); a steward only. */
   flag(sheet: string, id: number, reason: string, until: string): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/flag`, { reason, until }));
+  }
+
+  /** Set the user name that may approve or reject a person's PENDING claims; blank for none. */
+  setApprover(sheet: string, id: number, user: string): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/approver`, { user }));
   }
 
   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
