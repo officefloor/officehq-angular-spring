@@ -1,0 +1,27 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e5e0f482..42bda780 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -523,6 +523,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+               <td>
+                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
+                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
++                <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
+               </td>
+               <td>
+                 <ul>
+@@ -1551,6 +1552,14 @@ export class People {
+     return money(this.settledCents(person));
+   }
+ 
++  /**
++   * A person's score: their settled-total over 100, less 5 for each overdue claim of theirs that counts,
++   * rounded half to even to a whole number.
++   */
++  protected scoreOf(person: PersonView): string {
++    return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
++  }
++
+   /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */
+   protected openTotalOf(person: PersonView): string {
+     return money(this.openCents(person));

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 209,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp209_score",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their score: their settled figures (the due of their SETTLED claims that\ncount) divided by 100, minus 5 for every overdue claim of theirs that counts, rounded half to even\nto a whole number (shown with no decimals, a minus sign when negative).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their score: their settled figures (the due of their SETTLED claims that\ncount) divided by 100, minus 5 for every overdue claim of theirs that counts, rounded half to even\nto a whole number (shown with no decimals, a minus sign when negative).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2aebdb676bd54d1133f6e7df9cb3f6c64958952c",
+  "reset_sha": "",
+  "preagent_sha": "c9f8701c07a8035657708d269b8682329147f757",
+  "prev_sha": "c9f8701c07a8035657708d269b8682329147f757",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9809678000000001,
+    "input_tokens": 44,
+    "output_tokens": 7441,
+    "cache_read_tokens": 1162734,
+    "cache_creation_tokens": 27369,
+    "num_turns": 21,
+    "duration_ms": 219565,
+    "duration_api_ms": 121908,
+    "model": "claude-opus-5-5",
+    "session_id": "33db44a8-e67a-4c91-ad84-f6d85f475de8",
+    "stop_reason": "success",
+    "result_text": "I added the score to each person, but I couldn't get `bin/e2e` fully green: **2 of the 4 tests pass and 2 fail**. Both failures are in existing features (adding a claim and quick add), not the score, and they failed the same way on both runs. The main `score` test passes; it checks the scores 2, 0, 2 and \u22125.\n\n**The change** is in `src/main/frontend/src/app/features/people/people.ts`. Each person row now shows `score <span data-testid=\"person-score\">`, next to the settled and open totals. The new `scoreOf(person)` takes the person's settled total in cents, subtracts 5.00 for each overdue claim that counts, and divides by 10000. It reuses the file's existing settled-total and overdue logic and its half-to-even rounding helper. No server or stored-data change was needed, since the screen already works these figures out.\n\n**Failure 1: `score scenario 1` (`acceptance.spec.ts:144`).** The test expects Ben's claim (3.33, dated 2026-03-01) to be refused, but the app accepts it. The rule that seemed likely is that a new claim falling due inside a closed period is refused. It doesn't fire here: the server takes the grade's terms (`terms-A`) in force on the day the claim is entered, which gives 20 days. That puts the due date on 2026-03-21, in the soft-closed P2 rather than the closed P1. I couldn't tell from the code which rule the test expects instead.\n\n**Failure 2: `score scenario 3` (`acceptance.spec.ts:1083`).** The user \"wes\" has the restricted role. When wes quick-adds a new person, Dot, wes's own list hides Dot, because a restricted user only sees their own person and their crews' people (`people.ts:906\u2013930`). The test then waits for Dot's row, which never appears, and times out. The test expects wes to see Dot, which conflicts with that visibility rule.\n\nI didn't change those rules on a guess, because both involve existing behaviour other tests may depend on. If you can tell me the intended rules, or want me to keep digging into what these scenarios expect, I can take that on next.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9809678000000001,
+        "num_turns": 21,
+        "duration_ms": 219565,
+        "duration_api_ms": 121908,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp209.agent.jsonl",
+  "agent_diff_file": "cp209.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
