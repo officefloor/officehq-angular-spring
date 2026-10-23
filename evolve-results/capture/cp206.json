@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1831e2264b4d97ea6efcc0e19eb0fe76dc5e4544",
+  "reset_sha": "",
+  "preagent_sha": "1bc5b5efe421fed3ffae31e5332799e850d6c4b2",
+  "prev_sha": "1bc5b5efe421fed3ffae31e5332799e850d6c4b2",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1278832,
+    "input_tokens": 62,
+    "output_tokens": 14968,
+    "cache_read_tokens": 1534056,
+    "cache_creation_tokens": 65183,
+    "num_turns": 32,
+    "duration_ms": 565931,
+    "duration_api_ms": 162005,
+    "model": "claude-opus-5-5",
+    "session_id": "98127448-1fea-45c9-b967-41fbe1e30a08",
+    "stop_reason": "success",
+    "result_text": "The restricted role is in place, but `bin/e2e` still fails 2 of its 4 tests (2 pass). Both failures come from errors in the spec itself, not the app, and I'm not allowed to edit the spec.\n\n**Why the two tests fail:**\n- **Scenario 2, line 926** expects the parent sheet to show the literal text `\"__SHEET__-p\"`. That's a placeholder that was never filled in; the app correctly shows `<sheet id>-p`.\n- **Scenario 3, lines 1237 and 1240** expect the same claim (`c_ada_3`, added as 7.77) to be `DRAFT` and then `SETTLED`, with no action in between. From line 1523 it also expects that claim to be 4.00 dated 2026-03-05. These are made by a regular clerk (uma), so the new role doesn't touch them.\n\nTo check everything else, I ran a temporary copy of the spec with only those lines changed: the placeholder replaced by `${sheet}-p`, and the `c_ada_3` claim checks removed. Scenarios 2 and 3 then both passed, including all the restricted-user checks. I deleted the copy afterwards, so the real spec is untouched.\n\n**What changed:**\n- **Stored data:** a new migration, `V110__role_restricted.sql`, allows `restricted` as a stored role.\n- **Server:**\n  - The role form accepts `restricted`; anything else (e.g. `x`) is still refused.\n  - A new `GET /api/sheets/{id}/roles/mine` returns the role the signed-in user acts in, including steward while a delegation is in force.\n- **Front end:**\n  - `restricted` is in the role list.\n  - The people list reads your role each time the sheet loads. For a restricted user it shows only the person with their name (or alias) and the people of the crews that person leads or belongs to.\n  - The totals row, header, summary, periods and pools still count everyone on the sheet.\n\n**Decision for you:** the request only covers what a restricted user sees, so I made them act as a clerk otherwise. They follow the clerk rules for open, settle, void and so on, and the clerk limit applies to them. No test covers this, so say if you'd rather they had different permissions.\n\nThe filtering happens on screen only. The server still sends a restricted user the whole sheet, because every total is worked out in the browser from the full list. That means this hides rows but doesn't stop anyone reading the data from the server. If you need it to, both the server and those totals would have to change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1278832,
+        "num_turns": 32,
+        "duration_ms": 565931,
+        "duration_api_ms": 162005,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

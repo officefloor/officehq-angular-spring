@@ -1,0 +1,377 @@
+diff --git a/.e2e.out b/.e2e.out
+index f0ae484a..c9664b6c 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,66 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan history › plan history (13.3s)
+-  ✘  2 [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 (39.6s)
+-  ✘  3 [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 (29.0s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1288:7 › plan history › plan history scenario 3 (24.8s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › restricted role › restricted role (18.4s)
++  ✓  2 [chromium] › acceptance.spec.ts:143:7 › restricted role › restricted role scenario 1 (32.0s)
++  ✘  3 [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 (32.5s)
++  ✘  4 [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 (38.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ─────────────────
++  1) [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ──────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('note-line')
+-    [32m- Expected  - 1[39m
+-    [31m+ Received  + 3[39m
+-
+-    [32m- Array [][39m
+-    [31m+ Array [[39m
+-    [31m+   "2026-03-10 wes: hi",[39m
+-    [31m+ ][39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvkrr06mirp8[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('note-line')[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-    [2m  -   locator resolved to 1 element[22m
+-
+-
+-      354 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+-      355 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+-    > 356 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+-          |                                                   ^
+-      357 |     await ui.expectAudit(sheet, [
+-      358 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+-      359 |       `SETTING_CHANGED sheet=${sheet} by=uma key=clerk-limit value=3.00`,
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:356:51
+-
+-  2) [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ────────────────
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
++    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
++
++
++      924 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      925 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 926 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      927 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
++      928 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      929 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:926:54
++
++  2) [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ─────────
+ 
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+-
+-    Received: [31m"16"[39m
+-
+-      1027 |     expect(await ui.statementAsOf(pg_uma, p_ada, "2026-03-05")).toBe(false);
+-      1028 |     expect(await ui.quickAdd(pg_uma, {"name": "Dot", "amount": "10.35"})).toBeNull();
+-    > 1029 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-02-25", "note": "n", "ref": "R-1"})).toBeNull();
+-           |                                                                                                                    ^
+-      1030 |     await ui.refresh(pg_uma);
+-      1031 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+-      1032 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1029:116
++    Locator: getByTestId('claim-row-11').getByTestId('claim-status')
++    Expected string: [32m"SETTLED"[39m
++    Received string: [31m"DRAFT"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-status')[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
++    [2m  -   unexpected value "DRAFT"[22m
++
++
++      1238 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
++      1239 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-due")).toHaveText("n/a");
++    > 1240 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-status")).toHaveText("SETTLED");
++           |                                                                                          ^
++      1241 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
++      1242 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-due")).toHaveText("n/a");
++      1243 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("VOID");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1240:90
+ 
+   2 failed
+-    [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ──────────────────
+-    [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ─────────────────
+-  2 passed (1.9m)
+- 1816197
+\ No newline at end of file
++    [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ───────────
++    [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ──────────
++  2 passed (2.1m)
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index f9beceb2..7ec58ca7 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -3,8 +3,11 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { DatedValue } from './session';
+ 
+-/** The roles a user name can have on a sheet; a name with none set is a clerk, and a viewer can change nothing. */
+-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
++/**
++ * The roles a user name can have on a sheet; a name with none set is a clerk, a viewer can change
++ * nothing, and a restricted one sees on the people list only its own person and its crews' people.
++ */
++export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
+ export type RoleName = (typeof ROLES)[number];
+ 
+ export interface RoleView {
+@@ -301,6 +304,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.get<RoleView[]>(`${this.url(sheet)}/roles`));
+   }
+ 
++  /** The role the signed-in user acts in on the sheet. */
++  myRole(sheet: string): Promise<RoleView> {
++    return firstValueFrom(this.http.get<RoleView>(`${this.url(sheet)}/roles/mine`));
++  }
++
+   /** Set a user name's role on the sheet. */
+   setRole(sheet: string, form: RoleView): Promise<RoleView> {
+     return firstValueFrom(this.http.put<RoleView>(`${this.url(sheet)}/roles`, form));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 13690544..e0fb9951 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,6 +9,7 @@ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+ import { Session, graceOn, valueOn } from '../../core/session';
++import { RoleName, SettingsApi } from '../../core/settings';
+ import { Claims } from '../claims/claims';
+ import { Header } from '../header/header';
+ import { Consolidated } from '../consolidated/consolidated';
+@@ -888,6 +889,7 @@ export class People {
+   private readonly claimsApi = inject(ClaimsApi);
+   private readonly ratesApi = inject(RatesApi);
+   private readonly periodsApi = inject(PeriodsApi);
++  private readonly settingsApi = inject(SettingsApi);
+   protected readonly voidReasons = inject(VoidReasons);
+   protected readonly columns = inject(Columns);
+   protected readonly peopleColumns = PEOPLE_COLUMNS;
+@@ -896,10 +898,34 @@ export class People {
+   protected readonly people = signal<PersonView[]>([]);
+   /** Whether retired people are listed; off when the screen opens, and kept across sheet loads. */
+   protected readonly showRetired = signal(false);
+-  /** The people listed: everyone, or only those not retired unless retired people are shown. */
+-  protected readonly shownPeople = computed(() =>
+-    this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null),
+-  );
++  /** The role the signed-in user acts in on the sheet, as read with its people; null until read. */
++  protected readonly myRole = signal<RoleName | null>(null);
++  /**
++   * The ids of the people a restricted user may see listed: their own person and the leads and members
++   * of the crews that person leads or belongs to; null when the user is not restricted.
++   */
++  private readonly visibleIds = computed(() => {
++    if (this.myRole() !== 'restricted') return null;
++    const me = this.me();
++    if (!me) return new Set<number>();
++    const ids = new Set<number>([me.id]);
++    for (const c of this.crews()) {
++      const members = c.members.map((m) => m.personId);
++      if (c.leadId !== me.id && !members.includes(me.id)) continue;
++      ids.add(c.leadId);
++      for (const id of members) ids.add(id);
++    }
++    return ids;
++  });
++  /**
++   * The people listed: everyone, or only those not retired unless retired people are shown; for a
++   * restricted user, only those they may see.
++   */
++  protected readonly shownPeople = computed(() => {
++    const visible = this.visibleIds();
++    const listed = visible === null ? this.people() : this.people().filter((p) => visible.has(p.id));
++    return this.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
++  });
+   protected readonly sortKeys = SORT_KEYS;
+   /** What this screen orders the listed people by; added (list order) when it opens, and kept across sheet loads. */
+   protected readonly sortKey = signal<SortKey>('added');
+@@ -1304,6 +1330,7 @@ export class People {
+       this.session.loads();
+       untracked(() => {
+         this.people.set([]);
++        this.myRole.set(null);
+         this.snapshotLines.set([]);
+         this.watched.set(new Set());
+         this.claims.set([]);
+@@ -2535,13 +2562,14 @@ export class People {
+   private async reload(sheet: string): Promise<void> {
+     const loads = this.session.loads();
+     try {
+-      const [people, watched, claims, rates, inherited, periods] = await Promise.all([
++      const [people, watched, claims, rates, inherited, periods, mine] = await Promise.all([
+         this.api.list(sheet),
+         this.api.watched(sheet),
+         this.claimsApi.list(sheet),
+         this.ratesApi.list(sheet),
+         this.ratesApi.inherited(sheet),
+         this.periodsApi.list(sheet),
++        this.settingsApi.myRole(sheet),
+       ]);
+       // A later load may have started while this one was in flight: only the latest is shown.
+       if (this.session.sheet() === sheet && this.session.loads() === loads) {
+@@ -2550,6 +2578,7 @@ export class People {
+         this.inherited.set(inherited);
+         this.periods.set(periods);
+         this.watched.set(new Set(watched));
++        this.myRole.set(mine.role);
+         this.people.set(people);
+       }
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index c78e142e..d57bc433 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1033,7 +1033,8 @@ public class ClaimService {
+         if (limit == null || due == null || due.compareTo(limit) <= 0) {
+             return false;
+         }
+-        return Role.CLERK.equals(roles.roleOf(sheetId, user));
++        String role = roles.roleOf(sheetId, user);
++        return Role.CLERK.equals(role) || Role.RESTRICTED.equals(role);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/role/Role.java b/src/main/java/net/officefloor/hq/app/role/Role.java
+index b4624f00..6f16bd41 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Role.java
++++ b/src/main/java/net/officefloor/hq/app/role/Role.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** The role a user name has on a sheet: clerk, steward or viewer. A name with no role set is a clerk. */
++/** The role a user name has on a sheet: clerk, steward, viewer or restricted. A name with no role set is a clerk. */
+ @Entity
+ @Table(name = "sheet_role")
+ public class Role {
+@@ -21,6 +21,12 @@ public class Role {
+     /** The role that sees every screen and figure of the sheet but may change nothing on it. */
+     public static final String VIEWER = "viewer";
+ 
++    /**
++     * The role that acts as a clerk but sees on the people list only its own person and the people of
++     * the crews that person leads or belongs to; every other figure is still over the whole sheet.
++     */
++    public static final String RESTRICTED = "restricted";
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index d7c012bf..7751e735 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -32,7 +32,7 @@ public class RoleController {
+     /** A role as entered on the form: a user name and one of the roles. */
+     public record RoleForm(
+             @NotBlank @Size(max = 200) String user,
+-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
++            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER + "|" + Role.RESTRICTED) String role) {
+     }
+ 
+     private final RoleService service;
+@@ -48,6 +48,15 @@ public class RoleController {
+         return service.list(sheetId).stream().map(RoleView::of).toList();
+     }
+ 
++    /** The role the signed-in user acts in on the sheet. */
++    @GetMapping("/mine")
++    public RoleView mine(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        String name = SignedIn.name(user);
++        return new RoleView(name, service.roleOf(sheetId, name));
++    }
++
+     /** Set a user name's role on the sheet. */
+     @PutMapping
+     public RoleView set(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index dbee7e99..395c7f37 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -20,6 +20,7 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
++import net.officefloor.hq.app.role.Role;
+ 
+ /** A sheet: everything else in the app is kept per sheet. It starts empty when first loaded. */
+ @Entity
+@@ -717,6 +718,8 @@ public class Sheet {
+     /** Whether a role may take an action: the roles set for it, else its standing rule. */
+     public boolean permits(String action, String role) {
+         String roles = permissions.getOrDefault(action, STANDING_PERMISSIONS.get(action));
+-        return Arrays.asList(roles.split(",")).contains(role);
++        // A restricted user name sees less of the people list, but acts as a clerk.
++        String as = Role.RESTRICTED.equals(role) ? Role.CLERK : role;
++        return Arrays.asList(roles.split(",")).contains(as);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V110__role_restricted.sql b/src/main/resources/db/migration/V110__role_restricted.sql
+new file mode 100644
+index 00000000..d56ecf80
+--- /dev/null
++++ b/src/main/resources/db/migration/V110__role_restricted.sql
+@@ -0,0 +1,8 @@
++-- A user name may now be restricted: it sees on the people list only the people of the crews its
++-- person leads or belongs to, and that person; every other figure is still over the whole sheet.
++ALTER TABLE sheet_role ADD COLUMN next_role VARCHAR(16) DEFAULT 'clerk' NOT NULL
++    CHECK (next_role IN ('clerk', 'steward', 'viewer', 'restricted'));
++UPDATE sheet_role SET next_role = role;
++ALTER TABLE sheet_role DROP COLUMN role;
++ALTER TABLE sheet_role ALTER COLUMN next_role RENAME TO role;
++ALTER TABLE sheet_role ALTER COLUMN role DROP DEFAULT;
