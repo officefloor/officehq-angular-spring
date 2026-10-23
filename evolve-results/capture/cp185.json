@@ -1,0 +1,64 @@
+{
+  "checkpoint": 185,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp185_partial-settle",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user\nexactly as the settle button does (going to PENDING when the clerk limit says so); a split or a\nsettle that would be refused refuses the whole action with an error on the claim and changes\nnothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user\nexactly as the settle button does (going to PENDING when the clerk limit says so); a split or a\nsettle that would be refused refuses the whole action with an error on the claim and changes\nnothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7e96aa8f725d462a9e4ddd731cf1397af2da7867",
+  "reset_sha": "",
+  "preagent_sha": "23cb0af01bfb13fc24b666d0175e99ce75fd6942",
+  "prev_sha": "23cb0af01bfb13fc24b666d0175e99ce75fd6942",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2419075999999998,
+    "input_tokens": 52,
+    "output_tokens": 20987,
+    "cache_read_tokens": 1315798,
+    "cache_creation_tokens": 69850,
+    "num_turns": 26,
+    "duration_ms": 879613,
+    "duration_api_ms": 211633,
+    "model": "claude-opus-5-5",
+    "session_id": "961d8674-9b5a-41d8-b7c9-d0ff4445fb66",
+    "stop_reason": "success",
+    "result_text": "Part-settle is in place and the main `partial settle` test passes, along with scenario 2. Scenarios 1 and 3 still fail, but they fail the same way with my change taken out, so the problem was already there. Scenario 1 times out at `ui.flag` (spec line 189, flagging a person) and scenario 3 gets 5 instead of 3 from `generatePlans` (line 1391). Neither one uses part-settle, and I haven't tried to fix them.\n\n**What I built**\n- **Server:** a new endpoint, `POST /claims/{id}/settle-part`, in `ClaimController.java`. It first checks whether settling the original claim would be refused: role not allowed, claim not OPEN, closed period, deferred, user opened or last edited it, or due above the proof threshold with no proof. That check is the new `ClaimService.refuseSettling`. If it passes, the endpoint runs the existing split and then the existing settle on the new claim, so the clerk limit can still send it to PENDING. It returns the original and the new claim.\n- **Front end:** each claim row has a `claim-settle-part-amount` input and a `claim-settle-part` button. A refusal shows in `claim-error`, which clears when you type in the input or take the next action. On success both the original and the new claim are updated on screen.\n\n**It is not all-or-nothing, which goes against your request.** You asked that a refused settle refuse the whole action and change nothing, but the test expects otherwise. When vic part-settles 5.00, the test expects an error on screen, yet it also expects the `CLAIM_SPLIT`/`CLAIM_OPENED` audit lines and the original claim reduced to 15.00. That's a split that stayed after the settle was refused.\n\nThe reason is that a split records the person who splits as having opened the new claim, and the settle button won't let anyone settle a claim they opened. So a fully atomic version would refuse every part-settle, and the test would fail. The test passes with this order:\n1. Check the settle against the original claim first. If that refuses, nothing is written. This covers four of vic's tries plus uma's and wes's.\n2. Run the split and the settle as separate steps. If the settle then refuses, the split stays in place.\n\n**Decision for you:** if you'd rather have it all-or-nothing, the split has to stop marking the user as the new claim's opener when it's part of a part-settle. That would make the attempts the test expects to be refused go through, so the test's expectations would need changing too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2419075999999998,
+        "num_turns": 26,
+        "duration_ms": 879613,
+        "duration_api_ms": 211633,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp185.agent.jsonl",
+  "agent_diff_file": "cp185.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
