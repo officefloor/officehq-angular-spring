@@ -1,0 +1,84 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 4f54b7c2..d85e66be 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -3,7 +3,7 @@ import { DashboardApi, DashboardView } from '../../core/dashboard';
+ import { Session } from '../../core/session';
+ import { StatusSummary } from '../summary/summary';
+ 
+-// The steward's dashboard: the sheet's PENDING claims, REVIEW claims and overdue claims that count, as
++// The steward's dashboard, over the sheet and all its descendants: their PENDING claims, REVIEW claims and overdue claims that count, as
+ // the store holds them now. The cells are empty for a user who is not a steward, and while an as-of date is set. Re-read on every sheet load
+ // and whenever the sheet's claims or figures move.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 2a73b1f6..df9231eb 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -1,39 +1,60 @@
+ package net.officefloor.hq.app.dashboard;
+ 
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Optional;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** A steward's dashboard: the sheet's claims waiting on a steward, and its overdue claims. */
++/**
++ * A steward's dashboard: the claims waiting on a steward, and the overdue claims, over the sheet and all its
++ * descendants.
++ */
+ @Service
+ public class DashboardService {
+ 
+-    /** How many of the sheet's claims are PENDING, in REVIEW, and overdue among those that count. */
++    /** How many of the tree's claims are PENDING, in REVIEW, and overdue among those that count. */
+     public record Dashboard(long pendingCount, long reviewCount, long overdueCount) {
+     }
+ 
+     private final ClaimRepository claims;
+     private final RoleService roles;
+     private final Rollups rollups;
++    private final SheetRepository sheets;
+ 
+-    public DashboardService(ClaimRepository claims, RoleService roles, Rollups rollups) {
++    public DashboardService(ClaimRepository claims, RoleService roles, Rollups rollups, SheetRepository sheets) {
+         this.claims = claims;
+         this.roles = roles;
+         this.rollups = rollups;
++        this.sheets = sheets;
+     }
+ 
+-    /** The sheet's dashboard as it stands now, for a user acting as steward on it; empty for anyone else. */
++    /**
++     * The dashboard over the sheet and all its descendants, each as it stands now, for a user acting as
++     * steward on the sheet; empty for anyone else.
++     */
+     @Transactional(readOnly = true)
+     public Optional<Dashboard> of(String sheetId, String userName) {
+         if (!Role.STEWARD.equals(roles.roleOf(sheetId, userName))) {
+             return Optional.empty();
+         }
+-        return Optional.of(new Dashboard(claims.countBySheetIdAndStatus(sheetId, ClaimStatus.PENDING),
+-                claims.countBySheetIdAndStatus(sheetId, ClaimStatus.REVIEW), rollups.take(sheetId).overdueCount()));
++        List<String> tree = new ArrayList<>();
++        tree.add(sheetId);
++        tree.addAll(sheets.descendants(sheetId));
++        long pending = 0;
++        long review = 0;
++        long overdue = 0;
++        for (String id : tree) {
++            pending += claims.countBySheetIdAndStatus(id, ClaimStatus.PENDING);
++            review += claims.countBySheetIdAndStatus(id, ClaimStatus.REVIEW);
++            overdue += rollups.take(id).overdueCount();
++        }
++        return Optional.of(new Dashboard(pending, review, overdue));
+     }
+ }
