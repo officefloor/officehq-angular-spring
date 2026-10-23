@@ -1,0 +1,531 @@
+diff --git a/.e2e.out b/.e2e.out
+index 2b3ada67..7f2c0dde 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,111 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › fiscal year › fiscal year (21.0s)
+-  ✘  2 [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 (6.9s)
+-  ✘  3 [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 (44.0s)
+-  ✘  4 [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 (29.8s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › over threshold alert › over threshold alert (20.7s)
++  ✓  2 [chromium] › acceptance.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (28.4s)
++  ✘  3 [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 (27.8s)
++  ✓  4 [chromium] › acceptance.spec.ts:1278:7 › over threshold alert › over threshold alert scenario 3 (28.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 ──────────────────
+-
+-    Error: the screen refused this action (its error element appeared)
+-
+-       at ../support/ui.ts:25
+-
+-      23 |  *  lands on the arranging line rather than on a later assertion. */
+-      24 | export function must(id: string | null): string {
+-    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+-         |                          ^
+-      26 |   return id;
+-      27 | }
+-      28 |
+-
+-        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:165:24
+-
+-  2) [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 ──────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvk6zbaf6xzj[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk6zbaf6xzj-p</strong>[22m
+-    [2m  -   unexpected value "smvk6zbaf6xzj-p"[22m
+-
+-
+-      751 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      752 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+-    > 753 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      754 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+-      755 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
+-      756 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:753:54
+-
+-  3) [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 ──────────────────
++  1) [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('period-row-2026-02').getByTestId('period-closed')
+-    Expected string: [32m"yes"[39m
+-    Received string: [31m"no"[39m
++    Locator: getByTestId('person-row-11').getByTestId('person-name')
++    Expected string: [32m"Cam"[39m
++    Received string: [31m"Ada"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('period-row-2026-02').getByTestId('period-closed')[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-    [2m  -   locator resolved to <td data-testid="period-closed">no</td>[22m
+-    [2m  -   unexpected value "no"[22m
+-
+-
+-      1276 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+-      1277 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-due-total")).toHaveText("0.00");
+-    > 1278 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-closed")).toHaveText("yes");
+-           |                                                                                         ^
+-      1279 |     await expect(pg_vic.getByTestId("period-row-2026-02").getByTestId("period-fy")).toHaveText("FY2026");
+-      1280 |     await expect(pg_vic.getByTestId("period-row-2026-03").getByTestId("period-due-total")).toHaveText("0.00");
+-      1281 |     await expect(pg_vic.getByTestId("period-row-2026-03").getByTestId("period-closed")).toHaveText("no");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1278:89
+-
+-  3 failed
+-    [chromium] › acceptance.spec.ts:141:7 › fiscal year › fiscal year scenario 1 ───────────────────
+-    [chromium] › acceptance.spec.ts:638:7 › fiscal year › fiscal year scenario 2 ───────────────────
+-    [chromium] › acceptance.spec.ts:950:7 › fiscal year › fiscal year scenario 3 ───────────────────
+-  1 passed (1.9m)
++    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
++    [2m  -   unexpected value "Ada"[22m
++
++
++      862 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-batch")).toHaveText("");
++      863 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-lines-line")).toHaveText([]);
++    > 864 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Cam");
++          |                                                                                        ^
++      865 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-grade")).toHaveText("A");
++      866 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
++      867 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:864:88
++
++  1 failed
++    [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 ─
++  3 passed (1.8m)
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index c233dabc..2e010217 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -64,6 +64,8 @@ export interface SettingsView {
+   parent: string | null;
+   /** The month, 1 to 12, the fiscal year starts in; 1 unless set. */
+   fiscalStartMonth: number;
++  /** The alert threshold with two decimals: a person whose due-total crosses above it is alerted; null when off. */
++  alertThreshold: string | null;
+   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
+   permissions: Record<PermissionAction, string>;
+ }
+@@ -118,6 +120,9 @@ export const GRACE_DAYS = /^(\d{1,4})?$/;
+ /** A pot as the form takes it: up to two decimals, or blank for none. */
+ export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
+ 
++/** An alert threshold as the form takes it: up to two decimals, or blank for off. */
++export const ALERT_THRESHOLD = /^(\d{1,12}(\.\d{1,2})?)?$/;
++
+ /** A parent sheet id as the form takes it, or blank for none. */
+ export const PARENT = /^[A-Za-z0-9._-]{0,64}$/;
+ 
+@@ -206,6 +211,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/pot`, { value }));
+   }
+ 
++  /** Set the alert threshold; a blank value means off. */
++  setAlertThreshold(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/alert-threshold`, { value }));
++  }
++
+   /** Set the parent sheet; a blank value means none. */
+   setParent(sheet: string, value: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/parent`, { value }));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 9164050a..339f637b 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,11 +1,11 @@
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import {
+-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
++  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+   RoleName, RoleView, SettingsApi,
+ } from '../../core/settings';
+ import { Session } from '../../core/session';
+ 
+-// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
++// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days, the alert threshold and the permission matrix) and the roles user names have on it (clerk by default,
+ // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
+ // sheet's today unless one is typed) and shown as in force on the sheet's today.
+ @Component({
+@@ -222,6 +222,16 @@ import { Session } from '../../core/session';
+           (keydown.delete)="cleared($event, 'pot')"
+           (keydown.backspace)="cleared($event, 'pot')"
+         />
++        <label for="setting-alert-threshold">Alert threshold: a person whose due-total goes above it is alerted (empty: off)</label>
++        <input
++          id="setting-alert-threshold"
++          data-testid="setting-alert-threshold"
++          inputmode="decimal"
++          [value]="alertThresholdInput()"
++          (input)="alertThresholdInput.set(value($event)); alertThresholdEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'alertThreshold')"
++          (keydown.backspace)="cleared($event, 'alertThreshold')"
++        />
+         <label for="setting-fiscal-start-month">Month the fiscal year starts in (1 to 12)</label>
+         <input
+           id="setting-fiscal-start-month"
+@@ -277,6 +287,7 @@ import { Session } from '../../core/session';
+       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
+       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
++      <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() }}</span></p>
+       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
+       <p>Parent sheet in force: <span data-testid="setting-parent-current">{{ session.parent() }}</span></p>
+       @for (a of permissionActions; track a) {
+@@ -360,6 +371,8 @@ export class Settings {
+   protected readonly graceDays = signal('');
+   protected readonly graceDaysInput = signal('');
+   protected readonly potInput = signal('');
++  protected readonly alertThreshold = signal('');
++  protected readonly alertThresholdInput = signal('');
+   protected readonly parentInput = signal('');
+   protected readonly fiscalStartMonthInput = signal('');
+   /** Which settings were typed into since the last save: a save changes only those. */
+@@ -378,6 +391,7 @@ export class Settings {
+   protected entryDateEdited = false;
+   protected graceDaysEdited = false;
+   protected potEdited = false;
++  protected alertThresholdEdited = false;
+   protected parentEdited = false;
+   protected fiscalStartMonthEdited = false;
+   protected readonly permissionActions = PERMISSION_ACTIONS;
+@@ -422,6 +436,7 @@ export class Settings {
+         this.periodNumberingFrom.set('');
+         this.entryDate.set('');
+         this.graceDays.set('');
++        this.alertThreshold.set('');
+         this.permissions.set(Settings.noPermissions());
+         this.roles.set([]);
+         this.fromInput.set(Settings.noFroms());
+@@ -475,7 +490,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -498,6 +513,9 @@ export class Settings {
+     } else if (setting === 'pot') {
+       this.potInput.set('');
+       this.potEdited = true;
++    } else if (setting === 'alertThreshold') {
++      this.alertThresholdInput.set('');
++      this.alertThresholdEdited = true;
+     } else if (setting === 'parent') {
+       this.parentInput.set('');
+       this.parentEdited = true;
+@@ -554,12 +572,13 @@ export class Settings {
+     const entryDate = this.entryDateInput().trim();
+     const graceDays = this.graceDaysInput().trim();
+     const pot = this.potInput().trim();
++    const alertThreshold = this.alertThresholdInput().trim();
+     const parent = this.parentInput().trim();
+     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+     const saveLimit =
+       this.limitEdited ||
+       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
++        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -577,6 +596,7 @@ export class Settings {
+     const saveEntryDate = this.entryDateEdited;
+     const saveGraceDays = this.graceDaysEdited;
+     const savePot = this.potEdited;
++    const saveAlertThreshold = this.alertThresholdEdited;
+     const saveParent = this.parentEdited;
+     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
+     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
+@@ -659,6 +679,10 @@ export class Settings {
+       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
+       return;
+     }
++    if (saveAlertThreshold && !ALERT_THRESHOLD.test(alertThreshold)) {
++      this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it empty for off.');
++      return;
++    }
+     if (saveParent && !PARENT.test(parent)) {
+       this.settingsError.set('Type a parent sheet id of letters, digits, dots, dashes or underscores, or leave it empty for none.');
+       return;
+@@ -687,6 +711,7 @@ export class Settings {
+     if (saveEntryDate) this.entryDateEdited = false;
+     if (saveGraceDays) this.graceDaysEdited = false;
+     if (savePot) this.potEdited = false;
++    if (saveAlertThreshold) this.alertThresholdEdited = false;
+     if (saveParent) this.parentEdited = false;
+     if (saveFiscalStartMonth) this.fiscalStartMonthEdited = false;
+     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
+@@ -758,6 +783,11 @@ export class Settings {
+           this.session.pot.set(view.pot ?? '');
+           if (!this.potEdited) this.potInput.set(view.pot ?? '');
+         }
++        if (saveAlertThreshold) {
++          const view = await this.api.setAlertThreshold(sheet, alertThreshold);
++          this.alertThreshold.set(view.alertThreshold ?? '');
++          if (!this.alertThresholdEdited) this.alertThresholdInput.set(view.alertThreshold ?? '');
++        }
+         if (saveParent) {
+           const view = await this.api.setParent(sheet, parent);
+           this.session.parent.set(view.parent ?? '');
+@@ -871,6 +901,10 @@ export class Settings {
+       this.session.pot.set(settings.pot ?? '');
+       this.potInput.set(settings.pot ?? '');
+       this.potEdited = false;
++      // The alert threshold starts at the one set, so clearing it is a change.
++      this.alertThreshold.set(settings.alertThreshold ?? '');
++      this.alertThresholdInput.set(settings.alertThreshold ?? '');
++      this.alertThresholdEdited = false;
+       // The parent starts at the one set, so clearing it is a change.
+       this.session.parent.set(settings.parent ?? '');
+       this.parentInput.set(settings.parent ?? '');
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 942afe7f..c738b2ba 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -134,7 +134,8 @@ public class Rollups {
+     /**
+      * Record, once the change commits, one ROLLUP line per person whose figures moved since
+      * {@code before} (a person new since then counts as moved), then a TOTALS line when any of the sheet's
+-     * totals moved.
++     * totals moved, then one ALERT line per person, in list order, whose due-total went from at or below
++     * the sheet's alert threshold (or none) to above it.
+      */
+     public void audit(String sheetId, String user, Rollup before) {
+         Rollup after = take(sheetId);
+@@ -152,6 +153,21 @@ public class Rollups {
+                     + " due-total=" + after.dueTotal().toPlainString()
+                     + " overdue-total=" + after.overdueTotal().toPlainString());
+         }
++        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
++        if (threshold != null) {
++            after.people().forEach((id, figures) -> {
++                Figures was = before.people().get(id);
++                if (above(figures.dueTotal(), threshold) && !(was != null && above(was.dueTotal(), threshold))) {
++                    audit.recordFiguresOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
++                            + " due-total=" + figures.dueTotal().toPlainString());
++                }
++            });
++        }
++    }
++
++    /** Whether a due-total is above a threshold; n/a never is. */
++    private static boolean above(BigDecimal due, BigDecimal threshold) {
++        return due != null && due.compareTo(threshold) > 0;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index d126f1ac..69fdb966 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -67,10 +67,10 @@ public class CloneService {
+         jdbc.update("""
+                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month)
++                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold)
+                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month
++                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold
+                 FROM sheet WHERE id = ?""", toSheetId, sheetId);
+         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
+         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 28525bb1..b3231856 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -111,6 +111,10 @@ public class Sheet {
+     @Column(name = "pot")
+     private BigDecimal pot;
+ 
++    /** The alert threshold: a person whose due-total crosses above it is alerted; null for off. Not dated. */
++    @Column(name = "alert_threshold")
++    private BigDecimal alertThreshold;
++
+     /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
+     @Column(name = "fiscal_start_month", nullable = false)
+     private int fiscalStartMonth = 1;
+@@ -382,6 +386,7 @@ public class Sheet {
+         then.graceDays = graceDays;
+         then.entryDate = entryDate;
+         then.pot = pot;
++        then.alertThreshold = alertThreshold;
+         then.fiscalStartMonth = fiscalStartMonth;
+         then.parentId = parentId;
+         then.archived = archived;
+@@ -474,6 +479,15 @@ public class Sheet {
+         this.pot = pot;
+     }
+ 
++    /** The alert threshold as set, with two decimals; null when blank (off). */
++    public BigDecimal getAlertThreshold() {
++        return alertThreshold;
++    }
++
++    public void setAlertThreshold(BigDecimal alertThreshold) {
++        this.alertThreshold = alertThreshold;
++    }
++
+     /** The month, 1 to 12, the sheet's fiscal year starts in. */
+     public int getFiscalStartMonth() {
+         return fiscalStartMonth;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index e4fd9d4f..095354ca 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -76,13 +76,14 @@ public class SheetController {
+      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
+      * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
+      * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
+-     * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in. */
++     * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
++     * threshold with two decimals, null for off. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+-            String pot, String parent, int fiscalStartMonth) {
++            String pot, String parent, int fiscalStartMonth, String alertThreshold) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -97,7 +98,8 @@ public class SheetController {
+                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
+                     SheetView.graceHistory(sheet), gradeProofThresholds(sheet),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+-                    sheet.getFiscalStartMonth());
++                    sheet.getFiscalStartMonth(),
++                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
+         }
+ 
+         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+@@ -136,6 +138,16 @@ public class SheetController {
+         }
+     }
+ 
++    /** The alert threshold as entered: up to two decimals, or blank (or null) for off. */
++    public record AlertThresholdChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value) {
++
++        /** The threshold entered; null when blank. */
++        BigDecimal threshold() {
++            String text = value == null ? "" : value.trim();
++            return text.isEmpty() ? null : new BigDecimal(text);
++        }
++    }
++
+     /** A parent sheet's id as entered, or blank (or null) for none. */
+     public record ParentChange(@Size(max = 64) @Pattern(regexp = "\\s*([A-Za-z0-9._-]+)?\\s*") String value) {
+ 
+@@ -471,6 +483,15 @@ public class SheetController {
+         return SettingsView.of(service.setPot(id, SignedIn.name(user), change.pot()));
+     }
+ 
++    /** Change the sheet's alert threshold; a blank value means off. */
++    @PutMapping("/{id}/settings/alert-threshold")
++    public SettingsView setAlertThreshold(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid AlertThresholdChange change) {
++        return SettingsView.of(service.setAlertThreshold(id, SignedIn.name(user), change.threshold()));
++    }
++
+     /** Change the sheet's parent; a blank value means none. */
+     @PutMapping("/{id}/settings/parent")
+     public SettingsView setParent(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index bc31161b..cfaee469 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -278,6 +278,17 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Change the sheet's alert threshold (null: off), auditing the change. */
++    @Transactional
++    public Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
++        Sheet sheet = lock(id);
++        sheet.setAlertThreshold(threshold == null ? null : threshold.setScale(2, RoundingMode.UNNECESSARY));
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=alert-threshold value="
++                + (saved.getAlertThreshold() == null ? "" : saved.getAlertThreshold().toPlainString()));
++        return saved;
++    }
++
+     /**
+      * Change the sheet's parent (null: none), auditing the change and the figures it moves. The parent
+      * must be a sheet that has been loaded, not this sheet, and not one that has this sheet as an ancestor.
+diff --git a/src/main/resources/db/migration/V81__sheet_alert_threshold.sql b/src/main/resources/db/migration/V81__sheet_alert_threshold.sql
+new file mode 100644
+index 00000000..7cf2b87a
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__sheet_alert_threshold.sql
+@@ -0,0 +1,2 @@
++-- The sheet's alert threshold: a person whose due-total crosses above it is alerted. Null means off; not dated.
++ALTER TABLE sheet ADD COLUMN alert_threshold DECIMAL(14, 2);
