@@ -1,0 +1,64 @@
+{
+  "checkpoint": 177,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp177_proof-kinds",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c3d19b01180d48d9ea1fc15906b5b48e34d67938",
+  "reset_sha": "",
+  "preagent_sha": "436c89d7ae90dfa44af804e878fe10e1a28e70f0",
+  "prev_sha": "436c89d7ae90dfa44af804e878fe10e1a28e70f0",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.022597,
+    "input_tokens": 80,
+    "output_tokens": 21842,
+    "cache_read_tokens": 3225465,
+    "cache_creation_tokens": 117543,
+    "num_turns": 41,
+    "duration_ms": 478654,
+    "duration_api_ms": 242543,
+    "model": "claude-opus-5-5",
+    "session_id": "de47c406-6abf-47f1-8388-d0108fa8ed5d",
+    "stop_reason": "success",
+    "result_text": "Proof kinds are in, and all 4 acceptance tests pass with `bin/e2e`.\n\n**Stored data** (new migration `V100__proof_kinds.sql`)\n- Each claim now keeps a count of receipt proofs and a count of photo proofs. Proofs that existed before this change are counted as receipts.\n- The sheet has a new `proof_kinds` setting. It isn't dated, and sheet cloning copies it along with the new claim counts.\n\n**Server**\n- **Adding a proof:** the request can now say which kind it is. Anything other than `receipt` or `photo` is refused, and no kind means a receipt. `CLAIM_PROOF_ADDED` gets ` kind=<kind>` at the end of the line only when a kind was chosen.\n- **New setting:** `PUT /settings/proof-kinds` takes a comma-separated list of `receipt` and `photo` and audits it as `SETTING_CHANGED \u2026 key=proof-kinds value=<list>`. A blank value clears it.\n- **Settle/approve rule:** a claim above its proof threshold still needs at least one proof. While proof kinds are set, it also needs at least one proof of each listed kind.\n\n**Front end**\n- **Claim row:** shows `claim-proofs-receipt` and `claim-proofs-photo` next to the total, and has a `claim-proof-kind` dropdown before \"Add proof\". Changing the dropdown clears any error on that row.\n- **Settings:** has a `setting-proof-kinds` input and a `setting-proof-kinds-current` display.\n- **Refusal message:** when a settle or approve is refused because a kind is missing, the message names that kind.\n\n**Change outside the request:** the request didn't ask for this one. Scenario 3 failed because of how editing a person handles their grade. Before, any edit (even one that only cleared terms) saved the person's current grade again from today. That saved grade then outranked a bulk grade change to an earlier date, so Ada stayed at B instead of moving to C. Now an edit only saves a grade when it differs from the grade already in force on that date (`PersonService.edit`). Other tests that depend on the old behaviour would be affected, though none here do.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.022597,
+        "num_turns": 41,
+        "duration_ms": 478654,
+        "duration_api_ms": 242543,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp177.agent.jsonl",
+  "agent_diff_file": "cp177.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
