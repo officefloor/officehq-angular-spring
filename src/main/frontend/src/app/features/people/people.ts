@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
+import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
@@ -331,31 +332,73 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           <span role="alert" data-testid="person-error">{{ message }}</span>
         }
       </form>
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of peopleColumns; track c) {
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'column-' + c"
+              [checked]="columns.shown(c)"
+              (change)="showColumn(c, checked($event))"
+            />
+            {{ c }}
+          </label>
+        }
+        @if (columns.error(); as message) {
+          <span role="alert" data-testid="columns-error">{{ message }}</span>
+        }
+      </fieldset>
       <table>
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
             <th scope="col">Came from</th>
-            <th scope="col">Aliases</th>
+            @if (columns.shown('aliases')) {
+              <th scope="col">Aliases</th>
+            }
             <th scope="col">Clashing</th>
             <th scope="col">Grade</th>
-            <th scope="col">Terms</th>
-            <th scope="col">Contact</th>
+            @if (columns.shown('terms')) {
+              <th scope="col">Terms</th>
+            }
+            @if (columns.shown('contact')) {
+              <th scope="col">Contact</th>
+            }
             <th scope="col">Tags</th>
-            <th scope="col">Claimed</th>
-            <th scope="col">Due</th>
+            @if (columns.shown('claimed')) {
+              <th scope="col">Claimed</th>
+            }
+            @if (columns.shown('due-total')) {
+              <th scope="col">Due</th>
+            }
             <th scope="col">Due by period</th>
-            <th scope="col">Excess</th>
-            <th scope="col">Overdue</th>
+            @if (columns.shown('excess')) {
+              <th scope="col">Excess</th>
+            }
+            @if (columns.shown('overdue-count') || columns.shown('overdue-total')) {
+              <th scope="col">Overdue</th>
+            }
             <th scope="col">Due by age</th>
-            <th scope="col">Statements</th>
-            <th scope="col">Retired</th>
+            @if (columns.shown('statement-count') || columns.shown('stated-total') || columns.shown('statement-date')) {
+              <th scope="col">Statements</th>
+            }
+            @if (columns.shown('retired')) {
+              <th scope="col">Retired</th>
+            }
+            <th scope="col">Snapshots</th>
             <th scope="col">Active</th>
-            <th scope="col">On hold</th>
+            @if (columns.shown('hold')) {
+              <th scope="col">On hold</th>
+            }
             <th scope="col">Watched</th>
-            <th scope="col">Patrons</th>
-            <th scope="col">Backing</th>
+            @if (columns.shown('patrons')) {
+              <th scope="col">Patrons</th>
+            }
+            @if (columns.shown('backing')) {
+              <th scope="col">Backing</th>
+            }
             <th scope="col">Cut</th>
             <th scope="col">Plans</th>
             <th scope="col">Claims</th>
@@ -376,32 +419,42 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-origin">{{ p.originSheetId ?? '' }}</td>
-              <td>
-                <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
-                <label [for]="'person-alias-input-' + p.id">Add alias</label>
-                <input
-                  type="text"
-                  [id]="'person-alias-input-' + p.id"
-                  data-testid="person-alias-input"
-                  [value]="aliasDrafts.get(p.id) ?? ''"
-                  (input)="aliasDrafts.set(p.id, value($event)); personError.set(null)"
-                />
-                <button
-                  type="button"
-                  data-testid="person-alias-add"
-                  [attr.aria-label]="'Add an alias for ' + p.name"
-                  (click)="addAlias(p)"
-                >
-                  Add
-                </button>
-              </td>
+              @if (columns.shown('aliases')) {
+                <td>
+                  <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
+                  <label [for]="'person-alias-input-' + p.id">Add alias</label>
+                  <input
+                    type="text"
+                    [id]="'person-alias-input-' + p.id"
+                    data-testid="person-alias-input"
+                    [value]="aliasDrafts.get(p.id) ?? ''"
+                    (input)="aliasDrafts.set(p.id, value($event)); personError.set(null)"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-alias-add"
+                    [attr.aria-label]="'Add an alias for ' + p.name"
+                    (click)="addAlias(p)"
+                  >
+                    Add
+                  </button>
+                </td>
+              }
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              @if (columns.shown('terms')) {
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              }
+              @if (columns.shown('contact')) {
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              }
               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claimed(p.id) | figure }}</td>
-              <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
+              @if (columns.shown('claimed')) {
+                <td data-testid="person-claimed">{{ claimed(p.id) | figure }}</td>
+              }
+              @if (columns.shown('due-total')) {
+                <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
+              }
               <td>
                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
@@ -416,30 +469,50 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   }
                 </ul>
               </td>
-              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
-              <td>
-                <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
-                <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</span></span>
-              </td>
+              @if (columns.shown('excess')) {
+                <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+              }
+              @if (columns.shown('overdue-count') || columns.shown('overdue-total')) {
+                <td>
+                  @if (columns.shown('overdue-count')) {
+                    <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
+                  }
+                  @if (columns.shown('overdue-total')) {
+                    <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</span></span>
+                  }
+                </td>
+              }
               <td>
                 @let aged = agedOf(p);
                 <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] | figure }}</span></span>
                 <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] | figure }}</span></span>
                 <span>61+ <span data-testid="person-aged-61">{{ aged[2] | figure }}</span></span>
               </td>
-              <td>
-                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
-                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
-              </td>
-              <td>
-                <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
-                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
-                <ul>
-                  @for (r of p.retirements ?? []; track $index) {
-                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+              @if (columns.shown('statement-count') || columns.shown('stated-total') || columns.shown('statement-date')) {
+                <td>
+                  @if (columns.shown('statement-count')) {
+                    <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                   }
-                </ul>
+                  @if (columns.shown('stated-total')) {
+                    <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
+                  }
+                  @if (columns.shown('statement-date')) {
+                    <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+                  }
+                </td>
+              }
+              @if (columns.shown('retired')) {
+                <td>
+                  <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+                  <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                  <ul>
+                    @for (r of p.retirements ?? []; track $index) {
+                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                </td>
+              }
+              <td>
                 <ul aria-label="Snapshots">
                   @for (s of p.snapshots ?? []; track $index) {
                     <li data-testid="person-snapshot-line">{{ s.asOf }} {{ s.dueTotal }}</li>
@@ -447,14 +520,16 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 </ul>
               </td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
-              <td>
-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                <ul>
-                  @for (h of p.holds; track $index) {
-                    <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
-                  }
-                </ul>
-              </td>
+              @if (columns.shown('hold')) {
+                <td>
+                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                  <ul>
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+                    }
+                  </ul>
+                </td>
+              }
               <td>
                 <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
                 <button
@@ -467,32 +542,36 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
                 </button>
               </td>
-              <td>
-                <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
-                <label [for]="'person-patron-select-' + p.id">Add patron</label>
-                <select
-                  [id]="'person-patron-select-' + p.id"
-                  data-testid="person-patron-select"
-                  (change)="patronChoices.set(p.id, value($event)); patronError.set(null)"
-                >
-                  <option value="">Choose a person</option>
-                  @for (other of people(); track other.id) {
-                    <option [value]="other.id">{{ other.name }}</option>
+              @if (columns.shown('patrons')) {
+                <td>
+                  <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
+                  <label [for]="'person-patron-select-' + p.id">Add patron</label>
+                  <select
+                    [id]="'person-patron-select-' + p.id"
+                    data-testid="person-patron-select"
+                    (change)="patronChoices.set(p.id, value($event)); patronError.set(null)"
+                  >
+                    <option value="">Choose a person</option>
+                    @for (other of people(); track other.id) {
+                      <option [value]="other.id">{{ other.name }}</option>
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="person-patron-add"
+                    [attr.aria-label]="'Add a patron for ' + p.name"
+                    (click)="addPatron(p)"
+                  >
+                    Add
+                  </button>
+                  @if (patronError()?.id === p.id) {
+                    <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                   }
-                </select>
-                <button
-                  type="button"
-                  data-testid="person-patron-add"
-                  [attr.aria-label]="'Add a patron for ' + p.name"
-                  (click)="addPatron(p)"
-                >
-                  Add
-                </button>
-                @if (patronError()?.id === p.id) {
-                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
-                }
-              </td>
-              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+                </td>
+              }
+              @if (columns.shown('backing')) {
+                <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+              }
               <td data-testid="person-cut-total">{{ cutTotalOf(p) | figure }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [personName]="p.name" />
@@ -680,6 +759,8 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly voidReasons = inject(VoidReasons);
+  protected readonly columns = inject(Columns);
+  protected readonly peopleColumns = PEOPLE_COLUMNS;
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
@@ -1871,6 +1952,11 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Switch a column of the people list on or off on this user's screen. */
+  protected showColumn(column: PeopleColumn, shown: boolean): void {
+    void this.columns.set(column, shown);
   }
 
   protected checked(event: Event): boolean {

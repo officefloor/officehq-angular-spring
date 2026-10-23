@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.user;
 
+import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -28,6 +29,15 @@ public class UserPrefController {
     public record LocaleForm(@NotNull @Pattern(regexp = "en|de") String locale) {
     }
 
+    /** What the screen is told about the people-list columns the user has switched off. */
+    public record ColumnsView(List<String> hidden) {
+    }
+
+    /** The people-list columns to switch off, each a column name such as due-total. */
+    public record ColumnsForm(
+            @NotNull @Size(max = 50) List<@NotNull @Pattern(regexp = "[a-z][a-z-]{0,39}") String> hidden) {
+    }
+
     private final UserPrefService service;
 
     public UserPrefController(UserPrefService service) {
@@ -45,5 +55,18 @@ public class UserPrefController {
     public LocaleView setLocale(@RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid LocaleForm form) {
         return new LocaleView(service.setLocale(SignedIn.name(user), form.locale()));
+    }
+
+    /** The people-list columns the signed-in user has switched off; none when they have not chosen. */
+    @GetMapping("/columns")
+    public ColumnsView columns(@RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return new ColumnsView(service.hiddenColumns(SignedIn.name(user)));
+    }
+
+    /** Save the people-list columns the signed-in user has switched off. */
+    @PutMapping("/columns")
+    public ColumnsView setColumns(@RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ColumnsForm form) {
+        return new ColumnsView(service.setHiddenColumns(SignedIn.name(user), form.hidden()));
     }
 }

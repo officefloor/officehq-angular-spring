@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { Columns } from '../../core/columns';
 import { LOCALES, Locale } from '../../core/locale';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
@@ -124,6 +125,7 @@ import { TreeSearch } from '../tree-search/tree-search';
 export class Home {
   protected readonly session = inject(Session);
   protected readonly locale = inject(Locale);
+  private readonly columns = inject(Columns);
   protected readonly locales = LOCALES;
   /** The locale chosen in the select and not yet saved; empty when the select shows the saved one. */
   protected readonly localeInput = signal('');
@@ -158,6 +160,7 @@ export class Home {
     this.signinError.set(null);
     this.session.signIn(name);
     void this.loadLocale();
+    void this.columns.load();
   }
 
   /** Re-read the signed-in user's locale from the store. */
@@ -191,7 +194,7 @@ export class Home {
     }
     this.clonedTo.set('');
     try {
-      await Promise.all([this.session.loadSheet(id), this.loadLocale()]);
+      await Promise.all([this.session.loadSheet(id), this.loadLocale(), this.columns.load()]);
     } catch {
       this.sheetError.set(`Sheet "${id}" could not be loaded.`);
     }
