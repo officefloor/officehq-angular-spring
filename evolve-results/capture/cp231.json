@@ -1,0 +1,64 @@
+{
+  "checkpoint": 231,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp231_period-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "de168692334e5b15f448ed7d775ea1457f8d77a2",
+  "reset_sha": "",
+  "preagent_sha": "c4a60beb4ff93e77238b483da4d4c6a3eeba03de",
+  "prev_sha": "c4a60beb4ff93e77238b483da4d4c6a3eeba03de",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4886068000000001,
+    "input_tokens": 88,
+    "output_tokens": 21467,
+    "cache_read_tokens": 2292614,
+    "cache_creation_tokens": 75049,
+    "num_turns": 45,
+    "duration_ms": 1056584,
+    "duration_api_ms": 303937,
+    "model": "claude-opus-5-5",
+    "session_id": "fc7d3c32-e65f-4898-b661-e28fa43955e6",
+    "stop_reason": "success",
+    "result_text": "The export button is in and the export test passes, but `bin/e2e` is not fully green: 3 of 4 tests pass. \"period export scenario 2\" fails, and I don't think any correct change can make it pass, because the spec itself contradicts itself.\n\n**What I changed** (only `src/main/frontend/src/app/features/people/people.ts`)\n- A new button, `data-testid=\"export-periods\"` (\"Export period figures as CSV\"), next to the existing people and claims export buttons.\n- A new `exportPeriods()` method. It downloads `periods-<sheet>.csv` with the header `person,period,figure,carried`, then one line per person and period. People are in the same list order the other exports use, and periods are in the order they were added (by id). The figure and carried values come from the same functions that fill the per-period cells in each row. It reuses the existing CSV helper, so names with commas get quoted (`\"Lee, Jo\"`), as the test expects.\n- No server or database change was needed, because the figures are already on the screen.\n\n**Test results**\n- \u2713 `period export`: the main test, the only one that downloads the CSV.\n- \u2713 scenario 1 and \u2713 scenario 3.\n- \u2718 scenario 2 fails at line 839, a setup step that adds a claim, before any export happens. It fails the same way without my change.\n\n**Why scenario 2 can't pass as written**\n1. **Line 979 can't be met.** It expects `sheet-parent` to show the literal text `__SHEET__-p`, which looks like a placeholder the spec generator never filled in. At line 821 the test sets the parent to the real `<sheet-id>-p` and checks that it shows.\n2. **Line 839 conflicts with the app's own rules.** The test adds a claim dated 2026-03-01 with sheet terms of 30 while P2 (03-16 to 03-31) is closed. The server refuses it on purpose: by the documented rule (`ClaimService.java:166-168`) the claim falls due on 03-31, inside the closed period. As a test, I switched that check to use the business-day due date. Scenario 2 then got past line 839, but scenario 3 broke, because it relies on the current rule. So I put the server back exactly as it was.\n\nThe code comments also disagree on which day's terms a new claim uses. `ClaimService.java:1189` says the day the claim is created; the old migration `V44__person_terms.sql` says the claim's own date. Using the claim's own date might satisfy both scenarios at line 839, but that changes a core rule well beyond this CSV feature, and line 979 would still fail anyway. I left it alone; tell me if you want that rule looked at separately.\n\nI didn't edit the spec, `bin/*` or `e2e/support/*`. The temporary debug spec I used is deleted.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4886068000000001,
+        "num_turns": 45,
+        "duration_ms": 1056584,
+        "duration_api_ms": 303937,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp231.agent.jsonl",
+  "agent_diff_file": "cp231.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,115 @@
+diff --git a/.e2e.out b/.e2e.out
+index 3dde416f..2d03c9c0 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,13 +2,13 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › grade retire › grade retire (23.1s)
+-  ✓  2 [chromium] › acceptance.spec.ts:72:7 › grade retire › grade retire scenario 1 (27.9s)
+-  ✘  3 [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 (32.8s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 (34.0s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › period export › period export (12.0s)
++  ✓  2 [chromium] › acceptance.spec.ts:25:7 › period export › period export scenario 1 (40.3s)
++  ✘  3 [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 (15.3s)
++  ✓  4 [chromium] › acceptance.spec.ts:1404:7 › period export › period export scenario 3 (40.6s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ────────────────
++  1) [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ──────────────
+ 
+     Error: the screen refused this action (its error element appeared)
+ 
+@@ -23,49 +23,9 @@ Running 4 tests using 1 worker
+       28 |
+ 
+         at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:694:24
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:839:24
+ 
+-  2) [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ───────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkx4bzz1tm9[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
+-    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
+-
+-
+-      1224 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      1225 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+-    > 1226 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1227 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+-      1228 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1229 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1226:54
+-
+-  2 failed
+-    [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ─────────────────
+-    [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ────────────────
+-  2 passed (2.1m)
++  1 failed
++    [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ───────────────
++  3 passed (1.9m)
++ 2117931
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 604c2d1c..3b55ba0e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -218,6 +218,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       <p>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
++        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
+       </p>
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
+@@ -2220,6 +2221,23 @@ export class People {
+     this.download(lines, 'claims');
+   }
+ 
++  /**
++   * Download the period figures as a CSV file: a header line, then one line per person and period, people
++   * in list order (retired people included) and periods in the order added, with the figure and the
++   * carried figure as the rows show them. Each line ends with a line feed.
++   */
++  protected async exportPeriods(): Promise<void> {
++    await this.session.settled();
++    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
++    const lines = [
++      ['person', 'period', 'figure', 'carried'],
++      ...this.people().flatMap((p) =>
++        periods.map((period) => [p.name, period.name, this.periodTotalOf(period, p), this.carriedOf(period, p)]),
++      ),
++    ];
++    this.download(lines, 'periods');
++  }
++
+   /**
+    * Download a person's statement as a CSV file: a header line, then one line per claim of theirs bound
+    * by their last statement, oldest first, with the number, the bound figure as the claim shows it (n/a
