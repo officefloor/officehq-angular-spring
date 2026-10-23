@@ -13,6 +13,7 @@ import { Session } from '../../core/session';
 // over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period;
 // a third does the same for the twelve months of a fiscal year. Each period shows the fiscal year its
 // from-date falls in. A period may cap the OPEN or PENDING claims due by in it each person may have.
+// A steward can lock a period, so it cannot be reopened, and unlock it again.
 @Component({
   selector: 'app-periods',
   imports: [FigurePipe],
@@ -102,6 +103,7 @@ import { Session } from '../../core/session';
             <th scope="col">Closed</th>
             <th scope="col">Fiscal year</th>
             <th scope="col">Cap</th>
+            <th scope="col">Locked</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -115,6 +117,7 @@ import { Session } from '../../core/session';
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYearOf(p.from, session.fiscalStartMonth()) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
                   <button
@@ -142,6 +145,22 @@ import { Session } from '../../core/session';
                 >
                   Reopen
                 </button>
+                <button
+                  type="button"
+                  data-testid="period-lock"
+                  [attr.aria-label]="'Lock ' + p.name"
+                  (click)="lock(p, true)"
+                >
+                  Lock
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-unlock"
+                  [attr.aria-label]="'Unlock ' + p.name"
+                  (click)="lock(p, false)"
+                >
+                  Unlock
+                </button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -168,6 +187,8 @@ export class Periods {
   readonly closed = output<PeriodView>();
   /** A period reopened through its row. */
   readonly reopened = output<PeriodView>();
+  /** A period locked or unlocked through its row. */
+  readonly locked = output<PeriodView>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
@@ -239,6 +260,26 @@ export class Periods {
           e instanceof HttpErrorResponse && e.status === 403
             ? 'Your role is not allowed to reopen a period.'
             : 'The period could not be reopened.',
+      });
+    }
+  }
+
+  /** Lock or unlock a period; a refusal (not a steward, or already so) is shown on its row. */
+  protected async lock(period: PeriodView, lock: boolean): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.locked.emit(await (lock ? this.api.lock(sheet, period.id) : this.api.unlock(sheet, period.id)));
+    } catch (e) {
+      this.periodError.set({
+        id: period.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward may lock or unlock a period.'
+            : lock
+              ? 'The period could not be locked.'
+              : 'The period could not be unlocked.',
       });
     }
   }

@@ -37,11 +37,12 @@ public class PeriodController {
      * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
      * for it fixed then, by person id (empty while open), and whether it is soft-closed (its figures
      * fixed as on a close, while not closed), its claim cap, each person's carried figure fixed when it
-     * was closed, and each person's opening balance for it, by person id (a person with none not listed).
+     * was closed, and each person's opening balance for it, by person id (a person with none not listed),
+     * and whether it is locked.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap,
-            Map<Long, String> personCarried, Map<Long, String> personOpenings) {
+            Map<Long, String> personCarried, Map<Long, String> personOpenings, boolean locked) {
 
         public static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
@@ -53,7 +54,8 @@ public class PeriodController {
                     period.getPersonCarried().entrySet().stream()
                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
                     period.getPersonOpenings().entrySet().stream()
-                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
+                    period.isLocked());
         }
     }
 
@@ -166,6 +168,24 @@ public class PeriodController {
             @PathVariable long periodId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return PeriodView.of(service.reopen(sheetId, SignedIn.name(user), periodId));
+    }
+
+    /** Lock a period, so it cannot be reopened; a steward only. */
+    @PostMapping("/{periodId}/lock")
+    public PeriodView lock(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.lock(sheetId, SignedIn.name(user), periodId, true));
+    }
+
+    /** Unlock a locked period; a steward only. */
+    @PostMapping("/{periodId}/unlock")
+    public PeriodView unlock(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.lock(sheetId, SignedIn.name(user), periodId, false));
     }
 
     /** Another user took the name between the check and the write: the unique index refuses it. */

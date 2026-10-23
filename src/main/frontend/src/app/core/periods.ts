@@ -36,6 +36,8 @@ export interface PeriodView {
    * carried figure. A person with none is not listed. Absent as kept by an old snapshot.
    */
   personOpenings?: Record<string, string> | null;
+  /** Locked by a steward: a locked period cannot be reopened. Absent as kept by an old snapshot. */
+  locked?: boolean;
 }
 
 /** Whether a period's figures are fixed: it is closed or soft-closed. */
@@ -117,6 +119,16 @@ export class PeriodsApi {
   /** Reopen a closed or soft-closed period, making its due-total live again; refused for anyone but a steward. */
   reopen(sheet: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
+  }
+
+  /** Lock a period so it cannot be reopened; refused for anyone but a steward, or when already locked. */
+  lock(sheet: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/lock`, {}));
+  }
+
+  /** Unlock a locked period; refused for anyone but a steward, or when not locked. */
+  unlock(sheet: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/unlock`, {}));
   }
 
   /**
