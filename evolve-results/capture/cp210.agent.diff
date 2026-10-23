@@ -1,0 +1,688 @@
+diff --git a/.e2e.out b/.e2e.out
+index b67b4222..891e3ac8 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,134 +2,78 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › year end rollover › year end rollover (26.7s)
+-  ✘  2 [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 (29.9s)
+-  ✘  3 [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 (27.0s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 (42.2s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › score bands › score bands (12.5s)
++  ✘  2 [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 (1.4m)
++  ✘  3 [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 (19.7s)
++  ✓  4 [chromium] › acceptance.spec.ts:1329:7 › score bands › score bands scenario 3 (26.6s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 ──────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+-    Expected string: [32m"[7m2[27m.00"[39m
+-    Received string: [31m"[7m1[27m.00"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+-    [2m  -   unexpected value "1.00"[22m
+-
+-
+-      646 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-stated")).toHaveText("no");
+-      647 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("7.77");
+-    > 648 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("2.00");
+-          |                                                                                             ^
+-      649 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+-      650 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+-      651 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:648:93
+-
+-  2) [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 ─────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvks46tgj0yl[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+-    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+-
+-
+-      1240 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      1241 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+-    > 1242 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1243 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+-      1244 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("1.00");
+-      1245 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1242:54
+-
+-  3) [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 ─────
++  1) [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 ───────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvks4stb3sba[27m-p"[39m
++    Received string: [31m"[7msmvkt5bwhw287[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+-    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+-
+-
+-      2052 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      2053 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+-    > 2054 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      2055 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+-      2056 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      2057 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:2054:54
+-
+-  3 failed
+-    [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 ───────
+-    [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 ──────
+-    [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 ──────
+-  1 passed (2.2m)
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
++    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
++
++
++      243 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      244 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-20");
++    > 245 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      246 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("2");
++      247 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      248 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:245:54
++
++  2) [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 ──────────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
++
++    [32m- Expected  - 2[39m
++    [31m+ Received  + 2[39m
++
++    [2m  Array [[22m
++    [32m-   "Ben  ",[39m
++    [32m-   "Ada  ",[39m
++    [31m+   "Ben",[39m
++    [31m+   "Ada",[39m
++    [2m  ][22m
++
++      831 |     expect(await ui.importOpenings(pg_uma, "Ada,2026-02,5.50")).toBe(1);
++      832 |     expect(await ui.editInline(pg_uma, c_ben_0, "10.25")).toBe(true);
++    > 833 |     expect(await ui.snapshotCompare(pg_uma, "2026-04-05", "2026-04-05")).toEqual(["Ben  ", "Ada  "]);
++          |                                                                          ^
++      834 |     expect(await ui.statement(pg_uma, p_ada)).toBe(true);
++      835 |     expect(await ui.importRates(pg_uma, "C,10.00\nC,33.33,2026-03-05")).toBe(2);
++      836 |     expect(await ui.editClaim(pg_uma, c_ben_0, {"date": "2026-03-28"})).toBe(true);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:833:74
++
++  2 failed
++    [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 ────────────────────
++    [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 ───────────────────
++  2 passed (2.5m)
++ 1877272
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 2ec5cb21..fa22d5cf 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -55,6 +55,10 @@ export interface SheetView {
+   roundingHistory?: DatedValue[];
+   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+   reviewSla?: number | null;
++  /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
++  scoreMid?: number | null;
++  /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
++  scoreHigh?: number | null;
+   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled; null when none. */
+   proofKinds?: string | null;
+ }
+@@ -115,6 +119,10 @@ export class Session {
+   readonly archived = signal(false);
+   /** The active sheet's review SLA in days; empty when there is none. */
+   readonly reviewSla = signal('');
++  /** The active sheet's mid score threshold; empty when there is none. */
++  readonly scoreMid = signal('');
++  /** The active sheet's high score threshold; empty when there is none. */
++  readonly scoreHigh = signal('');
+   /** The active sheet's proof kinds, comma separated; empty when there are none. */
+   readonly proofKinds = signal('');
+   /** The number of the active sheet's last settle batch; null when there has been none. */
+@@ -220,6 +228,8 @@ export class Session {
+     this.graceHistory.set(view.graceHistory ?? {});
+     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
+     this.reviewSla.set(view.reviewSla?.toString() ?? '');
++    this.scoreMid.set(view.scoreMid?.toString() ?? '');
++    this.scoreHigh.set(view.scoreHigh?.toString() ?? '');
+     this.proofKinds.set(view.proofKinds ?? '');
+   }
+ }
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 7ec58ca7..b8a7d7ee 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -77,6 +77,10 @@ export interface SettingsView {
+   escalateAfter: number | null;
+   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+   reviewSla: number | null;
++  /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
++  scoreMid: number | null;
++  /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
++  scoreHigh: number | null;
+   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled or approved; null when none. */
+   proofKinds: string | null;
+   /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null when none (A). */
+@@ -145,6 +149,9 @@ export const DEFAULT_GRADE = /^[ABC]?$/;
+ /** Grace days as the form takes them: a whole number of days, or blank for off. */
+ export const GRACE_DAYS = /^(\d{1,4})?$/;
+ 
++/** A score threshold as the form takes it: a whole number, possibly negative, or blank for none. */
++export const SCORE = /^(-?\d{1,6})?$/;
++
+ /** A pot as the form takes it: up to two decimals, or blank for none. */
+ export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
+ 
+@@ -279,6 +286,16 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
+   }
+ 
++  /** Set the mid score threshold; a blank value means none. */
++  setScoreMid(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-mid`, { value }));
++  }
++
++  /** Set the high score threshold; a blank value means none. */
++  setScoreHigh(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-high`, { value }));
++  }
++
+   /** Set the default grade; a blank value means A. */
+   setDefaultGrade(sheet: string, value: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/default-grade`, { value }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 42bda780..3f4b557f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -524,6 +524,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
+                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
+                 <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
++                <span>band <span data-testid="person-band">{{ bandOf(p) }}</span></span>
+               </td>
+               <td>
+                 <ul>
+@@ -1560,6 +1561,19 @@ export class People {
+     return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
+   }
+ 
++  /**
++   * A person's band while both score thresholds are set: HIGH at or above the high one, MID at or
++   * above the mid one, else LOW; empty while either is blank.
++   */
++  protected bandOf(person: PersonView): string {
++    const mid = this.session.scoreMid();
++    const high = this.session.scoreHigh();
++    if (mid === '' || high === '') return '';
++    const score = Number(this.scoreOf(person));
++    if (score >= Number(high)) return 'HIGH';
++    return score >= Number(mid) ? 'MID' : 'LOW';
++  }
++
+   /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */
+   protected openTotalOf(person: PersonView): string {
+     return money(this.openCents(person));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 5f6f1923..95803b96 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,7 +1,7 @@
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { FigurePipe } from '../../core/locale';
+ import {
+-  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
++  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, SCORE, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
+   RoleName, RoleView, SettingsApi,
+ } from '../../core/settings';
+ import { Session } from '../../core/session';
+@@ -286,6 +286,26 @@ import { Session } from '../../core/session';
+           (keydown.delete)="cleared($event, 'reviewSla')"
+           (keydown.backspace)="cleared($event, 'reviewSla')"
+         />
++        <label for="setting-score-mid">Mid score threshold: a person scoring at or above it is MID (a whole number; empty: none)</label>
++        <input
++          id="setting-score-mid"
++          data-testid="setting-score-mid"
++          inputmode="numeric"
++          [value]="scoreMidInput()"
++          (input)="scoreMidInput.set(value($event)); scoreMidEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'scoreMid')"
++          (keydown.backspace)="cleared($event, 'scoreMid')"
++        />
++        <label for="setting-score-high">High score threshold: a person scoring at or above it is HIGH (a whole number; empty: none)</label>
++        <input
++          id="setting-score-high"
++          data-testid="setting-score-high"
++          inputmode="numeric"
++          [value]="scoreHighInput()"
++          (input)="scoreHighInput.set(value($event)); scoreHighEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'scoreHigh')"
++          (keydown.backspace)="cleared($event, 'scoreHigh')"
++        />
+         <label for="setting-proof-kinds">Proof kinds a claim above the proof threshold needs one of each of (receipt, photo; comma separated; empty: none)</label>
+         <input
+           id="setting-proof-kinds"
+@@ -386,6 +406,8 @@ import { Session } from '../../core/session';
+       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
+       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
++      <p>Mid score threshold in force: <span data-testid="setting-score-mid-current">{{ session.scoreMid() }}</span></p>
++      <p>High score threshold in force: <span data-testid="setting-score-high-current">{{ session.scoreHigh() }}</span></p>
+       <p>Proof kinds in force: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
+       <p>Default grade in force: <span data-testid="setting-default-grade-current">{{ defaultGrade() }}</span></p>
+       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
+@@ -484,6 +506,8 @@ export class Settings {
+   protected readonly defaultGrade = signal('');
+   protected readonly defaultGradeInput = signal('');
+   protected readonly reviewSlaInput = signal('');
++  protected readonly scoreMidInput = signal('');
++  protected readonly scoreHighInput = signal('');
+   protected readonly proofKindsInput = signal('');
+   protected readonly potInput = signal('');
+   protected readonly alertThreshold = signal('');
+@@ -511,6 +535,8 @@ export class Settings {
+   protected escalateAfterEdited = false;
+   protected defaultGradeEdited = false;
+   protected reviewSlaEdited = false;
++  protected scoreMidEdited = false;
++  protected scoreHighEdited = false;
+   protected proofKindsEdited = false;
+   protected potEdited = false;
+   protected alertThresholdEdited = false;
+@@ -624,7 +650,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -665,6 +691,12 @@ export class Settings {
+     } else if (setting === 'reviewSla') {
+       this.reviewSlaInput.set('');
+       this.reviewSlaEdited = true;
++    } else if (setting === 'scoreMid') {
++      this.scoreMidInput.set('');
++      this.scoreMidEdited = true;
++    } else if (setting === 'scoreHigh') {
++      this.scoreHighInput.set('');
++      this.scoreHighEdited = true;
+     } else if (setting === 'proofKinds') {
+       this.proofKindsInput.set('');
+       this.proofKindsEdited = true;
+@@ -739,6 +771,8 @@ export class Settings {
+     const escalateAfter = this.escalateAfterInput().trim();
+     const defaultGrade = this.defaultGradeInput().trim();
+     const reviewSla = this.reviewSlaInput().trim();
++    const scoreMid = this.scoreMidInput().trim();
++    const scoreHigh = this.scoreHighInput().trim();
+     const proofKinds = this.proofKindsInput().trim();
+     const pot = this.potInput().trim();
+     const alertThreshold = this.alertThresholdInput().trim();
+@@ -747,7 +781,7 @@ export class Settings {
+     const saveLimit =
+       this.limitEdited ||
+       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
++        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -771,6 +805,8 @@ export class Settings {
+     const saveEscalateAfter = this.escalateAfterEdited;
+     const saveDefaultGrade = this.defaultGradeEdited;
+     const saveReviewSla = this.reviewSlaEdited;
++    const saveScoreMid = this.scoreMidEdited;
++    const saveScoreHigh = this.scoreHighEdited;
+     const saveProofKinds = this.proofKindsEdited;
+     const savePot = this.potEdited;
+     const saveAlertThreshold = this.alertThresholdEdited;
+@@ -879,6 +915,10 @@ export class Settings {
+       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
+       return;
+     }
++    if ((saveScoreMid && !SCORE.test(scoreMid)) || (saveScoreHigh && !SCORE.test(scoreHigh))) {
++      this.settingsError.set('Type a score threshold as a whole number, or leave it empty for none.');
++      return;
++    }
+     if (saveProofKinds && !PROOF_KIND_LIST.test(proofKinds)) {
+       this.settingsError.set('Type the proof kinds as receipt or photo, comma separated, or leave them empty for none.');
+       return;
+@@ -924,6 +964,8 @@ export class Settings {
+     if (saveEscalateAfter) this.escalateAfterEdited = false;
+     if (saveDefaultGrade) this.defaultGradeEdited = false;
+     if (saveReviewSla) this.reviewSlaEdited = false;
++    if (saveScoreMid) this.scoreMidEdited = false;
++    if (saveScoreHigh) this.scoreHighEdited = false;
+     if (saveProofKinds) this.proofKindsEdited = false;
+     if (savePot) this.potEdited = false;
+     if (saveAlertThreshold) this.alertThresholdEdited = false;
+@@ -1025,6 +1067,16 @@ export class Settings {
+           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
+           if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
+         }
++        if (saveScoreMid) {
++          const view = await this.api.setScoreMid(sheet, scoreMid);
++          this.session.scoreMid.set(view.scoreMid?.toString() ?? '');
++          if (!this.scoreMidEdited) this.scoreMidInput.set(view.scoreMid?.toString() ?? '');
++        }
++        if (saveScoreHigh) {
++          const view = await this.api.setScoreHigh(sheet, scoreHigh);
++          this.session.scoreHigh.set(view.scoreHigh?.toString() ?? '');
++          if (!this.scoreHighEdited) this.scoreHighInput.set(view.scoreHigh?.toString() ?? '');
++        }
+         if (saveProofKinds) {
+           const view = await this.api.setProofKinds(sheet, proofKinds);
+           this.session.proofKinds.set(view.proofKinds ?? '');
+@@ -1174,6 +1226,13 @@ export class Settings {
+       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
+       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
+       this.reviewSlaEdited = false;
++      // The score thresholds start at those set, so clearing one is a change.
++      this.session.scoreMid.set(settings.scoreMid?.toString() ?? '');
++      this.scoreMidInput.set(settings.scoreMid?.toString() ?? '');
++      this.scoreMidEdited = false;
++      this.session.scoreHigh.set(settings.scoreHigh?.toString() ?? '');
++      this.scoreHighInput.set(settings.scoreHigh?.toString() ?? '');
++      this.scoreHighEdited = false;
+       // The proof kinds start at those set, so clearing them is a change.
+       this.session.proofKinds.set(settings.proofKinds ?? '');
+       this.proofKindsInput.set(settings.proofKinds ?? '');
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 8df22cad..e122c691 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -69,10 +69,10 @@ public class CloneService {
+         jdbc.update("""
+                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, cloned_from)
++                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, cloned_from)
+                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, ?
++                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, ?
+                 FROM sheet WHERE id = ?""", toSheetId, sheetId, sheetId);
+         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
+         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index a284a0d0..ad86cd54 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -127,6 +127,14 @@ public class Sheet {
+     @Column(name = "review_sla")
+     private Integer reviewSla;
+ 
++    /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null for none. Not dated. */
++    @Column(name = "score_mid")
++    private Integer scoreMid;
++
++    /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null for none. Not dated. */
++    @Column(name = "score_high")
++    private Integer scoreHigh;
++
+     /** The proof kinds: comma separated, a claim above the proof threshold needs a proof of each to be settled or approved; null for none. Not dated. */
+     @Column(name = "proof_kinds")
+     private String proofKinds;
+@@ -448,6 +456,8 @@ public class Sheet {
+         then.alertThreshold = alertThreshold;
+         then.escalateAfter = escalateAfter;
+         then.reviewSla = reviewSla;
++        then.scoreMid = scoreMid;
++        then.scoreHigh = scoreHigh;
+         then.proofKinds = proofKinds;
+         then.defaultGrade = defaultGrade;
+         then.fiscalStartMonth = fiscalStartMonth;
+@@ -598,6 +608,24 @@ public class Sheet {
+         this.reviewSla = reviewSla;
+     }
+ 
++    /** The mid score threshold; null when blank (none). */
++    public Integer getScoreMid() {
++        return scoreMid;
++    }
++
++    public void setScoreMid(Integer scoreMid) {
++        this.scoreMid = scoreMid;
++    }
++
++    /** The high score threshold; null when blank (none). */
++    public Integer getScoreHigh() {
++        return scoreHigh;
++    }
++
++    public void setScoreHigh(Integer scoreHigh) {
++        this.scoreHigh = scoreHigh;
++    }
++
+     /** The proof kinds as set, comma separated; null when blank (none). */
+     public String getProofKinds() {
+         return proofKinds;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index c4de876b..38c54589 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -38,7 +38,8 @@ public class SheetController {
+     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
+             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
+             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
+-            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds) {
++            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
++            Integer scoreMid, Integer scoreHigh) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
+@@ -48,7 +49,7 @@ public class SheetController {
+                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
+-                    sheet.getProofKinds());
++                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh());
+         }
+ 
+         /** Each grade's grace values by from-date, its starting value (none) first. */
+@@ -82,7 +83,8 @@ public class SheetController {
+      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
+      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
+      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
+-     * each grade's clerk limit with two decimals, null for none (the sheet's applies). */
++     * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
++     * score thresholds, null for none. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+@@ -90,7 +92,8 @@ public class SheetController {
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
+-            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits) {
++            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
++            Integer scoreHigh) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -110,7 +113,7 @@ public class SheetController {
+                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
+-                    sheet.getDefaultGrade(), gradeClerkLimits(sheet));
++                    sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh());
+         }
+ 
+         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
+@@ -219,6 +222,16 @@ public class SheetController {
+         }
+     }
+ 
++    /** A score threshold as entered: a whole number, possibly negative, or blank (or null) for none. */
++    public record ScoreChange(@Pattern(regexp = "\\s*(-?\\d{1,6})?\\s*") String value) {
++
++        /** The score entered; null when blank. */
++        Integer score() {
++            String text = value == null ? "" : value.trim();
++            return text.isEmpty() ? null : Integer.valueOf(text);
++        }
++    }
++
+     /** The roles that may take an action as entered: clerk or steward, comma separated, or blank for the standing rule. */
+     public record PermissionChange(
+             @Size(max = 64) @Pattern(regexp = "\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String value) {
+@@ -563,6 +576,24 @@ public class SheetController {
+         return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
+     }
+ 
++    /** Change the sheet's mid score threshold; a blank value means none. */
++    @PutMapping("/{id}/settings/score-mid")
++    public SettingsView setScoreMid(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ScoreChange change) {
++        return SettingsView.of(service.setScoreMid(id, SignedIn.name(user), change.score()));
++    }
++
++    /** Change the sheet's high score threshold; a blank value means none. */
++    @PutMapping("/{id}/settings/score-high")
++    public SettingsView setScoreHigh(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ScoreChange change) {
++        return SettingsView.of(service.setScoreHigh(id, SignedIn.name(user), change.score()));
++    }
++
+     /** Change the sheet's proof kinds; a blank value means none. */
+     @PutMapping("/{id}/settings/proof-kinds")
+     public SettingsView setProofKinds(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 26f01153..a1569fd9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -301,6 +301,28 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Change the sheet's mid score threshold (null: none), auditing the change. */
++    @Transactional
++    public Sheet setScoreMid(String id, String user, Integer score) {
++        Sheet sheet = lock(id);
++        sheet.setScoreMid(score);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-mid value="
++                + (saved.getScoreMid() == null ? "" : saved.getScoreMid().toString()));
++        return saved;
++    }
++
++    /** Change the sheet's high score threshold (null: none), auditing the change. */
++    @Transactional
++    public Sheet setScoreHigh(String id, String user, Integer score) {
++        Sheet sheet = lock(id);
++        sheet.setScoreHigh(score);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-high value="
++                + (saved.getScoreHigh() == null ? "" : saved.getScoreHigh().toString()));
++        return saved;
++    }
++
+     /** Change the sheet's proof kinds, comma separated (null: none), auditing the change. */
+     @Transactional
+     public Sheet setProofKinds(String id, String user, String kinds) {
+diff --git a/src/main/resources/db/migration/V111__sheet_score_bands.sql b/src/main/resources/db/migration/V111__sheet_score_bands.sql
+new file mode 100644
+index 00000000..256ac3d3
+--- /dev/null
++++ b/src/main/resources/db/migration/V111__sheet_score_bands.sql
+@@ -0,0 +1,4 @@
++-- Score thresholds: while both are set, a person whose score is at or above the high one is HIGH, at or
++-- above the mid one MID, else LOW. Whole numbers; null when blank (no band). Not dated.
++ALTER TABLE sheet ADD COLUMN score_mid INT;
++ALTER TABLE sheet ADD COLUMN score_high INT;
