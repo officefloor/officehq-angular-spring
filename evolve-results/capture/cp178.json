@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of\noverdue claims that count, over the sheet. A user who is not a steward sees the three cells\nempty.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of\noverdue claims that count, over the sheet. A user who is not a steward sees the three cells\nempty.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e9426b916a993a41e0ee206aea007d0bc193077a",
+  "reset_sha": "",
+  "preagent_sha": "2de2a2846b5ad7f5a2b7e4c002666ce9311648eb",
+  "prev_sha": "2de2a2846b5ad7f5a2b7e4c002666ce9311648eb",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2920438,
+    "input_tokens": 60,
+    "output_tokens": 16639,
+    "cache_read_tokens": 1754719,
+    "cache_creation_tokens": 76010,
+    "num_turns": 31,
+    "duration_ms": 960025,
+    "duration_api_ms": 186629,
+    "model": "claude-opus-5-5",
+    "session_id": "71fe61f5-7300-4aaf-b30d-3b327d11f46a",
+    "stop_reason": "success",
+    "result_text": "I've built the steward dashboard, but `bin/e2e` still fails: 2 of 4 tests pass. Both failures are caused by a mistake in the test spec, not by the dashboard. Every dashboard check in all four scenarios passes when the spec's mistake is worked around.\n\n**Why the two tests fail.** In scenarios 1 and 3, lines 192, 317, 1103 and 1301 expect the parent-sheet cell to read the literal text `\"__SHEET__-p\"`. That looks like a placeholder that was never filled in. The test itself sets the parent to `` `${sheet}-p` ``, and the app correctly shows e.g. `smvki0y5kaoju-p`. I didn't edit the spec, as instructed. Those lines need to become `` `${sheet}-p` ``.\n\n**How I checked the dashboard anyway.** I ran a temporary copy of the spec with that placeholder filled in and assertions made non-fatal, then deleted the copy. All dashboard assertions passed.\n\n**A second problem that copy found.** In scenario 3 (around lines 1171\u20131234), with an as-of date set, the test expects grades with no rate of their own on this sheet to show the parent sheet's rates (A `12.50`, C `20.00`). The app shows `n/a`. That's existing rate behaviour this change doesn't touch, so I left it alone. Scenario 3 won't pass even with the placeholder fixed until it's resolved \u2014 say if you want me to look into it.\n\n**What I built**\n- **Server**\n  - The sheet's figures now also count how many of its counting claims are overdue. This uses the same \"counts\" and \"overdue\" rules as the overdue-total (`Rollups.java`). `CloneService` is updated to match.\n  - `ClaimRepository` can count claims by status.\n  - A new endpoint, `GET /api/sheets/{id}/dashboard` (in the new `dashboard/DashboardService.java` and `DashboardController.java`), returns the PENDING, REVIEW and overdue counts for the signed-in user. Someone with a delegation in force counts as a steward.\n- **Front end:** a new `app-dashboard` component shows `dash-pending-count`, `dash-review-count` and `dash-overdue-count`. It sits next to the consolidated figures and re-reads on sheet load and whenever today, the as-of date, the user, the claim statuses or the overdue-total change.\n\n**One rule I added from the spec:** the cells are also empty while an as-of date is set, even for a steward. Scenario 1 expects that, and the counts only describe the sheet as it stands now.\n\nThe PENDING and REVIEW counts cover every claim on the sheet. A held person's claims are still included, because the request says \"over the sheet\" and only the overdue count is limited to claims that count.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2920438,
+        "num_turns": 31,
+        "duration_ms": 960025,
+        "duration_api_ms": 186629,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

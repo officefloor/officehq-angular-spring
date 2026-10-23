@@ -1,0 +1,305 @@
+diff --git a/src/main/frontend/src/app/core/dashboard.ts b/src/main/frontend/src/app/core/dashboard.ts
+new file mode 100644
+index 00000000..5389555c
+--- /dev/null
++++ b/src/main/frontend/src/app/core/dashboard.ts
+@@ -0,0 +1,23 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/**
++ * A steward's dashboard over the sheet: how many claims are PENDING, how many in REVIEW, and how many
++ * of those that count are overdue. Every count is null for a user who is not a steward.
++ */
++export interface DashboardView {
++  pendingCount: number | null;
++  reviewCount: number | null;
++  overdueCount: number | null;
++}
++
++// The steward's dashboard, read from the store for the signed-in user.
++@Injectable({ providedIn: 'root' })
++export class DashboardApi {
++  private readonly http = inject(HttpClient);
++
++  get(sheet: string): Promise<DashboardView> {
++    return firstValueFrom(this.http.get<DashboardView>(`/api/sheets/${encodeURIComponent(sheet)}/dashboard`));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+new file mode 100644
+index 00000000..4f54b7c2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -0,0 +1,64 @@
++import { Component, effect, inject, input, signal, untracked } from '@angular/core';
++import { DashboardApi, DashboardView } from '../../core/dashboard';
++import { Session } from '../../core/session';
++import { StatusSummary } from '../summary/summary';
++
++// The steward's dashboard: the sheet's PENDING claims, REVIEW claims and overdue claims that count, as
++// the store holds them now. The cells are empty for a user who is not a steward, and while an as-of date is set. Re-read on every sheet load
++// and whenever the sheet's claims or figures move.
++@Component({
++  selector: 'app-dashboard',
++  template: `
++    <section aria-label="Steward dashboard">
++      <p>Pending claims <strong data-testid="dash-pending-count">{{ view()?.pendingCount ?? '' }}</strong></p>
++      <p>Claims in review <strong data-testid="dash-review-count">{{ view()?.reviewCount ?? '' }}</strong></p>
++      <p>Overdue claims <strong data-testid="dash-overdue-count">{{ view()?.overdueCount ?? '' }}</strong></p>
++    </section>
++  `,
++})
++export class Dashboard {
++  private readonly session = inject(Session);
++  private readonly api = inject(DashboardApi);
++
++  /** The sheet's claim counts by status and its overdue-total as shown: a move in either re-reads the dashboard. */
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly overdueTotal = input.required<string>();
++
++  protected readonly view = signal<DashboardView | null>(null);
++  /** Counts reads, so only the answer to the latest one is shown. */
++  private reads = 0;
++
++  constructor() {
++    // Every sheet load clears the counts shown and re-reads them.
++    effect(() => {
++      const sheet = this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.view.set(null);
++        if (sheet) void this.reload(sheet);
++      });
++    });
++    // A move in the sheet's today, its as-of date, the signed-in user, or its claims re-reads them.
++    effect(() => {
++      this.session.today();
++      this.session.asOf();
++      this.session.user();
++      this.statuses();
++      this.overdueTotal();
++      untracked(() => {
++        const sheet = this.session.sheet();
++        if (sheet) void this.reload(sheet);
++      });
++    });
++  }
++
++  private async reload(sheet: string): Promise<void> {
++    const read = ++this.reads;
++    try {
++      const view = await this.api.get(sheet);
++      if (read === this.reads && this.session.sheet() === sheet) this.view.set(view);
++    } catch {
++      // Left as it was: the next load or change reads them again.
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6b6e7d2f..3fccc4ce 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,6 +12,7 @@ import { Session, graceOn, valueOn } from '../../core/session';
+ import { Claims } from '../claims/claims';
+ import { Header } from '../header/header';
+ import { Consolidated } from '../consolidated/consolidated';
++import { Dashboard } from '../dashboard/dashboard';
+ import { Periods } from '../periods/periods';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+ import { Pools } from '../pools/pools';
+@@ -91,7 +92,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+ // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
++  imports: [FigurePipe, Claims, Consolidated, Dashboard, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -103,6 +104,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       [myCrewDueTotal]="myCrewDueTotal()"
+     />
+     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
++    <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
+     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+     <app-periods
+       [periods]="periods()"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index e683b9bc..0bfe3cb5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -34,6 +34,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     /** The claim on the sheet with a reference key. */
+     Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
+ 
++    /** How many of the sheet's claims have a status. */
++    long countBySheetIdAndStatus(String sheetId, ClaimStatus status);
++
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+     /** Release every editor's lock on the sheet's claims. */
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+new file mode 100644
+index 00000000..9bdae20a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.dashboard;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import net.officefloor.hq.app.SignedIn;
++import net.officefloor.hq.app.history.AsOfGuard;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class DashboardController {
++
++    /** What the screen is told about the steward's dashboard: the counts, all null for a user who is not a steward. */
++    public record DashboardView(Long pendingCount, Long reviewCount, Long overdueCount) {
++    }
++
++    private final DashboardService service;
++
++    public DashboardController(DashboardService service) {
++        this.service = service;
++    }
++
++    /**
++     * The sheet's steward dashboard as it stands now, for the signed-in user; empty while an as-of date
++     * is set, as the dashboard shows only the sheet as it stands now.
++     */
++    @GetMapping("/{id}/dashboard")
++    public DashboardView dashboard(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
++        if (AsOfGuard.date(asOf) != null) {
++            return new DashboardView(null, null, null);
++        }
++        return service.of(id, SignedIn.name(user))
++                .map(d -> new DashboardView(d.pendingCount(), d.reviewCount(), d.overdueCount()))
++                .orElse(new DashboardView(null, null, null));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+new file mode 100644
+index 00000000..2a73b1f6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.util.Optional;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.rollup.Rollups;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** A steward's dashboard: the sheet's claims waiting on a steward, and its overdue claims. */
++@Service
++public class DashboardService {
++
++    /** How many of the sheet's claims are PENDING, in REVIEW, and overdue among those that count. */
++    public record Dashboard(long pendingCount, long reviewCount, long overdueCount) {
++    }
++
++    private final ClaimRepository claims;
++    private final RoleService roles;
++    private final Rollups rollups;
++
++    public DashboardService(ClaimRepository claims, RoleService roles, Rollups rollups) {
++        this.claims = claims;
++        this.roles = roles;
++        this.rollups = rollups;
++    }
++
++    /** The sheet's dashboard as it stands now, for a user acting as steward on it; empty for anyone else. */
++    @Transactional(readOnly = true)
++    public Optional<Dashboard> of(String sheetId, String userName) {
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, userName))) {
++            return Optional.empty();
++        }
++        return Optional.of(new Dashboard(claims.countBySheetIdAndStatus(sheetId, ClaimStatus.PENDING),
++                claims.countBySheetIdAndStatus(sheetId, ClaimStatus.REVIEW), rollups.take(sheetId).overdueCount()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 5cce46ee..a4765d60 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -39,9 +39,12 @@ public class Rollups {
+         }
+     }
+ 
+-    /** The sheet's figures: each person's by id, in list order, and the sheet's totals. */
++    /**
++     * The sheet's figures: each person's by id, in list order, the sheet's totals, and how many of its
++     * counting claims are overdue.
++     */
+     public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
+-            BigDecimal overdueTotal) {
++            BigDecimal overdueTotal, int overdueCount) {
+     }
+ 
+     private final PersonRepository people;
+@@ -84,6 +87,7 @@ public class Rollups {
+         BigDecimal claimedTotal = zero();
+         List<BigDecimal> dueFigures = new ArrayList<>();
+         List<BigDecimal> overdueFigures = new ArrayList<>();
++        int overdueCount = 0;
+         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
+             Person person = entry.getValue();
+             List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
+@@ -99,11 +103,15 @@ public class Rollups {
+                     claimed = claimed.add(claim.getAmount());
+                 }
+                 String grade = person.gradeOn(claim.getDate());
++                boolean late = overdue(claim, sheet, grade);
++                if (late) {
++                    overdueCount++;
++                }
+                 BigDecimal figure = dues.due(claim, grade, basis);
+                 if (figure != null) {
+                     due = due.add(figure);
+                     figured = true;
+-                    if (overdue(claim, sheet, grade)) {
++                    if (late) {
+                         overdue = overdue.add(figure);
+                     }
+                 }
+@@ -125,7 +133,7 @@ public class Rollups {
+             }
+             overdueFigures.add(overdue);
+         }
+-        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures));
++        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures), overdueCount);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 3a01f885..56f86319 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -191,7 +191,7 @@ public class CloneService {
+         audit.recordOnCommit("SHEET_CLONE_MADE sheet=" + sheetId + " by=" + user + " to=" + toSheetId);
+         audit.recordOnCommit("SHEET_CLONED sheet=" + toSheetId + " by=" + user + " from=" + sheetId);
+         // Every person's figures and the totals are new on the clone.
+-        rollups.audit(toSheetId, user, new Rollups.Rollup(Map.of(), null, null, null));
++        rollups.audit(toSheetId, user, new Rollups.Rollup(Map.of(), null, null, null, 0));
+     }
+ 
+     /** Copy a sheet's rows of a table to the clone, with the columns named. */
