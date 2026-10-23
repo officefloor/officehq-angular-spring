@@ -13,6 +13,13 @@ export interface ConsolidatedView {
   dueTotal: string;
   /** The sheets' overdue-totals added up, with two decimals. */
   overdueTotal: string;
+  /**
+   * Per grade, the due-totals of the people not retired who have it in force on their sheet's today
+   * added up, with two decimals; a grade nobody has is left out.
+   */
+  gradeDueTotals: Record<string, string>;
+  /** Per status, how many claims have it; a status no claim has is left out. */
+  statusCounts: Record<string, number>;
 }
 
 // The consolidated figures, read from the store.

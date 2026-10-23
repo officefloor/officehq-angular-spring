@@ -1,11 +1,16 @@
-import { Component, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import { ConsolidatedApi, ConsolidatedView } from '../../core/consolidated';
+import { GRADES } from '../../core/people';
 import { Session } from '../../core/session';
+
+/** The statuses the consolidated figures count claims by, in the order they list them. */
+const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 // The sheet's figures consolidated over it and all its descendants: the number of people, and each
 // sheet's due-total and overdue-total, as that sheet shows them (as of the as-of date while one is set),
-// added up. Re-read on every sheet load
+// added up; per grade the due-totals of the people on it (retired people left out) added up, and per
+// status the count of claims in it, over the tree. Re-read on every sheet load
 // and whenever the sheet's own figures move.
 @Component({
   selector: 'app-consolidated',
@@ -15,6 +20,40 @@ import { Session } from '../../core/session';
       <p>Consolidated people <strong data-testid="consolidated-people-count">{{ figures()?.peopleCount }}</strong></p>
       <p>Consolidated due <strong data-testid="consolidated-due-total">{{ (figures()?.dueTotal) | figure }}</strong></p>
       <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ (figures()?.overdueTotal) | figure }}</strong></p>
+      <table>
+        <caption>Consolidated by grade</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            <th scope="col">Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades(); track g.grade) {
+            <tr>
+              <th scope="row">{{ g.grade }}</th>
+              <td [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>Consolidated by status</caption>
+        <thead>
+          <tr>
+            <th scope="col">Status</th>
+            <th scope="col">Claims</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (s of statuses(); track s.status) {
+            <tr>
+              <th scope="row">{{ s.status }}</th>
+              <td [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
@@ -28,6 +67,22 @@ export class Consolidated {
   readonly overdueTotal = input.required<string>();
 
   protected readonly figures = signal<ConsolidatedView | null>(null);
+  /** Per grade, its consolidated due-total; empty until the figures are read. */
+  protected readonly grades = computed(() => {
+    const figures = this.figures();
+    return GRADES.map((grade) => ({
+      grade,
+      dueTotal: figures ? (figures.gradeDueTotals[grade] ?? '0.00') : '',
+    }));
+  });
+  /** Per status, its consolidated count of claims; empty until the figures are read. */
+  protected readonly statuses = computed(() => {
+    const figures = this.figures();
+    return STATUSES.map((status) => ({
+      status,
+      count: figures ? String(figures.statusCounts[status] ?? 0) : '',
+    }));
+  });
   /** Counts reads, so only the answer to the latest one is shown. */
   private reads = 0;
 

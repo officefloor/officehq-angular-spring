@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.rollup;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import net.officefloor.hq.app.history.AsOfGuard;
@@ -16,8 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ConsolidationController {
 
-    /** What the screen is told about the consolidated figures: the due amounts with two decimals. */
-    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal) {
+    /**
+     * What the screen is told about the consolidated figures: the due amounts with two decimals, per grade
+     * found the due-totals, and per status found the count of claims.
+     */
+    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
     }
 
     private final Consolidation consolidation;
@@ -35,7 +41,9 @@ public class ConsolidationController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
         Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf));
+        Map<String, String> grades = new LinkedHashMap<>();
+        figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
-                figures.overdueTotal().toPlainString());
+                figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
     }
 }
