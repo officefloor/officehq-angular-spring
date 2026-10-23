@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/core/tree-search.ts b/src/main/frontend/src/app/core/tree-search.ts
+index a2a6149a..36647743 100644
+--- a/src/main/frontend/src/app/core/tree-search.ts
++++ b/src/main/frontend/src/app/core/tree-search.ts
+@@ -2,10 +2,11 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+-/** A person found over a sheet's tree: their sheet, name and due-total (two decimals, or n/a). */
++/** A person found over a sheet's tree: their sheet, name, grade in force on their sheet's today and due-total (two decimals, or n/a). */
+ export interface FoundView {
+   sheetId: string;
+   name: string;
++  grade: string;
+   dueTotal: string;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 32f0ebbb..ac5877af 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -2,12 +2,14 @@ import { Component, computed, effect, inject, input, model, signal, untracked }
+ import { FigurePipe } from '../../core/locale';
+ import { money } from '../../core/claims';
+ import { CrewView, CrewsApi, crewDueCents } from '../../core/crews';
+-import { PersonView } from '../../core/people';
++import { PersonView, gradeOn } from '../../core/people';
+ import { Session } from '../../core/session';
+ 
+ /** A crew as shown: the crew and its due-total. */
+ interface CrewLine {
+   crew: CrewView;
++  /** The lead's name with the grade in force on the sheet's today. */
++  lead: string;
+   dueTotal: string;
+ }
+ 
+@@ -46,7 +48,7 @@ interface CrewLine {
+           <li [attr.data-testid]="'crew-row-' + line.crew.name">
+             <h3>{{ line.crew.name }}</h3>
+             <p>
+-              Lead <span data-testid="crew-lead">{{ line.crew.lead }}</span>,
++              Lead <span data-testid="crew-lead">{{ line.lead }}</span>,
+               due-total <span data-testid="crew-due-total">{{ line.dueTotal | figure }}</span>
+             </p>
+             <ul [attr.aria-label]="'Members of ' + line.crew.name">
+@@ -85,6 +87,8 @@ export class Crews {
+   readonly people = input.required<PersonView[]>();
+   /** Each person's due-total in whole cents as shown, by person id; null when shown as n/a. */
+   readonly dueTotals = input.required<Map<number, number | null>>();
++  /** The sheet's today (yyyy-mm-dd), to show each lead's grade in force on it. */
++  readonly today = input.required<string>();
+ 
+   /** The sheet's crews as read from the store, shared with the screen around. */
+   readonly crews = model<CrewView[]>([]);
+@@ -99,10 +103,16 @@ export class Crews {
+   /** Each crew with its due-total: its lead's and members' due-totals added up, n/a skipped. */
+   protected readonly lines = computed<CrewLine[]>(() => {
+     const dues = this.dueTotals();
+-    return this.crews().map((crew) => ({
+-      crew,
+-      dueTotal: money(crewDueCents(crew, dues)),
+-    }));
++    const people = new Map(this.people().map((p) => [p.id, p]));
++    const today = this.today();
++    return this.crews().map((crew) => {
++      const lead = people.get(crew.leadId);
++      return {
++        crew,
++        lead: lead ? `${crew.lead} (${gradeOn(lead.grades, today)})` : crew.lead,
++        dueTotal: money(crewDueCents(crew, dues)),
++      };
++    });
+   });
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private busy = false;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0b08165e..1e19291e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -468,7 +468,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   (change)="selectPerson(p.id, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-name">{{ shownName(p) }}</td>
+               <td data-testid="person-origin">{{ p.originSheetId ?? '' }}</td>
+               @if (columns.shown('aliases')) {
+                 <td>
+@@ -842,7 +842,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       </table>
+     </section>
+     <app-pools [people]="people()" [today]="today()" [crews]="crews()" />
+-    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
++    <app-crews [people]="people()" [today]="today()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
+   `,
+ })
+ export class People {
+@@ -1404,6 +1404,11 @@ export class People {
+     return terms === null ? '' : String(terms);
+   }
+ 
++  /** A person's name as the screen shows it: with the grade in force on the sheet's today. */
++  protected shownName(person: PersonView): string {
++    return `${person.name} (${this.gradeOf(person)})`;
++  }
++
+   /** The grade a person has in force on the sheet's today. */
+   protected gradeOf(person: PersonView): Grade {
+     return gradeOn(person.grades, this.today());
+@@ -1497,7 +1502,7 @@ export class People {
+   /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
+   protected patronsOf(person: PersonView): string {
+     return this.patronShares(person)
+-      .map(({ patron, share }) => ({ name: patron.name, text: `${patron.name} ${money(share)}` }))
++      .map(({ patron, share }) => ({ name: patron.name, text: `${this.shownName(patron)} ${money(share)}` }))
+       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+       .map((p) => p.text)
+       .join(', ');
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index 81a977c2..41217e0b 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -20,7 +20,7 @@ import { Session } from '../../core/session';
+         <p>Found <strong data-testid="search-count">{{ lines.length }}</strong></p>
+         <ul>
+           @for (line of lines; track $index) {
+-            <li data-testid="search-line">{{ line.sheetId }} {{ line.name }} {{ line.dueTotal }}</li>
++            <li data-testid="search-line">{{ line.sheetId }} {{ line.name }} ({{ line.grade }}) {{ line.dueTotal }}</li>
+           }
+         </ul>
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+index dd0eb4ce..d4d99328 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.rollup;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
+@@ -17,8 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class TreeSearch {
+ 
+-    /** A person found: their sheet, name and due-total (null when n/a). */
+-    public record Found(String sheetId, String name, BigDecimal dueTotal) {
++    /** A person found: their sheet, name, grade in force on their sheet's today and due-total (null when n/a). */
++    public record Found(String sheetId, String name, String grade, BigDecimal dueTotal) {
+     }
+ 
+     private final SheetService sheets;
+@@ -44,10 +45,11 @@ public class TreeSearch {
+         List<Found> found = new ArrayList<>();
+         for (String id : order) {
+             Rollups.Rollup rollup = rollups.take(id);
++            LocalDate today = sheets.today(id);
+             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                 if (matches(person, key)) {
+                     Rollups.Figures figures = rollup.people().get(person.getId());
+-                    found.add(new Found(id, person.getName(), figures == null ? null : figures.dueTotal()));
++                    found.add(new Found(id, person.getName(), person.gradeOn(today), figures == null ? null : figures.dueTotal()));
+                 }
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+index 40b3d3fc..93a472f4 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+@@ -16,8 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class TreeSearchController {
+ 
+-    /** A person found as the screen shows them: their sheet, name and due-total (two decimals, or n/a). */
+-    public record FoundView(String sheetId, String name, String dueTotal) {
++    /** A person found as the screen shows them: their sheet, name, grade in force on their sheet's today
++     * and due-total (two decimals, or n/a). */
++    public record FoundView(String sheetId, String name, String grade, String dueTotal) {
+     }
+ 
+     private final TreeSearch search;
+@@ -32,7 +33,7 @@ public class TreeSearchController {
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
+         return search.search(id, text).stream()
+-                .map(found -> new FoundView(found.sheetId(), found.name(), Rollups.shown(found.dueTotal())))
++                .map(found -> new FoundView(found.sheetId(), found.name(), found.grade(), Rollups.shown(found.dueTotal())))
+                 .toList();
+     }
+ }
