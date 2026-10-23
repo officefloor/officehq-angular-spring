@@ -1,0 +1,587 @@
+diff --git a/src/main/frontend/src/app/core/columns.ts b/src/main/frontend/src/app/core/columns.ts
+new file mode 100644
+index 00000000..3a221b85
+--- /dev/null
++++ b/src/main/frontend/src/app/core/columns.ts
+@@ -0,0 +1,72 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** The columns of the people list a user may switch off, in the order the chooser lists them. */
++export const PEOPLE_COLUMNS = [
++  'claimed',
++  'due-total',
++  'excess',
++  'statement-count',
++  'stated-total',
++  'statement-date',
++  'overdue-count',
++  'overdue-total',
++  'patrons',
++  'backing',
++  'hold',
++  'retired',
++  'terms',
++  'contact',
++  'aliases',
++] as const;
++export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
++
++// The people-list columns the signed-in user has switched off, saved per user in the store (the same
++// on every sheet). It changes only which cells their screen shows: every figure is worked out as before.
++@Injectable({ providedIn: 'root' })
++export class Columns {
++  private readonly http = inject(HttpClient);
++  /** The saves not yet answered, in the order they were made: a load waits for them. */
++  private saving: Promise<unknown> = Promise.resolve();
++
++  readonly hidden = signal<ReadonlySet<string>>(new Set());
++  /** Why the last read or save of the columns failed; null when it went through. */
++  readonly error = signal<string | null>(null);
++
++  /** Whether the column is shown on this user's screen. */
++  shown(column: PeopleColumn): boolean {
++    return !this.hidden().has(column);
++  }
++
++  /** Re-read the signed-in user's switched-off columns from the store. */
++  async load(): Promise<void> {
++    await this.saving.catch(() => undefined);
++    try {
++      const view = await firstValueFrom(this.http.get<{ hidden: string[] }>('/api/user/columns'));
++      this.hidden.set(new Set(view.hidden));
++      this.error.set(null);
++    } catch {
++      this.error.set('Your columns could not be read.');
++    }
++  }
++
++  /** Switch the column on or off on this user's screen, and save the choice in the store. */
++  async set(column: PeopleColumn, shown: boolean): Promise<void> {
++    const next = new Set(this.hidden());
++    if (shown) next.delete(column);
++    else next.add(column);
++    this.hidden.set(next);
++    this.error.set(null);
++    const hidden = [...next];
++    const save = this.saving
++      .catch(() => undefined)
++      .then(() => firstValueFrom(this.http.put<{ hidden: string[] }>('/api/user/columns', { hidden })));
++    this.saving = save;
++    try {
++      await save;
++    } catch {
++      this.error.set('Your columns could not be saved.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 93a4be3b..63ab3de7 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject, signal } from '@angular/core';
++import { Columns } from '../../core/columns';
+ import { LOCALES, Locale } from '../../core/locale';
+ import { Session } from '../../core/session';
+ import { People } from '../people/people';
+@@ -124,6 +125,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+ export class Home {
+   protected readonly session = inject(Session);
+   protected readonly locale = inject(Locale);
++  private readonly columns = inject(Columns);
+   protected readonly locales = LOCALES;
+   /** The locale chosen in the select and not yet saved; empty when the select shows the saved one. */
+   protected readonly localeInput = signal('');
+@@ -158,6 +160,7 @@ export class Home {
+     this.signinError.set(null);
+     this.session.signIn(name);
+     void this.loadLocale();
++    void this.columns.load();
+   }
+ 
+   /** Re-read the signed-in user's locale from the store. */
+@@ -191,7 +194,7 @@ export class Home {
+     }
+     this.clonedTo.set('');
+     try {
+-      await Promise.all([this.session.loadSheet(id), this.loadLocale()]);
++      await Promise.all([this.session.loadSheet(id), this.loadLocale(), this.columns.load()]);
+     } catch {
+       this.sheetError.set(`Sheet "${id}" could not be loaded.`);
+     }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 260284ef..5e768f83 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FigurePipe } from '../../core/locale';
+ import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
++import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+ import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
+ import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
+@@ -331,31 +332,73 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+           <span role="alert" data-testid="person-error">{{ message }}</span>
+         }
+       </form>
++      <fieldset>
++        <legend>Columns shown</legend>
++        @for (c of peopleColumns; track c) {
++          <label>
++            <input
++              type="checkbox"
++              [attr.data-testid]="'column-' + c"
++              [checked]="columns.shown(c)"
++              (change)="showColumn(c, checked($event))"
++            />
++            {{ c }}
++          </label>
++        }
++        @if (columns.error(); as message) {
++          <span role="alert" data-testid="columns-error">{{ message }}</span>
++        }
++      </fieldset>
+       <table>
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th>
+             <th scope="col">Name</th>
+             <th scope="col">Came from</th>
+-            <th scope="col">Aliases</th>
++            @if (columns.shown('aliases')) {
++              <th scope="col">Aliases</th>
++            }
+             <th scope="col">Clashing</th>
+             <th scope="col">Grade</th>
+-            <th scope="col">Terms</th>
+-            <th scope="col">Contact</th>
++            @if (columns.shown('terms')) {
++              <th scope="col">Terms</th>
++            }
++            @if (columns.shown('contact')) {
++              <th scope="col">Contact</th>
++            }
+             <th scope="col">Tags</th>
+-            <th scope="col">Claimed</th>
+-            <th scope="col">Due</th>
++            @if (columns.shown('claimed')) {
++              <th scope="col">Claimed</th>
++            }
++            @if (columns.shown('due-total')) {
++              <th scope="col">Due</th>
++            }
+             <th scope="col">Due by period</th>
+-            <th scope="col">Excess</th>
+-            <th scope="col">Overdue</th>
++            @if (columns.shown('excess')) {
++              <th scope="col">Excess</th>
++            }
++            @if (columns.shown('overdue-count') || columns.shown('overdue-total')) {
++              <th scope="col">Overdue</th>
++            }
+             <th scope="col">Due by age</th>
+-            <th scope="col">Statements</th>
+-            <th scope="col">Retired</th>
++            @if (columns.shown('statement-count') || columns.shown('stated-total') || columns.shown('statement-date')) {
++              <th scope="col">Statements</th>
++            }
++            @if (columns.shown('retired')) {
++              <th scope="col">Retired</th>
++            }
++            <th scope="col">Snapshots</th>
+             <th scope="col">Active</th>
+-            <th scope="col">On hold</th>
++            @if (columns.shown('hold')) {
++              <th scope="col">On hold</th>
++            }
+             <th scope="col">Watched</th>
+-            <th scope="col">Patrons</th>
+-            <th scope="col">Backing</th>
++            @if (columns.shown('patrons')) {
++              <th scope="col">Patrons</th>
++            }
++            @if (columns.shown('backing')) {
++              <th scope="col">Backing</th>
++            }
+             <th scope="col">Cut</th>
+             <th scope="col">Plans</th>
+             <th scope="col">Claims</th>
+@@ -376,32 +419,42 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+               </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-origin">{{ p.originSheetId ?? '' }}</td>
+-              <td>
+-                <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
+-                <label [for]="'person-alias-input-' + p.id">Add alias</label>
+-                <input
+-                  type="text"
+-                  [id]="'person-alias-input-' + p.id"
+-                  data-testid="person-alias-input"
+-                  [value]="aliasDrafts.get(p.id) ?? ''"
+-                  (input)="aliasDrafts.set(p.id, value($event)); personError.set(null)"
+-                />
+-                <button
+-                  type="button"
+-                  data-testid="person-alias-add"
+-                  [attr.aria-label]="'Add an alias for ' + p.name"
+-                  (click)="addAlias(p)"
+-                >
+-                  Add
+-                </button>
+-              </td>
++              @if (columns.shown('aliases')) {
++                <td>
++                  <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
++                  <label [for]="'person-alias-input-' + p.id">Add alias</label>
++                  <input
++                    type="text"
++                    [id]="'person-alias-input-' + p.id"
++                    data-testid="person-alias-input"
++                    [value]="aliasDrafts.get(p.id) ?? ''"
++                    (input)="aliasDrafts.set(p.id, value($event)); personError.set(null)"
++                  />
++                  <button
++                    type="button"
++                    data-testid="person-alias-add"
++                    [attr.aria-label]="'Add an alias for ' + p.name"
++                    (click)="addAlias(p)"
++                  >
++                    Add
++                  </button>
++                </td>
++              }
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              @if (columns.shown('terms')) {
++                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              }
++              @if (columns.shown('contact')) {
++                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              }
+               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
+-              <td data-testid="person-claimed">{{ claimed(p.id) | figure }}</td>
+-              <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
++              @if (columns.shown('claimed')) {
++                <td data-testid="person-claimed">{{ claimed(p.id) | figure }}</td>
++              }
++              @if (columns.shown('due-total')) {
++                <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
++              }
+               <td>
+                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
+                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
+@@ -416,30 +469,50 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   }
+                 </ul>
+               </td>
+-              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+-              <td>
+-                <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
+-                <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</span></span>
+-              </td>
++              @if (columns.shown('excess')) {
++                <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              }
++              @if (columns.shown('overdue-count') || columns.shown('overdue-total')) {
++                <td>
++                  @if (columns.shown('overdue-count')) {
++                    <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
++                  }
++                  @if (columns.shown('overdue-total')) {
++                    <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</span></span>
++                  }
++                </td>
++              }
+               <td>
+                 @let aged = agedOf(p);
+                 <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] | figure }}</span></span>
+                 <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] | figure }}</span></span>
+                 <span>61+ <span data-testid="person-aged-61">{{ aged[2] | figure }}</span></span>
+               </td>
+-              <td>
+-                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
+-                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+-              </td>
+-              <td>
+-                <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+-                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+-                <ul>
+-                  @for (r of p.retirements ?? []; track $index) {
+-                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
++              @if (columns.shown('statement-count') || columns.shown('stated-total') || columns.shown('statement-date')) {
++                <td>
++                  @if (columns.shown('statement-count')) {
++                    <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                   }
+-                </ul>
++                  @if (columns.shown('stated-total')) {
++                    <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
++                  }
++                  @if (columns.shown('statement-date')) {
++                    <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
++                  }
++                </td>
++              }
++              @if (columns.shown('retired')) {
++                <td>
++                  <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
++                  <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
++                  <ul>
++                    @for (r of p.retirements ?? []; track $index) {
++                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
++                    }
++                  </ul>
++                </td>
++              }
++              <td>
+                 <ul aria-label="Snapshots">
+                   @for (s of p.snapshots ?? []; track $index) {
+                     <li data-testid="person-snapshot-line">{{ s.asOf }} {{ s.dueTotal }}</li>
+@@ -447,14 +520,16 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 </ul>
+               </td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+-              <td>
+-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+-                <ul>
+-                  @for (h of p.holds; track $index) {
+-                    <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+-                  }
+-                </ul>
+-              </td>
++              @if (columns.shown('hold')) {
++                <td>
++                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                  <ul>
++                    @for (h of p.holds; track $index) {
++                      <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
++                    }
++                  </ul>
++                </td>
++              }
+               <td>
+                 <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
+                 <button
+@@ -467,32 +542,36 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
+                 </button>
+               </td>
+-              <td>
+-                <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
+-                <label [for]="'person-patron-select-' + p.id">Add patron</label>
+-                <select
+-                  [id]="'person-patron-select-' + p.id"
+-                  data-testid="person-patron-select"
+-                  (change)="patronChoices.set(p.id, value($event)); patronError.set(null)"
+-                >
+-                  <option value="">Choose a person</option>
+-                  @for (other of people(); track other.id) {
+-                    <option [value]="other.id">{{ other.name }}</option>
++              @if (columns.shown('patrons')) {
++                <td>
++                  <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
++                  <label [for]="'person-patron-select-' + p.id">Add patron</label>
++                  <select
++                    [id]="'person-patron-select-' + p.id"
++                    data-testid="person-patron-select"
++                    (change)="patronChoices.set(p.id, value($event)); patronError.set(null)"
++                  >
++                    <option value="">Choose a person</option>
++                    @for (other of people(); track other.id) {
++                      <option [value]="other.id">{{ other.name }}</option>
++                    }
++                  </select>
++                  <button
++                    type="button"
++                    data-testid="person-patron-add"
++                    [attr.aria-label]="'Add a patron for ' + p.name"
++                    (click)="addPatron(p)"
++                  >
++                    Add
++                  </button>
++                  @if (patronError()?.id === p.id) {
++                    <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                   }
+-                </select>
+-                <button
+-                  type="button"
+-                  data-testid="person-patron-add"
+-                  [attr.aria-label]="'Add a patron for ' + p.name"
+-                  (click)="addPatron(p)"
+-                >
+-                  Add
+-                </button>
+-                @if (patronError()?.id === p.id) {
+-                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+-                }
+-              </td>
+-              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
++                </td>
++              }
++              @if (columns.shown('backing')) {
++                <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
++              }
+               <td data-testid="person-cut-total">{{ cutTotalOf(p) | figure }}</td>
+               <td>
+                 <app-person-plans [personId]="p.id" [personName]="p.name" />
+@@ -680,6 +759,8 @@ export class People {
+   private readonly ratesApi = inject(RatesApi);
+   private readonly periodsApi = inject(PeriodsApi);
+   private readonly voidReasons = inject(VoidReasons);
++  protected readonly columns = inject(Columns);
++  protected readonly peopleColumns = PEOPLE_COLUMNS;
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<PersonView[]>([]);
+@@ -1873,6 +1954,11 @@ export class People {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
++  /** Switch a column of the people list on or off on this user's screen. */
++  protected showColumn(column: PeopleColumn, shown: boolean): void {
++    void this.columns.set(column, shown);
++  }
++
+   protected checked(event: Event): boolean {
+     return (event.target as HTMLInputElement).checked;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPref.java b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+index ba9e0410..108cef22 100644
+--- a/src/main/java/net/officefloor/hq/app/user/UserPref.java
++++ b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+@@ -5,7 +5,10 @@ import jakarta.persistence.Entity;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A user's own preferences, kept per user name across every sheet: the locale figures are shown in. */
++/**
++ * A user's own preferences, kept per user name across every sheet: the locale figures are shown in and
++ * the people-list columns switched off on their screen.
++ */
+ @Entity
+ @Table(name = "user_pref")
+ public class UserPref {
+@@ -17,6 +20,10 @@ public class UserPref {
+     @Column(name = "locale", nullable = false)
+     private String locale;
+ 
++    /** The switched-off columns, separated by commas; empty when every column is shown. */
++    @Column(name = "hidden_columns", nullable = false)
++    private String hiddenColumns = "";
++
+     protected UserPref() {
+     }
+ 
+@@ -36,4 +43,12 @@ public class UserPref {
+     public void setLocale(String locale) {
+         this.locale = locale;
+     }
++
++    public String getHiddenColumns() {
++        return hiddenColumns;
++    }
++
++    public void setHiddenColumns(String hiddenColumns) {
++        this.hiddenColumns = hiddenColumns;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefController.java b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+index dfd6863b..e9a3a7b3 100644
+--- a/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.user;
+ 
++import java.util.List;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+@@ -28,6 +29,15 @@ public class UserPrefController {
+     public record LocaleForm(@NotNull @Pattern(regexp = "en|de") String locale) {
+     }
+ 
++    /** What the screen is told about the people-list columns the user has switched off. */
++    public record ColumnsView(List<String> hidden) {
++    }
++
++    /** The people-list columns to switch off, each a column name such as due-total. */
++    public record ColumnsForm(
++            @NotNull @Size(max = 50) List<@NotNull @Pattern(regexp = "[a-z][a-z-]{0,39}") String> hidden) {
++    }
++
+     private final UserPrefService service;
+ 
+     public UserPrefController(UserPrefService service) {
+@@ -46,4 +56,17 @@ public class UserPrefController {
+             @RequestBody @Valid LocaleForm form) {
+         return new LocaleView(service.setLocale(SignedIn.name(user), form.locale()));
+     }
++
++    /** The people-list columns the signed-in user has switched off; none when they have not chosen. */
++    @GetMapping("/columns")
++    public ColumnsView columns(@RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return new ColumnsView(service.hiddenColumns(SignedIn.name(user)));
++    }
++
++    /** Save the people-list columns the signed-in user has switched off. */
++    @PutMapping("/columns")
++    public ColumnsView setColumns(@RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ColumnsForm form) {
++        return new ColumnsView(service.setHiddenColumns(SignedIn.name(user), form.hidden()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+index 2dea2114..9a04d23c 100644
+--- a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.user;
+ 
++import java.util.Arrays;
++import java.util.List;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** A user's own preferences: read, with en when none is saved, and saved. Not audited. */
++/** A user's own preferences: read, with en and every column shown when none is saved, and saved. Not audited. */
+ @Service
+ public class UserPrefService {
+ 
+@@ -29,4 +31,22 @@ public class UserPrefService {
+         pref.setLocale(locale);
+         return prefs.save(pref).getLocale();
+     }
++
++    /** The people-list columns the user has switched off; none when they have not chosen. */
++    @Transactional(readOnly = true)
++    public List<String> hiddenColumns(String user) {
++        return prefs.findById(user).map(UserPrefService::split).orElse(List.of());
++    }
++
++    /** Save the people-list columns the user has switched off. */
++    @Transactional
++    public List<String> setHiddenColumns(String user, List<String> columns) {
++        UserPref pref = prefs.findById(user).orElseGet(() -> new UserPref(user, DEFAULT_LOCALE));
++        pref.setHiddenColumns(String.join(",", columns.stream().distinct().sorted().toList()));
++        return split(prefs.save(pref));
++    }
++
++    private static List<String> split(UserPref pref) {
++        return Arrays.stream(pref.getHiddenColumns().split(",")).filter(c -> !c.isEmpty()).toList();
++    }
+ }
+diff --git a/src/main/resources/db/migration/V89__user_pref_hidden_columns.sql b/src/main/resources/db/migration/V89__user_pref_hidden_columns.sql
+new file mode 100644
+index 00000000..db9bbb87
+--- /dev/null
++++ b/src/main/resources/db/migration/V89__user_pref_hidden_columns.sql
+@@ -0,0 +1,3 @@
++-- The columns of the people list a user has switched off on their screen, kept per user name across
++-- every sheet: their names separated by commas. Empty (and a user with no row) shows every column.
++ALTER TABLE user_pref ADD COLUMN hidden_columns VARCHAR(1000) DEFAULT '' NOT NULL;
