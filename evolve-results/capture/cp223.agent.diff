@@ -1,0 +1,687 @@
+diff --git a/.e2e.out b/.e2e.out
+index 7a295068..3dde416f 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,70 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan amount reaches drafts › plan amount reaches drafts (9.5s)
+-  ✓  2 [chromium] › acceptance.spec.ts:54:7 › plan amount reaches drafts › plan amount reaches drafts scenario 1 (48.8s)
+-  ✓  3 [chromium] › acceptance.spec.ts:705:7 › plan amount reaches drafts › plan amount reaches drafts scenario 2 (38.6s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 (36.6s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › grade retire › grade retire (23.1s)
++  ✓  2 [chromium] › acceptance.spec.ts:72:7 › grade retire › grade retire scenario 1 (27.9s)
++  ✘  3 [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 (32.8s)
++  ✘  4 [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 (34.0s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
++  1) [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ────────────────
++
++    Error: the screen refused this action (its error element appeared)
++
++       at ../support/ui.ts:25
++
++      23 |  *  lands on the arranging line rather than on a later assertion. */
++      24 | export function must(id: string | null): string {
++    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
++         |                          ^
++      26 |   return id;
++      27 | }
++      28 |
++
++        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:694:24
++
++  2) [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ───────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('person-row-13').getByTestId('person-claimed')
+-    Expected string: [32m"0.00"[39m
+-    Received string: [31m"7.77"[39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvkx4bzz1tm9[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-claimed')[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">7.77</td>[22m
+-    [2m  -   unexpected value "7.77"[22m
+-
+-
+-      1472 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-claimed")).toHaveText("0.00");
+-      1473 |     await expect(pg_wes.getByTestId("person-row-" + p_eve).getByTestId("person-due-total")).toHaveText("0.00");
+-    > 1474 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
+-           |                                                                                           ^
+-      1475 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
+-      1476 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("7.77");
+-      1477 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("1.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1474:91
+-
+-  Slow test file: [chromium] › acceptance.spec.ts (2.2m)
+-  Consider splitting slow test files to speed up parallel execution
+-  1 failed
+-    [chromium] › acceptance.spec.ts:1386:7 › plan amount reaches drafts › plan amount reaches drafts scenario 3 
+-  3 passed (2.3m)
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkx4bzz1tm9-p</strong>[22m
++    [2m  -   unexpected value "smvkx4bzz1tm9-p"[22m
++
++
++      1224 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      1225 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
++    > 1226 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++           |                                                      ^
++      1227 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
++      1228 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1229 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1226:54
++
++  2 failed
++    [chromium] › acceptance.spec.ts:576:7 › grade retire › grade retire scenario 2 ─────────────────
++    [chromium] › acceptance.spec.ts:1058:7 › grade retire › grade retire scenario 3 ────────────────
++  2 passed (2.1m)
+diff --git a/src/main/frontend/src/app/core/grades.ts b/src/main/frontend/src/app/core/grades.ts
+new file mode 100644
+index 00000000..67c23e9b
+--- /dev/null
++++ b/src/main/frontend/src/app/core/grades.ts
+@@ -0,0 +1,71 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Grade } from './people';
++import { Session } from './session';
++
++/** A grade of the sheet, and whether it is retired there. */
++export interface GradeStateView {
++  grade: Grade;
++  retired: boolean;
++}
++
++// The sheet's grades, read from and written to the store.
++@Injectable({ providedIn: 'root' })
++export class GradesApi {
++  private readonly http = inject(HttpClient);
++
++  /** The sheet's grades, in order. */
++  list(sheet: string): Promise<GradeStateView[]> {
++    return firstValueFrom(this.http.get<GradeStateView[]>(this.url(sheet)));
++  }
++
++  /** Retire a grade: the sheet's grades as they are now. Refused when it is already retired. */
++  retire(sheet: string, grade: Grade): Promise<GradeStateView[]> {
++    return firstValueFrom(this.http.post<GradeStateView[]>(`${this.url(sheet)}/${encodeURIComponent(grade)}/retire`, {}));
++  }
++
++  private url(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}/grades`;
++  }
++}
++
++/**
++ * The loaded sheet's grades, re-read on every sheet load: people on a retired grade keep it, but it
++ * cannot be chosen for anyone.
++ */
++@Injectable({ providedIn: 'root' })
++export class GradesStore {
++  private readonly session = inject(Session);
++  private readonly api = inject(GradesApi);
++
++  readonly grades = signal<GradeStateView[]>([]);
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheet();
++      const loads = this.session.loads();
++      untracked(() => {
++        this.grades.set([]);
++        if (sheet) void this.reload(sheet, loads);
++      });
++    });
++  }
++
++  /** Whether the grade is retired on the loaded sheet. */
++  retired(grade: Grade): boolean {
++    return this.grades().some((g) => g.grade === grade && g.retired);
++  }
++
++  /** Retire a grade on the loaded sheet; throws when the store refuses it. */
++  async retire(sheet: string, grade: Grade): Promise<void> {
++    const grades = await this.api.retire(sheet, grade);
++    if (this.session.sheet() === sheet) this.grades.set(grades);
++  }
++
++  private async reload(sheet: string, loads: number): Promise<void> {
++    const grades = await this.api.list(sheet);
++    // A later load may have started while this one was in flight: only the latest is shown.
++    if (this.session.sheet() === sheet && this.session.loads() === loads) this.grades.set(grades);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+new file mode 100644
+index 00000000..d1938302
+--- /dev/null
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -0,0 +1,82 @@
++import { Component, inject, signal } from '@angular/core';
++import { GradesStore } from '../../core/grades';
++import { GRADES, Grade } from '../../core/people';
++import { Session } from '../../core/session';
++
++// The sheet's grades, each shown retired or not, and a form to retire one; a retired grade is refused.
++@Component({
++  selector: 'app-grades',
++  template: `
++    <section aria-labelledby="grades-heading">
++      <h2 id="grades-heading">Grades</h2>
++      <form (submit)="retire($event)" aria-label="Retire a grade">
++        <label for="grade-retire-select">Grade to retire</label>
++        <select
++          id="grade-retire-select"
++          data-testid="grade-retire-select"
++          [value]="grade()"
++          (change)="grade.set(chosen($event)); error.set(null)"
++        >
++          @for (g of codes; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-retire">Retire grade</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="grade-error">{{ message }}</p>
++        }
++      </form>
++      <table>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            <th scope="col">Retired</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of store.grades(); track g.grade) {
++            <tr [attr.data-testid]="'grade-row-' + g.grade">
++              <td data-testid="grade-code">{{ g.grade }}</td>
++              <td data-testid="grade-retired">{{ g.retired ? 'yes' : 'no' }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Grades {
++  private readonly session = inject(Session);
++  protected readonly store = inject(GradesStore);
++
++  protected readonly codes = GRADES;
++  protected readonly grade = signal<Grade>('A');
++  protected readonly error = signal<string | null>(null);
++  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private busy = false;
++
++  protected chosen(event: Event): Grade {
++    return (event.target as HTMLSelectElement).value as Grade;
++  }
++
++  protected async retire(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const grade = this.grade();
++    if (this.store.retired(grade)) {
++      this.error.set(`The grade ${grade} is already retired.`);
++      return;
++    }
++    this.busy = true;
++    try {
++      await this.store.retire(sheet, grade);
++    } catch {
++      this.error.set(`The grade ${grade} could not be retired.`);
++    } finally {
++      this.busy = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 2444caac..b98dce6a 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -7,6 +7,7 @@ import { Settings } from '../settings/settings';
+ import { Delegation } from '../delegation/delegation';
+ import { Holidays } from '../holidays/holidays';
+ import { Notes } from '../notes/notes';
++import { Grades } from '../grades/grades';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ import { TemplatesList } from '../templates/templates';
+ import { AuditViewer } from '../audit/audit';
+@@ -17,7 +18,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+ // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
++  imports: [People, Settings, Delegation, Holidays, Notes, Grades, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+@@ -101,6 +102,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+           <app-delegation />
+           <app-holidays />
+           <app-notes />
++          <app-grades />
+           <app-void-reasons />
+           <app-templates />
+           <app-people />
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7061b7e9..d5ebf864 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -28,6 +28,7 @@ import { Rates } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
++import { GradesStore } from '../../core/grades';
+ 
+ /** The statuses the summary counts claims by, in the order it lists them. */
+ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+@@ -904,6 +905,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+ })
+ export class People {
+   private readonly session = inject(Session);
++  private readonly gradeStore = inject(GradesStore);
+   private readonly api = inject(PeopleApi);
+   private readonly claimsApi = inject(ClaimsApi);
+   private readonly ratesApi = inject(RatesApi);
+@@ -2612,6 +2614,12 @@ export class People {
+       return;
+     }
+     const id = this.editing();
++    // People on a retired grade keep it, but it cannot be chosen for anyone.
++    if ((id === null || form.gradeGiven) && this.gradeStore.retired(form.grade)) {
++      this.reset();
++      this.error.set(`The grade ${form.grade} is retired.`);
++      return;
++    }
+     const contactKey = form.contact.trim().toLowerCase();
+     if (contactKey !== '' && this.people().some((p) => p.id !== id && p.contact === contactKey)) {
+       // As when the store refuses it: a refused add leaves nothing typed behind.
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeController.java b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+new file mode 100644
+index 00000000..cfe65f05
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+@@ -0,0 +1,49 @@
++package net.officefloor.hq.app.grade;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.SignedIn;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/grades")
++@Validated
++public class GradeController {
++
++    /** What the screen is told about a grade: whether it is retired on the sheet. */
++    public record GradeView(String grade, boolean retired) {
++    }
++
++    private final GradeService service;
++
++    public GradeController(GradeService service) {
++        this.service = service;
++    }
++
++    /** The sheet's grades, in order. */
++    @GetMapping
++    public List<GradeView> list(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        Set<String> retired = service.retired(sheetId);
++        return GradeService.GRADES.stream().map((g) -> new GradeView(g, retired.contains(g))).toList();
++    }
++
++    /** Retire a grade on the sheet: the sheet's grades as they are now. */
++    @PostMapping("/{grade}/retire")
++    public List<GradeView> retire(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        service.retire(sheetId, SignedIn.name(user), grade);
++        return list(sheetId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeService.java b/src/main/java/net/officefloor/hq/app/grade/GradeService.java
+new file mode 100644
+index 00000000..392fe984
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeService.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app.grade;
++
++import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * The grades of a sheet, A, B and C, each of which can be retired: people on a retired grade keep it,
++ * but it cannot be given to anyone else.
++ */
++@Service
++public class GradeService {
++
++    public static final List<String> GRADES = List.of("A", "B", "C");
++
++    private final RetiredGradeRepository retired;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public GradeService(RetiredGradeRepository retired, SheetService sheets, Audit audit) {
++        this.retired = retired;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** The grades retired on the sheet. */
++    @Transactional(readOnly = true)
++    public Set<String> retired(String sheetId) {
++        return retired.findBySheetId(sheetId).stream().map(RetiredGrade::getGrade).collect(Collectors.toSet());
++    }
++
++    /** Retire a grade on the sheet; refused for a grade that is not one or is already retired. */
++    @Transactional
++    public void retire(String sheetId, String user, String grade) {
++        if (!GRADES.contains(grade)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no such grade.");
++        }
++        sheets.lock(sheetId);
++        if (retired.existsBySheetIdAndGrade(sheetId, grade)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That grade is already retired.");
++        }
++        retired.saveAndFlush(new RetiredGrade(sheetId, grade, user));
++        audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user + " grade=" + grade);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/grade/RetiredGrade.java b/src/main/java/net/officefloor/hq/app/grade/RetiredGrade.java
+new file mode 100644
+index 00000000..9463eb54
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/RetiredGrade.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app.grade;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.IdClass;
++import jakarta.persistence.Table;
++import java.io.Serializable;
++import java.util.Objects;
++
++/** A grade retired on a sheet, and who retired it. */
++@Entity
++@Table(name = "grade_retired")
++@IdClass(RetiredGrade.Key.class)
++public class RetiredGrade {
++
++    /** A sheet and a grade. */
++    public static class Key implements Serializable {
++
++        private String sheetId;
++        private String grade;
++
++        protected Key() {
++        }
++
++        public Key(String sheetId, String grade) {
++            this.sheetId = sheetId;
++            this.grade = grade;
++        }
++
++        @Override
++        public boolean equals(Object o) {
++            return o instanceof Key k && Objects.equals(sheetId, k.sheetId) && Objects.equals(grade, k.grade);
++        }
++
++        @Override
++        public int hashCode() {
++            return Objects.hash(sheetId, grade);
++        }
++    }
++
++    @Id
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Id
++    @Column(name = "grade", nullable = false)
++    private String grade;
++
++    @Column(name = "retired_by", nullable = false)
++    private String retiredBy;
++
++    protected RetiredGrade() {
++    }
++
++    public RetiredGrade(String sheetId, String grade, String retiredBy) {
++        this.sheetId = sheetId;
++        this.grade = grade;
++        this.retiredBy = retiredBy;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getGrade() {
++        return grade;
++    }
++
++    public String getRetiredBy() {
++        return retiredBy;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/grade/RetiredGradeRepository.java b/src/main/java/net/officefloor/hq/app/grade/RetiredGradeRepository.java
+new file mode 100644
+index 00000000..e93a24ec
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/RetiredGradeRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.grade;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RetiredGradeRepository extends JpaRepository<RetiredGrade, RetiredGrade.Key> {
++
++    /** The grades retired on the sheet. */
++    List<RetiredGrade> findBySheetId(String sheetId);
++
++    /** Whether the grade is retired on the sheet. */
++    boolean existsBySheetIdAndGrade(String sheetId, String grade);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/ImportService.java b/src/main/java/net/officefloor/hq/app/person/ImportService.java
+index 8f68801a..2951aa15 100644
+--- a/src/main/java/net/officefloor/hq/app/person/ImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/ImportService.java
+@@ -78,6 +78,16 @@ public class ImportService {
+         List<Person> added = new ArrayList<>();
+         List<Person> updated = new ArrayList<>();
+         Set<Long> matched = new HashSet<>();
++        for (int i = 0; i < lines.size(); i++) {
++            String grade = lines.get(i).grade();
++            if (grade != null) {
++                try {
++                    people.requireGradeOpen(sheetId, grade);
++                } catch (ResponseStatusException retired) {
++                    throw refused("Line " + (i + 1) + ": the grade " + grade + " is retired.");
++                }
++            }
++        }
+         String defaultGrade = sheets.defaultGrade(sheetId);
+         int number = 0;
+         for (Line line : lines) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 706b1069..cabde3bd 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -7,6 +7,7 @@ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.grade.RetiredGradeRepository;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
+@@ -27,10 +28,12 @@ public class PersonService {
+     private final Rollups rollups;
+     private final Audit audit;
+     private final RoleService roles;
++    private final RetiredGradeRepository retiredGrades;
+ 
+     public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
+-            Audit audit, RoleService roles) {
++            Audit audit, RoleService roles, RetiredGradeRepository retiredGrades) {
+         this.roles = roles;
++        this.retiredGrades = retiredGrades;
+         this.people = people;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+@@ -77,6 +80,7 @@ public class PersonService {
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+             String tags) {
+         sheets.load(sheetId);
++        requireGradeOpen(sheetId, grade);
+         requireNameFree(sheetId, name, null);
+         requireContactFree(sheetId, contact, null);
+         Rollups.Rollup before = rollups.take(sheetId);
+@@ -131,6 +135,11 @@ public class PersonService {
+             throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                     "Someone else has saved this person since it was opened.");
+         }
++        // People on a retired grade keep it, but it cannot be chosen for them, nor given to anyone else.
++        LocalDate gradeOn = gradeFrom != null ? gradeFrom : sheets.today(sheetId);
++        if (gradeGiven || !grade.equals(person.gradeOn(gradeOn))) {
++            requireGradeOpen(sheetId, grade);
++        }
+         requireNameFree(sheetId, name, person.getId());
+         if (person.getAliases().stream().map(Person::keyOf).anyMatch(treeKeys(sheetId)::contains)) {
+             throw nameInUse();
+@@ -167,6 +176,13 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Refuse a grade retired on the sheet. */
++    public void requireGradeOpen(String sheetId, String grade) {
++        if (retiredGrades.existsBySheetIdAndGrade(sheetId, grade)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The grade " + grade + " is retired.");
++        }
++    }
++
+     /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */
+     @Transactional
+     public Person grade(String sheetId, String user, long personId, long version, String grade) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 9d38bb2d..51384421 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.grade.RetiredGradeRepository;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import org.springframework.context.ApplicationEventPublisher;
+@@ -24,10 +25,12 @@ public class SheetService {
+     private final Audit audit;
+     private final ApplicationEventPublisher events;
+     private final PersonRepository people;
++    private final RetiredGradeRepository retiredGrades;
+ 
+     public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events,
+-            PersonRepository people) {
++            PersonRepository people, RetiredGradeRepository retiredGrades) {
+         this.sheets = sheets;
++        this.retiredGrades = retiredGrades;
+         this.people = people;
+         this.rollups = rollups;
+         this.audit = audit;
+@@ -371,9 +374,10 @@ public class SheetService {
+         return saved;
+     }
+ 
+-    /** The grade a person added without one on the sheet is given: its default grade, else A. */
++    /** The grade a person added without one on the sheet is given: its default grade, else (or when it is retired) A. */
+     public String defaultGrade(String id) {
+-        return load(id).defaultGradeInForce();
++        String grade = load(id).defaultGradeInForce();
++        return retiredGrades.existsBySheetIdAndGrade(id, grade) ? "A" : grade;
+     }
+ 
+     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
+diff --git a/src/main/resources/db/migration/V119__grade_retired.sql b/src/main/resources/db/migration/V119__grade_retired.sql
+new file mode 100644
+index 00000000..c575861a
+--- /dev/null
++++ b/src/main/resources/db/migration/V119__grade_retired.sql
+@@ -0,0 +1,7 @@
++-- A grade retired on a sheet: who retired it. People on it keep it, but it is given to nobody else.
++CREATE TABLE grade_retired (
++    sheet_id   VARCHAR(64)  NOT NULL REFERENCES sheet (id),
++    grade      VARCHAR(1)   NOT NULL,
++    retired_by VARCHAR(200) NOT NULL,
++    PRIMARY KEY (sheet_id, grade)
++);
