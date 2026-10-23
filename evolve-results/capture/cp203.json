@@ -1,0 +1,64 @@
+{
+  "checkpoint": 203,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp203_plan-pause",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed. Show paused yes/no on the plan.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed. Show paused yes/no on the plan.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "95343956a8031835ee302c64338efb0c4052d772",
+  "reset_sha": "",
+  "preagent_sha": "1b59bad8305c25a24f5bb6632cc074435a7c9c2e",
+  "prev_sha": "1b59bad8305c25a24f5bb6632cc074435a7c9c2e",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8848662,
+    "input_tokens": 44,
+    "output_tokens": 11478,
+    "cache_read_tokens": 991971,
+    "cache_creation_tokens": 57092,
+    "num_turns": 23,
+    "duration_ms": 504883,
+    "duration_api_ms": 116305,
+    "model": "claude-opus-5-5",
+    "session_id": "6246103a-44a4-4327-a799-dd3def54ccb8",
+    "stop_reason": "success",
+    "result_text": "Pause and resume work, and the main `plan pause` test and `scenario 1` pass. `bin/e2e` still fails `scenario 2` and `scenario 3`, and I don't think either can be fixed without changing the spec, which I'm not allowed to edit.\n\n**Why they fail**\n1. **Scenarios 2 and 3: placeholder in the spec.** Lines 617, 762 and 1246 expect the literal text `__SHEET__-p`. But the test itself sets the parent to `` `${sheet}-p` `` (lines 510 and 1129), and the app correctly shows that real id. The placeholder was never filled in.\n2. **Scenario 2 also: a missing audit line.** The test soft-closes period P1 (03-01 to 03-15), then adds a claim dated 2026-03-05 inside it. The app's existing late-entry rule (`ClaimService.java:181-189`) correctly writes a `LATE_ENTRY` line after the `CLAIM_ADDED`, but the spec's audit list at line 713 leaves it out. The only way to pass would be to break late entries, so I didn't.\n\nTo check the rest of those tests, I ran a temporary copy of the spec with the placeholder filled in, then restored the original unchanged. With that, scenario 3 passed completely and scenario 2 failed only on the `LATE_ENTRY` line.\n\n**What I built**\n- **Database:** a new `V108__plan_pause.sql` adds a `plan_pause` table. Each row is one pause: the day it started and the day it was resumed (empty while still paused). A plan can be paused and resumed more than once.\n- **Server:**\n  - A plan date on or after the pause day and before the resume day is skipped, not postponed. This applies both to claims made by generate and to the next dates shown on the plan.\n  - Two new endpoints, `POST /plans/{id}/pause` and `/resume`, use the sheet's today. They write `PLAN_PAUSED` or `PLAN_RESUMED sheet=\u2026 by=\u2026 name=<person> start=<plan start>`.\n  - Pausing a paused plan or resuming a running one is refused, and the refusal writes nothing. Viewers are refused by the existing viewer check.\n  - The plan's data now includes whether it is paused.\n- **Screen:** each plan row shows paused yes/no (`plan-paused`) with Pause and Resume buttons (`plan-pause`, `plan-resume`). A refusal shows `plan-error` on that row, and it clears on the next action.\n\nOne choice for you: while a plan is still paused, its shown next dates leave out every date from the pause day onward, because those dates will be skipped unless it's resumed first. Once it's resumed, they come back. The tests only check next dates after a resume, so they don't decide this either way.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8848662,
+        "num_turns": 23,
+        "duration_ms": 504883,
+        "duration_api_ms": 116305,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp203.agent.jsonl",
+  "agent_diff_file": "cp203.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

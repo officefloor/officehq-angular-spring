@@ -1,0 +1,504 @@
+diff --git a/.e2e.out b/.e2e.out
+index d248f11c..9a594aa6 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,119 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison (8.2s)
+-  ✘  2 [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 (25.9s)
+-  ✓  3 [chromium] › acceptance.spec.ts:632:7 › snapshot comparison › snapshot comparison scenario 2 (39.7s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 (45.5s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan pause › plan pause (9.6s)
++  ✓  2 [chromium] › acceptance.spec.ts:56:7 › plan pause › plan pause scenario 1 (48.9s)
++  ✘  3 [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 (23.4s)
++  ✘  4 [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 (26.5s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison ───────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+-
+-    [32m- Expected  - 2[39m
+-    [31m+ Received  + 2[39m
+-
+-    [2m  Array [[22m
+-    [32m-   "Ada  ",[39m
+-    [32m-   "Ben  ",[39m
+-    [31m+   "Ada",[39m
+-    [31m+   "Ben",[39m
+-    [2m  ][22m
+-
+-      22 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-01", "2026-03-05")).toEqual(["Ada 1.00 2.00", "Ben 0.00 1.00"]);
+-      23 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-05", "")).toEqual(["Ada 2.00 2.00", "Ben 1.00 1.00"]);
+-    > 24 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-02", "2026-03-10")).toEqual(["Ada  ", "Ben  "]);
+-         |                                                                          ^
+-      25 |     await ui.setToday(pg_uma, "2026-03-11");
+-      26 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-01", "2026-03-10")).toEqual(["Ada 1.00 2.00", "Ben 0.00 1.00"]);
+-      27 |     await ui.refresh(pg_uma);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:24:74
+-
+-  2) [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 ───
++  1) [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkqmx1zu6go[27m-p"[39m
++    Received string: [31m"[7msmvkqxjo9ctt5[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
+-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+-
+-
+-      181 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      182 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+-    > 183 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
++    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
++
++
++      615 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      616 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
++    > 617 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      184 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+-      185 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      186 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      618 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
++      619 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      620 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:183:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:617:54
+ 
+-  3) [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 ─
++  2) [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ───────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkqodlzqxh4[27m-p"[39m
++    Received string: [31m"[7msmvkqy2x5ffv7[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
+-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+-
+-
+-      1399 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
+-      1400 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+-    > 1401 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
++    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
++
++
++      1244 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      1245 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
++    > 1246 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+            |                                                      ^
+-      1402 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+-      1403 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1404 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1401:54
+-
+-  3 failed
+-    [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison ────────────────
+-    [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 ────
+-    [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 ──
+-  1 passed (2.1m)
+- 1785246
+\ No newline at end of file
++      1247 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
++      1248 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1249 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1246:54
++
++  2 failed
++    [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ─────────────────────
++    [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ────────────────────
++  2 passed (1.9m)
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 00208ca7..51a91681 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -23,6 +23,8 @@ export interface PlanView {
+   generated: number;
+   /** The first five plan dates after the sheet's today and on or before the end, oldest first. */
+   nextDates: string[];
++  /** Whether the plan is paused: its dates from the day paused until it is resumed are skipped. */
++  paused: boolean;
+ }
+ 
+ /** A plan as typed on the form. */
+@@ -58,6 +60,16 @@ export class PlansApi {
+     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/people/${personId}/plans`, form));
+   }
+ 
++  /** Pause a running plan from the sheet's today; refused (400) when it is paused already. */
++  pause(sheet: string, planId: number): Promise<PlanView> {
++    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/pause`, null));
++  }
++
++  /** Resume a paused plan on the sheet's today; refused (400) when it is running. */
++  resume(sheet: string, planId: number): Promise<PlanView> {
++    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/resume`, null));
++  }
++
+   /** Make a DRAFT claim for every plan date up to the sheet's today that has none yet. */
+   generate(sheet: string): Promise<GeneratedView> {
+     return firstValueFrom(this.http.post<GeneratedView>(`${this.url(sheet)}/plans/generate`, null));
+@@ -101,6 +113,12 @@ export class Plans {
+     if (this.session.sheet() === sheet) this.list.update((all) => [...all, added]);
+   }
+ 
++  /** Pause (true) or resume (false) a plan on the active sheet: shown as it is after it. */
++  async pause(sheet: string, planId: number, on: boolean): Promise<void> {
++    const changed = on ? await this.api.pause(sheet, planId) : await this.api.resume(sheet, planId);
++    if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
++  }
++
+   /** Generate the plans' claims on the active sheet: what was made, the plans shown as they are after it. */
+   async generate(sheet: string): Promise<GeneratedView> {
+     const generated = await this.api.generate(sheet);
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index aa104844..15767a39 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -25,7 +25,13 @@ function reasonOf(e: unknown): string | null {
+           }
+           to {{ plan.end }};
+           made <span data-testid="plan-generated">{{ plan.generated }}</span>;
+-          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>
++          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>;
++          paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
++          <button type="button" data-testid="plan-pause" (click)="pause(plan.id, true)">Pause plan</button>
++          <button type="button" data-testid="plan-resume" (click)="pause(plan.id, false)">Resume plan</button>
++          @if (rowError()?.planId === plan.id) {
++            <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
++          }
+         </li>
+       }
+     </ul>
+@@ -92,6 +98,8 @@ export class PersonPlans {
+   protected readonly day = signal('');
+   protected readonly end = signal('');
+   protected readonly error = signal<string | null>(null);
++  /** The refusal of the last pause or resume, on the plan it was taken on. */
++  protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private busy = false;
+ 
+@@ -99,6 +107,18 @@ export class PersonPlans {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
++  /** Pause (true) or resume (false) a plan; a refusal is shown on its row. */
++  protected async pause(planId: number, on: boolean): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      await this.store.pause(sheet, planId, on);
++    } catch (e) {
++      this.rowError.set({ planId, message: reasonOf(e) ?? (on ? 'The plan could not be paused.' : 'The plan could not be resumed.') });
++    }
++  }
++
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.busy) return;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 747da9c8..5945d031 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -61,6 +61,11 @@ public class Plan {
+     @Column(name = "claim_id")
+     private Map<LocalDate, Long> made = new TreeMap<>();
+ 
++    /** The plan's pauses, each from the day paused to the day resumed; the last one open while it is paused. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
++    private List<PlanPause> pauses = new ArrayList<>();
++
+     protected Plan() {
+     }
+ 
+@@ -78,7 +83,7 @@ public class Plan {
+     /**
+      * The plan's dates, oldest first, up to its end and the given day: from its start every N days, or for a
+      * monthly plan its day in every month from the start's month (the month's last day when the month is
+-     * shorter), leaving out those before the start.
++     * shorter), leaving out those before the start and those skipped by a pause.
+      */
+     public List<LocalDate> datesUpTo(LocalDate today) {
+         LocalDate last = today == null || end.isBefore(today) ? end : today;
+@@ -86,14 +91,16 @@ public class Plan {
+         if (day != null) {
+             for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
+                 LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
+-                if (!d.isBefore(start) && !d.isAfter(last)) {
++                if (!d.isBefore(start) && !d.isAfter(last) && !skipped(d)) {
+                     dates.add(d);
+                 }
+             }
+             return dates;
+         }
+         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
+-            dates.add(d);
++            if (!skipped(d)) {
++                dates.add(d);
++            }
+         }
+         return dates;
+     }
+@@ -103,6 +110,26 @@ public class Plan {
+         return datesUpTo(null).stream().filter(d -> d.isAfter(today)).limit(count).toList();
+     }
+ 
++    /** Whether a pause skips the plan date: on or after the day paused and before the day resumed. */
++    private boolean skipped(LocalDate date) {
++        return pauses.stream().anyMatch(p -> p.skips(date));
++    }
++
++    /** Whether the plan is paused now: its last pause has not been resumed. */
++    public boolean isPaused() {
++        return !pauses.isEmpty() && pauses.get(pauses.size() - 1).isOpen();
++    }
++
++    /** Pause the plan from the day; the caller has checked it is running. */
++    public void pause(LocalDate on) {
++        pauses.add(new PlanPause(on));
++    }
++
++    /** Resume the plan on the day; the caller has checked it is paused. */
++    public void resume(LocalDate on) {
++        pauses.get(pauses.size() - 1).resume(on);
++    }
++
+     /** Whether the plan has made a claim for the date. */
+     public boolean hasMade(LocalDate date) {
+         return made.containsKey(date);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 199ed20a..e3c472a1 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -26,14 +26,16 @@ public class PlanController {
+ 
+     /**
+      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
+-     * the month, the other null), how many claims it has made, and its next five dates after the sheet's today.
++     * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
++     * whether it is paused.
+      */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, List<LocalDate> nextDates) {
++            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+ 
+         static PlanView of(Plan plan, LocalDate today) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5));
++                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
++                    plan.isPaused());
+         }
+     }
+ 
+@@ -79,6 +81,24 @@ public class PlanController {
+         return PlanView.of(added, service.today(sheetId));
+     }
+ 
++    /** Pause a plan from the sheet's today; refused when it is paused already. */
++    @PostMapping("/plans/{planId}/pause")
++    public PlanView pause(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long planId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, true), service.today(sheetId));
++    }
++
++    /** Resume a paused plan on the sheet's today; refused when it is running. */
++    @PostMapping("/plans/{planId}/resume")
++    public PlanView resume(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long planId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, false), service.today(sheetId));
++    }
++
+     /** A whole number typed on the form, or null when left out. */
+     private static Integer number(String typed) {
+         return typed == null || typed.isEmpty() ? null : Integer.valueOf(typed);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanPause.java b/src/main/java/net/officefloor/hq/app/plan/PlanPause.java
+new file mode 100644
+index 00000000..5f8a3d8b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanPause.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** A pause of a plan: the day it was paused, and the day it was resumed, or null while it is still paused. */
++@Embeddable
++public class PlanPause {
++
++    @Column(name = "paused_on", nullable = false)
++    private LocalDate pausedOn;
++
++    @Column(name = "resumed_on")
++    private LocalDate resumedOn;
++
++    protected PlanPause() {
++    }
++
++    PlanPause(LocalDate pausedOn) {
++        this.pausedOn = pausedOn;
++    }
++
++    /** Whether the plan date falls on or after the day paused and before the day resumed. */
++    boolean skips(LocalDate date) {
++        return !date.isBefore(pausedOn) && (resumedOn == null || date.isBefore(resumedOn));
++    }
++
++    boolean isOpen() {
++        return resumedOn == null;
++    }
++
++    void resume(LocalDate on) {
++        this.resumedOn = on;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 267d4bf2..293f7ea4 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -95,6 +96,32 @@ public class PlanService {
+         return saved;
+     }
+ 
++    /**
++     * Pause a running plan, or resume a paused one, on the sheet's today: a plan date on or after the day
++     * paused and before the day resumed is skipped. Pausing a paused plan or resuming a running one is refused.
++     */
++    @Transactional
++    public Plan pause(String sheetId, String user, long planId, boolean on) {
++        Sheet sheet = sheets.lock(sheetId);
++        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
++        if (plan.isPaused() == on) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    on ? "The plan is paused already." : "The plan is not paused.");
++        }
++        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (on) {
++            plan.pause(sheet.getToday());
++        } else {
++            plan.resume(sheet.getToday());
++        }
++        Plan saved = plans.saveAndFlush(plan);
++        audit.recordOnCommit((on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
++                + " name=" + person.getName() + " start=" + plan.getStart());
++        return saved;
++    }
++
+     /**
+      * For every plan on the sheet, in the order they were added, make a DRAFT claim with the plan's amount
+      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
+diff --git a/src/main/resources/db/migration/V108__plan_pause.sql b/src/main/resources/db/migration/V108__plan_pause.sql
+new file mode 100644
+index 00000000..9bdc1748
+--- /dev/null
++++ b/src/main/resources/db/migration/V108__plan_pause.sql
+@@ -0,0 +1,8 @@
++-- A plan may be paused and resumed, each on the sheet's today. A plan date on or after the day a pause
++-- began and before the day it ended is skipped, not postponed; a pause not yet resumed has no resumed_on.
++CREATE TABLE plan_pause (
++    plan_id    BIGINT NOT NULL REFERENCES plan (id),
++    paused_on  DATE   NOT NULL,
++    resumed_on DATE
++);
++CREATE INDEX plan_pause_plan ON plan_pause (plan_id);
