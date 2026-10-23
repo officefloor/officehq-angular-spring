@@ -1,0 +1,241 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index afdc9ac9..1433196d 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -244,6 +244,11 @@ export interface BulkReassignView {
+   refused: number;
+ }
+ 
++export interface BulkRedateView {
++  redated: ClaimView[];
++  refused: number;
++}
++
+ export interface ClaimForm {
+   amount: string;
+   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
+@@ -423,6 +428,14 @@ export class ClaimsApi {
+     );
+   }
+ 
++  /**
++   * Re-date the selected claims to a date together, in list order, each as its row's re-date would;
++   * those that cannot be re-dated are refused and left as they are.
++   */
++  redateAll(sheet: string, claimIds: number[], date: string): Promise<BulkRedateView> {
++    return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheet)}/claims/redate`, { claimIds, date }));
++  }
++
+   private url(sheet: string): string {
+     return `/api/sheets/${encodeURIComponent(sheet)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b1d77265..9cc083e7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -263,6 +263,26 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+           <span role="alert" data-testid="bulk-reassign-error">{{ message }}</span>
+         }
+       </p>
++      <form (submit)="redateSelected($event)" aria-label="Re-date the selected claims">
++        <label for="bulk-redate-date">Re-date the selected claims to</label>
++        <input
++          type="date"
++          id="bulk-redate-date"
++          data-testid="bulk-redate-date"
++          [value]="bulkRedateDate()"
++          (input)="bulkRedateDate.set(value($event)); bulkRedated.set(null); bulkRedateError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-redate">Re-date selected claims</button>
++        @if (bulkRedated(); as result) {
++          <span role="status">
++            Re-dated <strong data-testid="bulk-redated">{{ result.redated }}</strong>,
++            refused <strong data-testid="bulk-redate-refused">{{ result.refused }}</strong>
++          </span>
++        }
++        @if (bulkRedateError(); as message) {
++          <span role="alert" data-testid="bulk-redate-error">{{ message }}</span>
++        }
++      </form>
+       <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
+         <label for="bulk-grade">Grade the selected people</label>
+         <select
+@@ -923,6 +943,11 @@ export class People {
+   /** How many claims the last bulk reassign reassigned and refused; null until one is done. */
+   protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+   protected readonly bulkReassignError = signal<string | null>(null);
++  /** The date to re-date the selected claims to; empty until one is entered. */
++  protected readonly bulkRedateDate = signal('');
++  /** How many claims the last bulk re-date re-dated and refused; null until one is done. */
++  protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
++  protected readonly bulkRedateError = signal<string | null>(null);
+   /** The ids of the people ticked to be given a grade together. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** The grade to give the selected people. */
+@@ -975,6 +1000,9 @@ export class People {
+         this.bulkReassignTo.set('');
+         this.bulkReassigned.set(null);
+         this.bulkReassignError.set(null);
++        this.bulkRedateDate.set('');
++        this.bulkRedated.set(null);
++        this.bulkRedateError.set(null);
+         this.selectedPeople.set(new Set());
+         this.bulkGraded.set(null);
+         this.bulkGradeError.set(null);
+@@ -1642,6 +1670,8 @@ export class People {
+     this.bulkSettleError.set(null);
+     this.bulkReassigned.set(null);
+     this.bulkReassignError.set(null);
++    this.bulkRedated.set(null);
++    this.bulkRedateError.set(null);
+   }
+ 
+   /**
+@@ -1739,6 +1769,42 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Re-date the selected claims to the entered date together: each is re-dated as its row's re-date
++   * would, in list order, and each that cannot be is left as it is; how many were re-dated and refused
++   * is shown, and the selection cleared.
++   */
++  protected async redateSelected(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.bulkRedated.set(null);
++    this.bulkRedateError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const ids = [...this.selectedClaims()];
++    if (ids.length === 0) {
++      this.bulkRedateError.set('Select the claims to re-date.');
++      return;
++    }
++    const date = this.bulkRedateDate().trim();
++    if (date === '') {
++      this.bulkRedateError.set('Enter the date to re-date the claims to.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const result = await this.claimsApi.redateAll(sheet, ids, date);
++      if (this.session.sheet() !== sheet) return;
++      for (const claim of result.redated) this.claimSaved(claim);
++      this.selectedClaims.set(new Set());
++      this.bulkRedated.set({ redated: result.redated.length, refused: result.refused });
++    } catch {
++      this.bulkRedateError.set('The claims could not be re-dated.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   /** A claim added (listed first, as the newest) or saved or moved (in its place). */
+   protected claimSaved(claim: ClaimView): void {
+     this.claims.update((list) =>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+index 7b3b5ffd..eea685da 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+@@ -1,8 +1,8 @@
+ package net.officefloor.hq.app.claim;
+ 
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+-import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+@@ -18,10 +18,9 @@ import org.springframework.transaction.support.TransactionTemplate;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * Moving the selected claims together: opening, settling or reassigning them. Each is moved on its own, as its
++ * Moving the selected claims together: opening, settling, reassigning or re-dating them. Each is moved on its own, as its
+  * own button would, in list order: the people by their position, each person's claims
+- * newest first (the latest dated first, and of those dated alike the last added), so numbers follow
+- * that order. A claim that cannot be moved (or is not on the sheet)
++ * newest first as they are listed, so numbers follow that order. A claim that cannot be moved (or is not on the sheet)
+  * is refused and left as it is, writing nothing; the others are still moved (except in a bulk settle,
+  * which is all or nothing). On an archived sheet, or
+  * for a viewer, every claim is refused.
+@@ -40,10 +39,6 @@ public class BulkMoveService {
+         }
+     }
+ 
+-    /** A person's claims newest first: the latest dated first, and of those dated alike the last added. */
+-    private static final Comparator<Claim> NEWEST_FIRST = Comparator.comparing(Claim::getDate)
+-            .thenComparing(Claim::getId).reversed();
+-
+     private final ClaimService claims;
+     private final PersonRepository people;
+     private final RoleService roles;
+@@ -96,6 +91,14 @@ public class BulkMoveService {
+         return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
+     }
+ 
++    /**
++     * Re-date the selected claims to a date, each as its row's re-date would, in list order (the order
++     * taken before any is re-dated).
++     */
++    public Result redate(String sheetId, String user, Collection<Long> claimIds, LocalDate date) {
++        return each(sheetId, user, claimIds, id -> claims.redate(sheetId, user, id, date));
++    }
++
+     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+         return each(sheetId, user, claimIds, id -> claims.move(sheetId, user, id, next));
+     }
+@@ -105,14 +108,13 @@ public class BulkMoveService {
+         return each(sheetId, user, selected, listOrder(sheetId, selected), action);
+     }
+ 
+-    /** The selected claims in list order. */
++    /** The selected claims in list order: each person's as the sheet lists them, newest first. */
+     private List<Long> listOrder(String sheetId, Set<Long> selected) {
+         List<Long> ordered = new ArrayList<>();
+         List<Claim> sheetClaims = claims.list(sheetId);
+         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             sheetClaims.stream()
+                     .filter(claim -> claim.getPersonId().equals(person.getId()) && selected.contains(claim.getId()))
+-                    .sorted(NEWEST_FIRST)
+                     .forEach(claim -> ordered.add(claim.getId()));
+         }
+         return ordered;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 35f1efcb..8463b8de 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -165,6 +165,14 @@ public class ClaimController {
+     public record BulkReassignView(List<ClaimView> reassigned, int refused) {
+     }
+ 
++    /** The claims selected to be re-dated together, and the date they are moved to. */
++    public record BulkRedateForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull LocalDate date) {
++    }
++
++    /** What a bulk re-date did: the claims re-dated, as they are now, and how many were refused. */
++    public record BulkRedateView(List<ClaimView> redated, int refused) {
++    }
++
+     /** The paste box's text: lines of name,amount,date,note. */
+     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
+     }
+@@ -285,6 +293,16 @@ public class ClaimController {
+         return new BulkReassignView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+     }
+ 
++    /** Re-date the selected claims together, in list order; those that cannot be re-dated are refused. */
++    @PostMapping("/claims/redate")
++    public BulkRedateView redateAll(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkRedateForm form) {
++        BulkMoveService.Result result = bulk.redate(sheetId, SignedIn.name(user), form.claimIds(), form.date());
++        return new BulkRedateView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
++    }
++
+     /** Approve a PENDING claim, settling it; only a steward, and not the user who opened or last edited it. */
+     @PostMapping("/claims/{claimId}/approve")
+     public ClaimView approve(
