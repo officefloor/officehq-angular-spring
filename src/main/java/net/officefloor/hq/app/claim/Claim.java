@@ -131,6 +131,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether a steward waived the claim's late charge; false when added. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** The number of the claim this one was split from; null unless it was split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -455,6 +459,15 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Waive the claim's late charge; the caller checks the waiver is allowed. */
+    public void waive() {
+        this.waived = true;
     }
 
     public String getSplitFrom() {

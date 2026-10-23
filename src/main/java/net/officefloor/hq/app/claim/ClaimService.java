@@ -538,6 +538,32 @@ public class ClaimService {
     }
 
     /**
+     * Waive an OPEN or PENDING claim's late charge: from then on it bears none, whatever its overdue
+     * state. Only a steward waives; refused when the claim is not OPEN or PENDING, or is already waived.
+     */
+    @Transactional
+    public Claim waive(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward waives a claim's late charge.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's late charge cannot be waived; only an OPEN or PENDING one's can.");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived.");
+        }
+        claim.waive();
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_WAIVED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
      */

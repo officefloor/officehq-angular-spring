@@ -2,105 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances (27.4s)
-  ✘  2 [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 (16.3s)
-  ✘  3 [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 (26.4s)
-  ✘  4 [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 (20.3s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › late charge waiver › late charge waiver (12.8s)
+  ✓  2 [chromium] › acceptance.spec.ts:105:7 › late charge waiver › late charge waiver scenario 1 (35.4s)
+  ✘  3 [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 (29.3s)
+  ✓  4 [chromium] › acceptance.spec.ts:951:7 › late charge waiver › late charge waiver scenario 3 (33.1s)
 
 
-  1) [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ─────────────────────
-
-    Error: import openings: neither a result nor an error appeared within 8000ms
-
-       at ../support/ui.ts:136
-
-      134 |   if (await done()) return true;
-      135 |   if (await error.isVisible().catch(() => false)) return false;
-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
-          |         ^
-      137 | }
-      138 |
-      139 | async function sleep(ms: number): Promise<void> {
-
-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
-        at Object.importOpenings (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1330:14)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:44:12
-
-  2) [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ─────────
-
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
-
-    Received: [31m"3"[39m
-
-      180 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
-      181 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-03-15"}));
-    > 182 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "7.77", "ref": "R-1"})).toBeNull();
-          |                                                                                ^
-      183 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "7.77"})).toBeNull();
-      184 |     expect(await ui.inlineGrade(pg_uma, p_cam, "C")).toBe(true);
-      185 |     expect(await ui.generatePlans(pg_uma)).toBe(0);
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:182:80
-
-  3) [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ────────
+  1) [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkgk4xux0ur[27m-p"[39m
+    Received string: [31m"[7msmvkguf5q5xk5[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
 
 
-      721 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
-      722 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
-    > 723 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+      711 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      712 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 713 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
           |                                                      ^
-      724 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
-      725 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      726 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      714 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      715 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("39.98");
+      716 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("39.98");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:723:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:713:54
 
-  4) [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ────────
-
-    Error: save person: neither a result nor an error appeared within 8000ms
-
-       at ../support/ui.ts:136
-
-      134 |   if (await done()) return true;
-      135 |   if (await error.isVisible().catch(() => false)) return false;
-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
-          |         ^
-      137 | }
-      138 |
-      139 | async function sleep(ms: number): Promise<void> {
-
-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:998:12
-
-  4 failed
-    [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ──────────────────────
-    [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ──────────
-    [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ─────────
-    [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ─────────
+  1 failed
+    [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ─────
+  3 passed (1.9m)

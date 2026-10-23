@@ -87,6 +87,8 @@ export interface ClaimView {
    * after it was saved); null (newer than every rate) when not yet stored, or absent as kept by an old snapshot.
    */
   added?: number | null;
+  /** Whether a steward waived the claim's late charge; false (or absent, as kept by an old snapshot) when not. */
+  waived?: boolean;
 }
 
 /** A line of a claim: its label, quantity and unit amount (two decimals). */
@@ -396,6 +398,11 @@ export class ClaimsApi {
    */
   timeline(sheet: string, id: number): Promise<string[]> {
     return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+  }
+
+  /** Waive an OPEN or PENDING claim's late charge; only a steward, and refused when already waived. */
+  waive(sheet: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/waive`, {}));
   }
 
   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */

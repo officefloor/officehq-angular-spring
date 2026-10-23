@@ -145,23 +145,27 @@ public class Dues {
 
     /**
      * The due a SETTLED claim is re-settled at: what it would show today as an OPEN claim bound by no
-     * statement, its live figure with the late charge it would have on the sheet's today on top; null
-     * when it has no figure.
+     * statement, its live figure with the late charge it would have on the sheet's today on top (none
+     * when its late charge was waived); null when it has no figure.
      */
     public BigDecimal resettling(Claim claim, String grade) {
         Basis basis = live(claim.getSheetId());
         BigDecimal figure = live(claim, grade, basis);
-        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, grade, figure, basis), basis);
+        if (figure == null || claim.isCorrection()) {
+            return figure;
+        }
+        return floored(claim, claim.isWaived() ? figure : lateOn(claim, grade, figure, basis), basis);
     }
 
     /**
      * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
      * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
      * against the policy date. The charge is never bound: it always follows the sheet's today.
-     * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
+     * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue),
+     * nor a claim whose late charge was waived.
      */
     private BigDecimal withLate(Claim claim, String grade, BigDecimal figure, Basis basis) {
-        if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
+        if (figure == null || claim.isCorrection() || claim.isWaived() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
             return figure;
         }
         if (basis.sheet() != null && claim.isDeferredOn(basis.today())) {

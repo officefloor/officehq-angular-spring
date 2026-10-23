@@ -146,10 +146,10 @@ public class CloneService {
             long to = insert("""
                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq)
+                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived)
                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq
+                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived
                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);

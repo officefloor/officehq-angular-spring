@@ -81,7 +81,7 @@ public class SheetHistory {
 
     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
-            LocalDate deferredUntil, Long added) {
+            LocalDate deferredUntil, Long added, Boolean waived) {
     }
 
     /**
@@ -261,6 +261,9 @@ public class SheetHistory {
             }
             claim.defer(c.deferredUntil());
             claim.keepAdded(c.added());
+            if (Boolean.TRUE.equals(c.waived())) {
+                claim.waive();
+            }
             claims.put(c.id(), claim);
         }
         Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
@@ -301,6 +304,7 @@ public class SheetHistory {
 
     private static ClaimState kept(Claim c) {
         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
-                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded());
+                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
+                c.isWaived());
     }
 }

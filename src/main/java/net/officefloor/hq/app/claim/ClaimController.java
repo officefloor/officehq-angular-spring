@@ -37,13 +37,13 @@ public class ClaimController {
      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
-     * it (null when none did), and its lines, in the order they were added.
+     * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
-            String editedBy, Integer settleBatch, List<LineView> lines, Long added) {
+            String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -55,7 +55,8 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded());
+                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
+                    claim.isWaived());
         }
     }
 
@@ -417,6 +418,15 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.remind(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Waive an OPEN or PENDING claim's late charge; only a steward. */
+    @PostMapping("/claims/{claimId}/waive")
+    public ClaimView waive(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.waive(sheetId, SignedIn.name(user), claimId));
     }
 
     /** Defer an OPEN claim until a date after the sheet's today. */
