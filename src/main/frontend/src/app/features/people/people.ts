@@ -1687,7 +1687,8 @@ export class People {
    * people included, with the grade in force on the sheet's today, the retired-from date or nothing, and
    * the due-total as shown. Each line ends with a line feed.
    */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled();
     const lines = [
       ['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
@@ -1700,7 +1701,8 @@ export class People {
    * (retired people included) and each person's claims oldest first, with the number, period and due
    * as shown (an empty number or period, or n/a, as it is). Each line ends with a line feed.
    */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    await this.session.settled();
     const lines = [
       ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
       ...this.people().flatMap((p) =>

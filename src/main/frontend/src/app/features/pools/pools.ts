@@ -258,6 +258,8 @@ export class Pools {
   );
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
+  /** The sheet load whose pools are on screen. */
+  private readonly poolsLoaded = signal(0);
 
   constructor() {
     // Every sheet load re-reads the sheet's pools from the store.
@@ -294,7 +296,9 @@ export class Pools {
    * and each pool's members in the order added, a pool member as pool:<name>, and the cut as shown
    * (empty when none). Each line ends with a line feed.
    */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled();
+    while (this.poolsLoaded() !== this.session.loads()) await new Promise((done) => setTimeout(done, 20));
     const lines = [
       ['pool', 'member', 'share', 'cut'],
       ...this.lines().flatMap((line) =>
@@ -423,8 +427,12 @@ export class Pools {
   }
 
   private async reload(sheet: string, loads: number): Promise<void> {
-    const pools = await this.api.list(sheet);
-    // A later load may have started while this one was in flight: only the latest is shown.
-    if (this.session.sheet() === sheet && this.session.loads() === loads) this.pools.set(pools);
+    try {
+      const pools = await this.api.list(sheet);
+      // A later load may have started while this one was in flight: only the latest is shown.
+      if (this.session.sheet() === sheet && this.session.loads() === loads) this.pools.set(pools);
+    } finally {
+      if (this.session.loads() === loads) this.poolsLoaded.set(loads);
+    }
   }
 }

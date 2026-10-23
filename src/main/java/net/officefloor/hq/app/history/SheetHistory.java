@@ -39,9 +39,13 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class SheetHistory {
 
-    /** A sheet's figures-bearing state, as kept. */
+    /** A sheet's figures-bearing state, as kept (its pot null in states kept before the pot was). */
     record State(LocalDate policyDate, List<SettingState> settings, List<RateState> rates,
-            List<PersonState> people, List<ClaimState> claims) {
+            List<PersonState> people, List<ClaimState> claims, PotState pot) {
+    }
+
+    /** The sheet's pot as kept; its value null for none. */
+    record PotState(BigDecimal value) {
     }
 
     record SettingState(String key, LocalDate from, String value) {
@@ -128,7 +132,7 @@ public class SheetHistory {
                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
                 sheetRates.stream().map(SheetHistory::kept).toList(),
                 sheetPeople.stream().map(SheetHistory::kept).toList(),
-                sheetClaims.stream().map(SheetHistory::kept).toList());
+                sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()));
         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
                 sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
                 periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList());
@@ -217,6 +221,9 @@ public class SheetHistory {
         Sheet sheet = now.asOf(day,
                 state.settings().stream().map(s -> new DatedSetting(s.key(), s.from(), s.value())).toList(),
                 state.policyDate());
+        if (state.pot() != null) {
+            sheet.setPot(state.pot().value());
+        }
         List<Rate> rates = rates(now.getId(), state);
         Map<Long, Person> people = new LinkedHashMap<>();
         for (PersonState p : state.people()) {

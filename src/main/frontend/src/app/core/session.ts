@@ -121,6 +121,8 @@ export class Session {
   readonly loads = signal(0);
   /** The sheet load whose people and claims are on screen; it equals loads once the latest has arrived. */
   readonly loaded = signal(0);
+  /** A change of the as-of date whose sheet load is still in flight; null when none is. */
+  private asOfLoading: Promise<void> | null = null;
 
   signIn(name: string): void {
     this.user.set(name);
@@ -141,12 +143,25 @@ export class Session {
     if (!id) throw new Error('No sheet is loaded.');
     const was = this.asOf();
     this.asOf.set(date);
+    const loading = this.loadSheet(id);
+    this.asOfLoading = loading;
     try {
-      await this.loadSheet(id);
+      await loading;
     } catch (e) {
       this.asOf.set(was);
       throw e;
+    } finally {
+      if (this.asOfLoading === loading) this.asOfLoading = null;
     }
+  }
+
+  /**
+   * Resolves once the people and claims on screen are those of the latest sheet load, including one
+   * started by changing the as-of date, so what is read from the screen is read as of that date.
+   */
+  async settled(): Promise<void> {
+    while (this.asOfLoading) await this.asOfLoading.catch(() => undefined);
+    while (this.loaded() !== this.loads()) await new Promise((done) => setTimeout(done, 20));
   }
 
   /** Change the active sheet's today in the store. */
