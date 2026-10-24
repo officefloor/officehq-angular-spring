@@ -64,6 +64,8 @@ import { Audit } from './audit';
       [claims]="claims()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="money(overdueTotal().cents)"
+      [myDueTotal]="myFigures()?.dueTotal ?? ''"
+      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
     />
     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
       <span>Over this sheet and the sheets below it:</span>
@@ -902,6 +904,18 @@ export class People {
       count: each.reduce((sum, o) => sum + o.count, 0),
       cents: trimmedSum(each.map((o) => o.cents)),
     };
+  });
+  /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet who
+   *  has the user's name, or else has it as an alias (as names are compared); null when there is none. */
+  protected readonly myFigures = computed(() => {
+    const user = this.session.user();
+    if (user === null) return null;
+    const key = nameKey(user);
+    const people = this.people();
+    const me =
+      people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key));
+    if (!me) return null;
+    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
   });
   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
@@ -2059,4 +2073,9 @@ function daysBefore(date: string, days: number): string {
 /** The whole days from `from` to `to` (both YYYY-MM-DD); negative when `from` is after `to`. */
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/** A name as names are compared: trimmed, ignoring case. */
+function nameKey(name: string): string {
+  return name.trim().toLowerCase();
 }

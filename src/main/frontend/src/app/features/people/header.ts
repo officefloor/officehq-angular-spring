@@ -4,7 +4,8 @@ import { STATUSES } from './summary';
 
 // The sheet's header, shown at all times: how many people are on the sheet (retired ones
 // included), how many claims are in each status (as the summary counts them), and the sheet's
-// due-total and overdue-total (as its totals show them).
+// due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
+// overdue-total when a person on the sheet has their name or alias.
 @Component({
   selector: 'app-header',
   template: `
@@ -27,6 +28,14 @@ import { STATUSES } from './summary';
         <div>
           <dt>Overdue</dt>
           <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        </div>
+        <div>
+          <dt>My due</dt>
+          <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        </div>
+        <div>
+          <dt>My overdue</dt>
+          <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
         </div>
       </dl>
     </header>
@@ -55,6 +64,10 @@ export class Header {
   readonly dueTotal = input.required<string>();
   /** The sheet's overdue-total, with two decimals. */
   readonly overdueTotal = input.required<string>();
+  /** The signed-in user's own due-total (of the person with their name or alias); blank when none. */
+  readonly myDueTotal = input.required<string>();
+  /** The signed-in user's own overdue-total; blank when there is no such person. */
+  readonly myOverdueTotal = input.required<string>();
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({

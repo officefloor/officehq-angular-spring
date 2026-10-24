@@ -480,12 +480,11 @@ public class ClaimService {
         return claim;
     }
 
-    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID, and when it is
-     * dated in a closed period. */
+    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID; a proof leaves
+     * the claim's figures alone, so it may be added while the claim is dated in a closed period. */
     @Transactional
     public Claim addProof(String sheetId, String user, long claimId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
                 || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ClaimStatusChangeException();
