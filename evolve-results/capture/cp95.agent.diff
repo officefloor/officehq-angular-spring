@@ -1,0 +1,290 @@
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index 7fc99fa7..be997cff 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -16,6 +16,12 @@ export interface Rate {
+   to: string | null;
+ }
+ 
++/** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
++export interface RatePreview {
++  count: number;
++  diff: string;
++}
++
+ /** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
+  *  one with no from-date when none has; null when no rate applies yet, or when that rate's to-date
+  *  is before the date (an earlier rate does not apply again). */
+@@ -166,6 +172,17 @@ export class RatesService {
+     );
+   }
+ 
++  /** How many OPEN and PENDING claims of people on the grade would show a different due, and the sum
++   *  of the differences, were pct the grade's rate on every date. Saves nothing. */
++  preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
++    return firstValueFrom(
++      this.http.get<RatePreview>(`${this.url(sheet)}/${grade}/preview`, {
++        params: { pct },
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   private url(sheet: string): string {
+     return `/api/sheets/${encodeURIComponent(sheet)}/rates`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/rates.ts b/src/main/frontend/src/app/features/people/rates.ts
+index ceafbaf4..481fa773 100644
+--- a/src/main/frontend/src/app/features/people/rates.ts
++++ b/src/main/frontend/src/app/features/people/rates.ts
+@@ -1,7 +1,7 @@
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { GRADES, Grade } from './people.service';
+-import { Rate, RatesService, rateOn } from './rates.service';
++import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
+ 
+ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+@@ -53,6 +53,37 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
+         }
+       </form>
++      <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
++        <label for="rate-preview-grade">Grade</label>
++        <select
++          id="rate-preview-grade"
++          data-testid="rate-preview-grade"
++          [value]="previewGrade()"
++          (change)="previewGrade.set(gradeOf($event)); clearPreview()"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input
++          id="rate-preview-pct"
++          data-testid="rate-preview-pct"
++          inputmode="decimal"
++          [value]="previewPct()"
++          (input)="previewPct.set(value($event)); clearPreview()"
++        />
++        <button type="submit" data-testid="rate-preview">Preview</button>
++        @if (previewed(); as p) {
++          <p aria-live="polite">
++            Claims changed: <span data-testid="rate-preview-count">{{ p.count }}</span>,
++            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
++          </p>
++        }
++        @if (previewError(); as message) {
++          <p role="alert" class="error" data-testid="rate-preview-error">{{ message }}</p>
++        }
++      </form>
+       <table data-testid="rate-list">
+         <caption>Rate in force on {{ session.today() }}</caption>
+         <thead>
+@@ -145,6 +176,12 @@ export class Rates {
+   protected readonly from = signal('');
+   protected readonly to = signal('');
+   protected readonly error = signal<string | null>(null);
++  protected readonly previewGrade = signal<Grade>('A');
++  protected readonly previewPct = signal('');
++  protected readonly previewed = signal<RatePreview | null>(null);
++  protected readonly previewError = signal<string | null>(null);
++  /** Counts previews, so only the answer to the latest one shows. */
++  private previewSeq = 0;
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+   private submitting = false;
+ 
+@@ -201,4 +238,30 @@ export class Rates {
+       this.submitting = false;
+     }
+   }
++
++  protected clearPreview(): void {
++    this.previewSeq++;
++    this.previewed.set(null);
++    this.previewError.set(null);
++  }
++
++  /** Show what the candidate rate would change; nothing is saved. */
++  protected async preview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.clearPreview();
++    const seq = this.previewSeq;
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const pct = this.previewPct().trim();
++    if (!PCT.test(pct)) {
++      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
++      return;
++    }
++    try {
++      const result = await this.service.preview(sheet, this.previewGrade(), pct);
++      if (seq === this.previewSeq && this.session.sheetId() === sheet) this.previewed.set(result);
++    } catch {
++      if (seq === this.previewSeq) this.previewError.set('That rate could not be previewed.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index a8823aa5..8c6d4a4a 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** The rates of a sheet's grades. The signed-in user's name travels in the {@code X-User} header. */
+@@ -71,4 +72,18 @@ public class RateController {
+             @RequestBody @Valid RateRequest request) {
+         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+     }
++
++    /** A rate preview: how many claims would show a different due, and the sum of the differences as
++     * text with two decimals. */
++    public record PreviewView(int count, String diff) {
++    }
++
++    @GetMapping("/{grade}/preview")
++    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestParam @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
++        RateService.Preview preview = service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2));
++        return new PreviewView(preview.count(), preview.diff().toPlainString());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 3731eae1..bc4e4cce 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -5,7 +5,15 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import java.util.function.Function;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -22,8 +30,13 @@ public class RateService {
+     private final SheetRepository sheets;
+     private final Audit audit;
+     private final RollupService rollup;
++    private final ClaimRepository claims;
++    private final PersonRepository people;
+ 
+-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup) {
++    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup,
++            ClaimRepository claims, PersonRepository people) {
++        this.claims = claims;
++        this.people = people;
+         this.rates = rates;
+         this.sheets = sheets;
+         this.audit = audit;
+@@ -62,4 +75,31 @@ public class RateService {
+         rollup.recordSince(sheetId, user, before);
+         return rate;
+     }
++
++    /** How many OPEN and PENDING claims would show a different due, and by how much in all (new minus
++     * current), were {@code pct} the grade's rate on every date. */
++    public record Preview(int count, BigDecimal diff) {
++    }
++
++    /** A preview of the grade's rate at {@code pct} on every date over the OPEN and PENDING claims of the
++     * people on the grade on each claim's date; a claim a statement binds does not change. Saves nothing. */
++    @Transactional(readOnly = true)
++    public Preview preview(String sheetId, String grade, BigDecimal pct) {
++        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, Function.identity()));
++        RollupService.Basis live = rollup.live(sheetId);
++        RollupService.Basis previewed = RollupService.withRate(live, grade, pct);
++        int count = 0;
++        BigDecimal diff = BigDecimal.ZERO.setScale(2);
++        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) continue;
++            BigDecimal now = rollup.shownOf(claim, person, live);
++            BigDecimal then = rollup.shownOf(claim, person, previewed);
++            if (Objects.equals(now, then) || (now != null && then != null && now.compareTo(then) == 0)) continue;
++            count++;
++            diff = diff.add(then == null ? BigDecimal.ZERO : then).subtract(now == null ? BigDecimal.ZERO : now);
++        }
++        return new Preview(count, diff.setScale(2, RoundingMode.HALF_EVEN));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 5dc8167b..0a973c7a 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -264,6 +264,57 @@ public class RollupService {
+         };
+     }
+ 
++    /** {@code base}, but with the grade's rate {@code pct} in force on every date. */
++    public static Basis withRate(Basis base, String grade, BigDecimal pct) {
++        Rate rate = new Rate(null, grade, null, null, pct);
++        return new Basis() {
++            @Override
++            public LocalDate today() {
++                return base.today();
++            }
++
++            @Override
++            public LocalDate policyDateInForce() {
++                return base.policyDateInForce();
++            }
++
++            @Override
++            public Optional<Rate> rateInForce(String g, LocalDate date) {
++                return grade.equals(g) ? Optional.of(rate) : base.rateInForce(g, date);
++            }
++
++            @Override
++            public BigDecimal floorOn(LocalDate date) {
++                return base.floorOn(date);
++            }
++
++            @Override
++            public BigDecimal latePctOn(LocalDate date) {
++                return base.latePctOn(date);
++            }
++
++            @Override
++            public BigDecimal cap() {
++                return base.cap();
++            }
++
++            @Override
++            public Optional<Claim> claimNumbered(Long personId, String number) {
++                return base.claimNumbered(personId, number);
++            }
++
++            @Override
++            public Optional<Person> personOf(Long personId) {
++                return base.personOf(personId);
++            }
++
++            @Override
++            public Integer graceOn(String g, LocalDate date) {
++                return base.graceOn(g, date);
++            }
++        };
++    }
++
+     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
+      * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap; null (n/a)
+      * when none has a figure and no rate of their grade is in force on its today. */
