@@ -67,6 +67,8 @@ export interface Claim {
   /** Whether the claim is in REVIEW past the sheet's review SLA: its review day plus the SLA days is
    *  before the sheet's today. */
   reviewLate: boolean;
+  /** Whether a steward waived the claim's late charge: it bears none from then on. */
+  waived: boolean;
 }
 
 /** A line typed for a claim: its label, quantity and unit amount, as text. */
@@ -329,6 +331,16 @@ export class ClaimsService {
   remind(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/remind`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Waive an OPEN or PENDING claim's late charge; refused (403) when the user is not a steward, (409)
+   *  when it is not OPEN or PENDING and (422) when it is already waived. */
+  waive(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/waive`, null, {
         headers: this.session.headers(),
       }),
     );

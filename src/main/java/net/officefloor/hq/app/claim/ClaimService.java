@@ -431,6 +431,27 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward's waiver of an OPEN or PENDING claim's late charge: it bears none from then on, whatever
+     * its overdue state. Refused when the user is not a steward, unless the claim is OPEN or PENDING, and
+     * when it is already waived. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimStatusChangeException();
+        }
+        if (claim.isWaived()) throw new ClaimWaivedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.waive();
+        claims.flush();
+        record("CLAIM_WAIVED", user, person, claim, claim.getNumber());
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
     /** Remind an OPEN or PENDING claim: a reminder is written and the claim is reminded on the sheet's
      * today. Refused unless the claim is OPEN or PENDING, when it was already reminded on the sheet's
      * today, and when its due-by is in a closed period. A claim not yet escalated whose previous reminder was

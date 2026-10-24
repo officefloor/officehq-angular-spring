@@ -48,7 +48,7 @@ public class ClaimController {
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
-            Integer settleBatch, List<String> lines, long added, boolean reviewLate) {
+            Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -78,7 +78,7 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
-                    reviewLate(claim, log, lateBefore));
+                    reviewLate(claim, log, lateBefore), claim.isWaived());
         }
 
         /** Whether the claim is in REVIEW and its review day is before {@code lateBefore}. */
@@ -379,6 +379,13 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.remind(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/waive")
+    public ClaimView waive(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.waive(sheetId.trim(), user.trim(), claimId));
     }
 
     @PostMapping("/claims/{claimId}/resettle")

@@ -131,6 +131,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
+            <span>Waived <span data-testid="claim-waived">{{ (c.waived ? 'yes' : 'no') | figure }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
@@ -253,6 +254,14 @@ const PAST: Record<ClaimAction, string> = {
               (click)="remind(c)"
             >
               Remind
+            </button>
+            <button
+              type="button"
+              data-testid="claim-waive"
+              [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date"
+              (click)="waive(c)"
+            >
+              Waive late charge
             </button>
             <button
               type="button"
@@ -776,6 +785,30 @@ export class Claims {
           : status === 423
           ? 'That claim is dated in a closed period.'
           : 'Only an open or pending claim can be reminded.',
+      }));
+    }
+  }
+
+  /** Waive the late charge of the OPEN or PENDING claim; anyone but a steward, a claim in any other
+   *  status and one already waived are refused with an error. */
+  protected async waive(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.waive(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: status === 403
+          ? 'Only a steward can waive a late charge.'
+          : status === 422
+          ? "That claim's late charge is already waived."
+          : 'Only an open or pending claim can have its late charge waived.',
       }));
     }
   }

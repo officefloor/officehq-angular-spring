@@ -160,6 +160,10 @@ public class Claim {
     @Column(name = "settle_batch")
     private Integer settleBatch;
 
+    /** Whether a steward waived the claim's late charge: it bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     protected Claim() {
     }
 
@@ -190,6 +194,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.waived = waived;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;
@@ -491,5 +496,14 @@ public class Claim {
 
     public void setSettleBatch(Integer settleBatch) {
         this.settleBatch = settleBatch;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Waive the claim's late charge. */
+    public void waive() {
+        this.waived = true;
     }
 }
