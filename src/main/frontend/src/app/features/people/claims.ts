@@ -54,6 +54,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span data-testid="claim-status">{{ c.status }}</span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+            <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             @for (a of actions; track a.action) {
               <button
                 type="button"

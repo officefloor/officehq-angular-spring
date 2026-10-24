@@ -52,6 +52,16 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Whether the claim is bound to {@link #statedDue}, the figure it had at its person's last
+     * statement that it counted in. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the claim was bound to at its person's last statement; null while unbound, and when
+     * it had no figure (no rate) then. */
+    @Column(name = "stated_due", precision = 12, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -121,6 +131,26 @@ public class Claim {
 
     public void setSettledDue(BigDecimal settledDue) {
         this.settledDue = settledDue;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to {@code due}, the figure it has now. */
+    public void bind(BigDecimal due) {
+        this.stated = true;
+        this.statedDue = due;
+    }
+
+    /** Leave the claim unbound: its figure follows the rates again. */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
     }
 
     public String getOpenedBy() {

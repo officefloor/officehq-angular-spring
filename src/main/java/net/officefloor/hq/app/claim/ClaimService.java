@@ -63,7 +63,8 @@ public class ClaimService {
     }
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
-     * fixes what is due on it at its person's rate then; the user who opened it cannot settle it. */
+     * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
+     * its person's rate then); the user who opened it cannot settle it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -76,7 +77,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueOf(claim, person));
+        if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
         claims.flush();
@@ -93,6 +94,15 @@ public class ClaimService {
             record(event, user, person, claim, number);
         }
         return claim;
+    }
+
+    /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;
+     * otherwise the figure a statement bound it to; otherwise what is due on it at its person's rate.
+     * Null when it has no figure. */
+    public BigDecimal figureOf(Claim claim, Person person) {
+        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return claim.getSettledDue();
+        if (claim.isStated()) return claim.getStatedDue();
+        return dueOf(claim, person);
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,

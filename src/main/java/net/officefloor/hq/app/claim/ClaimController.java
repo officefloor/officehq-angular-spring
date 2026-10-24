@@ -27,18 +27,22 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** A claim, with who opened it (null until opened); its amount, and what was due on it when settled (null otherwise), are sent as text with
-     * two decimals so they are never rounded on the way. */
+    /** A claim, with who opened it (null until opened) and whether it is bound to the figure it had
+     * at its person's last statement; its amount, what was due on it when settled (null otherwise) and
+     * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
+     * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue,
-            String openedBy) {
-        static ClaimView of(Claim claim) {
-            BigDecimal settledDue = claim.getSettledDue();
+            String openedBy, boolean stated, String statedDue) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    settledDue == null ? null : settledDue.setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    claim.getOpenedBy());
+                    text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()));
+        }
+
+        private static String text(BigDecimal figure) {
+            return figure == null ? null : figure.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
         }
     }
 

@@ -38,11 +38,13 @@ export function dueCents(amountCents: number, pct: string | null): number | null
   return Number(negative ? -quotient : quotient);
 }
 
-/** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then;
- *  otherwise what is due on its amount at its person's grade's rate in force on the claim's date,
- *  null when none applies then. */
+/** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then; a
+ *  claim a statement bound keeps the figure it was bound to (null when that was none); otherwise
+ *  what is due on its amount at its person's grade's rate in force on the claim's date, null when
+ *  none applies then. */
 export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade): number | null {
   if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   return dueCents(cents(claim.amount), rateOn(rates, grade, claim.date));
 }
 

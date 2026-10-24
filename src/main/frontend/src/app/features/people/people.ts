@@ -6,12 +6,15 @@ import { Claim, ClaimsService, cents, counts, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Rates } from './rates';
 import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
+import { Statement, StatementsService } from './statements.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
 // and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it: the sum of
 // those claims' due figures; the sheet's
-// claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
+// claimed-total and due-total add up everyone's (a due-total that is n/a is skipped). A statement
+// taken of a person binds each of their counting claims to the figure it shows then; the row shows
+// how many statements they have had and the last one's due-total and date.
 @Component({
   selector: 'app-people',
   imports: [Claims, Rates],
@@ -60,6 +63,9 @@ import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
               <th scope="col">Grade</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
+              <th scope="col">Statements</th>
+              <th scope="col">Last stated</th>
+              <th scope="col">Stated on</th>
               <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
@@ -71,6 +77,9 @@ import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
                 <td data-testid="person-grade">{{ p.grade }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
+                <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
+                <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -90,6 +99,17 @@ import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
                   >
                     Edit
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-statement"
+                    [attr.aria-label]="'Take a statement of ' + p.name"
+                    (click)="takeStatement(p)"
+                  >
+                    Statement
+                  </button>
+                  @if (rowErrors()[p.id]; as message) {
+                    <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
+                  }
                 </td>
               </tr>
             }
@@ -140,6 +160,7 @@ export class People {
   private readonly service = inject(PeopleService);
   private readonly claimsService = inject(ClaimsService);
   private readonly ratesService = inject(RatesService);
+  private readonly statementsService = inject(StatementsService);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -153,6 +174,15 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     money(this.claims().reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0)),
   );
+  /** The sheet's statements, in the order they were taken. */
+  protected readonly statements = signal<Statement[]>([]);
+  private readonly statementsByPerson = computed(() => {
+    const by = new Map<number, Statement[]>();
+    for (const s of this.statements()) by.set(s.personId, [...(by.get(s.personId) ?? []), s]);
+    return by;
+  });
+  /** The error of the last refused action on each person's row, by person id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** The sheet's rates, by grade. */
   protected readonly rates = signal<Rate[]>([]);
   protected readonly dueTotal = computed(() => {
@@ -178,6 +208,8 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.statements.set([]);
+      this.rowErrors.set({});
       this.reset();
       if (sheet) void this.read(sheet);
     });
@@ -193,6 +225,34 @@ export class People {
 
   protected claimsOf(personId: number): Claim[] {
     return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  protected statementsOf(personId: number): Statement[] {
+    return this.statementsByPerson().get(personId) ?? [];
+  }
+
+  protected lastStatementOf(personId: number): Statement | null {
+    return this.statementsOf(personId).at(-1) ?? null;
+  }
+
+  /** Take a statement of the person, and show their claims as it bound or unbound them. */
+  protected async takeStatement(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const taken = await this.statementsService.take(sheet, person.id);
+      if (this.sheet() !== sheet) return;
+      for (const c of taken.claims) this.claimSaved(c);
+      this.statements.update((list) => [...list, taken.statement]);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'A statement could not be taken.' }));
+    }
+  }
+
+  private clearRowError(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   protected claimedOf(personId: number): string {
@@ -249,6 +309,7 @@ export class People {
   }
 
   protected edit(person: Person): void {
+    this.clearRowError(person.id);
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);
@@ -323,13 +384,15 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates] = await Promise.all([
+      const [list, claims, rates, statements] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
+        this.statementsService.list(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.rates.set(rates);
+        this.statements.set(statements);
         this.claims.set(claims);
         this.people.set(list);
       }
