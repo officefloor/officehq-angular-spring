@@ -1,0 +1,64 @@
+{
+  "checkpoint": 74,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp74_as-of-view",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "54c1049fb92ea93eaa62d40b7df7d52bf46c1081",
+  "reset_sha": "",
+  "preagent_sha": "2029551925ae4b507dde487ec40fc7f8edd80048",
+  "prev_sha": "2029551925ae4b507dde487ec40fc7f8edd80048",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 3.5601742,
+    "input_tokens": 98,
+    "output_tokens": 36202,
+    "cache_read_tokens": 6609471,
+    "cache_creation_tokens": 189231,
+    "num_turns": 51,
+    "duration_ms": 690599,
+    "duration_api_ms": 425734,
+    "model": "claude-opus-5-5",
+    "session_id": "62c87d7d-588d-4620-8b4e-ea88657edcec",
+    "stop_reason": "success",
+    "result_text": "I've implemented the as-of view, and `bin/e2e` now passes all 4 tests in `e2e/specs/acceptance.spec.ts`.\n\n**What the user sees.** The session bar now has an as-of date entry (`asof-date`), a set button (`asof-set`), a clear button (`asof-clear`), and `sheet-asof`, which shows the date or nothing. While a date is set, the whole screen re-reads the sheet as it stood at the end of that date, and that date stands in for the sheet's today. The as-of date is kept only in the signed-in user's browser session, so other users are unaffected.\n\n**How it works.**\n- **History:** the app already wrote a history line for every change, but only for the sheet, people, claims, rates and dated settings. I added periods, statements, patrons, watches, roles, permissions and delegations to `HistoryListener`. Without them, closed periods and statement counts couldn't be shown as of a date.\n- **Reading:** while a date is set, every request from the screen carries it in an `X-As-Of` header. Each read endpoint (load, people, patrons, watched, claims, statements, periods, rates, settings, delegations) then answers from the history instead of the current data. Claim log lines are cut off at that date.\n- **Refusing changes:** a new `AsOfGuard` refuses every change sent with that header, with the same 403 refusal used for viewers, so each form shows its usual error and nothing is written to the store or the audit file. Bulk open and settle report every claim as refused, the same way they do for viewers.\n- **Figures:** the screen works out its own figures from what it reads, using the sheet's today. Swapping in the as-of date there and in the data is enough for overdue, late charges, holds, deferrals, retirements and the grade and rate in force.\n\n**Two existing bugs I fixed along the way:**\n1. **Statement as-of date kept after a refusal:** when a statement taken as of a date was refused, the date stayed in its field, so the next plain statement was refused too. Scenario 2 failed on this before any of my changes. The field is now cleared on every submit.\n2. **Totals missing on an empty sheet:** the rollup totals only appeared when the sheet had people. They now always show, so an empty sheet reads `0.00` / `0`.\n\n**Things to know:**\n- **Older sheets:** the newly kept items only have history from now on. On a sheet that existed before this change, an as-of view won't show its earlier periods, statements, patrons, watches, roles, permissions or delegations. Sheets started from now on are fully covered.\n- **`sheet-today`:** while an as-of date is set, it shows that date rather than the sheet's real today. The tests don't check this either way.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 3.5601742,
+        "num_turns": 51,
+        "duration_ms": 690599,
+        "duration_api_ms": 425734,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp74.agent.jsonl",
+  "agent_diff_file": "cp74.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
