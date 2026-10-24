@@ -204,6 +204,7 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Retired</th>
               <th scope="col">Retired from</th>
               <th scope="col">On hold</th>
+              <th scope="col">Active</th>
               <th scope="col">Watched</th>
               <th scope="col">Patrons</th>
               <th scope="col">Backing</th>
@@ -231,6 +232,7 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
                 <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
                 <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+                <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
                 <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
                 <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
                 <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
@@ -524,9 +526,10 @@ export class People {
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
   });
-  /** Everyone as the summary counts them: their grade today, whether retired, and their due-total. */
+  /** Everyone as the summary counts them: their grade today, whether retired, their due-total, and
+   *  whether they are active. */
   protected readonly summaryPeople = computed<SummaryPerson[]>(() =>
-    this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p) })),
+    this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p), active: this.isActive(p) })),
   );
   /** The sheet's due-total: everyone's due-totals added up (n/a ones skipped), trimmed. */
   protected readonly dueTotal = computed(() =>
@@ -818,6 +821,17 @@ export class People {
     if (status === null) return false;
     if (!isOpen(claim)) return counts({ ...claim, status });
     return this.countsAs(claim, status, person);
+  }
+
+  /** Whether the person is active: they have an OPEN or PENDING claim that counts, dated within the
+   *  30 days up to and including the sheet's today. */
+  protected isActive(person: Person): boolean {
+    const today = this.session.today();
+    if (today === null) return false;
+    const from = daysBefore(today, 29);
+    return this.claimsOf(person.id).some(
+      (c) => isOpen(c) && this.countsLive(c, person) && from <= c.date && c.date <= today,
+    );
   }
 
   protected claimedOf(person: Person): string {
@@ -1206,4 +1220,11 @@ function csvField(value: string): string {
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((a, b) => a + b, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
+/** The date (YYYY-MM-DD) `days` days before `date`. */
+function daysBefore(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
 }

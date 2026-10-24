@@ -7,15 +7,16 @@ import { Period } from './periods.service';
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /** A person as the summary counts them: their grade on the sheet's today, whether they are retired,
- *  and their due-total in cents (null when it is n/a). */
+ *  their due-total in cents (null when it is n/a), and whether they are active. */
 export interface SummaryPerson {
   grade: Grade;
   retired: boolean;
   dueCents: number | null;
+  active: boolean;
 }
 
 // A summary of the sheet, worked from the same figures the list shows: per grade, how many people
-// not retired are on it today and their due-totals added up (a due-total that is n/a is skipped);
+// not retired are on it today, how many of them are active, and their due-totals added up (a due-total that is n/a is skipped);
 // per period, its due-total; per status, how many of the sheet's claims have it.
 @Component({
   selector: 'app-summary',
@@ -28,6 +29,7 @@ export interface SummaryPerson {
             <th scope="col">Grade</th>
             <th scope="col">People</th>
             <th scope="col">Due</th>
+            <th scope="col">Active</th>
           </tr>
         </thead>
         <tbody>
@@ -36,6 +38,7 @@ export interface SummaryPerson {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -106,6 +109,7 @@ export class Summary {
       return {
         grade,
         count: on.length,
+        active: on.filter((p) => p.active).length,
         dueTotal: money(on.reduce((sum, p) => sum + (p.dueCents ?? 0), 0)),
       };
     }),
