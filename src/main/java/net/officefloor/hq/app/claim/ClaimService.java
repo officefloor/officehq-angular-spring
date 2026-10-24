@@ -83,7 +83,7 @@ public class ClaimService {
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
-     * its person's rate then); the user who opened it cannot settle it, and a clerk cannot settle it when
+     * its person's rate then) together with its late charge then; the user who opened it cannot settle it, and a clerk cannot settle it when
      * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
      * if it had one. */
     @Transactional
@@ -101,7 +101,8 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
+            BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
+            BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
             refuseOverLimit(sheetId, user, due);
             claim.setSettledDue(due);
         }
@@ -124,10 +125,16 @@ public class ClaimService {
         return claim;
     }
 
-    /** The figure the claim shows and totals now; null when it has no figure (see
-     * {@link RollupService#figureOf}). */
+    /** The figure the claim shows and totals now, without its late charge; null when it has no figure
+     * (see {@link RollupService#figureOf}). */
     public BigDecimal figureOf(Claim claim, Person person) {
         return rollup.figureOf(claim, person);
+    }
+
+    /** What is due on the claim as it shows and totals now, its late charge included; null when it has
+     * no figure (see {@link RollupService#shownOf}). */
+    public BigDecimal shownOf(Claim claim, Person person) {
+        return rollup.shownOf(claim, person);
     }
 
     /** Record a change to the claim; {@code number}, the number it has (or had), follows when there is one,

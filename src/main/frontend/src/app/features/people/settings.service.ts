@@ -19,6 +19,9 @@ export const FLOOR_CENTS = 100;
 /** The terms a sheet starts with, in days. */
 export const TERMS_DAYS = 14;
 
+/** The late percent a sheet starts with. */
+export const LATE_PCT = '0.00';
+
 export interface SheetSettings {
   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
   clerkLimit: string | null;
@@ -26,11 +29,14 @@ export interface SheetSettings {
   floor: string;
   /** How many days after its date a claim is due by. */
   terms: number;
+  /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue,
+   *  with two decimals. */
+  latePct: string;
   /** The roles given on the sheet, by user name. */
   roles: RoleGiven[];
 }
 
-// The settings of a sheet (its roles, its clerk limit, its floor and its terms), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its terms and its late percent), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -62,6 +68,12 @@ export class SettingsService {
   setTerms(sheet: string, value: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  setLatePct(sheet: string, value: string): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/late-pct`, { value }, { headers: this.session.headers() }),
     );
   }
 

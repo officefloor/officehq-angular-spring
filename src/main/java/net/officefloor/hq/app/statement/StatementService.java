@@ -16,8 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken of the people on each sheet. Taking one binds each of the person's claims that
- * counts (OPEN or SETTLED) to the figure it shows then, and leaves each that does not count unbound;
- * it records the person's due-total then: the sum of those figures (a claim with none is skipped).
+ * counts (OPEN or SETTLED, but not OPEN while they are on hold) to the figure it shows then, and leaves
+ * each that does not count unbound;
+ * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
+ * charges included (a claim with no figure is skipped). A late charge is never bound: it keeps following
+ * the sheet's today.
  */
 @Service
 public class StatementService {
@@ -59,13 +62,13 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            if (!RollupService.countsLive(claim, person)) {
                 claim.unbind();
                 continue;
             }
-            BigDecimal figure = claimService.figureOf(claim, person);
-            claim.bind(figure);
-            if (figure != null) total = total.add(figure);
+            BigDecimal due = claimService.shownOf(claim, person);
+            claim.bind(claimService.figureOf(claim, person));
+            if (due != null) total = total.add(due);
             counted++;
         }
         claims.flush();

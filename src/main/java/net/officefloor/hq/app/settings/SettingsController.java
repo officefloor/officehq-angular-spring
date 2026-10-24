@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A sheet's settings: its roles, its clerk limit, its floor and its terms. The signed-in user's name travels in the
+/** A sheet's settings: its roles, its clerk limit, its floor, its terms and its late percent. The signed-in user's name travels in the
  * {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -31,8 +31,8 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days. */
-    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {
+    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the late percent as text with two decimals. */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {
     }
 
     /** A role: clerk or steward. */
@@ -63,6 +63,13 @@ public class SettingsController {
         }
     }
 
+    /** A late percent: 0.00 or more, with up to two decimals. */
+    public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
+        BigDecimal latePctValue() {
+            return new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
     private final SettingsService service;
 
     public SettingsController(SettingsService service) {
@@ -74,7 +81,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
-                service.roles(sheet).stream().map(RoleView::of).toList());
+                text(service.latePct(sheet)), service.roles(sheet).stream().map(RoleView::of).toList());
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -101,6 +108,15 @@ public class SettingsController {
             @RequestBody @Valid TermsRequest request) {
         String sheet = sheetId.trim();
         service.setTerms(sheet, user.trim(), request.termsValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/late-pct")
+    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LatePctRequest request) {
+        String sheet = sheetId.trim();
+        service.setLatePct(sheet, user.trim(), request.latePctValue());
         return get(sheet, user);
     }
 

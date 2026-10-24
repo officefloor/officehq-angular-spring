@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
- * live due can be, and its terms, how many days after its date a claim is due by. */
+ * live due can be, and its terms, how many days after its date a claim is due by, and its late percent, the
+ * percent of its figure an overdue claim's due gains for every full 30 days it is overdue. */
 @Service
 public class SettingsService {
 
@@ -102,6 +103,24 @@ public class SettingsService {
         sheet.setTerms(terms);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=terms", "value=" + terms);
+        return sheet;
+    }
+
+    /** The sheet's late percent. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getLatePct).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** Set the sheet's late percent; the late charges, and so the figures, follow it. */
+    @Transactional
+    public Sheet setLatePct(String sheetId, String by, BigDecimal latePct) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setLatePct(latePct);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=late-pct", "value=" + latePct.toPlainString());
+        rollup.recordSince(sheetId, by, before);
         return sheet;
     }
 }

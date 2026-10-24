@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents } from './claims.service';
+import { Claim, cents, dueByOf } from './claims.service';
 import { Grade } from './people.service';
 
 export interface Rate {
@@ -47,6 +47,37 @@ export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade, floorCe
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const due = dueCents(cents(claim.amount), rateOn(rates, grade, claim.date));
   return due === null ? null : Math.max(due, floorCents);
+}
+
+/** What a late charge is worked from: the sheet's terms, in days, its today, and its late percent
+ *  with two decimals. */
+export interface Lateness {
+  terms: number;
+  today: string | null;
+  latePct: string;
+}
+
+/** The late charge on a claim whose figure is figureCents, in cents: the late percent of that figure
+ *  for every full 30 days the claim is overdue (OPEN, and past its due-by on the sheet's today),
+ *  rounded like a due; 0 on any other claim. A statement never binds it; settling fixes it in. */
+export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness): number {
+  if (claim.status !== 'OPEN' || late.today === null) return 0;
+  const days = (Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000;
+  const periods = Math.max(0, Math.floor(days / 30));
+  return dueCents(figureCents * periods, late.latePct) ?? 0;
+}
+
+/** What is due on a claim as it shows and totals, in cents: its figure (see claimDueCents) plus its
+ *  late charge; null when it has no figure. */
+export function claimShownCents(
+  claim: Claim,
+  rates: Rate[],
+  grade: Grade,
+  floorCents: number,
+  late: Lateness,
+): number | null {
+  const figure = claimDueCents(claim, rates, grade, floorCents);
+  return figure === null ? null : figure + lateChargeCents(claim, figure, late);
 }
 
 // The rates of the grades on a sheet, read from and written to the server.

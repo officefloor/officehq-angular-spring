@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, dueByOf, money, overdue } from './claims.service';
 import { Grade } from './people.service';
 import { Period, periodOn } from './periods.service';
-import { Rate, claimDueCents } from './rates.service';
+import { Rate, claimShownCents } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -126,6 +126,8 @@ export class Claims {
   readonly periods = input.required<Period[]>();
   /** The sheet's terms, in days: how long after its date a claim is due by. */
   readonly terms = input.required<number>();
+  /** The sheet's late percent, with two decimals. */
+  readonly latePct = input.required<string>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -153,10 +155,12 @@ export class Claims {
   }
 
   /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
-   *  their grade applies then; never below the sheet's floor. A claim settled
-   *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
+   *  their grade applies then; never below the sheet's floor; with its late charge added while it is
+   *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
+   *  fixed nothing. */
   protected dueOf(claim: Claim): string {
-    const due = claimDueCents(claim, this.rates(), this.grade(), this.floor());
+    const late = { terms: this.terms(), today: this.session.today(), latePct: this.latePct() };
+    const due = claimShownCents(claim, this.rates(), this.grade(), this.floor(), late);
     return due === null ? 'n/a' : money(due);
   }
 

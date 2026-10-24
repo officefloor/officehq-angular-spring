@@ -7,9 +7,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
-import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
+import { Lateness, Rate, RatesService, claimShownCents, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { FLOOR_CENTS, SettingsService, TERMS_DAYS } from './settings.service';
+import { FLOOR_CENTS, LATE_PCT, SettingsService, TERMS_DAYS } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
@@ -24,12 +24,17 @@ import { Statement, StatementsService } from './statements.service';
 // their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
 // A claim is due by its date plus the sheet's terms; an OPEN one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
-// what is due on them.
+// what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
+// full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates, Settings],
   template: `
-    <app-settings (floorSaved)="floor.set($event)" (termsSaved)="terms.set($event)" />
+    <app-settings
+      (floorSaved)="floor.set($event)"
+      (termsSaved)="terms.set($event)"
+      (latePctSaved)="latePct.set($event)"
+    />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
     <section aria-labelledby="people-heading">
@@ -144,6 +149,7 @@ import { Statement, StatementsService } from './statements.service';
                     [floor]="floor()"
                     [periods]="periods()"
                     [terms]="terms()"
+                    [latePct]="latePct()"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -284,6 +290,14 @@ export class People {
   protected readonly floor = signal(FLOOR_CENTS);
   /** The sheet's terms, in days: how long after its date a claim is due by. */
   protected readonly terms = signal(TERMS_DAYS);
+  /** The sheet's late percent, with two decimals. */
+  protected readonly latePct = signal(LATE_PCT);
+  /** What the claims' late charges are worked from. */
+  private readonly lateness = computed<Lateness>(() => ({
+    terms: this.terms(),
+    today: this.session.today(),
+    latePct: this.latePct(),
+  }));
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
@@ -296,7 +310,7 @@ export class People {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        sums[period.name] += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
+        sums[period.name] += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
       }
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
@@ -341,6 +355,7 @@ export class People {
       this.rates.set([]);
       this.floor.set(FLOOR_CENTS);
       this.terms.set(TERMS_DAYS);
+      this.latePct.set(LATE_PCT);
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
@@ -476,7 +491,7 @@ export class People {
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
-      const due = claimDueCents(c, this.rates(), person.grade, this.floor());
+      const due = claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness());
       if (due === null) continue;
       sum += due;
       any = true;
@@ -493,7 +508,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
       count++;
-      sum += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
+      sum += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
     }
     return { count, cents: sum };
   }
@@ -646,6 +661,7 @@ export class People {
       if (this.sheet() === sheet) {
         this.floor.set(cents(settings.floor));
         this.terms.set(settings.terms);
+        this.latePct.set(settings.latePct);
         this.rates.set(rates);
         this.periods.set(periods);
         this.statements.set(statements);

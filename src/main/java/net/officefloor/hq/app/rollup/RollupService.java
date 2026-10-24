@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The figures each person on a sheet shows — what they have claimed (their OPEN and SETTLED claims,
  * leaving out the OPEN ones while they are on hold)
- * and their due-total (the sum of those claims' figures, n/a when none has a figure and no rate of
+ * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
  * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
@@ -74,7 +75,7 @@ public class RollupService {
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) continue;
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = figureOf(claim, person);
+                BigDecimal figure = shownOf(claim, person);
                 if (figure == null) continue;
                 due = due.add(figure);
                 any = true;
@@ -117,6 +118,27 @@ public class RollupService {
         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         return dueOf(claim, person);
+    }
+
+    /** What is due on the claim as it shows and totals now: its figure, plus its late charge; null when
+     * it has no figure. */
+    public BigDecimal shownOf(Claim claim, Person person) {
+        BigDecimal figure = figureOf(claim, person);
+        return figure == null ? null : figure.add(lateChargeOf(claim, figure));
+    }
+
+    /** The late charge on an OPEN claim whose figure is {@code figure}: the sheet's late percent of that
+     * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
+     * terms, on the sheet's today), rounded half to even to two decimals; 0.00 on a claim not OPEN or
+     * not overdue. A statement never binds it: it follows the sheet's today until the claim is settled. */
+    public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
+        if (claim.getStatus() != ClaimStatus.OPEN) return zero();
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        if (sheet == null) return zero();
+        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
+        long periods = Math.max(0, ChronoUnit.DAYS.between(dueBy, sheet.getToday())) / 30;
+        return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
