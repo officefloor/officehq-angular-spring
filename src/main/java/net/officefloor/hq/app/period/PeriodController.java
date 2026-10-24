@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+    /** A period, with whether it is closed and the due-total fixed when it was closed (null while it is
+     * open), sent as text with two decimals so it is never rounded on the way. */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+            String closedTotal) {
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo());
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+                    period.isClosed(), period.getClosedTotal() == null ? null
+                            : period.getClosedTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -56,5 +62,12 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+    }
+
+    @PostMapping("/{periodId}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
 }

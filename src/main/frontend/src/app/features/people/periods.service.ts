@@ -10,6 +10,10 @@ export interface Period {
   from: string;
   /** The last day of the period (YYYY-MM-DD). */
   to: string;
+  /** Whether the period is closed: no claim dated in it can change. */
+  closed: boolean;
+  /** The due-total fixed when the period was closed, with two decimals; null while it is open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodFields {
@@ -36,6 +40,13 @@ export class PeriodsService {
 
   add(sheet: string, fields: PeriodFields): Promise<Period> {
     return firstValueFrom(this.http.post<Period>(this.url(sheet), fields, { headers: this.session.headers() }));
+  }
+
+  /** Close the period, fixing its due-total now. */
+  close(sheet: string, id: number): Promise<Period> {
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheet)}/${id}/close`, null, { headers: this.session.headers() }),
+    );
   }
 
   private url(sheet: string): string {

@@ -9,12 +9,14 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. */
+/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. No
+ * claim dated inside a closed period can be added, edited or change status. */
 @Service
 public class ClaimService {
 
@@ -22,14 +24,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
-            Audit audit) {
+            PeriodRepository periods, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
         this.sheets = sheets;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -44,6 +48,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, dated);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
@@ -53,9 +58,12 @@ public class ClaimService {
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        LocalDate dated = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, dated);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(dated);
         claim.setNote(noteOf(note));
         claims.flush();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
@@ -71,6 +79,7 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -116,6 +125,11 @@ public class ClaimService {
         if (number != null) fields.add("number=" + number);
         fields.addAll(List.of(extra));
         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
+    }
+
+    /** Refuse a change that touches {@code date} when a closed period of the sheet contains it. */
+    private void refuseClosed(String sheetId, LocalDate date) {
+        if (periods.closedOn(sheetId, date)) throw new ClaimPeriodClosedException();
     }
 
     private static String noteOf(String note) {

@@ -183,6 +183,8 @@ export class Claims {
         ...errors,
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
           ? 'You opened that claim, so another user must settle it.'
+          : e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
           : `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
       }));
     }
@@ -222,8 +224,14 @@ export class Claims {
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(claim);
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'That claim could not be added.' : 'That claim could not be saved.');
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? 'A claim dated in a closed period cannot be changed.'
+          : id === null
+            ? 'That claim could not be added.'
+            : 'That claim could not be saved.',
+      );
     } finally {
       this.submitting = false;
     }

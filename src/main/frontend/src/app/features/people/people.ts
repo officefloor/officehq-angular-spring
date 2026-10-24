@@ -22,7 +22,7 @@ import { Statement, StatementsService } from './statements.service';
   imports: [Claims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
 
@@ -316,6 +316,10 @@ export class People {
 
   protected periodAdded(period: Period): void {
     this.periods.update((list) => [...list, period]);
+  }
+
+  protected periodClosed(period: Period): void {
+    this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }
 
   /** Put a set rate in place of the grade's old one for the same from-date. */

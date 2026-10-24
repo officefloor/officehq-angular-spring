@@ -6,7 +6,8 @@ import { Period, PeriodsService } from './periods.service';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The periods of the sheet, by from-date, each with the due-total of the counting claims dated in
-// it, and the form that adds a period.
+// it (fixed once it is closed), whether it is closed and the button that closes it, and the form that
+// adds a period.
 @Component({
   selector: 'app-periods',
   template: `
@@ -49,6 +50,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="col">From</th>
               <th scope="col">To</th>
               <th scope="col">Due</th>
+              <th scope="col">Closed</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -57,7 +60,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                 <td data-testid="period-name">{{ p.name }}</td>
                 <td data-testid="period-from">{{ p.from }}</td>
                 <td data-testid="period-to">{{ p.to }}</td>
-                <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
+                <td data-testid="period-due-total">{{ p.closed ? p.closedTotal : (dueTotals()[p.name] ?? '0.00') }}</td>
+                <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+                <td>
+                  @if (!p.closed) {
+                    <button
+                      type="button"
+                      data-testid="period-close"
+                      [attr.aria-label]="'Close period ' + p.name"
+                      (click)="close(p)"
+                    >
+                      Close
+                    </button>
+                  }
+                  @if (rowErrors()[p.id]; as message) {
+                    <p role="alert" class="error" data-testid="period-error">{{ message }}</p>
+                  }
+                </td>
               </tr>
             }
           </tbody>
@@ -81,6 +100,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       border-collapse: collapse;
       margin-bottom: 1rem;
     }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
     th,
     td {
       text-align: left;
@@ -98,17 +125,35 @@ export class Periods {
   readonly dueTotals = input.required<Record<string, string>>();
   /** A period was added. */
   readonly added = output<Period>();
+  /** A period was closed. */
+  readonly closed = output<Period>();
 
   protected readonly sorted = computed(() => [...this.periods()].sort((a, b) => a.from.localeCompare(b.from)));
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error of the last refused action on each period, by period id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Close the period, fixing its due-total; closing one already closed is refused with an error. */
+  protected async close(period: Period): Promise<void> {
+    this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const closed = await this.service.close(sheet, period.id);
+      if (this.session.sheetId() === sheet) this.closed.emit(closed);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [period.id]: 'That period could not be closed.' }));
+    }
   }
 
   protected async submit(event: Event): Promise<void> {
