@@ -1,0 +1,285 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6c6bcefa..d3ea4794 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,6 +16,7 @@ import { Dated, SettingsService, inForce } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+ import { Summary, SummaryPerson } from './summary';
+ import { Templates } from './templates';
++import { TreeSearch } from './tree-search';
+ import { VoidReasons } from './void-reasons';
+ import { Pools } from './pools';
+ import { Plans } from './plans';
+@@ -59,7 +60,7 @@ import { Audit } from './audit';
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+ @Component({
+   selector: 'app-people',
+-  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, VoidReasons],
++  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -88,6 +89,7 @@ import { Audit } from './audit';
+     <app-void-reasons />
+     <app-pools [people]="people()" />
+     <app-templates />
++    <app-tree-search />
+     <app-audit />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+diff --git a/src/main/frontend/src/app/features/people/tree-search.service.ts b/src/main/frontend/src/app/features/people/tree-search.service.ts
+new file mode 100644
+index 00000000..457f8785
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/tree-search.service.ts
+@@ -0,0 +1,29 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A person found over a sheet's tree: their sheet, name and due-total as that sheet shows it. */
++export interface Found {
++  sheet: string;
++  name: string;
++  dueTotal: string;
++}
++
++// The people of a sheet's tree whose name or an alias contains some text, read from the server.
++@Injectable({ providedIn: 'root' })
++export class TreeSearchService {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The people of the sheet and the other sheets of its tree whose name or an alias contains `text`
++   *  (case ignored): the sheet's own first in list order, then the others' by sheet id. */
++  search(sheet: string, text: string): Promise<Found[]> {
++    return firstValueFrom(
++      this.http.get<Found[]>(`/api/sheets/${encodeURIComponent(sheet)}/search`, {
++        params: { q: text },
++        headers: this.session.headers(),
++      }),
++    );
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/tree-search.ts b/src/main/frontend/src/app/features/people/tree-search.ts
+new file mode 100644
+index 00000000..9cec1d9b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/tree-search.ts
+@@ -0,0 +1,94 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { Found, TreeSearchService } from './tree-search.service';
++
++// The tree search: every person of this sheet and the other sheets of its tree whose name or an alias
++// contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>. It changes
++// nothing.
++@Component({
++  selector: 'app-tree-search',
++  template: `
++    <section aria-labelledby="search-heading">
++      <h2 id="search-heading">Search the tree</h2>
++      <form (submit)="search($event)" aria-label="Tree search">
++        <label for="search-name">Name or alias</label>
++        <input id="search-name" data-testid="search-name" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
++        <button type="submit" data-testid="search">Search</button>
++        <span>Found <span data-testid="search-count">{{ count() }}</span></span>
++        @if (error(); as message) {
++          <p role="alert" class="error" data-testid="search-error">{{ message }}</p>
++        }
++      </form>
++      @if (found().length > 0) {
++        <ol data-testid="search-list">
++          @for (f of found(); track $index) {
++            <li data-testid="search-line">{{ f.sheet }} {{ f.name }} {{ f.dueTotal }}</li>
++          }
++        </ol>
++      }
++    </section>
++  `,
++  styles: `
++    form {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 0.5rem;
++      align-items: center;
++      margin-bottom: 0.5rem;
++    }
++    ol {
++      list-style: none;
++      padding: 0;
++      font-family: monospace;
++      overflow-wrap: anywhere;
++    }
++    .error {
++      color: #a40000;
++      margin: 0;
++    }
++  `,
++})
++export class TreeSearch {
++  private readonly session = inject(Session);
++  private readonly service = inject(TreeSearchService);
++
++  protected readonly text = signal('');
++  protected readonly found = signal<Found[]>([]);
++  protected readonly count = signal('');
++  protected readonly error = signal<string | null>(null);
++  private asked = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.asked++;
++      this.text.set('');
++      this.found.set([]);
++      this.count.set('');
++      this.error.set(null);
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async search(event: Event): Promise<void> {
++    event.preventDefault();
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const ask = ++this.asked;
++    this.found.set([]);
++    this.count.set('');
++    this.error.set(null);
++    try {
++      const found = await this.service.search(sheet, this.text());
++      if (ask !== this.asked) return;
++      this.found.set(found);
++      this.count.set(String(found.length));
++    } catch {
++      if (ask === this.asked) this.error.set('The search could not be run.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTree.java b/src/main/java/net/officefloor/hq/app/person/PersonTree.java
+index bd735759..4065b087 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTree.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTree.java
+@@ -34,10 +34,12 @@ public class PersonTree {
+             root = up.getId();
+         }
+         Set<String> tree = new LinkedHashSet<>(seen);
++        Set<String> visited = new LinkedHashSet<>(List.of(root));
+         Deque<String> below = new ArrayDeque<>(List.of(root));
+         while (!below.isEmpty()) {
+             for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
+-                if (tree.add(child.getId())) below.add(child.getId());
++                tree.add(child.getId());
++                if (visited.add(child.getId())) below.add(child.getId());
+             }
+         }
+         tree.remove(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 927291c0..f079f56e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -3,8 +3,15 @@ package net.officefloor.hq.app.rollup;
+ import java.math.BigDecimal;
+ import java.util.ArrayDeque;
+ import java.util.Deque;
++import java.util.ArrayList;
+ import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
+ import java.util.Set;
++import java.util.TreeSet;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonTree;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -25,10 +32,46 @@ public class ConsolidatedService {
+ 
+     private final SheetRepository sheets;
+     private final RollupService rollup;
++    private final PersonTree tree;
++    private final PersonRepository people;
+ 
+-    public ConsolidatedService(SheetRepository sheets, RollupService rollup) {
++    public ConsolidatedService(SheetRepository sheets, RollupService rollup, PersonTree tree,
++            PersonRepository people) {
+         this.sheets = sheets;
+         this.rollup = rollup;
++        this.tree = tree;
++        this.people = people;
++    }
++
++    /** One person found by {@link #search}: their sheet, name and due-total as that sheet shows it. */
++    public record Found(String sheet, String name, String dueTotal) {
++    }
++
++    /** Every person of the sheet and the other sheets of its tree whose name or an alias contains
++     * {@code text} (case ignored; blank finds everyone): the sheet's own people first in list order, then
++     * the other sheets' by sheet id, each sheet's in its list order. */
++    @Transactional(readOnly = true)
++    public List<Found> search(String sheetId, String text) {
++        String needle = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
++        List<String> order = new ArrayList<>();
++        order.add(sheetId);
++        order.addAll(new TreeSet<>(tree.othersOf(sheetId)));
++        List<Found> found = new ArrayList<>();
++        for (String id : order) {
++            RollupService.Snapshot snapshot = rollup.snapshot(id);
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
++                if (!matches(person.getName(), needle)
++                        && person.getAliases().stream().noneMatch(a -> matches(a, needle))) continue;
++                RollupService.Figures figures = snapshot.people().get(person.getId());
++                found.add(new Found(id, person.getName(),
++                        figures == null ? RollupService.NONE : figures.dueTotal()));
++            }
++        }
++        return found;
++    }
++
++    private static boolean matches(String value, String needle) {
++        return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
+     }
+ 
+     /** The figures of the sheet itself and its descendants as they stand, added up: the consolidated
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 3982a6c0..fdcae7c8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.List;
+ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.SheetAsOf;
+ import net.officefloor.hq.app.history.SheetHistory;
+@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** Sheet endpoints. The signed-in user's name travels in the {@code X-User} header. */
+@@ -66,6 +68,14 @@ public class SheetController {
+         return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedOf(id.trim());
+     }
+ 
++    /** The people of the sheet and the other sheets of its tree whose name or an alias contains
++     * {@code q} (see {@link ConsolidatedService#search}). */
++    @GetMapping("/{id}/search")
++    public List<ConsolidatedService.Found> search(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestParam(defaultValue = "") @Size(max = 200) String q) {
++        return consolidated.search(id.trim(), q);
++    }
++
+     /** Load a sheet by id, starting it empty if it has never been loaded; as it stood at the end of
+      * {@code asOf}, that date standing in for its today, when one is given. */
+     @PostMapping("/{id}/load")
