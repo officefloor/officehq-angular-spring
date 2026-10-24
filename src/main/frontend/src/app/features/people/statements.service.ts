@@ -42,6 +42,15 @@ export class StatementsService {
     );
   }
 
+  /** Cancel the person's last statement; answers the statement cancelled, with their claims as it left them. */
+  cancelLast(sheet: string, personId: number): Promise<Taken> {
+    return firstValueFrom(
+      this.http.delete<Taken>(`${this.url(sheet)}/people/${personId}/statements/last`, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   private url(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}`;
   }

@@ -271,6 +271,14 @@ import { Summary, SummaryPerson } from './summary';
                   >
                     Statement
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-unstate"
+                    [attr.aria-label]="'Cancel the last statement of ' + p.name"
+                    (click)="cancelStatement(p)"
+                  >
+                    Cancel statement
+                  </button>
                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
                   <input
                     [id]="'person-retire-date-' + p.id"
@@ -688,6 +696,22 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'A statement could not be taken.' }));
+    }
+  }
+
+  /** Cancel the person's last statement, and show their claims live again where it bound them. */
+  protected async cancelStatement(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const cancelled = await this.statementsService.cancelLast(sheet, person.id);
+      if (this.sheet() !== sheet) return;
+      for (const c of cancelled.claims) this.claimSaved(c);
+      this.statements.update((list) => list.filter((s) => s.id !== cancelled.statement.id));
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That statement could not be cancelled.' }));
     }
   }
 

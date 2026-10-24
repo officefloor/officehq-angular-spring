@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,5 +61,15 @@ public class StatementController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
         return new TakenView(StatementView.of(taken.statement()), ClaimView.allOf(taken.claims(), claimService));
+    }
+
+    /** Cancel the person's last statement; answers the statement cancelled, with the person's claims as
+     * it left them, newest first. */
+    @DeleteMapping("/people/{personId}/statements/last")
+    public TakenView cancelLast(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        StatementService.Taken cancelled = service.cancelLast(sheetId.trim(), user.trim(), personId);
+        return new TakenView(StatementView.of(cancelled.statement()), ClaimView.allOf(cancelled.claims(), claimService));
     }
 }

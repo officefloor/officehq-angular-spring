@@ -69,6 +69,10 @@ public class Claim {
     @Column(name = "stated_due", precision = 12, scale = 2)
     private BigDecimal statedDue;
 
+    /** The id of the statement that bound the claim; null while unbound. */
+    @Column(name = "stated_by")
+    private Long statedBy;
+
     /** The number of the SETTLED claim of the same person this correction corrects; null on a claim
      * that is not a correction. */
     @Column(name = "corrects")
@@ -205,16 +209,22 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to {@code due}, the figure it has now. */
-    public void bind(BigDecimal due) {
+    public Long getStatedBy() {
+        return statedBy;
+    }
+
+    /** Bind the claim to {@code due}, the figure it has now, by the statement {@code statementId}. */
+    public void bind(BigDecimal due, Long statementId) {
         this.stated = true;
         this.statedDue = due;
+        this.statedBy = statementId;
     }
 
     /** Leave the claim unbound: its figure follows the rates again. */
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+        this.statedBy = null;
     }
 
     public String getOpenedBy() {
