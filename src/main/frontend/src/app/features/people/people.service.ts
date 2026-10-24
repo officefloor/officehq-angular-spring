@@ -22,6 +22,13 @@ export interface Person {
   held: boolean;
 }
 
+/** A patron a person has named: another person on the same sheet. */
+export interface Patron {
+  id: number;
+  personId: number;
+  patronId: number;
+}
+
 /** What a quick-add made: the person the claim is for (added just now when the name was new) and
  *  the DRAFT claim. */
 export interface QuickAdded {
@@ -75,6 +82,23 @@ export class PeopleService {
   hold(sheet: string, id: number, held: boolean): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { held }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** The sheet's patrons, in the order they were named. */
+  patrons(sheet: string): Promise<Patron[]> {
+    return firstValueFrom(
+      this.http.get<Patron[]>(`${this.url(sheet)}/patrons`, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Name `patronId` as the person's patron; refused (409) for the person themselves or one already
+   *  named. */
+  addPatron(sheet: string, id: number, patronId: number): Promise<Patron> {
+    return firstValueFrom(
+      this.http.post<Patron>(`${this.url(sheet)}/${id}/patrons`, { patronId }, {
         headers: this.session.headers(),
       }),
     );

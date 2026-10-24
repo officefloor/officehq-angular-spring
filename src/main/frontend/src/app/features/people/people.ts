@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money, overdue } from './claims.service';
-import { GRADES, Grade, PeopleService, Person } from './people.service';
+import { GRADES, Grade, Patron, PeopleService, Person } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -26,6 +26,9 @@ import { Statement, StatementsService } from './statements.service';
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
 // full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
+// A person can name other people on the sheet as their patrons, one at a time from their row; the
+// row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
+// (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates, Settings],
@@ -120,6 +123,8 @@ import { Statement, StatementsService } from './statements.service';
               <th scope="col">Retired</th>
               <th scope="col">Retired from</th>
               <th scope="col">On hold</th>
+              <th scope="col">Patrons</th>
+              <th scope="col">Backing</th>
               <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
@@ -139,6 +144,8 @@ import { Statement, StatementsService } from './statements.service';
                 <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
                 <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
                 <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+                <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
+                <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -195,6 +202,31 @@ import { Statement, StatementsService } from './statements.service';
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
+                  }
+                  <label [for]="'person-patron-select-' + p.id">Patron</label>
+                  <select
+                    [id]="'person-patron-select-' + p.id"
+                    data-testid="person-patron-select"
+                    [value]="patronChoices()[p.id] ?? ''"
+                    (change)="setPatronChoice(p.id, value($event))"
+                  >
+                    <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
+                    @for (o of people(); track o.id) {
+                      @if (o.id !== p.id) {
+                        <option [value]="o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                      }
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="person-patron-add"
+                    [attr.aria-label]="'Add a patron of ' + p.name"
+                    (click)="addPatron(p)"
+                  >
+                    Add patron
+                  </button>
+                  @if (patronErrors()[p.id]; as message) {
+                    <p role="alert" class="error" data-testid="person-patron-error">{{ message }}</p>
                   }
                 </td>
               </tr>
@@ -282,6 +314,33 @@ export class People {
     for (const s of this.statements()) by.set(s.personId, [...(by.get(s.personId) ?? []), s]);
     return by;
   });
+  /** The sheet's patrons, in the order they were named. */
+  protected readonly patrons = signal<Patron[]>([]);
+  /** The patron chosen on each person's row (a person id), by person id. */
+  protected readonly patronChoices = signal<Record<number, string>>({});
+  /** The error of the last refused patron added on each person's row, by person id. */
+  protected readonly patronErrors = signal<Record<number, string>>({});
+  /** Each person's patrons' names, sorted and comma separated, by person id. */
+  private readonly patronNames = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p.name]));
+    const by = new Map<number, string[]>();
+    for (const pt of this.patrons()) {
+      const name = byId.get(pt.patronId);
+      if (name !== undefined) by.set(pt.personId, [...(by.get(pt.personId) ?? []), name]);
+    }
+    return new Map([...by].map(([id, names]) => [id, names.sort().join(', ')]));
+  });
+  /** Each person's backing, by person id: their patrons' due-totals added up (n/a ones skipped). */
+  private readonly backings = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const by = new Map<number, number>();
+    for (const pt of this.patrons()) {
+      const patron = byId.get(pt.patronId);
+      const due = patron === undefined ? null : this.dueCentsOf(patron);
+      by.set(pt.personId, (by.get(pt.personId) ?? 0) + (due ?? 0));
+    }
+    return by;
+  });
   /** The error of the last refused action on each person's row, by person id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The sheet's rates, by grade. */
@@ -360,6 +419,9 @@ export class People {
       this.periods.set([]);
       this.rowErrors.set({});
       this.retireDates.set({});
+      this.patrons.set([]);
+      this.patronChoices.set({});
+      this.patronErrors.set({});
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -436,6 +498,44 @@ export class People {
 
   private clearRowError(id: number): void {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+    this.patronErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  protected patronNamesOf(personId: number): string {
+    return this.patronNames().get(personId) ?? '';
+  }
+
+  protected backingOf(personId: number): string {
+    return money(this.backings().get(personId) ?? 0);
+  }
+
+  protected setPatronChoice(id: number, patronId: string): void {
+    this.patronChoices.update((choices) => ({ ...choices, [id]: patronId }));
+    this.clearRowError(id);
+  }
+
+  /** Name the person chosen on the row as the person's patron. */
+  protected async addPatron(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const choice = this.patronChoices()[person.id] ?? '';
+    if (choice === '') {
+      this.patronErrors.update((errors) => ({ ...errors, [person.id]: 'Choose a patron.' }));
+      return;
+    }
+    try {
+      const added = await this.service.addPatron(sheet, person.id, Number(choice));
+      if (this.sheet() !== sheet) return;
+      this.patrons.update((list) => [...list, added]);
+      this.patronChoices.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.patronErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That person cannot be added as a patron.',
+      }));
+    }
   }
 
   /** Put the person on hold, or take them off it when held. */
@@ -650,13 +750,14 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
         this.statementsService.list(sheet),
         this.periodsService.list(sheet),
         this.settingsService.get(sheet),
+        this.service.patrons(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.floor.set(cents(settings.floor));
@@ -666,6 +767,7 @@ export class People {
         this.periods.set(periods);
         this.statements.set(statements);
         this.claims.set(claims);
+        this.patrons.set(patrons);
         this.people.set(list);
       }
     } catch {

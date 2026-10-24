@@ -19,10 +19,12 @@ public class PersonService {
     private final Audit audit;
     private final RollupService rollup;
     private final SheetService sheetService;
+    private final PersonPatronRepository patrons;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
-            SheetService sheetService) {
+            SheetService sheetService, PersonPatronRepository patrons) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
@@ -95,6 +97,26 @@ public class PersonService {
         audit.change(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user, "name=" + person.getName());
         rollup.recordSince(sheetId, user, before);
         return person;
+    }
+
+    /** The sheet's patrons in the order they were named. */
+    @Transactional(readOnly = true)
+    public List<PersonPatron> patrons(String sheetId) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Names another person on the sheet as the person's patron; refused for the person themselves
+     * and for one they have already named. */
+    @Transactional
+    public PersonPatron addPatron(String sheetId, String user, long personId, long patronId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person patron = people.findByIdAndSheetId(patronId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getId().equals(patron.getId()) || patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw new PersonPatronException();
+        }
+        PersonPatron added = patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
+        audit.change("PATRON_ADDED", sheetId, user, "name=" + person.getName(), "patron=" + patron.getName());
+        return added;
     }
 
     /** Refuses a name another person on the sheet (other than {@code self}) already has. */

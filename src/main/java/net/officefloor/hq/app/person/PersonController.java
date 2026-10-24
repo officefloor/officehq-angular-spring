@@ -38,6 +38,17 @@ public class PersonController {
         }
     }
 
+    /** A patron a person has named. */
+    public record PatronView(long id, long personId, long patronId) {
+        public static PatronView of(PersonPatron patron) {
+            return new PatronView(patron.getId(), patron.getPersonId(), patron.getPatronId());
+        }
+    }
+
+    /** The person to be named as a patron. */
+    public record PatronRequest(@NotNull Long patronId) {
+    }
+
     /** The date a person is retired from (the sheet's today when left out). */
     public record RetireRequest(LocalDate from) {
     }
@@ -69,6 +80,21 @@ public class PersonController {
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+    }
+
+    @GetMapping("/patrons")
+    public List<PatronView> patrons(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.patrons(sheetId.trim()).stream().map(PatronView::of).toList();
+    }
+
+    @PostMapping("/{personId}/patrons")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PatronView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PatronRequest request) {
+        return PatronView.of(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
     }
 
     @PostMapping
