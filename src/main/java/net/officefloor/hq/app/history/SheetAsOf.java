@@ -208,6 +208,16 @@ public class SheetAsOf implements RollupService.Basis {
                 .findFirst();
     }
 
+    @Override
+    public Optional<Person> personOf(Long personId) {
+        return person(personId);
+    }
+
+    @Override
+    public Integer graceOn(String grade, LocalDate on) {
+        return valueOn(DatedSettings.gradeGraceKey(grade), on).map(Integer::valueOf).orElse(null);
+    }
+
     /** The key's value in force on the date (see {@link DatedSettings}); empty when none is recorded then,
      * or the one recorded is "none". */
     public Optional<String> valueOn(String key, LocalDate on) {

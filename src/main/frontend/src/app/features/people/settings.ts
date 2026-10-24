@@ -1,6 +1,7 @@
 import { Component, effect, inject, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from './people.service';
 import { Session } from '../../core/session';
+import { Graces } from './rates.service';
 import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -29,6 +30,9 @@ const STANDING: Record<PermAction, string> = {
 // added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
 // settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
 // for the standing rule) and the role each user name has been given (any other name is a clerk).
+// Each grade's grace days (a claim of a person of that grade on its date, dated on or after the
+// grace's from-date, is overdue only once its due-by plus them is past, and its late charge counts from
+// there; blank for none) are dated too.
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -190,6 +194,31 @@ const STANDING: Record<PermAction, string> = {
             In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsShown(g) }}</span>
             @if (gradeTerms()[g] === undefined) {
               (the sheet's terms)
+            }
+          </span>
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace for grade {{ g }} (days)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGraceInput()[g]"
+            (input)="setGradeGraceInput(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
+            (keydown)="gradeGraceChanged.add(g)"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ g }} from</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            type="date"
+            [value]="gradeGraceFrom()[g]"
+            (input)="setGradeGraceFrom(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
+          />
+          <span>
+            In force: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraceShown(g) }}</span>
+            @if (gradeGraces()[g] === undefined) {
+              (none)
             }
           </span>
         }
@@ -393,6 +422,10 @@ export class Settings {
   protected readonly grades = GRADES;
   /** The grades' own terms in force, in days, by grade; a grade not in it uses the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The grades' grace days in force, by grade; a grade not in it has none. */
+  protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
+  /** Every grace recorded for each grade, each from its date, oldest first, once one is saved. */
+  readonly graceSaved = output<Graces>();
   /** The late percent in force, with two decimals; empty until read. */
   protected readonly latePct = signal('');
   /** Every floor recorded, each from its date, oldest first, once one is saved. */
@@ -426,6 +459,7 @@ export class Settings {
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeGraceInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
@@ -439,6 +473,7 @@ export class Settings {
   protected readonly termsFrom = signal('');
   protected readonly latePctFrom = signal('');
   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeGraceFrom = signal<Record<Grade, string>>(blankGrades());
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -450,6 +485,7 @@ export class Settings {
   protected termsChanged = false;
   protected latePctChanged = false;
   protected readonly gradeTermsChanged = new Set<Grade>();
+  protected readonly gradeGraceChanged = new Set<Grade>();
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
@@ -492,6 +528,10 @@ export class Settings {
       this.gradeTerms.set({});
       this.gradeTermsInput.set(blankGrades());
       this.gradeTermsChanged.clear();
+      this.gradeGraces.set({});
+      this.gradeGraceInput.set(blankGrades());
+      this.gradeGraceChanged.clear();
+      this.gradeGraceFrom.set(blankGrades());
       this.latePct.set('');
       this.latePctInput.set('');
       this.latePctChanged = false;
@@ -544,6 +584,20 @@ export class Settings {
     this.gradeTermsInput.update((inputs) => ({ ...inputs, [grade]: text }));
   }
 
+  protected setGradeGraceFrom(grade: Grade, text: string): void {
+    this.gradeGraceFrom.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  protected setGradeGraceInput(grade: Grade, text: string): void {
+    this.gradeGraceInput.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  /** The grade's grace days in force, as text; empty when it has none. */
+  protected gradeGraceShown(grade: Grade): string {
+    const grace = this.gradeGraces()[grade];
+    return grace === undefined ? '' : String(grace);
+  }
+
   protected setPermInput(action: PermAction, text: string): void {
     this.permInput.update((inputs) => ({ ...inputs, [action]: text }));
   }
@@ -578,6 +632,9 @@ export class Settings {
     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
       ({ grade, text }) => this.gradeTermsChanged.has(grade) || text !== this.gradeTermsShown(grade),
     );
+    const gradeGraces = GRADES.map((grade) => ({ grade, text: this.gradeGraceInput()[grade].trim() })).filter(
+      ({ grade, text }) => this.gradeGraceChanged.has(grade) || text !== this.gradeGraceShown(grade),
+    );
     const latePct = this.latePctInput().trim();
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
     const policyDate = this.policyDateInput().trim();
@@ -600,6 +657,7 @@ export class Settings {
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom = { ...this.gradeTermsFrom() };
+    const gradeGraceFrom = { ...this.gradeGraceFrom() };
     const badFrom = [
       saveLimit ? limitFrom : '',
       saveFloor ? floorFrom : '',
@@ -609,6 +667,7 @@ export class Settings {
       saveTerms ? termsFrom : '',
       saveLatePct ? latePctFrom : '',
       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
+      ...gradeGraces.map(({ grade }) => gradeGraceFrom[grade].trim()),
     ].some((from) => from !== '' && !DATE.test(from));
     if (badFrom) {
       this.settingsError.set('Type a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
@@ -642,6 +701,13 @@ export class Settings {
     if (badGrade) {
       this.settingsError.set(
         `Type terms for grade ${badGrade.grade} as a whole number of business days, 0 or more, or leave them blank for the sheet's terms.`,
+      );
+      return;
+    }
+    const badGrace = gradeGraces.find(({ text }) => text !== '' && !TERMS.test(text));
+    if (badGrace) {
+      this.settingsError.set(
+        `Type grace for grade ${badGrace.grade} as a whole number of days, 0 or more, or leave it blank for none.`,
       );
       return;
     }
@@ -740,6 +806,17 @@ export class Settings {
         }
         this.show(settings);
       }
+      for (const { grade, text } of gradeGraces) {
+        const from = gradeGraceFrom[grade].trim();
+        const settings = await this.service.setGradeGrace(sheet, grade, text || null, from || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.gradeGraceInput()[grade].trim() === text && this.gradeGraceFrom()[grade].trim() === from) {
+          this.gradeGraceChanged.delete(grade);
+          this.setGradeGraceFrom(grade, '');
+        }
+        this.show(settings);
+        this.graceSaved.emit(settings.graces);
+      }
       if (saveLatePct) {
         const settings = await this.service.setLatePct(sheet, latePct, latePctFrom || null);
         if (this.session.sheetId() !== sheet) return;
@@ -790,6 +867,7 @@ export class Settings {
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
+      this.showGradeGraceInputs();
       this.showPermInputs();
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
@@ -851,6 +929,8 @@ export class Settings {
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
+        this.showGradeGraceInputs();
+      this.showGradeGraceInputs();
         this.showPermInputs();
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
@@ -867,6 +947,15 @@ export class Settings {
     this.gradeTermsInput.update((inputs) => {
       const next = { ...inputs };
       for (const grade of GRADES) if (!this.gradeTermsChanged.has(grade)) next[grade] = this.gradeTermsShown(grade);
+      return next;
+    });
+  }
+
+  /** Show each grade's grace in force in its field, but keep what was typed in one since. */
+  private showGradeGraceInputs(): void {
+    this.gradeGraceInput.update((inputs) => {
+      const next = { ...inputs };
+      for (const grade of GRADES) if (!this.gradeGraceChanged.has(grade)) next[grade] = this.gradeGraceShown(grade);
       return next;
     });
   }
@@ -889,6 +978,7 @@ export class Settings {
     this.noteThreshold.set(settings.noteThreshold);
     this.terms.set(String(settings.terms));
     this.gradeTerms.set(settings.gradeTerms ?? {});
+    this.gradeGraces.set(settings.gradeGraces ?? {});
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);

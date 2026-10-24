@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, cents, deferred, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
-import { Rate, claimShownCents } from './rates.service';
+import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
@@ -260,6 +260,8 @@ export class Claims {
   readonly periods = input.required<Period[]>();
   /** Every late percent recorded on the sheet, each from its date, oldest first, with two decimals. */
   readonly latePcts = input.required<Dated[]>();
+  /** Every grace recorded on the sheet for each grade, each from its date, oldest first. */
+  readonly graces = input.required<Graces>();
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
    *  or after it half to even; null until read. */
   readonly policyDate = input.required<string | null>();
@@ -317,7 +319,7 @@ export class Claims {
    *  then never below the sheet's floor in force on its date; n/a when no rate of that grade applies then. A claim settled at a rate keeps what was due on it then; one settled without a rate
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
-    const late = { today: this.session.today(), latePcts: this.latePcts() };
+    const late = { today: this.session.today(), latePcts: this.latePcts(), graces: this.graces() };
     const rounding = { policyDate: this.policyDate(), claims: this.claims() };
     const due = claimShownCents(claim, this.rates(), this.grades(), this.floors(), late, rounding);
     return due === null ? 'n/a' : money(due);
@@ -328,7 +330,7 @@ export class Claims {
   }
 
   protected isOverdue(claim: Claim): boolean {
-    return overdue(claim, this.session.today());
+    return overdue(claim, this.session.today(), overdueFrom(claim, this.grades(), this.graces()));
   }
 
   protected isDeferred(claim: Claim): boolean {

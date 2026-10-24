@@ -85,9 +85,10 @@ export function deferred(claim: Claim, today: string | null): boolean {
   return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
-/** Whether a claim is overdue: OPEN or PENDING, not deferred, and due by a date before the sheet's today. */
-export function overdue(claim: Claim, today: string | null): boolean {
-  return isOpen(claim) && today !== null && !deferred(claim, today) && claim.dueBy < today;
+/** Whether a claim is overdue: OPEN or PENDING, not deferred, and overdue from a date before the
+ *  sheet's today — its due-by, or that plus its grade's grace (see overdueFrom). */
+export function overdue(claim: Claim, today: string | null, from: string = claim.dueBy): boolean {
+  return isOpen(claim) && today !== null && !deferred(claim, today) && from < today;
 }
 
 /** How a bulk open went: how many claims it opened and refused, and the claims it opened. */

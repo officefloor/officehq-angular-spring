@@ -84,22 +84,43 @@ export function claimDueCents(
   return grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
 }
 
-/** What a late charge is worked from: the sheet's today and every late percent recorded, oldest
- *  first, with two decimals. */
+/** Every grace recorded for each grade, each from its date, oldest first, as a whole number of days
+ *  in text; null records no grace from then. */
+export type Graces = Partial<Record<Grade, readonly Dated<string | null>[]>>;
+
+/** The date (YYYY-MM-DD) a claim's lateness counts from: its due-by plus the grace days in force on
+ *  the claim's date of its person's grade in force then (its due-by when that grade has none). */
+export function overdueFrom(claim: Claim, grades: PersonGrade[], graces: Graces): string {
+  const grade = gradeOn(grades, claim.date);
+  const grace = grade === null ? null : inForce(graces[grade] ?? [], claim.date, null);
+  if (grace === null) return claim.dueBy;
+  return new Date(Date.parse(claim.dueBy) + Number(grace) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** What a late charge is worked from: the sheet's today, every late percent recorded, oldest
+ *  first, with two decimals, and every grace recorded for each grade. */
 export interface Lateness {
   today: string | null;
   latePcts: readonly Dated[];
+  graces: Graces;
 }
 
 /** The late charge on a claim whose figure is figureCents, in cents: for every full 30 days the claim
- *  is overdue (OPEN or PENDING, not deferred, and past its due-by on the sheet's today), the late
- *  percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of that figure, rounded
+ *  is overdue (OPEN or PENDING, not deferred, and past its due-by plus any grace of its grade on the
+ *  sheet's today, see overdueFrom), the late percent in force on that boundary date (that date plus
+ *  30, 60, 90 ... days) of that figure, rounded
  *  like the claim's due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
-export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness, rounding: Rounding): number {
+export function lateChargeCents(
+  claim: Claim,
+  figureCents: number,
+  late: Lateness,
+  rounding: Rounding,
+  grades: PersonGrade[],
+): number {
   if (!isOpen(claim) || late.today === null || isCorrection(claim) || deferred(claim, late.today)) return 0;
-  const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
+  const dueBy = Date.parse(overdueFrom(claim, grades, late.graces));
+  const days = (Date.parse(late.today) - dueBy) / 86_400_000;
   const periods = Math.max(0, Math.floor(days / 30));
-  const dueBy = Date.parse(claim.dueBy);
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
     const boundary = new Date(dueBy + k * 30 * 86_400_000).toISOString().slice(0, 10);
@@ -125,7 +146,7 @@ export function claimShownCents(
   const figure = claimDueCents(claim, rates, grades, rounding);
   if (figure === null || isCorrection(claim)) return figure;
   if (isFrozen(claim)) return figure;
-  return Math.max(figure + lateChargeCents(claim, figure, late, rounding), cents(inForce(floors, claim.date, FLOOR)));
+  return Math.max(figure + lateChargeCents(claim, figure, late, rounding, grades), cents(inForce(floors, claim.date, FLOOR)));
 }
 
 // The rates of the grades on a sheet, read from and written to the server.

@@ -10,7 +10,7 @@ import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from '.
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
-import { Lateness, Rate, RatesService, Rounding, claimShownCents, rateOn } from './rates.service';
+import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn } from './rates.service';
 import { Settings } from './settings';
 import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
@@ -59,6 +59,7 @@ import { Summary, SummaryPerson } from './summary';
       (floorSaved)="floors.set($event)"
       (capSaved)="caps.set($event)"
       (latePctSaved)="latePcts.set($event)"
+      (graceSaved)="graces.set($event)"
       (policyDateSaved)="policyDate.set($event)"
     />
     <app-delegations />
@@ -303,6 +304,7 @@ import { Summary, SummaryPerson } from './summary';
                     [floors]="floors()"
                     [periods]="periods()"
                     [latePcts]="latePcts()"
+                    [graces]="graces()"
                     [policyDate]="policyDateInForce()"
                     [others]="othersOf(p.id)"
                     [selected]="selectedClaims()"
@@ -568,6 +570,8 @@ export class People {
   });
   /** Every late percent recorded on the sheet, each from its date, oldest first, with two decimals. */
   protected readonly latePcts = signal<Dated[]>([]);
+  /** Every grace recorded on the sheet for each grade, each from its date, oldest first. */
+  protected readonly graces = signal<Graces>({});
   /** The sheet's policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
   /** The policy date in force: the one set, or the sheet's today. */
@@ -576,6 +580,7 @@ export class People {
   private readonly lateness = computed<Lateness>(() => ({
     today: this.session.today(),
     latePcts: this.latePcts(),
+    graces: this.graces(),
   }));
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
@@ -693,6 +698,7 @@ export class People {
       this.floors.set([]);
       this.caps.set([]);
       this.latePcts.set([]);
+      this.graces.set({});
       this.policyDate.set(null);
       this.statements.set([]);
       this.periods.set([]);
@@ -1082,7 +1088,7 @@ export class People {
     let sum = 0;
     const today = this.session.today();
     for (const c of this.claimsOf(person.id)) {
-      if (!this.countsLive(c, person) || !overdue(c, today)) continue;
+      if (!this.countsLive(c, person) || !overdue(c, today, overdueFrom(c, person.grades, this.graces()))) continue;
       count++;
       sum += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
     }
@@ -1407,6 +1413,7 @@ export class People {
         this.floors.set(settings.floors);
         this.caps.set(settings.caps);
         this.latePcts.set(settings.latePcts);
+        this.graces.set(settings.graces ?? {});
         this.policyDate.set(settings.policyDate);
         this.rates.set(rates);
         this.periods.set(periods);

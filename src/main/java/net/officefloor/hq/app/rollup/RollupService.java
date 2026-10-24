@@ -87,12 +87,13 @@ public class RollupService {
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             boolean any = false;
+            Basis basis = live(sheetId);
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
                 claimed = claimed.add(claim.getAmount());
                 BigDecimal figure = shownOf(claim, person);
                 if (figure == null) continue;
-                if (isOverdue(claim, today)) overdue = overdue.add(figure);
+                if (isOverdue(claim, basis)) overdue = overdue.add(figure);
                 due = due.add(figure);
                 any = true;
             }
@@ -133,11 +134,12 @@ public class RollupService {
         }
     }
 
-    /** Whether the claim is overdue: OPEN or PENDING, not deferred on the sheet's {@code today}, and due
-     * by a date before it. */
-    public static boolean isOverdue(Claim claim, LocalDate today) {
+    /** Whether the claim is overdue on {@code basis}: OPEN or PENDING, not deferred on its today, and
+     * overdue from a date before it (its due-by plus any grace, see {@link Basis#overdueFrom}). */
+    public static boolean isOverdue(Claim claim, Basis basis) {
+        LocalDate today = basis.today();
         return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
-                && !claim.isDeferredOn(today) && claim.getDueBy().isBefore(today);
+                && !claim.isDeferredOn(today) && basis.overdueFrom(claim).isBefore(today);
     }
 
     /** A due-total as shown: at most {@code cap}, when there is one. */
@@ -188,6 +190,22 @@ public class RollupService {
 
         /** The person's claim with the number. */
         Optional<Claim> claimNumbered(Long personId, String number);
+
+        /** The person with the id. */
+        Optional<Person> personOf(Long personId);
+
+        /** The grade's grace days in force on the date; null when it has none then. */
+        Integer graceOn(String grade, LocalDate date);
+
+        /** The date a claim's lateness counts from: its due-by plus the grace days in force on the claim's
+         * date of its person's grade in force then (its due-by when that grade has none). */
+        default LocalDate overdueFrom(Claim claim) {
+            LocalDate dueBy = claim.getDueBy();
+            if (dueBy == null) return null;
+            Integer grace = personOf(claim.getPersonId()).map(p -> p.gradeOn(claim.getDate()))
+                    .map(grade -> graceOn(grade, claim.getDate())).orElse(null);
+            return grace == null ? dueBy : dueBy.plusDays(grace);
+        }
     }
 
     /** The sheet as it stands. */
@@ -232,6 +250,16 @@ public class RollupService {
             @Override
             public Optional<Claim> claimNumbered(Long personId, String number) {
                 return claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, number);
+            }
+
+            @Override
+            public Optional<Person> personOf(Long personId) {
+                return people.findById(personId);
+            }
+
+            @Override
+            public Integer graceOn(String grade, LocalDate date) {
+                return dated.gradeGraceOn(sheetId, grade, date);
             }
         };
     }
@@ -309,9 +337,9 @@ public class RollupService {
         return due.max(basis.floorOn(claim.getDate()));
     }
 
-    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
-     * the sheet's today), the sheet's late percent in force on that boundary date (the due-by plus 30, 60,
-     * 90 ... days) of that figure, rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
+    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, plus
+     * any grace of its grade (see {@link Basis#overdueFrom}), on the sheet's today), the sheet's late percent
+     * in force on that boundary date (that date plus 30, 60, 90 ... days) of that figure, rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue (a deferred claim is not), and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         return lateChargeOf(claim, figure, live(claim.getSheetId()));
@@ -337,11 +365,12 @@ public class RollupService {
         if (claim.isCorrection()) return zero();
         LocalDate today = basis.today();
         if (today == null || claim.isDeferredOn(today)) return zero();
-        long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), today)) / 30;
+        LocalDate from = basis.overdueFrom(claim);
+        long periods = Math.max(0, ChronoUnit.DAYS.between(from, today)) / 30;
         RoundingMode rounding = roundingOf(claim, basis);
         BigDecimal charge = zero();
         for (long k = 1; k <= periods; k++) {
-            BigDecimal pct = basis.latePctOn(claim.getDueBy().plusDays(30 * k));
+            BigDecimal pct = basis.latePctOn(from.plusDays(30 * k));
             if (pct.signum() == 0) continue;
             charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
         }

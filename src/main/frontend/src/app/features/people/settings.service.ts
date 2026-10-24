@@ -62,6 +62,11 @@ export interface SheetSettings {
   floors: Dated[];
   /** Every late percent recorded, each from its date, oldest first. */
   latePcts: Dated[];
+  /** The grades with grace days in force on the sheet's today, in days, by grade; a grade not in it
+   *  has none: a claim of the grade is overdue only once its due-by plus them is past. */
+  gradeGraces: Partial<Record<Grade, number>>;
+  /** Every grace recorded for each grade, each from its date, oldest first; null records none. */
+  graces: Partial<Record<Grade, Dated<string | null>[]>>;
   /** Every cap recorded, each from its date, oldest first; null records no cap from then. */
   caps: Dated<string | null>[];
   /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
@@ -162,6 +167,17 @@ export class SettingsService {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/terms/${grade}`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
+    );
+  }
+
+  /** A null value records no grace for the grade; a null from records it from the sheet's today. */
+  setGradeGrace(sheet: string, grade: Grade, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/grace/${grade}`,
         { value, from },
         { headers: this.session.headers() },
       ),

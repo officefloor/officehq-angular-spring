@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetAsOf;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -40,10 +41,11 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null). */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
-            String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate) {
+            String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
+            Map<String, Integer> gradeGraces, Map<String, List<DatedView>> graces) {
     }
 
     /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
@@ -140,6 +142,18 @@ public class SettingsController {
         }
     }
 
+    /** A grade's grace days: a whole number of days, 0 or more; blank or null for none. */
+    public record GradeGraceRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+        Integer daysValue() {
+            return value == null || value.isBlank() ? null : Integer.parseInt(value.trim());
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
+        }
+    }
+
     /** A late percent: 0.00 or more, with up to two decimals. */
     public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
@@ -209,7 +223,17 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
                 text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)), service.graceDays(sheet),
-                text(service.noteThreshold(sheet)), service.entryDate(sheet));
+                text(service.noteThreshold(sheet)), service.entryDate(sheet), service.gradeGraces(sheet),
+                gracesOf(grade -> service.history(sheet, DatedSettings.gradeGraceKey(grade))));
+    }
+
+    /** Every grace recorded for each grade, oldest first, by grade. */
+    private static Map<String, List<DatedView>> gracesOf(Function<String, List<SheetSetting>> history) {
+        Map<String, List<DatedView>> graces = new LinkedHashMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            graces.put(grade, history.apply(grade).stream().map(DatedView::of).toList());
+        }
+        return graces;
     }
 
     /** The settings as they stood on the sheet as of a date, that date standing in for its today. */
@@ -219,6 +243,11 @@ public class SettingsController {
         for (String grade : List.of("A", "B", "C")) {
             then.valueOn(DatedSettings.gradeTermsKey(grade), today).map(Integer::valueOf)
                     .ifPresent(own -> gradeTerms.put(grade, own));
+        }
+        Map<String, Integer> gradeGraces = new LinkedHashMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            Integer grace = then.graceOn(grade, today);
+            if (grace != null) gradeGraces.put(grade, grace);
         }
         Map<Action, String> matrix = new EnumMap<>(Action.class);
         for (Action action : Action.values()) matrix.put(action, "");
@@ -235,7 +264,8 @@ public class SettingsController {
                 text(then.valueOn(DatedSettings.PROOF_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
                 permissionsOf(matrix), then.graceDays(),
                 text(then.valueOn(DatedSettings.NOTE_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
-                then.entryDate());
+                then.entryDate(), gradeGraces,
+                gracesOf(grade -> then.history(DatedSettings.gradeGraceKey(grade))));
     }
 
     private static Map<String, String> permissionsOf(Map<Action, String> matrix) {
@@ -315,6 +345,16 @@ public class SettingsController {
             @RequestBody @Valid GradeTermsRequest request) {
         String sheet = sheetId.trim();
         service.setGradeTerms(sheet, user.trim(), grade, request.termsValue(), request.fromValue());
+        return get(sheet, user, null);
+    }
+
+    @PutMapping("/settings/grace/{grade}")
+    public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeGraceRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeGrace(sheet, user.trim(), grade, request.daysValue(), request.fromValue());
         return get(sheet, user, null);
     }
 

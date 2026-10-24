@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
- * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no note threshold and no grade's own terms). A claim's floor, late
+ * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no note threshold, no grade's own terms and no grade's grace days). A claim's floor, late
  * percent, terms, proof threshold and note threshold are those in force on its date; the clerk limit and the cap those on the sheet's
  * today. */
 @Service
@@ -24,6 +24,7 @@ public class DatedSettings {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String GRACE = "grace";
 
     public static final BigDecimal FLOOR_START = new BigDecimal("1.00");
     public static final BigDecimal LATE_PCT_START = new BigDecimal("0.00");
@@ -40,6 +41,11 @@ public class DatedSettings {
     /** The key a grade's own terms are kept under. */
     public static String gradeTermsKey(String grade) {
         return TERMS + "-" + grade;
+    }
+
+    /** The key a grade's grace days are kept under. */
+    public static String gradeGraceKey(String grade) {
+        return GRACE + "-" + grade;
     }
 
     /** Every value recorded for the key, oldest from-date first. */
@@ -76,6 +82,13 @@ public class DatedSettings {
     public int termsFor(String sheetId, String grade, LocalDate date) {
         Integer own = grade == null ? null : gradeTermsOn(sheetId, grade, date);
         return own != null ? own : termsOn(sheetId, date);
+    }
+
+    /** The grade's grace days in force on the date: a claim of a person of the grade then, dated then, is
+     * overdue only once its due-by plus them is past; null when the grade has none then. */
+    @Transactional(readOnly = true)
+    public Integer gradeGraceOn(String sheetId, String grade, LocalDate date) {
+        return grade == null ? null : valueOn(sheetId, gradeGraceKey(grade), date).map(Integer::valueOf).orElse(null);
     }
 
     /** The clerk limit in force on the sheet's today; null when there is none. */
