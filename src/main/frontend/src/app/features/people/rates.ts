@@ -161,9 +161,9 @@ export class Rates {
 
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
-  /** The rates by grade, then by from-date (one with none first). */
+  /** The sheet's own rates (not its parents'), by grade, then by from-date (one with none first). */
   protected readonly sorted = computed(() =>
-    [...this.rates()].sort(
+    this.rates().filter((r) => (r.level ?? 0) === 0).sort(
       (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
     ),
   );

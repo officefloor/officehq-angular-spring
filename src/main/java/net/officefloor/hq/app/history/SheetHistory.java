@@ -5,8 +5,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,6 +31,12 @@ public class SheetHistory {
     /** The sheet as it stood at the end of {@code date}, that date standing in for its today. */
     @Transactional(propagation = Propagation.MANDATORY)
     public SheetAsOf asOf(String sheetId, LocalDate date) {
+        return asOf(sheetId, date, new LinkedHashSet<>(List.of(sheetId)));
+    }
+
+    /** The sheet as it stood at the end of {@code date}, with its parents' rates as they stood then;
+     * {@code chain} holds the sheet and the sheets below it whose parents are being read. */
+    private SheetAsOf asOf(String sheetId, LocalDate date, Set<String> chain) {
         Map<String, String> latest = new LinkedHashMap<>();
         jdbc.query("SELECT entity, entity_id, state FROM sheet_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
                 rs -> {
@@ -50,7 +60,14 @@ public class SheetHistory {
             sheet = jdbc.query("SELECT state FROM sheet_history WHERE sheet_id = ? AND entity = 'sheet' ORDER BY id",
                     rs -> rs.next() ? read(rs.getString(1), Sheet.class) : null, sheetId);
         }
-        return new SheetAsOf(date, sheet, rows);
+        List<List<Rate>> inherited = new ArrayList<>();
+        String parentId = sheet == null ? null : sheet.getParentId();
+        if (parentId != null && chain.size() <= RateChain.LEVELS_UP && !chain.contains(parentId)) {
+            Set<String> up = new LinkedHashSet<>(chain);
+            up.add(parentId);
+            inherited.addAll(asOf(parentId, date, up).rateLevels());
+        }
+        return new SheetAsOf(date, sheet, rows, inherited);
     }
 
     /** The sheet as it stood at the end of {@code date} (see {@link #asOf}), read on its own. */

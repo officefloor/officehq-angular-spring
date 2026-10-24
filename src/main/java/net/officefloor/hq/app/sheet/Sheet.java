@@ -47,6 +47,11 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The id of the sheet's parent, whose rates are used where this sheet has none in force; null when
+     * there is none. */
+    @Column(name = "parent_id")
+    private String parentId;
+
     /** Whether the sheet is archived: everything on it stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -135,6 +140,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public String getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
     }
 
     /** The date a claim left without a date is dated: the entry date when it is set, else the sheet's today. */

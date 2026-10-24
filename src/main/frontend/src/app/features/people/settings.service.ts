@@ -90,13 +90,16 @@ export interface SheetSettings {
   /** The pot shared out among the members of each balanced pool, with two decimals; null when there
    *  is none. */
   pot: string | null;
+  /** The id of the parent sheet, whose rates are used where this sheet has none in force; null when
+   *  there is none. */
+  parent: string | null;
 }
 
 /** The actions the permission matrix decides who may take. */
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its entry date and its pot), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its entry date, its pot and its parent), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -241,6 +244,13 @@ export class SettingsService {
   setPot(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/pot`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value records no parent. */
+  setParent(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/parent`, { value }, { headers: this.session.headers() }),
     );
   }
 

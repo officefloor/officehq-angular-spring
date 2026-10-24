@@ -1348,7 +1348,7 @@ export class People {
   /** Put a set rate in place of the grade's old one for the same from-date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((list) => [
-      ...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from),
+      ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== rate.grade || r.from !== rate.from),
       rate,
     ]);
   }

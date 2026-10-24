@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -408,6 +409,38 @@ public class SettingsService {
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=entry-date",
                 "value=" + (entryDate == null ? "" : entryDate.toString()));
+        return sheet;
+    }
+
+    /** The id of the sheet's parent; null when there is none. */
+    @Transactional(readOnly = true)
+    public String parent(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getParentId();
+    }
+
+    /** Set the sheet's parent; null for none. The parent must be a sheet that has been loaded, not the
+     * sheet itself, nor one that has the sheet as an ancestor. A grade with no rate in force on a date on
+     * the sheet uses its parent's (see {@link net.officefloor.hq.app.rate.RateChain}); the figures follow. */
+    @Transactional
+    public Sheet setParent(String sheetId, String by, String parentId) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (parentId != null) {
+            if (parentId.equals(sheetId)) throw new ParentRefusedException("A sheet cannot be its own parent.");
+            Sheet parent = sheets.findById(parentId)
+                    .orElseThrow(() -> new ParentRefusedException("The parent must be a sheet that has been loaded."));
+            Set<String> seen = new HashSet<>();
+            for (Sheet up = parent; up != null && seen.add(up.getId());
+                    up = up.getParentId() == null ? null : sheets.findById(up.getParentId()).orElse(null)) {
+                if (sheetId.equals(up.getParentId())) {
+                    throw new ParentRefusedException("The parent cannot be a sheet that has this sheet as an ancestor.");
+                }
+            }
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setParentId(parentId);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=parent", "value=" + (parentId == null ? "" : parentId));
+        rollup.recordSince(sheetId, by, before);
         return sheet;
     }
 

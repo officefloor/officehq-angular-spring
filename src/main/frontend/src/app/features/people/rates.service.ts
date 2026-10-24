@@ -14,6 +14,8 @@ export interface Rate {
   from: string | null;
   /** The last date the rate applies on (YYYY-MM-DD); null when it applies on with no end. */
   to: string | null;
+  /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for its parent's parent's, and so on. */
+  level: number;
 }
 
 /** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
@@ -22,10 +24,21 @@ export interface RatePreview {
   diff: string;
 }
 
-/** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
- *  one with no from-date when none has; null when no rate applies yet, or when that rate's to-date
- *  is before the date (an earlier rate does not apply again). */
+/** The grade's rate in force on a date on the sheet (see `levelRateOn`), or else on the nearest
+ *  parent sheet that has one in force then; null when none has. */
 export function rateOn(rates: Rate[], grade: Grade, date: string): string | null {
+  const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
+  for (const level of levels) {
+    const pct = levelRateOn(rates.filter((r) => (r.level ?? 0) === level), grade, date);
+    if (pct !== null) return pct;
+  }
+  return null;
+}
+
+/** The grade's rate in force on a date among one sheet's rates: the one with the latest from-date on
+ *  or before it, or the one with no from-date when none has; null when no rate applies yet, or when
+ *  that rate's to-date is before the date (an earlier rate does not apply again). */
+function levelRateOn(rates: Rate[], grade: Grade, date: string): string | null {
   let best: Rate | null = null;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;

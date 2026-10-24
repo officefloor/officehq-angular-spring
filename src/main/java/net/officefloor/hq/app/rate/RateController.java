@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -30,11 +31,16 @@ public class RateController {
 
     /** A grade's rate, the date it applies from (null: from the beginning of time) and the date it applies
      * through (null: with no end); the percent is
-     * sent as text with two decimals so it is never rounded on the way. */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
+     * sent as text with two decimals so it is never rounded on the way; its level is 0 for the sheet's own
+     * rate, 1 for its parent's, 2 for its parent's parent's, and so on (see {@link RateChain}). */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level) {
         static RateView of(Rate rate) {
+            return of(rate, 0);
+        }
+
+        static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    rate.getFrom(), rate.getTo());
+                    rate.getFrom(), rate.getTo(), level);
         }
     }
 
@@ -61,8 +67,13 @@ public class RateController {
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
-        List<Rate> rates = asOf == null ? service.list(sheetId.trim()) : history.read(sheetId.trim(), asOf).rates();
-        return rates.stream().map(RateView::of).toList();
+        List<List<Rate>> levels = asOf == null ? service.levels(sheetId.trim())
+                : history.read(sheetId.trim(), asOf).rateLevels();
+        List<RateView> views = new ArrayList<>();
+        for (int level = 0; level < levels.size(); level++) {
+            for (Rate rate : levels.get(level)) views.add(RateView.of(rate, level));
+        }
+        return views;
     }
 
     @PutMapping("/{grade}")

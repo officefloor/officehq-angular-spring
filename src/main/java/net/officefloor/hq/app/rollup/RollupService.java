@@ -18,6 +18,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.settings.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -48,12 +49,12 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
+    private final RateChain rates;
     private final SheetRepository sheets;
     private final DatedSettings dated;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
+    public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates,
             SheetRepository sheets, DatedSettings dated, Audit audit) {
         this.dated = dated;
         this.people = people;
@@ -98,7 +99,7 @@ public class RollupService {
                 any = true;
             }
             due = cappedOf(due, cap);
-            boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+            boolean rated = today != null && rates.inForce(sheetId, person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);
             if (any || rated) dueFigures.add(due);
@@ -176,7 +177,8 @@ public class RollupService {
         /** The policy date in force (see {@link Sheet#policyDateInForce()}); null when there is no sheet. */
         LocalDate policyDateInForce();
 
-        /** The grade's rate in force on the date (see {@link RateRepository#findInForce}). */
+        /** The grade's rate in force on the date (see {@link RateRepository#findInForce}), or else the
+         * nearest parent sheet's (see {@link RateChain}). */
         Optional<Rate> rateInForce(String grade, LocalDate date);
 
         /** The floor in force on the date; 0.00 when there is no sheet. */
@@ -229,7 +231,7 @@ public class RollupService {
 
             @Override
             public Optional<Rate> rateInForce(String grade, LocalDate date) {
-                return rates.findInForce(sheetId, grade, date);
+                return rates.inForce(sheetId, grade, date);
             }
 
             @Override

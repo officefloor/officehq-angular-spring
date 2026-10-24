@@ -2,6 +2,7 @@ package net.officefloor.hq.app.history;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +15,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.DatedSettings;
 import net.officefloor.hq.app.settings.SheetDelegation;
@@ -34,6 +35,7 @@ public class SheetAsOf implements RollupService.Basis {
     private final List<Person> people;
     private final List<Claim> claims;
     private final List<Rate> rates;
+    private final List<List<Rate>> inherited;
     private final List<SheetSetting> settings;
     private final List<Period> periods;
     private final List<Statement> statements;
@@ -43,8 +45,9 @@ public class SheetAsOf implements RollupService.Basis {
     private final List<SheetPermission> permissions;
     private final List<SheetDelegation> delegations;
 
-    SheetAsOf(LocalDate date, Sheet sheet, Map<Class<?>, List<Object>> rows) {
+    SheetAsOf(LocalDate date, Sheet sheet, Map<Class<?>, List<Object>> rows, List<List<Rate>> inherited) {
         this.date = date;
+        this.inherited = List.copyOf(inherited);
         this.sheet = sheet;
         this.people = rowsOf(rows, Person.class).stream().sorted(Comparator.comparing(Person::getId)).toList();
         this.claims = rowsOf(rows, Claim.class).stream()
@@ -93,6 +96,20 @@ public class SheetAsOf implements RollupService.Basis {
     /** The period numbering from then; null when it was off. */
     public LocalDate periodNumberingFrom() {
         return sheet == null ? null : sheet.getPeriodNumberingFrom();
+    }
+
+    /** The id of the sheet's parent then; null when it had none. */
+    public String parentId() {
+        return sheet == null ? null : sheet.getParentId();
+    }
+
+    /** The sheet's rates then, then its parent's as they stood then, and so on up to
+     * {@link RateChain#LEVELS_UP} levels up: each by grade, then by from-date. */
+    public List<List<Rate>> rateLevels() {
+        List<List<Rate>> levels = new ArrayList<>();
+        levels.add(rates);
+        levels.addAll(inherited);
+        return levels;
     }
 
     /** The pot then; null when there was none. */
@@ -193,7 +210,7 @@ public class SheetAsOf implements RollupService.Basis {
 
     @Override
     public Optional<Rate> rateInForce(String grade, LocalDate on) {
-        return RateRepository.inForce(rates, grade, on);
+        return RateChain.inForce(rateLevels(), grade, on);
     }
 
     @Override

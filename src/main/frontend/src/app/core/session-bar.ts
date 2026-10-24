@@ -42,6 +42,9 @@ import { Session } from './session';
             >Archived
             <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></span
           >
+          <span
+            >Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></span
+          >
           <button type="button" data-testid="sheet-archive" (click)="archive()">
             Archive sheet
           </button>

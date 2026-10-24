@@ -27,14 +27,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class RateService {
 
     private final RateRepository rates;
+    private final RateChain chain;
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
     private final ClaimRepository claims;
     private final PersonRepository people;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup,
+    public RateService(RateRepository rates, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
             ClaimRepository claims, PersonRepository people) {
+        this.chain = chain;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -47,6 +49,13 @@ public class RateService {
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrderByGradeAndFrom(sheetId);
+    }
+
+    /** The sheet's rates, then its parent's, and so on up to {@link RateChain#LEVELS_UP} levels up: each
+     * by grade, then by from-date. */
+    @Transactional(readOnly = true)
+    public List<List<Rate>> levels(String sheetId) {
+        return chain.levels(sheetId);
     }
 
     @Transactional
