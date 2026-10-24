@@ -45,6 +45,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
       <ul class="claims" [attr.aria-label]="'Claims of ' + personName()">
         @for (c of claims(); track c.id) {
           <li [attr.data-testid]="'claim-row-' + c.id">
+            <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>

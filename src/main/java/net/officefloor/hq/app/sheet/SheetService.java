@@ -47,4 +47,11 @@ public class SheetService {
         sheet.setToday(today);
         return sheet;
     }
+
+    /** The next claim number on the sheet: 1 for its first, then 2, and so on, never given twice. */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        if (sheets.advanceClaimNumber(id) == 0) throw new SheetNotFoundException();
+        return sheets.lastClaimNumber(id);
+    }
 }

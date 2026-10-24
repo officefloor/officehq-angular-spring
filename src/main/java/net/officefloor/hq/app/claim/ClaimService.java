@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -39,7 +40,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
-        record("CLAIM_ADDED", user, person, claim);
+        record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         return claim;
     }
 
@@ -52,16 +53,19 @@ public class ClaimService {
         claims.flush();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        record("CLAIM_EDITED", user, person, claim);
+        record("CLAIM_EDITED", user, person, claim, claim.getNumber());
         return claim;
     }
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
-        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
+        Integer number = claim.getNumber();
+        if (next == ClaimStatus.OPEN) number = sheets.nextClaimNumber(sheetId);
         claim.setStatus(next);
+        claim.setNumber(next == ClaimStatus.VOID ? null : number);
         claims.flush();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
@@ -70,14 +74,17 @@ public class ClaimService {
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
-        }, user, person, claim);
+        }, user, person, claim, number);
         return claim;
     }
 
-    private void record(String event, String user, Person person, Claim claim) {
-        audit.change(event, claim.getSheetId(), user, "person=" + person.getName(),
+    /** Record a change to the claim; {@code number}, the number it has (or had), ends the line when there is one. */
+    private void record(String event, String user, Person person, Claim claim, Integer number) {
+        List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
                 "amount=" + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                "date=" + claim.getDate());
+                "date=" + claim.getDate()));
+        if (number != null) fields.add("number=" + number);
+        audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
     }
 
     private static String noteOf(String note) {
