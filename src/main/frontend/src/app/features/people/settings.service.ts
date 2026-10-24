@@ -85,6 +85,9 @@ export interface SheetSettings {
   escalateAfter: number | null;
   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
   reviewSla: number | null;
+  /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
+   *  or approved, comma separated; null when none are listed. */
+  proofKinds: string | null;
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
@@ -279,6 +282,14 @@ export class SettingsService {
   setEscalateAfter(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/escalate-after`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A comma separated list of proof kinds (receipt, photo); a null value lists none. Refused (400)
+   *  when it names any other kind. */
+  setProofKinds(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/proof-kinds`, { value }, { headers: this.session.headers() }),
     );
   }
 

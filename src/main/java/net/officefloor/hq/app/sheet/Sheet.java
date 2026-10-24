@@ -43,6 +43,11 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled or
+     * approved, comma separated; null when none are listed. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** How many days a claim may stay in REVIEW from its review day before it is late; null when there is none. */
     @Column(name = "review_sla")
     private Integer reviewSla;
@@ -88,7 +93,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, escalation gap, fiscal start month, entry date, pot, alert threshold and parent) come
+     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
@@ -96,6 +101,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
+        copy.proofKinds = proofKinds;
         copy.reviewSla = reviewSla;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
@@ -158,6 +164,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public Integer getEscalateAfter() {

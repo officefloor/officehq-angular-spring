@@ -7,6 +7,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
+/** Proof kinds: a comma separated list of receipt and photo. */
+const PROOF_KINDS_LIST = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDING = /^(half-up|half-even)$/;
 const MONTH = /^(0?[1-9]|1[0-2])$/;
@@ -377,6 +379,20 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-proof-kinds">Proof kinds (comma separated: receipt, photo)</label>
+        <input
+          id="setting-proof-kinds"
+          data-testid="setting-proof-kinds"
+          [value]="proofKindsInput()"
+          (input)="proofKindsInput.set(value($event)); proofKindsChanged = true; settingsError.set(null)"
+          (keydown)="proofKindsChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-proof-kinds-current">{{ (proofKinds() ?? '') | figure }}</span>
+          @if (proofKinds() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-review-sla">Review SLA (days)</label>
         <input
           id="setting-review-sla"
@@ -622,6 +638,8 @@ export class Settings {
   protected readonly graceDays = signal<string | null>(null);
   /** The escalation gap as set, as text; null when it is off. */
   protected readonly escalateAfter = signal<string | null>(null);
+  /** The proof kinds as set, comma separated; null when none are listed. */
+  protected readonly proofKinds = signal<string | null>(null);
   /** The review SLA as set, as text; null when there is none. */
   protected readonly reviewSla = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
@@ -652,6 +670,7 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfterInput = signal('');
+  protected readonly proofKindsInput = signal('');
   protected readonly reviewSlaInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -690,6 +709,7 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
   protected escalateAfterChanged = false;
+  protected proofKindsChanged = false;
   protected reviewSlaChanged = false;
   protected potChanged = false;
   protected alertThresholdChanged = false;
@@ -768,6 +788,9 @@ export class Settings {
       this.reviewSlaInput.set('');
       this.escalateAfterChanged = false;
       this.reviewSlaChanged = false;
+      this.proofKinds.set(null);
+      this.proofKindsInput.set('');
+      this.proofKindsChanged = false;
       this.pot.set(null);
       this.potInput.set('');
       this.potChanged = false;
@@ -904,6 +927,8 @@ export class Settings {
     const reviewSla = this.reviewSlaInput().trim();
     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
+    const proofKinds = this.proofKindsInput().trim();
+    const saveProofKinds = this.proofKindsChanged || proofKinds !== (this.proofKinds() ?? '');
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthChanged || fiscalStartMonth !== this.fiscalStartMonth();
     const pot = this.potInput().trim();
@@ -1018,6 +1043,10 @@ export class Settings {
     }
     if (saveEscalateAfter && escalateAfter !== '' && !TERMS.test(escalateAfter)) {
       this.settingsError.set('Type the escalation gap as a whole number of days, 0 or more, or leave it blank to turn it off.');
+      return;
+    }
+    if (saveProofKinds && proofKinds !== '' && !PROOF_KINDS_LIST.test(proofKinds)) {
+      this.settingsError.set('Type the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
     if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
@@ -1190,6 +1219,12 @@ export class Settings {
         if (this.escalateAfterInput().trim() === escalateAfter) this.escalateAfterChanged = false;
         this.show(settings);
       }
+      if (saveProofKinds) {
+        const settings = await this.service.setProofKinds(sheet, proofKinds || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.proofKindsInput().trim() === proofKinds) this.proofKindsChanged = false;
+        this.show(settings);
+      }
       if (saveReviewSla) {
         const settings = await this.service.setReviewSla(sheet, reviewSla || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1252,6 +1287,7 @@ export class Settings {
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
       if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+      if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
@@ -1323,6 +1359,7 @@ export class Settings {
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
         if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+        if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
@@ -1392,6 +1429,7 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter == null ? null : String(settings.escalateAfter));
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
+    this.proofKinds.set(settings.proofKinds ?? null);
     this.entryDate.set(settings.entryDate ?? null);
     this.pot.set(settings.pot ?? null);
     this.alertThreshold.set(settings.alertThreshold ?? null);

@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,13 +44,15 @@ public class ClaimController {
      * decimals so they are never rounded on the way. Its comments follow, oldest first, each as
      * {@code <user> on <date>: <text>}. Its lines follow, in the order they were added, each as
      * {@code <label> <qty> x <unit>}. Its added mark is when it was first added, as a claim id (see
-     * {@link Claim#addedMark}), which decides the forward-only rates it takes. */
+     * {@link Claim#addedMark}), which decides the forward-only rates it takes. Last come how many of its
+     * proofs are of each kind (receipt, photo), by kind. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String statedShown, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
-            Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived) {
+            Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
+            Map<String, Integer> proofsByKind) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -79,7 +82,14 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
-                    reviewLate(claim, log, lateBefore), claim.isWaived());
+                    reviewLate(claim, log, lateBefore), claim.isWaived(), proofsByKind(claim));
+        }
+
+        /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */
+        private static Map<String, Integer> proofsByKind(Claim claim) {
+            Map<String, Integer> byKind = new LinkedHashMap<>();
+            for (String kind : Claim.PROOF_KINDS) byKind.put(kind, claim.getProofsOf(kind));
+            return byKind;
         }
 
         /** Whether the claim is in REVIEW and its review day is before {@code lateBefore}. */
@@ -351,11 +361,19 @@ public class ClaimController {
         return view(service.restore(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** The kind of a proof: receipt or photo; blank or null when none is chosen (a receipt). */
+    public record ProofRequest(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
+        String kindValue() {
+            return kind == null || kind.isBlank() ? null : kind.trim();
+        }
+    }
+
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.addProof(sheetId.trim(), user.trim(), claimId));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid ProofRequest request) {
+        return view(service.addProof(sheetId.trim(), user.trim(), claimId, request == null ? null : request.kindValue()));
     }
 
     @PostMapping("/claims/{claimId}/comments")

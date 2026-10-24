@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -588,10 +589,11 @@ public class ClaimService {
         return claim;
     }
 
-    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID; a proof leaves
+    /** Raise the claim's proofs count by one, a proof of {@code kind} (receipt or photo; a receipt when
+     * null, and the audit record then names no kind). Refused when the claim is SETTLED or VOID; a proof leaves
      * the claim's figures alone, so it may be added while the claim is dated in a closed period. */
     @Transactional
-    public Claim addProof(String sheetId, String user, long claimId) {
+    public Claim addProof(String sheetId, String user, long claimId, String kind) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
                 || claim.getStatus() == ClaimStatus.DELETED) {
@@ -599,9 +601,13 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        claim.addProof();
+        claim.addProof(kind == null ? Claim.RECEIPT : kind);
         claims.flush();
-        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), "proofs=" + claim.getProofs());
+        if (kind == null) {
+            record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), "proofs=" + claim.getProofs());
+        } else {
+            record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), "proofs=" + claim.getProofs(), "kind=" + kind);
+        }
         return claim;
     }
 
@@ -782,11 +788,16 @@ public class ClaimService {
         return limit != null && due.compareTo(limit) > 0;
     }
 
-    /** Refuse a settle or approval of the claim, whose due is {@code due}, while it has no proofs and that
-     * due is above the proof threshold in force on its date: its person's grade's own then, else the sheet's
-     * (a due that is n/a is within any threshold). */
+    /** Refuse a settle or approval of the claim, whose due is {@code due}, when that due is above the proof
+     * threshold in force on its date (its person's grade's own then, else the sheet's; a due that is n/a is
+     * within any threshold) while it has no proofs, or, while the sheet lists proof kinds, no proof of one
+     * of them. */
     private void refuseUnproved(Claim claim, Person person, BigDecimal due) {
-        if (due == null || claim.getProofs() > 0) return;
+        if (due == null) return;
+        String kinds = settings.proofKinds(claim.getSheetId());
+        boolean proved = claim.getProofs() > 0 && (kinds == null
+                || Arrays.stream(kinds.split(",")).allMatch(kind -> claim.getProofsOf(kind) > 0));
+        if (proved) return;
         BigDecimal threshold = settings.proofThresholdFor(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
     }

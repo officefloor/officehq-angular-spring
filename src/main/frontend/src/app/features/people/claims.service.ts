@@ -72,7 +72,15 @@ export interface Claim {
   reviewLate: boolean;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
+  /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
+  proofsByKind: Record<ProofKind, number>;
 }
+
+/** The kind a proof is; one added without a kind is a receipt. */
+export type ProofKind = 'receipt' | 'photo';
+
+/** The kinds a proof may be, in the order they are offered. */
+export const PROOF_KINDS: readonly ProofKind[] = ['receipt', 'photo'];
 
 /** A line typed for a claim: its label, quantity and unit amount, as text. */
 export interface LineFields {
@@ -296,11 +304,11 @@ export class ClaimsService {
     );
   }
 
-  /** Raise the claim's proofs count by one; refused (409) when it is SETTLED or VOID and (423) when it
-   *  is dated in a closed period. */
-  addProof(sheet: string, id: number): Promise<Claim> {
+  /** Raise the claim's proofs count by one, a proof of `kind` (a receipt when null); refused (409) when
+   *  it is SETTLED or VOID and (423) when it is dated in a closed period. */
+  addProof(sheet: string, id: number, kind: ProofKind | null): Promise<Claim> {
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, { kind }, {
         headers: this.session.headers(),
       }),
     );

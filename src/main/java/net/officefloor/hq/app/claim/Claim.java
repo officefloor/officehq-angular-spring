@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (see
  * {@link ClaimStatus}). A claim with a negative amount is a correction of the SETTLED claim of the
@@ -17,6 +18,15 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "claim")
 public class Claim {
+
+    /** The kind of a proof that is a receipt, the kind a proof added without one is. */
+    public static final String RECEIPT = "receipt";
+
+    /** The kind of a proof that is a photo. */
+    public static final String PHOTO = "photo";
+
+    /** The kinds a proof may be, in the order they are offered. */
+    public static final List<String> PROOF_KINDS = List.of(RECEIPT, PHOTO);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -118,6 +128,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos; the rest are receipts. */
+    @Column(name = "proofs_photo", nullable = false)
+    private int proofsPhoto;
+
     /** The number of the claim this one was split off; null on a claim that was not split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -196,6 +210,7 @@ public class Claim {
         copy.editedBy = editedBy;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
+        copy.proofsPhoto = proofsPhoto;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
@@ -426,9 +441,15 @@ public class Claim {
         return proofs;
     }
 
-    /** Raise the claim's proofs count by one. */
-    public void addProof() {
+    /** How many of the claim's proofs are of {@code kind} (receipt or photo). */
+    public int getProofsOf(String kind) {
+        return PHOTO.equals(kind) ? proofsPhoto : RECEIPT.equals(kind) ? proofs - proofsPhoto : 0;
+    }
+
+    /** Raise the claim's proofs count by one, a proof of {@code kind} (receipt or photo). */
+    public void addProof(String kind) {
         this.proofs++;
+        if (PHOTO.equals(kind)) this.proofsPhoto++;
     }
 
     /** Whether the claim is deferred on {@code today}: OPEN and deferred until a date after it. */

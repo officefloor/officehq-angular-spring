@@ -433,6 +433,22 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The sheet's proof kinds, comma separated; null when none are listed. */
+    @Transactional(readOnly = true)
+    public String proofKinds(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getProofKinds();
+    }
+
+    /** Set the sheet's proof kinds (comma separated); null lists none. */
+    @Transactional
+    public Sheet setProofKinds(String sheetId, String by, String kinds) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setProofKinds(kinds);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=proof-kinds", "value=" + (kinds == null ? "" : kinds));
+        return sheet;
+    }
+
     /** The sheet's review SLA in days; null when there is none. */
     @Transactional(readOnly = true)
     public Integer reviewSla(String sheetId) {

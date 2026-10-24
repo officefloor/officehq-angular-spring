@@ -141,6 +141,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getEscalateAfter();
     }
 
+    /** The proof kinds then; null when none were listed. */
+    public String proofKinds() {
+        return sheet == null ? null : sheet.getProofKinds();
+    }
+
     /** The review SLA then; null when there was none. */
     public Integer reviewSla() {
         return sheet == null ? null : sheet.getReviewSla();

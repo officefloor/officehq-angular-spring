@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked, type WritableSignal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, LineFields, cents, deferred, money, overdue } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, LineFields, PROOF_KINDS, ProofKind, cents, deferred, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
@@ -128,6 +128,9 @@ const PAST: Record<ClaimAction, string> = {
             <span>Deferred <span data-testid="claim-deferred">{{ (isDeferred(c) ? 'yes' : 'no') | figure }}</span></span>
             <span>Until <span data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | figure }}</span></span>
             <span>Proofs <span data-testid="claim-proofs">{{ (c.proofs) | figure }}</span></span>
+            @for (k of proofKinds; track k) {
+              <span>{{ (k) | figure }} <span [attr.data-testid]="'claim-proofs-' + k">{{ (c.proofsByKind[k]) | figure }}</span></span>
+            }
             <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
@@ -239,6 +242,17 @@ const PAST: Record<ClaimAction, string> = {
                 {{ (a.label) | figure }}
               </button>
             }
+            <select
+              data-testid="claim-proof-kind"
+              [attr.aria-label]="'Kind of proof for claim of ' + c.amount + ' on ' + c.date"
+              [value]="proofKindOf(c)"
+              (change)="chooseProofKind(c, $event)"
+            >
+              <option value="">Kind (receipt)</option>
+              @for (k of proofKinds; track k) {
+                <option [value]="k">{{ (k) | figure }}</option>
+              }
+            </select>
             <button
               type="button"
               data-testid="claim-proof"
@@ -454,6 +468,10 @@ export class Claims {
   private submitting = false;
   /** The error of the last refused action on each claim, by claim id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The kinds a proof may be, as offered on each row. */
+  protected readonly proofKinds = PROOF_KINDS;
+  /** The proof kind chosen on each claim's row, by claim id; a row not in it has none chosen. */
+  protected readonly chosenProofKinds = signal<Record<number, ProofKind>>({});
   /** The timeline shown for each claim, by claim id: its audit lines, newest first. */
   protected readonly timelines = signal<Record<number, string[]>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
@@ -717,7 +735,7 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
           ? 'That claim is due above the note threshold, so it needs a note before it can be opened.'
           : e instanceof HttpErrorResponse && e.status === 422
-          ? `That claim is due above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+          ? `That claim is due above the proof threshold, so it needs a proof (one of each listed proof kind) before it can be ${PAST[action]}.`
           : action === 'settle' && this.isDeferred(claim)
           ? `That claim is deferred until ${claim.deferredUntil}.`
           : `That claim cannot be ${PAST[action]} in its status.`,
@@ -725,15 +743,31 @@ export class Claims {
     }
   }
 
-  /** Raise the claim's proofs count by one; a SETTLED, VOID or DELETED claim, or one dated in a closed period,
+  /** The proof kind chosen on the claim's row; blank when none is (a receipt). */
+  protected proofKindOf(claim: Claim): ProofKind | '' {
+    return this.chosenProofKinds()[claim.id] ?? '';
+  }
+
+  /** Choose the kind of the next proof added to the claim. */
+  protected chooseProofKind(claim: Claim, event: Event): void {
+    this.clearRowError(claim.id);
+    const kind = (event.target as HTMLSelectElement).value;
+    this.chosenProofKinds.update(({ [claim.id]: _, ...rest }) =>
+      PROOF_KINDS.includes(kind as ProofKind) ? { ...rest, [claim.id]: kind as ProofKind } : rest);
+  }
+
+  /** Raise the claim's proofs count by one, of the kind chosen on its row (none chosen is a receipt), which
+   *  is unchosen once it is added; a SETTLED, VOID or DELETED claim, or one dated in a closed period,
    *  is refused with an error. */
   protected async addProof(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const kind = this.chosenProofKinds()[claim.id] ?? null;
     try {
-      const changed = await this.service.addProof(sheet, claim.id);
+      const changed = await this.service.addProof(sheet, claim.id, kind);
       if (this.session.sheetId() !== sheet) return;
+      this.chosenProofKinds.update(({ [claim.id]: _, ...rest }) => rest);
       this.saved.emit(changed);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
