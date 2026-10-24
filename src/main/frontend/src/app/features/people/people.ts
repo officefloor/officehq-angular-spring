@@ -7,7 +7,7 @@ import { GRADES, Grade, Patron, PeopleService, Person, gradeOn } from './people.
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
-import { Lateness, Rate, RatesService, claimShownCents, rateOn } from './rates.service';
+import { Lateness, Rate, RatesService, Rounding, claimShownCents, rateOn } from './rates.service';
 import { Settings } from './settings';
 import { FLOOR_CENTS, LATE_PCT, SettingsService, TERMS_DAYS } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
@@ -38,6 +38,7 @@ import { Summary, SummaryPerson } from './summary';
       (floorSaved)="floor.set($event)"
       (termsSaved)="terms.set($event)"
       (latePctSaved)="latePct.set($event)"
+      (policyDateSaved)="policyDate.set($event)"
     />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
@@ -172,6 +173,7 @@ import { Summary, SummaryPerson } from './summary';
                     [periods]="periods()"
                     [terms]="terms()"
                     [latePct]="latePct()"
+                    [policyDate]="policyDateInForce()"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -366,6 +368,10 @@ export class People {
   protected readonly terms = signal(TERMS_DAYS);
   /** The sheet's late percent, with two decimals. */
   protected readonly latePct = signal(LATE_PCT);
+  /** The sheet's policy date as set; null when it is the sheet's today. */
+  protected readonly policyDate = signal<string | null>(null);
+  /** The policy date in force: the one set, or the sheet's today. */
+  protected readonly policyDateInForce = computed(() => this.policyDate() ?? this.session.today());
   /** What the claims' late charges are worked from. */
   private readonly lateness = computed<Lateness>(() => ({
     terms: this.terms(),
@@ -384,7 +390,7 @@ export class People {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness()) ?? 0;
+        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
       }
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
@@ -436,6 +442,7 @@ export class People {
       this.floor.set(FLOOR_CENTS);
       this.terms.set(TERMS_DAYS);
       this.latePct.set(LATE_PCT);
+      this.policyDate.set(null);
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
@@ -599,6 +606,11 @@ export class People {
     return today === null || grade === null ? null : rateOn(this.rates(), grade, today);
   }
 
+  /** What decides how the person's claims round. */
+  private roundingOf(personId: number): Rounding {
+    return { policyDate: this.policyDateInForce(), claims: this.claimsOf(personId) };
+  }
+
   /** The person's grade in force on the sheet's today. */
   protected gradeNow(person: Person): Grade {
     return gradeOn(person.grades, this.session.today()) ?? person.grade;
@@ -617,7 +629,7 @@ export class People {
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
-      const due = claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness());
+      const due = claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id));
       if (due === null) continue;
       sum += due;
       any = true;
@@ -634,7 +646,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
       count++;
-      sum += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness()) ?? 0;
+      sum += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
     }
     return { count, cents: sum };
   }
@@ -795,6 +807,7 @@ export class People {
         this.floor.set(cents(settings.floor));
         this.terms.set(settings.terms);
         this.latePct.set(settings.latePct);
+        this.policyDate.set(settings.policyDate);
         this.rates.set(rates);
         this.periods.set(periods);
         this.statements.set(statements);

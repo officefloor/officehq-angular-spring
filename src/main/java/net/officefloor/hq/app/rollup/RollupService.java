@@ -129,7 +129,7 @@ public class RollupService {
 
     /** The late charge on an OPEN claim whose figure is {@code figure}: the sheet's late percent of that
      * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
-     * terms, on the sheet's today), rounded half to even to two decimals; 0.00 on a claim not OPEN or
+     * terms, on the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) return zero();
@@ -138,20 +138,34 @@ public class RollupService {
         LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
         long periods = Math.max(0, ChronoUnit.DAYS.between(dueBy, sheet.getToday())) / 30;
         return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
-                .setScale(2, RoundingMode.HALF_EVEN);
+                .setScale(2, roundingOf(claim, sheet));
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded half to even to two decimals, and at least the sheet's floor (a correction,
+     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}), and at least the sheet's floor (a correction,
      * whose due is negative, has no floor); null when no
      * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
-        BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(zero());
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
+        RoundingMode rounding = roundingOf(claim, sheet);
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
+    }
+
+    /** How the claim's live figures round: half up when it is dated before the sheet's policy date in
+     * force, half to even when on or after it. A correction rounds by the date of the claim it corrects. */
+    public RoundingMode roundingOf(Claim claim, Sheet sheet) {
+        if (sheet == null) return RoundingMode.HALF_EVEN;
+        LocalDate dated = claim.getDate();
+        if (claim.isCorrection() && claim.getCorrects() != null) {
+            dated = claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects())
+                    .map(Claim::getDate).orElse(dated);
+        }
+        return dated.isBefore(sheet.policyDateInForce()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     private static BigDecimal zero() {

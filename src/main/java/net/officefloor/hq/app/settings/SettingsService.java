@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -13,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
  * live due can be, and its terms, how many days after its date a claim is due by, and its late percent, the
- * percent of its figure an overdue claim's due gains for every full 30 days it is overdue. */
+ * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
+ * date, which decides how a claim's live figures round (the sheet's today when none is set). */
 @Service
 public class SettingsService {
 
@@ -120,6 +122,25 @@ public class SettingsService {
         sheet.setLatePct(latePct);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=late-pct", "value=" + latePct.toPlainString());
+        rollup.recordSince(sheetId, by, before);
+        return sheet;
+    }
+
+    /** The sheet's policy date as set; null when it is the sheet's today. */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPolicyDate();
+    }
+
+    /** Set the sheet's policy date; null makes it the sheet's today. The live figures' rounding follows it. */
+    @Transactional
+    public Sheet setPolicyDate(String sheetId, String by, LocalDate policyDate) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=policy-date",
+                "value=" + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordSince(sheetId, by, before);
         return sheet;
     }

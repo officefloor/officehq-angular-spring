@@ -138,6 +138,9 @@ export class Claims {
   readonly terms = input.required<number>();
   /** The sheet's late percent, with two decimals. */
   readonly latePct = input.required<string>();
+  /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
+   *  or after it half to even; null until read. */
+  readonly policyDate = input.required<string | null>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -171,7 +174,8 @@ export class Claims {
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
     const late = { terms: this.terms(), today: this.session.today(), latePct: this.latePct() };
-    const due = claimShownCents(claim, this.rates(), this.grades(), this.floor(), late);
+    const rounding = { policyDate: this.policyDate(), claims: this.claims() };
+    const due = claimShownCents(claim, this.rates(), this.grades(), this.floor(), late, rounding);
     return due === null ? 'n/a' : money(due);
   }
 

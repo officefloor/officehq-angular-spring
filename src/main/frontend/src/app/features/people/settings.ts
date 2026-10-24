@@ -5,11 +5,13 @@ import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settin
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
 // limit), its floor (the least a claim's live due can be), its terms (how many days after its date
 // a claim is due by), its late percent (the percent of its figure an overdue claim's due gains for
-// every full 30 days it is overdue) and the role each user name has been given (any other name is a clerk). Read from the
+// every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
+// or after it half to even; blank for the sheet's today) and the role each user name has been given (any other name is a clerk). Read from the
 // store every time a sheet is loaded. Saving the settings saves only the fields changed since
 // they were last saved.
 @Component({
@@ -63,6 +65,21 @@ const TERMS = /^\d{1,4}$/;
           (keydown)="latePctChanged = true"
         />
         <span>In force: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></span>
+        <label for="setting-policy-date">Policy date</label>
+        <input
+          id="setting-policy-date"
+          data-testid="setting-policy-date"
+          type="date"
+          [value]="policyDateInput()"
+          (input)="policyDateInput.set(value($event)); policyDateChanged = true; settingsError.set(null)"
+          (keydown)="policyDateChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span>
+          @if (policyDate() === null) {
+            (the sheet's today)
+          }
+        </span>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
@@ -163,11 +180,16 @@ export class Settings {
   readonly termsSaved = output<number>();
   /** The late percent saved, with two decimals. */
   readonly latePctSaved = output<string>();
+  /** The policy date as set; null when it is the sheet's today. */
+  protected readonly policyDate = signal<string | null>(null);
+  /** The policy date saved; null when it is the sheet's today. */
+  readonly policyDateSaved = output<string | null>();
 
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
+  protected readonly policyDateInput = signal('');
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -175,6 +197,7 @@ export class Settings {
   protected floorChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
+  protected policyDateChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
@@ -202,6 +225,9 @@ export class Settings {
       this.latePct.set('');
       this.latePctInput.set('');
       this.latePctChanged = false;
+      this.policyDate.set(null);
+      this.policyDateInput.set('');
+      this.policyDateChanged = false;
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
@@ -231,6 +257,8 @@ export class Settings {
     const saveTerms = this.termsChanged || terms !== this.terms();
     const latePct = this.latePctInput().trim();
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
+    const policyDate = this.policyDateInput().trim();
+    const savePolicyDate = this.policyDateChanged || policyDate !== (this.policyDate() ?? '');
     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -245,6 +273,10 @@ export class Settings {
     }
     if (saveLatePct && !LIMIT.test(latePct)) {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (savePolicyDate && policyDate !== '' && !DATE.test(policyDate)) {
+      this.settingsError.set('Type a policy date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
       return;
     }
     this.savingSettings = true;
@@ -276,11 +308,19 @@ export class Settings {
         this.show(settings);
         this.latePctSaved.emit(settings.latePct);
       }
+      if (savePolicyDate) {
+        const settings = await this.service.setPolicyDate(sheet, policyDate || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.policyDateInput().trim() === policyDate) this.policyDateChanged = false;
+        this.show(settings);
+        this.policyDateSaved.emit(settings.policyDate);
+      }
       // Show what is in force in each field, but keep what was typed in one while the save was waiting.
       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
       if (!this.floorChanged) this.floorInput.set(this.floor());
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
+      if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
@@ -333,6 +373,7 @@ export class Settings {
         if (!this.floorChanged) this.floorInput.set(settings.floor);
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
+        if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
       }
     } catch {
       // The settings could not be read; they show as none.
@@ -344,6 +385,7 @@ export class Settings {
     this.floor.set(settings.floor);
     this.terms.set(String(settings.terms));
     this.latePct.set(settings.latePct);
+    this.policyDate.set(settings.policyDate);
     this.given.set(settings.roles);
   }
 }

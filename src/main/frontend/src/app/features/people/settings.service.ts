@@ -32,11 +32,14 @@ export interface SheetSettings {
   /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue,
    *  with two decimals. */
   latePct: string;
+  /** The date that decides how a claim's live figures round (YYYY-MM-DD); null when it is the
+   *  sheet's today. */
+  policyDate: string | null;
   /** The roles given on the sheet, by user name. */
   roles: RoleGiven[];
 }
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its terms and its late percent), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its terms, its late percent and its policy date), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -74,6 +77,17 @@ export class SettingsService {
   setLatePct(sheet: string, value: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/late-pct`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value makes the policy date the sheet's today. */
+  setPolicyDate(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/policy-date`,
+        { value },
+        { headers: this.session.headers() },
+      ),
     );
   }
 
