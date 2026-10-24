@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 49378064..13e17416 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -49,6 +49,8 @@ export interface Person {
+   aliases: string[];
+   /** Whether the person's name or an alias of theirs is used on another sheet of the sheet's tree. */
+   clashing: boolean;
++  /** The sheet the person was transferred from; null when they were not transferred. */
++  origin: string | null;
+ }
+ 
+ /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 53cb4bbc..4605d576 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -298,6 +298,7 @@ import { Audit } from './audit';
+               <th scope="col">Contact</th>
+               <th scope="col">Aliases</th>
+               <th scope="col">Clashing</th>
++              <th scope="col">Came from</th>
+               <th scope="col">Claimed</th>
+               <th scope="col">Due</th>
+               <th scope="col">Settled due</th>
+@@ -344,6 +345,7 @@ import { Audit } from './audit';
+                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+                 <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
++                <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
+                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                 @let split = splitOf(p);
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index f9891fef..a9eb34be 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -3,7 +3,6 @@ package net.officefloor.hq.app.audit;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
+-import net.officefloor.hq.app.Audit;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -17,13 +16,14 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class AuditController {
+ 
+-    private final Audit audit;
++    private final AuditService audit;
+ 
+-    public AuditController(Audit audit) {
++    public AuditController(AuditService audit) {
+         this.audit = audit;
+     }
+ 
+-    /** Every line of the sheet, or (with a name) only those about that person. */
++    /** Every line of the sheet, or (with a name) only those about that person, then those about them
++     * from the sheet they were transferred from. */
+     @GetMapping
+     public List<String> lines(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditService.java b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+new file mode 100644
+index 00000000..638e033c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.audit;
++
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The audit lines a sheet's viewer shows, read from the audit file as it holds them. */
++@Service
++public class AuditService {
++
++    private final Audit audit;
++    private final PersonRepository people;
++
++    public AuditService(Audit audit, PersonRepository people) {
++        this.audit = audit;
++        this.people = people;
++    }
++
++    /**
++     * The sheet's lines, newest first, or (with a name) only those about that person; when the person
++     * so named on the sheet was transferred to it, followed by the lines about them from the sheet they
++     * came from, newest first, as that sheet's lines hold them.
++     */
++    @Transactional(readOnly = true)
++    public List<String> lines(String sheetId, String name) {
++        List<String> lines = new ArrayList<>(audit.lines(sheetId, name));
++        if (name != null && !name.isBlank()) {
++            people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
++                    .map(Person::getOriginSheetId)
++                    .ifPresent(origin -> lines.addAll(audit.lines(origin, name)));
++        }
++        return lines;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 20e14f0e..f2787bb8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -74,6 +74,10 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The sheet the person was transferred from; null when they were not transferred. */
++    @Column(name = "origin_sheet_id")
++    private String originSheetId;
++
+     /** The person's place in the sheet's list: people are listed by it, lowest first. */
+     @Column(name = "list_position", nullable = false)
+     private Long position;
+@@ -115,10 +119,12 @@ public class Person {
+     }
+ 
+     /** A copy of the person on the sheet {@code sheetId}: the same name, every grade they were given
+-     * (with its from-date), their terms, contact and aliases; nothing else of theirs comes with it. */
++     * (with its from-date), their terms, contact and aliases, noting this sheet as the one they came
++     * from; nothing else of theirs comes with it. */
+     public Person transferredTo(String sheetId) {
+         Person copy = new Person();
+         copy.sheetId = sheetId;
++        copy.originSheetId = this.sheetId;
+         copy.setName(name);
+         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
+         copy.terms = terms;
+@@ -235,6 +241,11 @@ public class Person {
+         }
+     }
+ 
++    /** The sheet the person was transferred from; null when they were not transferred. */
++    public String getOriginSheetId() {
++        return originSheetId;
++    }
++
+     public Long getPosition() {
+         return position;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index c216c138..10832b5f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -54,13 +54,13 @@ public class PersonController {
+      * alias of theirs is used on another sheet of the sheet's tree. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
+-            String contact, List<String> aliases, boolean clashing) {
++            String contact, List<String> aliases, boolean clashing, String origin) {
+         public static PersonView of(Person person, LocalDate today, boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
+-                    person.getContact(), person.getAliases(), clashing);
++                    person.getContact(), person.getAliases(), clashing, person.getOriginSheetId());
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V72__person_origin.sql b/src/main/resources/db/migration/V72__person_origin.sql
+new file mode 100644
+index 00000000..6899a2bb
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__person_origin.sql
+@@ -0,0 +1,2 @@
++-- The sheet a transferred person came from; null for anyone else.
++ALTER TABLE person ADD COLUMN origin_sheet_id VARCHAR(100);
