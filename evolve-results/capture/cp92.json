@@ -1,0 +1,68 @@
+{
+  "checkpoint": 92,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp92_four-eyes-editor",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    88
+  ],
+  "replaced_tests": [
+    "cp88_compound-late-charge.spec.ts::compound late charge scenario 3"
+  ],
+  "request": {
+    "spec": "The user who last edited a claim (through the claim form or the row's amount entry) can no longer\nsettle or approve it, exactly as its opener cannot: the action is refused with an error on the\nclaim and nothing changes. Selecting claims to settle together follows the same rule.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe user who last edited a claim (through the claim form or the row's amount entry) can no longer\nsettle or approve it, exactly as its opener cannot: the action is refused with an error on the\nclaim and nothing changes. Selecting claims to settle together follows the same rule.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d09f980629bec9008a9f95164d2e1fcd9fa1df31",
+  "reset_sha": "",
+  "preagent_sha": "d4209091127c3bcb2957eac2f0af9bbf4edc0b4d",
+  "prev_sha": "d4209091127c3bcb2957eac2f0af9bbf4edc0b4d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6064770000000002,
+    "input_tokens": 66,
+    "output_tokens": 19358,
+    "cache_read_tokens": 2275665,
+    "cache_creation_tokens": 95490,
+    "num_turns": 34,
+    "duration_ms": 602555,
+    "duration_api_ms": 251678,
+    "model": "claude-opus-5-5",
+    "session_id": "149628f6-fe85-406e-85b2-3b5b82c8b80a",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` now passes all 4 tests.\n\n**What changed**\n- **Stored data:** a new migration, `V61__claim_edited_by.sql`, adds an `edited_by` column to claims. `Claim.java` has the matching `editedBy` field and a helper, `isOpenedOrEditedBy(user)`.\n- **Server (`ClaimService`):**\n  - Saving the claim form and saving the row's amount entry both call `update`, so that one method now records who last edited the claim.\n  - **Settle:** if you opened or last edited the claim, you get the same refusal as the opener used to (`ClaimSelfSettleException`, 403).\n  - **Approve:** refused for the opener or the last editor.\n  - **Settling selected claims together:** this calls the same settle code for each claim, so those claims are counted as refused and nothing changes.\n- **Front end:** the claim's data now includes `editedBy`. The row error reads \"You last edited that claim, so another user must settle it.\" on settle, and the approve error now says \"\u2026who did not open or last edit that claim\u2026\".\n\n**Second fix, outside the request.** Scenario 1 never creates a claim, but it failed in the view of the sheet as of an earlier date. When today moved from 03-10 to 03-22, period P1 closed automatically. That close was saved in the sheet's history under the new today (03-22), so the view as of 03-15 showed P1 open. The test expects P1 closed. I ran it against the live app to confirm this was the cause.\n\nTo fix it, closes that happen automatically when today changes are now saved under the day being left. That's a small hook in `HistoryListener` (`madeOn`), used by `SheetService.setToday`.\n\nThis changes how the sheet history works in general. One edge case: if today was earlier moved backwards, a period can now show in an as-of view for a date before it was added. The same thing already happens with other edits after a backwards move. If you'd rather not touch history here, the alternative is to treat that test expectation as a separate issue, but scenario 1 will keep failing until it's resolved.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6064770000000002,
+        "num_turns": 34,
+        "duration_ms": 602555,
+        "duration_api_ms": 251678,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp92.agent.jsonl",
+  "agent_diff_file": "cp92.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
