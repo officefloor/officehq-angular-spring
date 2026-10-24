@@ -1,0 +1,639 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index 2dd86fe9..102b71d9 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -36,6 +36,8 @@ export interface Claim {
+   log: string[];
+   /** The date (YYYY-MM-DD) the claim was last deferred until; null when it was never deferred. */
+   deferredUntil: string | null;
++  /** How many proofs the claim has been given. */
++  proofs: number;
+ }
+ 
+ /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
+@@ -161,6 +163,16 @@ export class ClaimsService {
+     );
+   }
+ 
++  /** Raise the claim's proofs count by one; refused (409) when it is SETTLED or VOID and (423) when it
++   *  is dated in a closed period. */
++  addProof(sheet: string, id: number): Promise<Claim> {
++    return firstValueFrom(
++      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Fix a SETTLED claim again at what would be due on it now were it OPEN and bound by no statement;
+    *  refused (403) when the user is not a steward, (409) when it is not SETTLED and (423) when it is
+    *  dated in a closed period. */
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 7595b99e..b1f0e8b2 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -84,7 +84,8 @@ const PAST: Record<ClaimAction, string> = {
+             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+             <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+             <span>Deferred <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span></span>
+-            <span>Until <span data-testid="claim-deferred-until">{{ isDeferred(c) ? c.deferredUntil : '' }}</span></span>
++            <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
++            <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+               @for (line of c.log; track $index) {
+                 <li data-testid="claim-log-line">{{ line }}</li>
+@@ -107,6 +108,14 @@ const PAST: Record<ClaimAction, string> = {
+                 {{ a.label }}
+               </button>
+             }
++            <button
++              type="button"
++              data-testid="claim-proof"
++              [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date"
++              (click)="addProof(c)"
++            >
++              Add proof
++            </button>
+             <button
+               type="button"
+               data-testid="claim-resettle"
+@@ -312,7 +321,8 @@ export class Claims {
+   /** Change the claim's status; a change its status does not allow, a settle by the user who opened
+    *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
+    *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
+-   *  a claim whose due is above the clerk limit leaves it PENDING for a steward. */
++   *  a claim whose due is above the clerk limit leaves it PENDING for a steward. A settle or approve of a
++   *  claim without proofs whose due is above the proof threshold in force on its date is refused. */
+   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+     this.clearRowError(claim.id);
+     const sheet = this.session.sheetId();
+@@ -339,6 +349,8 @@ export class Claims {
+           ? 'Type a one-word reason to reject that claim.'
+           : e instanceof HttpErrorResponse && e.status === 423
+           ? 'That claim is dated in a closed period.'
++          : e instanceof HttpErrorResponse && e.status === 422
++          ? `That claim is due above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+           : action === 'settle' && this.isDeferred(claim)
+           ? `That claim is deferred until ${claim.deferredUntil}.`
+           : `That claim cannot be ${PAST[action]} in its status.`,
+@@ -346,6 +358,27 @@ export class Claims {
+     }
+   }
+ 
++  /** Raise the claim's proofs count by one; a SETTLED or VOID claim, or one dated in a closed period,
++   *  is refused with an error. */
++  protected async addProof(claim: Claim): Promise<void> {
++    this.clearRowError(claim.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      const changed = await this.service.addProof(sheet, claim.id);
++      if (this.session.sheetId() !== sheet) return;
++      this.saved.emit(changed);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      this.rowErrors.update((errors) => ({
++        ...errors,
++        [claim.id]: e instanceof HttpErrorResponse && e.status === 423
++          ? 'That claim is dated in a closed period.'
++          : 'A settled or void claim cannot be given a proof.',
++      }));
++    }
++  }
++
+   /** Settle the SETTLED claim again at what would be due on it today were it open and bound by no
+    *  statement; only a steward can, and not on a claim dated in a closed period, so anything else is
+    *  refused with an error. */
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 8cca1bab..7eafd6b2 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -64,6 +64,9 @@ export interface SheetSettings {
+   latePcts: Dated[];
+   /** Every cap recorded, each from its date, oldest first; null records no cap from then. */
+   caps: Dated<string | null>[];
++  /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
++   *  null when there is none. */
++  proofThreshold: string | null;
+ }
+ 
+ // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
+@@ -102,6 +105,17 @@ export class SettingsService {
+     );
+   }
+ 
++  /** A null value records no proof threshold; a null from records it from the sheet's today. */
++  setProofThreshold(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(
++        `${this.url(sheet)}/settings/proof-threshold`,
++        { value, from },
++        { headers: this.session.headers() },
++      ),
++    );
++  }
++
+   setTerms(sheet: string, value: string, from: string | null): Promise<SheetSettings> {
+     return firstValueFrom(
+       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value, from }, { headers: this.session.headers() }),
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 7acb6b7b..94019c28 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -11,11 +11,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ // limit), its floor (the least a claim's live due can be), its cap (the most a person's due-total
+ // can be; blank for no cap), its terms (how many days after its date
+ // a claim is due by), each grade's own terms (used in place of the sheet's for a person of that
+-// grade; blank for the sheet's), its late percent (the percent of its figure an overdue claim's due gains for
++// grade; blank for the sheet's), its proof threshold (the due above which a claim needs a proof before it
++// is settled or approved; blank for none), its late percent (the percent of its figure an overdue claim's due gains for
+ // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
+ // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
+ // a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk).
+-// The clerk limit, floor, cap, terms, grades' terms and late percent are dated: each is saved from the
++// The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
+ // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
+ // today. Read from the
+ // store every time a sheet is loaded. Saving the settings saves only the fields changed since
+@@ -90,6 +91,29 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             (no cap)
+           }
+         </span>
++        <label for="setting-proof-threshold">Proof threshold</label>
++        <input
++          id="setting-proof-threshold"
++          data-testid="setting-proof-threshold"
++          inputmode="decimal"
++          [value]="proofThresholdInput()"
++          (input)="proofThresholdInput.set(value($event)); proofThresholdChanged = true; settingsError.set(null)"
++          (keydown)="proofThresholdChanged = true"
++        />
++        <label for="setting-proof-threshold-from">Proof threshold from</label>
++        <input
++          id="setting-proof-threshold-from"
++          data-testid="setting-proof-threshold-from"
++          type="date"
++          [value]="proofThresholdFrom()"
++          (input)="proofThresholdFrom.set(value($event)); proofThresholdChanged = true; settingsError.set(null)"
++        />
++        <span>
++          In force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span>
++          @if (proofThreshold() === null) {
++            (none)
++          }
++        </span>
+         <label for="setting-terms">Terms (days)</label>
+         <input
+           id="setting-terms"
+@@ -275,6 +299,8 @@ export class Settings {
+   /** Every cap recorded, each from its date, oldest first, once one is saved. */
+   readonly capSaved = output<Dated<string | null>[]>();
+   protected readonly given = signal<RoleGiven[]>([]);
++  /** The proof threshold in force, with two decimals; null when there is none. */
++  protected readonly proofThreshold = signal<string | null>(null);
+   /** The terms in force, in days, as text; empty until read. */
+   protected readonly terms = signal('');
+   protected readonly grades = GRADES;
+@@ -297,6 +323,7 @@ export class Settings {
+   protected readonly limit = signal('');
+   protected readonly floorInput = signal('');
+   protected readonly capInput = signal('');
++  protected readonly proofThresholdInput = signal('');
+   protected readonly termsInput = signal('');
+   protected readonly latePctInput = signal('');
+   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
+@@ -306,6 +333,7 @@ export class Settings {
+   protected readonly limitFrom = signal('');
+   protected readonly floorFrom = signal('');
+   protected readonly capFrom = signal('');
++  protected readonly proofThresholdFrom = signal('');
+   protected readonly termsFrom = signal('');
+   protected readonly latePctFrom = signal('');
+   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
+@@ -315,6 +343,7 @@ export class Settings {
+   protected limitChanged = false;
+   protected floorChanged = false;
+   protected capChanged = false;
++  protected proofThresholdChanged = false;
+   protected termsChanged = false;
+   protected latePctChanged = false;
+   protected readonly gradeTermsChanged = new Set<Grade>();
+@@ -342,6 +371,10 @@ export class Settings {
+       this.cap.set(null);
+       this.capInput.set('');
+       this.capChanged = false;
++      this.proofThreshold.set(null);
++      this.proofThresholdInput.set('');
++      this.proofThresholdChanged = false;
++      this.proofThresholdFrom.set('');
+       this.terms.set('');
+       this.termsInput.set('');
+       this.limitChanged = false;
+@@ -414,6 +447,8 @@ export class Settings {
+     const saveFloor = this.floorChanged || floor !== this.floor();
+     const cap = this.capInput().trim();
+     const saveCap = this.capChanged || cap !== (this.cap() ?? '');
++    const proofThreshold = this.proofThresholdInput().trim();
++    const saveProofThreshold = this.proofThresholdChanged || proofThreshold !== (this.proofThreshold() ?? '');
+     const terms = this.termsInput().trim();
+     const saveTerms = this.termsChanged || terms !== this.terms();
+     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
+@@ -429,6 +464,7 @@ export class Settings {
+     const limitFrom = this.limitFrom().trim();
+     const floorFrom = this.floorFrom().trim();
+     const capFrom = this.capFrom().trim();
++    const proofThresholdFrom = this.proofThresholdFrom().trim();
+     const termsFrom = this.termsFrom().trim();
+     const latePctFrom = this.latePctFrom().trim();
+     const gradeTermsFrom = { ...this.gradeTermsFrom() };
+@@ -436,6 +472,7 @@ export class Settings {
+       saveLimit ? limitFrom : '',
+       saveFloor ? floorFrom : '',
+       saveCap ? capFrom : '',
++      saveProofThreshold ? proofThresholdFrom : '',
+       saveTerms ? termsFrom : '',
+       saveLatePct ? latePctFrom : '',
+       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
+@@ -456,6 +493,10 @@ export class Settings {
+       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    if (saveProofThreshold && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
++      this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
++      return;
++    }
+     if (saveTerms && !TERMS.test(terms)) {
+       this.settingsError.set('Type terms as a whole number of days, 0 or more.');
+       return;
+@@ -510,6 +551,15 @@ export class Settings {
+         this.show(settings);
+         this.capSaved.emit(settings.caps);
+       }
++      if (saveProofThreshold) {
++        const settings = await this.service.setProofThreshold(sheet, proofThreshold || null, proofThresholdFrom || null);
++        if (this.session.sheetId() !== sheet) return;
++        if (this.proofThresholdInput().trim() === proofThreshold && this.proofThresholdFrom().trim() === proofThresholdFrom) {
++          this.proofThresholdChanged = false;
++          this.proofThresholdFrom.set('');
++        }
++        this.show(settings);
++      }
+       if (saveTerms) {
+         const settings = await this.service.setTerms(sheet, terms, termsFrom || null);
+         if (this.session.sheetId() !== sheet) return;
+@@ -556,6 +606,7 @@ export class Settings {
+       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
+       if (!this.floorChanged) this.floorInput.set(this.floor());
+       if (!this.capChanged) this.capInput.set(this.cap() ?? '');
++      if (!this.proofThresholdChanged) this.proofThresholdInput.set(this.proofThreshold() ?? '');
+       if (!this.termsChanged) this.termsInput.set(this.terms());
+       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
+       this.showGradeTermsInputs();
+@@ -612,6 +663,7 @@ export class Settings {
+         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
+         if (!this.floorChanged) this.floorInput.set(settings.floor);
+         if (!this.capChanged) this.capInput.set(settings.cap ?? '');
++        if (!this.proofThresholdChanged) this.proofThresholdInput.set(settings.proofThreshold ?? '');
+         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
+         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
+         this.showGradeTermsInputs();
+@@ -636,6 +688,7 @@ export class Settings {
+     this.clerkLimit.set(settings.clerkLimit);
+     this.floor.set(settings.floor);
+     this.cap.set(settings.cap);
++    this.proofThreshold.set(settings.proofThreshold);
+     this.terms.set(String(settings.terms));
+     this.gradeTerms.set(settings.gradeTerms ?? {});
+     this.latePct.set(settings.latePct);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index b5437bd5..7f3dccd1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -84,6 +84,10 @@ public class Claim {
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+ 
++    /** How many proofs the claim has been given; raised by one at a time while it is neither SETTLED nor VOID. */
++    @Column(name = "proofs", nullable = false)
++    private int proofs;
++
+     protected Claim() {
+     }
+ 
+@@ -225,6 +229,15 @@ public class Claim {
+         this.deferredUntil = deferredUntil;
+     }
+ 
++    public int getProofs() {
++        return proofs;
++    }
++
++    /** Raise the claim's proofs count by one. */
++    public void addProof() {
++        this.proofs++;
++    }
++
+     /** Whether the claim is deferred on {@code today}: OPEN and deferred until a date after it. */
+     public boolean isDeferredOn(LocalDate today) {
+         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index b5c2d21e..5f55bf2f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -61,7 +61,7 @@ public class ClaimBulkService {
+         for (Claim claim : found) {
+             try {
+                 changed.add(service.changeStatus(sheetId, user, claim.getId(), next));
+-            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimNotFoundException
++            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNotFoundException
+                     | PersonNotFoundException e) {
+                 refused++;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 551cf452..13710af6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -30,13 +30,13 @@ public class ClaimController {
+ 
+     /** A claim, with who opened it (null until opened), whether it is bound to the figure it had at its
+      * person's last statement, its status log and the date it was last deferred until (null when never
+-     * deferred; it is deferred while OPEN and the sheet's today is before that date) (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
++     * deferred; it is deferred while OPEN and the sheet's today is before that date), its proofs count (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
+      * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
+      * decimals so they are never rounded on the way. */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
+             ClaimStatus status, String number, String settledDue,
+             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
+-            LocalDate deferredUntil) {
++            LocalDate deferredUntil, int proofs) {
+         /** The claims as views, each with its status log, in the order given. */
+         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
+             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
+@@ -54,7 +54,7 @@ public class ClaimController {
+                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
+                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
+-                    claim.getDeferredUntil());
++                    claim.getDeferredUntil(), claim.getProofs());
+         }
+ 
+         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
+@@ -179,6 +179,13 @@ public class ClaimController {
+         return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+     }
+ 
++    @PostMapping("/claims/{claimId}/proof")
++    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return view(service.addProof(sheetId.trim(), user.trim(), claimId));
++    }
++
+     @PostMapping("/claims/{claimId}/resettle")
+     public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimProofRequiredException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimProofRequiredException.java
+new file mode 100644
+index 00000000..71f56787
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimProofRequiredException.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A settle or approval of a claim whose due is above the proof threshold in force on its date, while it
++ * has no proofs. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
++public class ClaimProofRequiredException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 9d8ae026..eab8d8bd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -111,7 +111,8 @@ public class ClaimService {
+      * together with its late charge then (none on a correction); the user who opened it cannot settle it,
+      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
+      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
+-     * it. A claim deferred on the sheet's today cannot be settled. A voided claim keeps its number, if it had one. */
++     * it. A claim deferred on the sheet's today cannot be settled, nor one without proofs whose due is
++     * above the proof threshold in force on its date (refused before the clerk limit is considered). A voided claim keeps its number, if it had one. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+@@ -132,6 +133,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED) {
+             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
+             BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
++            refuseUnproved(claim, due);
+             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
+             else claim.setSettledDue(due);
+         }
+@@ -177,7 +179,8 @@ public class ClaimService {
+ 
+     /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
+      * live figure, which no statement binds while it is PENDING, together with its late charge then).
+-     * Refused unless the claim is PENDING, and when the user is not a steward or opened the claim. */
++     * Refused unless the claim is PENDING, when the user is not a steward or opened the claim, and when it
++     * has no proofs and that due is above the proof threshold in force on its date. */
+     @Transactional
+     public Claim approve(String sheetId, String user, long claimId) {
+         Claim claim = lockPending(sheetId, user, claimId);
+@@ -187,6 +190,7 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal figure = rollup.dueOf(claim, person);
+         BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
++        refuseUnproved(claim, due);
+         claim.setSettledDue(due);
+         claim.setStatus(ClaimStatus.SETTLED);
+         claims.flush();
+@@ -196,6 +200,23 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID, and when it is
++     * dated in a closed period. */
++    @Transactional
++    public Claim addProof(String sheetId, String user, long claimId) {
++        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        refuseClosed(sheetId, claim.getDate());
++        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
++            throw new ClaimStatusChangeException();
++        }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        claim.addProof();
++        claims.flush();
++        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), "proofs=" + claim.getProofs());
++        return claim;
++    }
++
+     /** A steward's rejection of a PENDING claim, for {@code reason}: it goes back to OPEN, bound again
+      * by its person's last statement if that statement included it. Refused unless the claim is
+      * PENDING, and when the user is not a steward. */
+@@ -329,6 +350,14 @@ public class ClaimService {
+         return limit != null && due.compareTo(limit) > 0;
+     }
+ 
++    /** Refuse a settle or approval of the claim, whose due is {@code due}, while it has no proofs and that
++     * due is above the proof threshold in force on its date (a due that is n/a is within any threshold). */
++    private void refuseUnproved(Claim claim, BigDecimal due) {
++        if (due == null || claim.getProofs() > 0) return;
++        BigDecimal threshold = settings.proofThresholdOn(claim.getSheetId(), claim.getDate());
++        if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
++    }
++
+     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
+      * the person, and a claim that names one without being a correction. */
+     private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java b/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
+index b3073d43..c7377791 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
+@@ -11,8 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
+  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
+- * percent 0.00, terms 14 days; no clerk limit, no cap, and no grade's own terms). A claim's floor, late
+- * percent and terms are those in force on its date; the clerk limit and the cap those on the sheet's
++ * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold and no grade's own terms). A claim's floor, late
++ * percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those on the sheet's
+  * today. */
+ @Service
+ public class DatedSettings {
+@@ -22,6 +22,7 @@ public class DatedSettings {
+     public static final String TERMS = "terms";
+     public static final String CLERK_LIMIT = "clerk-limit";
+     public static final String CAP = "cap";
++    public static final String PROOF_THRESHOLD = "proof-threshold";
+ 
+     public static final BigDecimal FLOOR_START = new BigDecimal("1.00");
+     public static final BigDecimal LATE_PCT_START = new BigDecimal("0.00");
+@@ -88,6 +89,12 @@ public class DatedSettings {
+         return valueOn(sheetId, CAP, today(sheetId)).map(BigDecimal::new).orElse(null);
+     }
+ 
++    /** The proof threshold in force on the date; null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
++        return valueOn(sheetId, PROOF_THRESHOLD, date).map(BigDecimal::new).orElse(null);
++    }
++
+     /** The value of the key in force on the date; empty when none is recorded then, or the one
+      * recorded is "none". */
+     private Optional<String> valueOn(String sheetId, String key, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 0694a7a4..cc862c32 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -33,9 +33,10 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null). */
++    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows. */
+     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
+-            List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps) {
++            List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
++            String proofThreshold) {
+     }
+ 
+     /** A value of a dated setting, as text, and the date it is recorded from. */
+@@ -88,6 +89,18 @@ public class SettingsController {
+         }
+     }
+ 
++    /** A proof threshold: 0.00 or more, with up to two decimals; blank or null for none. */
++    public record ProofThresholdRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value,
++            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
++        BigDecimal thresholdValue() {
++            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
++        }
++
++        LocalDate fromValue() {
++            return fromOf(from);
++        }
++    }
++
+     /** Terms: a whole number of days, 0 or more. */
+     public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value,
+             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+@@ -160,7 +173,8 @@ public class SettingsController {
+                 service.periodNumberingFrom(sheet),
+                 service.history(sheet, DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
+                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
+-                service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList());
++                service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
++                text(service.proofThreshold(sheet)));
+     }
+ 
+     @PutMapping("/settings/clerk-limit")
+@@ -181,6 +195,15 @@ public class SettingsController {
+         return get(sheet, user);
+     }
+ 
++    @PutMapping("/settings/proof-threshold")
++    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ProofThresholdRequest request) {
++        String sheet = sheetId.trim();
++        service.setProofThreshold(sheet, user.trim(), request.thresholdValue(), request.fromValue());
++        return get(sheet, user);
++    }
++
+     @PutMapping("/settings/floor")
+     public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index f20480ef..e571aaf8 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -20,8 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * terms in their place), and its late percent, the
+  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
+  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
+- * period numbering from, the date from which a claim opened is numbered within its period (off when null).
+- * The settings that carry a figure (the clerk limit, the floor, the cap, the terms and the late percent)
++ * period numbering from, the date from which a claim opened is numbered within its period (off when null),
++ * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null).
++ * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent and the proof threshold)
+  * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date and the
+  * period numbering from are not. */
+ @Service
+@@ -163,6 +164,26 @@ public class SettingsService {
+         record(sheetId, by, DatedSettings.LATE_PCT, latePct.toPlainString(), from, true);
+     }
+ 
++    /** The proof threshold in force on the sheet's today; null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal proofThreshold(String sheetId) {
++        return dated.proofThresholdOn(sheetId, today(sheetId));
++    }
++
++    /** The proof threshold in force on {@code date}: a claim dated then whose due is above it cannot be
++     * settled or approved while it has no proofs; null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
++        return dated.proofThresholdOn(sheetId, date);
++    }
++
++    /** Record the sheet's proof threshold from {@code from} (the sheet's today when null); null records
++     * no threshold. */
++    @Transactional
++    public void setProofThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
++        record(sheetId, by, DatedSettings.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from, false);
++    }
++
+     /** Every value recorded for the dated setting {@code key}, oldest from-date first. */
+     @Transactional(readOnly = true)
+     public List<SheetSetting> history(String sheetId, String key) {
+diff --git a/src/main/resources/db/migration/V39__claim_proofs.sql b/src/main/resources/db/migration/V39__claim_proofs.sql
+new file mode 100644
+index 00000000..ad224ac2
+--- /dev/null
++++ b/src/main/resources/db/migration/V39__claim_proofs.sql
+@@ -0,0 +1,3 @@
++-- How many proofs a claim has been given; raised by one at a time while it is neither SETTLED nor VOID.
++-- The sheet's proof threshold is a dated setting (proof-threshold) kept in sheet_setting.
++ALTER TABLE claim ADD COLUMN proofs INT NOT NULL DEFAULT 0;
