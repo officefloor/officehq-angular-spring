@@ -56,8 +56,8 @@ public class SettingsController {
         }
     }
 
-    /** A role: clerk or steward. */
-    public record RoleRequest(@NotNull @Pattern(regexp = "\\s*(clerk|steward)\\s*") String role) {
+    /** A role: clerk, steward or viewer. */
+    public record RoleRequest(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
         Role roleValue() {
             return Role.valueOf(role.trim().toUpperCase());
         }
