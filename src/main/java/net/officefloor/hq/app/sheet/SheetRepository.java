@@ -47,4 +47,21 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query(value = "SELECT last_number FROM claim_sequence WHERE sheet_id = :id AND seq_key = :key", nativeQuery = true)
     int lastInSequence(String id, String key);
+
+    /** The last number given in the sequence named {@code key} on any of the sheets; 0 when none has one. */
+    @Query(value = "SELECT COALESCE(MAX(last_number), 0) FROM claim_sequence WHERE sheet_id IN (:ids) AND seq_key = :key",
+            nativeQuery = true)
+    int lastInSequenceIn(Collection<String> ids, String key);
+
+    /** Set the last number of the sheet's sequence named {@code key}; 0 when it has not been started. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE claim_sequence SET last_number = :number WHERE sheet_id = :id AND seq_key = :key",
+            nativeQuery = true)
+    int setSequence(String id, String key, int number);
+
+    /** Start the sheet's sequence named {@code key} at {@code number}. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "INSERT INTO claim_sequence (sheet_id, seq_key, last_number) VALUES (:id, :key, :number)",
+            nativeQuery = true)
+    int startSequenceAt(String id, String key, int number);
 }

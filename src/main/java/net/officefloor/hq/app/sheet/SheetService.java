@@ -121,18 +121,23 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::isArchived).orElse(false);
     }
 
-    /** The next claim number on the sheet: the sheets of its tree (its topmost ancestor and every sheet
-     * below it) share one sequence, so it is the one after the last number given on any of them (1 for the
-     * tree's first), never given twice. The tree's rows are locked, in id order, until the transaction ends. */
+    /** The next claim number on the sheet for a claim placed by {@code date}: {@code FY<yyyy>-<n>}, numbered
+     * within the fiscal year (by the sheet's fiscal start month) {@code date} falls in. The sheets of its tree
+     * (its topmost ancestor and every sheet below it) share each fiscal year's sequence, so it is the one after
+     * the last number given in that year on any of them (1 for the tree's first), never given twice. The
+     * tree's rows are locked, in id order, until the transaction ends. */
     @Transactional
-    public int nextClaimNumber(String id) {
+    public String nextClaimNumber(String id, LocalDate date) {
         Set<String> tree = treeOf(id);
         for (String member : tree) {
             if (sheets.lockSheet(member) == 0 && member.equals(id)) throw new SheetNotFoundException();
         }
-        int next = sheets.lastClaimNumberIn(tree) + 1;
-        sheets.setLastClaimNumber(id, next);
-        return next;
+        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        int year = date.getMonthValue() >= sheet.getFiscalStartMonth() ? date.getYear() : date.getYear() - 1;
+        String key = "fy:" + year;
+        int next = sheets.lastInSequenceIn(tree, key) + 1;
+        if (sheets.setSequence(id, key, next) == 0) sheets.startSequenceAt(id, key, next);
+        return "FY" + year + "-" + next;
     }
 
     /** The ids of the sheets of the sheet's tree: its topmost ancestor and every sheet below it. */

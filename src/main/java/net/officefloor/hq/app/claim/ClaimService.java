@@ -698,9 +698,9 @@ public class ClaimService {
 
     /** The number a claim due by {@code date} is given when opened now: within the period containing
      * that date ({@code <period name>-<n>}, or {@code X-<n>} when none does) while the sheet numbers by
-     * period, otherwise the next sheet-wide number. */
+     * period, otherwise the next sheet-wide number in the fiscal year of that date ({@code FY<yyyy>-<n>}). */
     public String nextNumber(String sheetId, LocalDate date) {
-        if (!sheets.numbersByPeriod(sheetId)) return String.valueOf(sheets.nextClaimNumber(sheetId));
+        if (!sheets.numbersByPeriod(sheetId)) return sheets.nextClaimNumber(sheetId, date);
         return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
                 .filter(p -> !date.isBefore(p.getFrom()) && !date.isAfter(p.getTo()))
                 .findFirst()
