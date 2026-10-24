@@ -111,7 +111,7 @@ public class ClaimService {
      * together with its late charge then (none on a correction); the user who opened it cannot settle it,
      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
-     * it. A voided claim keeps its number, if it had one. */
+     * it. A claim deferred on the sheet's today cannot be settled. A voided claim keeps its number, if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -119,6 +119,7 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next) || (claim.getStatus() == ClaimStatus.PENDING && next != ClaimStatus.VOID)) {
             throw new ClaimStatusChangeException();
         }
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String number = claim.getNumber();
@@ -150,6 +151,26 @@ public class ClaimService {
         } else {
             record(event, user, person, claim, number);
         }
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** Defer an OPEN claim until {@code until}, a date after the sheet's today: until the sheet's today
+     * reaches it the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
+     * statement. Refused unless the claim is OPEN, when {@code until} is not after the sheet's today, and
+     * when the claim is dated in a closed period. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) throw new ClaimStatusChangeException();
+        if (!until.isAfter(sheets.today(sheetId))) throw new ClaimDeferException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setDeferredUntil(until);
+        claims.flush();
+        record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), "until=" + until);
         rollup.recordSince(sheetId, user, before);
         return claim;
     }

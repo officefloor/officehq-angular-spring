@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -16,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken of the people on each sheet. Taking one binds each of the person's claims that
- * counts (OPEN, PENDING or SETTLED, but not an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
+ * counts (OPEN, PENDING or SETTLED, but not an OPEN one deferred on the sheet's today, nor an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
  * each that does not count unbound;
  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
  * charges included (a claim with no figure is skipped), at most the sheet's cap. A late charge is never bound: it keeps following
@@ -59,9 +60,10 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate today = sheets.today(sheetId);
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!RollupService.countsLive(claim, person)) {
+            if (!RollupService.countsLive(claim, person, today)) {
                 claim.unbind();
                 continue;
             }

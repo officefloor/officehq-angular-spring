@@ -79,6 +79,11 @@ public class Claim {
     @Column(name = "listed", nullable = false)
     private long listed;
 
+    /** The date the claim is deferred until; null when it was never deferred. While it is OPEN and the
+     * sheet's today is before this date it is deferred (see {@link #isDeferredOn}). */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     protected Claim() {
     }
 
@@ -210,5 +215,18 @@ public class Claim {
     /** Whether the claim is a correction: one with a negative amount. */
     public boolean isCorrection() {
         return amount.signum() < 0;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /** Whether the claim is deferred on {@code today}: OPEN and deferred until a date after it. */
+    public boolean isDeferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 }

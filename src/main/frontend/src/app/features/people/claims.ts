@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, money, overdue } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, deferred, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
@@ -83,6 +83,8 @@ const PAST: Record<ClaimAction, string> = {
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+            <span>Deferred <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span></span>
+            <span>Until <span data-testid="claim-deferred-until">{{ isDeferred(c) ? c.deferredUntil : '' }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ line }}</li>
@@ -112,6 +114,22 @@ const PAST: Record<ClaimAction, string> = {
               (click)="resettle(c)"
             >
               Re-settle
+            </button>
+            <label [for]="fieldId('defer-date-' + c.id)">Defer until</label>
+            <input
+              [id]="fieldId('defer-date-' + c.id)"
+              type="date"
+              data-testid="claim-defer-date"
+              [value]="deferDates()[c.id] ?? ''"
+              (input)="setDeferDate(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-defer"
+              [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date"
+              (click)="defer(c)"
+            >
+              Defer
             </button>
             <label [for]="fieldId('reassign-to-' + c.id)">Move to</label>
             <select
@@ -214,6 +232,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The date typed to defer each claim until, by claim id. */
+  protected readonly deferDates = signal<Record<number, string>>({});
   /** The person chosen to move each claim to, by claim id: their id as text. */
   protected readonly reassignTos = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -253,6 +273,10 @@ export class Claims {
 
   protected isOverdue(claim: Claim): boolean {
     return overdue(claim, this.session.today());
+  }
+
+  protected isDeferred(claim: Claim): boolean {
+    return deferred(claim, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; empty when none does. */
@@ -315,6 +339,8 @@ export class Claims {
           ? 'Type a one-word reason to reject that claim.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
+          : action === 'settle' && this.isDeferred(claim)
+          ? `That claim is deferred until ${claim.deferredUntil}.`
           : `That claim cannot be ${PAST[action]} in its status.`,
       }));
     }
@@ -340,6 +366,41 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : 'Only a settled claim can be re-settled.',
+      }));
+    }
+  }
+
+  protected setDeferDate(id: number, until: string): void {
+    this.deferDates.update((dates) => ({ ...dates, [id]: until }));
+    this.clearRowError(id);
+  }
+
+  /** Defer the claim until the date typed on its row; only an OPEN claim not dated in a closed period
+   *  can be deferred, and only to a date after the sheet's today, so anything else is refused with an
+   *  error. */
+  protected async defer(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const until = (this.deferDates()[claim.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Choose the date to defer that claim until.' }));
+      return;
+    }
+    try {
+      const changed = await this.service.defer(sheet, claim.id, until);
+      if (this.session.sheetId() !== sheet) return;
+      this.deferDates.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? "A claim can only be deferred to a date after the sheet's today."
+          : 'Only an open claim can be deferred.',
       }));
     }
   }

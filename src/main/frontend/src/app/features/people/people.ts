@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Header } from './header';
-import { Claim, ClaimsService, cents, counts, isOpen, money, overdue } from './claims.service';
+import { Claim, ClaimsService, cents, counts, deferred, isOpen, money, overdue } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
@@ -724,12 +724,13 @@ export class People {
     }
   }
 
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
-   *  when it is dated within one of its person's holds and no statement binds it (a PENDING claim is
-   *  bound by none while it is). */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not an OPEN claim
+   *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
+   *  holds and no statement binds it (a PENDING claim is bound by none while it is). */
   private countsLive(claim: Claim, person: Person): boolean {
     if (!counts(claim)) return false;
     if (!isOpen(claim)) return true;
+    if (deferred(claim, this.session.today())) return false;
     const bound = claim.stated && claim.status !== 'PENDING';
     return bound || !heldOn(person.holds, claim.date);
   }

@@ -29,12 +29,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim, with who opened it (null until opened), whether it is bound to the figure it had at its
-     * person's last statement and its status log (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
+     * person's last statement, its status log and the date it was last deferred until (null when never
+     * deferred; it is deferred while OPEN and the sheet's today is before that date) (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
      * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
      * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
-            String openedBy, boolean stated, String statedDue, String corrects, List<String> log) {
+            String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
+            LocalDate deferredUntil) {
         /** The claims as views, each with its status log, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -51,7 +53,8 @@ public class ClaimController {
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
-                    claim.getCorrects(), log.stream().map(ClaimView::line).toList());
+                    claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
+                    claim.getDeferredUntil());
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -85,6 +88,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim: one word, as it is written into the audit. */
     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
+    }
+
+    /** The date a claim is deferred until. */
+    public record DeferRequest(@NotNull LocalDate until) {
     }
 
     /** The person a claim is moved to, by id. */
@@ -177,6 +184,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.resettle(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/defer")
+    public ClaimView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DeferRequest request) {
+        return view(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
     }
 
         @PostMapping("/claims/{claimId}/reassign")

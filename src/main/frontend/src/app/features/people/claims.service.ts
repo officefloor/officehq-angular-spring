@@ -34,6 +34,8 @@ export interface Claim {
   /** The claim's status log, oldest first: one line per status it has had, as
    *  "<STATUS> by <user> on <date> due=<due>", with the sheet's today and what was due on it then. */
   log: string[];
+  /** The date (YYYY-MM-DD) the claim was last deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -55,9 +57,15 @@ export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
-/** Whether a claim is overdue: OPEN or PENDING, and due by a date before the sheet's today. */
+/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a date after it. Until
+ *  then it counts in no total, is not overdue, cannot be settled and no statement binds it. */
+export function deferred(claim: Claim, today: string | null): boolean {
+  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+}
+
+/** Whether a claim is overdue: OPEN or PENDING, not deferred, and due by a date before the sheet's today. */
 export function overdue(claim: Claim, today: string | null): boolean {
-  return isOpen(claim) && today !== null && claim.dueBy < today;
+  return isOpen(claim) && today !== null && !deferred(claim, today) && claim.dueBy < today;
 }
 
 /** How a bulk open went: how many claims it opened and refused, and the claims it opened. */
@@ -138,6 +146,16 @@ export class ClaimsService {
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, action === 'reject' ? { reason } : null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Defer an OPEN claim until a date after the sheet's today; refused (409) when it is not OPEN,
+   *  (422) when the date is not after the sheet's today and (423) when it is dated in a closed period. */
+  defer(sheet: string, id: number, until: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/defer`, { until }, {
         headers: this.session.headers(),
       }),
     );

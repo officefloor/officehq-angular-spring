@@ -15,6 +15,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -103,16 +104,17 @@ public class PeriodService {
 
     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
      * what is due on their counting claims dated in it, as each shows it, late charges included (a
-     * claim with no figure adds nothing, nor does an unbound OPEN claim dated within one of its person's holds). */
+     * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, BigDecimal> totals = new HashMap<>();
         for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));
+        LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
         for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId())) {
             if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !RollupService.countsLive(claim, person)) continue;
+            if (person == null || !RollupService.countsLive(claim, person, today)) continue;
             BigDecimal figure = rollup.shownOf(claim, person);
             if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
         }
