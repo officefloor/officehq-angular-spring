@@ -60,12 +60,12 @@ public class SheetController {
     }
 
     /** The figures of the sheet's descendants as they stand, added up (see {@link ConsolidatedService});
-     * while the sheet is read as it stood on an earlier date, the sheet's own figures as they stand now
-     * are added in too, the consolidated figures not following that date. */
+     * while the sheet is read as it stood at the end of an earlier date, the consolidated figures over its
+     * tree as they stood then, the sheet's own included (see {@link ConsolidatedService#consolidatedAsOf}). */
     @GetMapping("/{id}/descendants")
     public ConsolidatedService.Figures descendants(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
-        return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedOf(id.trim());
+        return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedAsOf(id.trim(), asOf);
     }
 
     /** The people of the sheet and the other sheets of its tree whose name or an alias contains

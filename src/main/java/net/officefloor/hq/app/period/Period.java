@@ -19,7 +19,7 @@ import java.util.Map;
 
 /** A sheet's period: a name, unique on the sheet without regard to case, and the dates it runs from
  * and to, both inclusive. A claim belongs to the period whose dates contain its due-by. Once closed, its
- * due-total, and each person's due-total for it, are the ones fixed when it was closed, until it is
+ * due-total, and each person's due-total for it and carried figure into it, are the ones fixed when it was closed, until it is
  * reopened. A soft-closed period is closed and its figures fixed the same way, but claims due by a date in it can
  * still change. */
 @Entity
@@ -67,6 +67,14 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "total", precision = 12, scale = 2, nullable = false)
     private Map<Long, BigDecimal> closedPersonTotals = new HashMap<>();
+
+    /** Each person's carried figure into the period fixed when it was closed, by person id; empty while
+     * it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", precision = 12, scale = 2, nullable = false)
+    private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
 
     protected Period() {
     }
@@ -129,32 +137,42 @@ public class Period {
         return Map.copyOf(closedPersonTotals);
     }
 
-    /** Close the period, fixing each person's due-total for it at {@code personTotals}, by person id,
-     * and its own due-total at their sum. */
-    public void close(Map<Long, BigDecimal> personTotals) {
-        close(personTotals, false);
+    public Map<Long, BigDecimal> getClosedPersonCarried() {
+        return Map.copyOf(closedPersonCarried);
     }
 
-    /** Close the period as {@link #close(Map)} does, soft-closed when {@code soft}. */
-    public void close(Map<Long, BigDecimal> personTotals, boolean soft) {
+    /** Close the period, fixing each person's due-total for it at {@code personTotals} and their carried
+     * figure into it at {@code personCarried}, by person id, and its own due-total at the totals' sum. */
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+        close(personTotals, personCarried, false);
+    }
+
+    /** Close the period as {@link #close(Map, Map)} does, soft-closed when {@code soft}. */
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried, boolean soft) {
         this.closed = true;
         this.soft = soft;
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
+        this.closedPersonCarried.clear();
+        this.closedPersonCarried.putAll(personCarried);
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Forget the due-total fixed for the person {@code personId}, who leaves the sheet. The period's own
-     * due-total is unchanged. */
+    /** Forget the due-total and carried figure fixed for the person {@code personId}, who leaves the
+     * sheet. The period's own due-total is unchanged. */
     public void dropPersonTotal(Long personId) {
         closedPersonTotals.remove(personId);
+        closedPersonCarried.remove(personId);
     }
 
-    /** Fold the due-total fixed for the person {@code from} into the one fixed for {@code into}: the
-     * person {@code from} is merged into {@code into}. The period's own due-total is unchanged. */
+    /** Fold the due-total and carried figure fixed for the person {@code from} into the ones fixed for
+     * {@code into}: the person {@code from} is merged into {@code into}. The period's own due-total is
+     * unchanged. */
     public void mergePersonTotal(Long from, Long into) {
         BigDecimal moved = closedPersonTotals.remove(from);
         if (moved != null) closedPersonTotals.merge(into, moved, BigDecimal::add);
+        BigDecimal carried = closedPersonCarried.remove(from);
+        if (carried != null) closedPersonCarried.merge(into, carried, BigDecimal::add);
     }
 
     /** Reopen the period: its due-total is live again. */
@@ -163,6 +181,7 @@ public class Period {
         this.soft = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
+        this.closedPersonCarried.clear();
     }
 
     /** Whether this period shares a day with the dates {@code from} to {@code to}, both inclusive. */

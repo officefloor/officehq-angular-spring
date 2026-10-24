@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.time.LocalDate;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonTree;
@@ -34,9 +37,11 @@ public class ConsolidatedService {
     private final RollupService rollup;
     private final PersonTree tree;
     private final PersonRepository people;
+    private final SheetHistory history;
 
     public ConsolidatedService(SheetRepository sheets, RollupService rollup, PersonTree tree,
-            PersonRepository people) {
+            PersonRepository people, SheetHistory history) {
+        this.history = history;
         this.sheets = sheets;
         this.rollup = rollup;
         this.tree = tree;
@@ -74,15 +79,36 @@ public class ConsolidatedService {
         return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
     }
 
-    /** The figures of the sheet itself and its descendants as they stand, added up: the consolidated
-     * figures the screen shows while it reads the sheet as it stood on an earlier date. */
+    /** The figures of the sheet itself and its descendants as they stood at the end of {@code date}, added
+     * up: every sheet of the tree (its children as they named their parent then, their children, and so
+     * on) read as it stood then, that date standing in for its today (see {@link SheetHistory#asOf}). The
+     * consolidated figures the screen shows while it reads the sheet as it stood on that date. */
     @Transactional(readOnly = true)
-    public Figures consolidatedOf(String sheetId) {
-        Figures descendants = descendantsOf(sheetId);
-        RollupService.Snapshot own = rollup.snapshot(sheetId);
-        return new Figures(descendants.peopleCount() + own.people().size(),
-                new BigDecimal(descendants.dueTotal()).add(new BigDecimal(own.dueTotal())).toPlainString(),
-                new BigDecimal(descendants.overdueTotal()).add(new BigDecimal(own.overdueTotal())).toPlainString());
+    public Figures consolidatedAsOf(String sheetId, LocalDate date) {
+        Set<String> seen = new HashSet<>();
+        seen.add(sheetId);
+        Deque<String> parents = new ArrayDeque<>();
+        parents.add(sheetId);
+        RollupService.Snapshot own = snapshotAsOf(sheetId, date);
+        int count = own.people().size();
+        BigDecimal due = new BigDecimal(own.dueTotal());
+        BigDecimal overdue = new BigDecimal(own.overdueTotal());
+        while (!parents.isEmpty()) {
+            for (String child : history.childrenAsOf(parents.poll(), date)) {
+                if (!seen.add(child)) continue;
+                parents.add(child);
+                RollupService.Snapshot snapshot = snapshotAsOf(child, date);
+                count += snapshot.people().size();
+                due = due.add(new BigDecimal(snapshot.dueTotal()));
+                overdue = overdue.add(new BigDecimal(snapshot.overdueTotal()));
+            }
+        }
+        return new Figures(count, due.toPlainString(), overdue.toPlainString());
+    }
+
+    private RollupService.Snapshot snapshotAsOf(String sheetId, LocalDate date) {
+        SheetAsOf sheet = history.asOf(sheetId, date);
+        return rollup.snapshot(sheet.people(), sheet.claims(), sheet);
     }
 
     /** The figures of the sheet's descendants as they stand, added up. */

@@ -70,6 +70,31 @@ public class SheetHistory {
         return new SheetAsOf(date, sheet, rows, inherited);
     }
 
+    /** The ids of the sheets naming {@code parentId} as their parent as they stood at the end of
+     * {@code date} (each as {@link #asOf} reads it: as started when it was started on a later date),
+     * by id. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<String> childrenAsOf(String parentId, LocalDate date) {
+        String literal = "\"parentId\":" + HistoryJson.MAPPER.writeValueAsString(parentId);
+        String named = "%" + literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        List<String> candidates = jdbc.queryForList("SELECT DISTINCT sheet_id FROM sheet_history"
+                + " WHERE entity = 'sheet' AND state LIKE ? ESCAPE '\\' ORDER BY sheet_id", String.class, named);
+        List<String> children = new ArrayList<>();
+        for (String sheetId : candidates) {
+            List<String> stood = jdbc.query("SELECT state FROM sheet_history WHERE sheet_id = ? AND entity = 'sheet'"
+                    + " AND made_on <= ? ORDER BY id DESC LIMIT 1", (rs, n) -> rs.getString(1), sheetId, Date.valueOf(date));
+            if (stood.isEmpty()) {
+                // The sheet was started on a later date than its today was then set to: it stood as started.
+                stood = jdbc.query("SELECT state FROM sheet_history WHERE sheet_id = ? AND entity = 'sheet' ORDER BY id LIMIT 1",
+                        (rs, n) -> rs.getString(1), sheetId);
+            }
+            String state = stood.isEmpty() ? null : stood.get(0);
+            Sheet sheet = state == null ? null : read(state, Sheet.class);
+            if (sheet != null && parentId.equals(sheet.getParentId())) children.add(sheetId);
+        }
+        return children;
+    }
+
     /** The sheet as it stood at the end of {@code date} (see {@link #asOf}), read on its own. */
     @Transactional(readOnly = true)
     public SheetAsOf read(String sheetId, LocalDate date) {

@@ -76,31 +76,35 @@ public class RollupService {
     /** The figures the sheet shows now. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Snapshot snapshot(String sheetId) {
-        Sheet sheet = sheets.findById(sheetId).orElse(null);
-        LocalDate today = sheet == null ? null : sheet.getToday();
-        BigDecimal cap = sheet == null ? null : dated.cap(sheetId);
-        List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        return snapshot(people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                claims.findBySheetIdOrderByListedDescIdDesc(sheetId), live(sheetId));
+    }
+
+    /** The figures a sheet shows on {@code basis}, from {@code everyone} on it, in list order, and their
+     * claims {@code all}: as {@link #snapshot(String)} works them out for the sheet as it stands. */
+    public Snapshot snapshot(List<Person> everyone, List<Claim> all, Basis basis) {
+        LocalDate today = basis.today();
+        BigDecimal cap = basis.cap();
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        for (Person person : everyone) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             boolean any = false;
-            Basis basis = live(sheetId);
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = shownOf(claim, person);
+                BigDecimal figure = shownOf(claim, person, basis);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
                 due = due.add(figure);
                 any = true;
             }
             due = cappedOf(due, cap);
-            boolean rated = today != null && rates.inForce(sheetId, person.gradeOn(today), today).isPresent();
+            boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);
             if (any || rated) dueFigures.add(due);

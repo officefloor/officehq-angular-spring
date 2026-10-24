@@ -22,6 +22,9 @@ export interface Period {
   /** Each person's due-total for the period fixed when it was closed, with two decimals, by person
    *  id; empty while it is open. A person not in it (added later) has 0.00 for the closed period. */
   closedPersonTotals: Record<string, string>;
+  /** Each person's carried figure into the period fixed when it was closed, with two decimals, by
+   *  person id; empty while it is open. A person not in it (added later) has 0.00 carried. */
+  closedPersonCarried: Record<string, string>;
 }
 
 export interface PeriodFields {

@@ -1028,17 +1028,19 @@ export class People {
   /** Each person's carried figure for each period, in cents, by person id and period name: what is due
    *  on their claims that count whose due-by falls in a period ending before this one starts and that
    *  were still OPEN or PENDING at the end of this one's last day, by the status log, as each claim
-   *  shows it now. */
+   *  shows it now; once the period is closed it is the figure fixed then (0 for a person added later). */
   protected readonly personCarriedCents = computed(() => {
     const by = new Map<number, Record<string, number>>();
     for (const person of this.people()) {
       const sums: Record<string, number> = {};
-      for (const p of this.periods()) sums[p.name] = 0;
+      for (const p of this.periods()) {
+        sums[p.name] = p.closed ? cents(p.closedPersonCarried?.[person.id] ?? '0.00') : 0;
+      }
       for (const c of this.claimsOf(person.id)) {
         const own = periodOn(this.periods(), c.dueBy);
         if (own === null) continue;
         for (const p of this.periods()) {
-          if (own.to >= p.from) continue;
+          if (p.closed || own.to >= p.from) continue;
           const status = statusOn(c, p.to);
           if ((status !== 'OPEN' && status !== 'PENDING') || !this.countsAtEnd(c, person, p.to)) continue;
           sums[p.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
@@ -1168,7 +1170,7 @@ export class People {
   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
   /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up.
-   *  While the sheet is read as of an earlier date they stand as now: the server adds the sheet's own in. */
+   *  While the sheet is read as of an earlier date they are the tree's as it stood then: the server adds the sheet's own in. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
     if (this.session.asOf()) return d;

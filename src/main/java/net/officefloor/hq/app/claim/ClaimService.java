@@ -592,7 +592,7 @@ public class ClaimService {
      * numbered in (as when opened now), its old number never used again; it loses
      * any figure a statement bound it to (it is live again until its new person's next statement), and is listed as its new person's newest claim. Refused when the user's
      * role may not reassign, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
-     * own person) or already belongs to the person, when it is dated or due by in a closed period, and when it
+     * own person) or already belongs to the person, when it is due by in a closed period, and when it
      * is dated after the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
@@ -601,7 +601,7 @@ public class ClaimService {
 
     /** A move of one of several claims moved together: by the rules of {@link #reassign}, except that a
      * claim that already belongs to the person goes through (it is listed as the person's newest claim,
-     * and recorded), even when it is dated in a closed period, so long as it is not due by in one. */
+     * and recorded). */
     @Transactional
     public Claim reassignOfBulk(String sheetId, String user, long claimId, long personId) {
         return move(sheetId, user, claimId, personId, true);
@@ -611,8 +611,6 @@ public class ClaimService {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!settings.allowed(sheetId, user, Action.REASSIGN)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDueBy());
-        // A claim that stays with its own person takes nothing out of the closed period its date is in.
-        if (claim.getPersonId() != personId) refuseClosed(sheetId, claim.getDate());
         ClaimStatus status = claim.getStatus();
         if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)
                 || claim.isCorrection() || (!samePerson && claim.getPersonId() == personId)) {

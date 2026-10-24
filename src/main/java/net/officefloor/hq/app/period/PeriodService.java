@@ -131,7 +131,7 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
-    /** Close the period, fixing its due-total now (afresh when it was soft-closed); refused when the
+    /** Close the period, fixing its due-total and each person's carried figure into it now (afresh when it was soft-closed); refused when the
      * user's role may not close (see {@link SettingsService#allowed}) or it is already closed, not
      * only soft-closed. */
     @Transactional
@@ -157,7 +157,7 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefusedException("already closed");
         }
-        period.close(personTotalsOf(period), true);
+        period.close(personTotalsOf(period), personCarriedOf(period), true);
         periods.flush();
         audit.change("PERIOD_SOFT_CLOSED", sheetId, user, "period=" + period.getName(),
                 "total=" + period.getClosedTotal().toPlainString());
@@ -182,7 +182,7 @@ public class PeriodService {
     }
 
     private Period close(Period period, String user, String... extra) {
-        period.close(personTotalsOf(period));
+        period.close(personTotalsOf(period), personCarriedOf(period));
         periods.flush();
         List<String> fields = new ArrayList<>(List.of("period=" + period.getName(),
                 "total=" + period.getClosedTotal().toPlainString()));
@@ -191,7 +191,7 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen the period, making its due-total live again; refused when the user's role may not
+    /** Reopen the period, making its due-total and the carried figures into it live again; refused when the user's role may not
      * reopen (a steward's by default, see {@link SettingsService#allowed}) or the period is not closed
      * or soft-closed. */
     @Transactional
@@ -234,6 +234,39 @@ public class PeriodService {
             if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
         }
         return totals;
+    }
+
+    /** Each person's carried figure into the period now, by person id, for everyone on the sheet: the sum
+     * of what is due on their claims whose due-by falls in a period of the sheet ending before this one
+     * starts and that were still OPEN or PENDING at the end of this one's last day (see {@link #statusAt}),
+     * as each shows it now (a claim with no figure adds nothing, nor does one that would not count then,
+     * as {@link #personTotalsOf} counts). */
+    private Map<Long, BigDecimal> personCarriedOf(Period period) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(period.getSheetId()).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, BigDecimal> carried = new HashMap<>();
+        for (Long id : byId.keySet()) carried.put(id, BigDecimal.ZERO.setScale(2));
+        LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
+        List<Period> all = periods.findBySheetIdOrderByFromAsc(period.getSheetId());
+        if (all.stream().noneMatch(p -> p.getTo().isBefore(period.getFrom()))) return carried;
+        List<Claim> before = claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId()).stream()
+                .filter(claim -> claim.getDueBy() != null)
+                .filter(claim -> all.stream().filter(p -> p.overlaps(claim.getDueBy(), claim.getDueBy())).findFirst()
+                        .map(own -> own.getTo().isBefore(period.getFrom())).orElse(false))
+                .toList();
+        Map<Long, List<ClaimLog>> logsOf = before.isEmpty() ? Map.of()
+                : logs.findByClaimIdInOrderByIdAsc(before.stream().map(Claim::getId).toList()).stream()
+                        .collect(Collectors.groupingBy(ClaimLog::getClaimId));
+        for (Claim claim : before) {
+            Person person = byId.get(claim.getPersonId());
+            ClaimStatus status = statusAt(logsOf.getOrDefault(claim.getId(), List.of()), period.getTo());
+            if (person == null || status == null || !status.isOpen()) continue;
+            boolean counts = claim.getStatus().isOpen() ? RollupService.countsAs(claim, status, person, today) : status.counts();
+            if (!counts) continue;
+            BigDecimal figure = rollup.shownOf(claim, person);
+            if (figure != null) carried.merge(person.getId(), figure, BigDecimal::add);
+        }
+        return carried;
     }
 
     /** The status a claim had at the end of {@code day}, by its status log, oldest first, whose lines
