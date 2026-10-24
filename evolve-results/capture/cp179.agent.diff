@@ -1,0 +1,399 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index db157009..63f97d34 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -58,6 +58,8 @@ export interface Person {
+   retirements: PersonRetirement[];
+   /** The person's tags, trimmed, lower-cased, without repeats and sorted; empty when they have none. */
+   tags: string[];
++  /** The reason of the person's flag in force on the sheet's today; null when none is. */
++  flag: string | null;
+ }
+ 
+ /** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
+@@ -258,6 +260,16 @@ export class PeopleService {
+     );
+   }
+ 
++  /** Flag the person with `reason` until `until` (YYYY-MM-DD); refused (409) for anyone but a
++   *  steward, and when the reason is blank. */
++  flag(sheet: string, id: number, reason: string, until: string): Promise<Person> {
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url(sheet)}/${id}/flag`, { reason, until }, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Give the person the alias `alias`; refused (409) when it is blank, or equals a name or alias on
+    *  the sheet. */
+   addAlias(sheet: string, id: number, alias: string): Promise<Person> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 72aa3f15..fb1a6d63 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -443,6 +443,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+                 <th scope="col">Retired</th>
+               }
+               <th scope="col">Retired from</th>
++              <th scope="col">Flag</th>
+               @if (shows('hold')) {
+                 <th scope="col">On hold</th>
+               }
+@@ -527,6 +528,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+                   <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
+                 }
+                 <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
++                <td data-testid="person-flag-shown">{{ (p.flag ?? '') | figure }}</td>
+                 @if (shows('hold')) {
+                   <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
+                 }
+@@ -693,6 +695,29 @@ import { FigurePipe } from '../../core/figure.pipe';
+                   >
+                     Hold
+                   </button>
++                  <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
++                  <input
++                    [id]="'person-flag-reason-' + p.id"
++                    data-testid="person-flag-reason"
++                    [value]="flagReasons()[p.id] ?? ''"
++                    (input)="setHoldDate(flagReasons, p.id, value($event))"
++                  />
++                  <label [for]="'person-flag-until-' + p.id">Flag until</label>
++                  <input
++                    [id]="'person-flag-until-' + p.id"
++                    data-testid="person-flag-until"
++                    placeholder="YYYY-MM-DD"
++                    [value]="flagUntils()[p.id] ?? ''"
++                    (input)="setHoldDate(flagUntils, p.id, value($event))"
++                  />
++                  <button
++                    type="button"
++                    data-testid="person-flag"
++                    [attr.aria-label]="'Flag ' + p.name"
++                    (click)="flag(p)"
++                  >
++                    Flag
++                  </button>
+                   <label [for]="'person-alias-input-' + p.id">Alias</label>
+                   <input
+                     [id]="'person-alias-input-' + p.id"
+@@ -910,6 +935,8 @@ export class People {
+   /** The hold from- and to-dates typed on each person's row, by person id. */
+   protected readonly holdFroms = signal<Record<number, string>>({});
+   protected readonly holdTos = signal<Record<number, string>>({});
++  protected readonly flagReasons = signal<Record<number, string>>({});
++  protected readonly flagUntils = signal<Record<number, string>>({});
+   /** The alias typed on each person's row, by person id. */
+   protected readonly aliasInputs = signal<Record<number, string>>({});
+   /** The sheet's claims, newest first. */
+@@ -1363,6 +1390,8 @@ export class People {
+       this.statementAsOfs.set({});
+       this.holdFroms.set({});
+       this.holdTos.set({});
++      this.flagReasons.set({});
++      this.flagUntils.set({});
+       this.aliasInputs.set({});
+       this.patrons.set([]);
+       this.snapshots.set([]);
+@@ -1798,6 +1827,34 @@ export class People {
+     }
+   }
+ 
++  /** Flag the person with the reason typed on their row until the date typed; refused for anyone but
++   *  a steward, and when the reason is blank. */
++  protected async flag(person: Person): Promise<void> {
++    this.clearRowError(person.id);
++    const sheet = this.sheet();
++    if (!sheet) return;
++    const reason = (this.flagReasons()[person.id] ?? '').trim();
++    const until = (this.flagUntils()[person.id] ?? '').trim();
++    if (reason === '') {
++      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a reason for the flag.' }));
++      return;
++    }
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
++      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
++      return;
++    }
++    try {
++      const saved = await this.service.flag(sheet, person.id, reason, until);
++      if (this.sheet() !== sheet) return;
++      this.put(saved);
++      this.flagReasons.update(({ [person.id]: _, ...rest }) => rest);
++      this.flagUntils.update(({ [person.id]: _, ...rest }) => rest);
++    } catch {
++      if (this.sheet() !== sheet) return;
++      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Only a steward can flag a person.' }));
++    }
++  }
++
+   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not an OPEN claim
+    *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
+    *  holds, or its person's retirement date is reached on the sheet's today, and no statement binds it. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 95063ff8..4df400a2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -296,7 +296,7 @@ public class ClaimService {
+      * is recorded as reversed. A voided claim keeps its number, if it had one. An open of a claim whose due
+  * is above the review threshold in force on its date leaves it in REVIEW instead, opened by the user but
+  * with no number yet, until a steward reviews it (see {@link #review}); a REVIEW claim can only be voided
+- * here. */
++ * here. While the claim's person is flagged on the sheet's today, only a steward may open it. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+         return changeStatus(sheetId, user, claimId, next, null);
+@@ -327,6 +327,10 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
++        if (next == ClaimStatus.OPEN && person.isFlaggedOn(sheets.today(sheetId))
++                && settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ClaimNotStewardException();
++        }
+         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
+         if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 97d58627..1d78653a 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -38,10 +38,17 @@ public class SheetHistory {
+      * {@code chain} holds the sheet and the sheets below it whose parents are being read. */
+     private SheetAsOf asOf(String sheetId, LocalDate date, Set<String> chain) {
+         Map<String, String> latest = new LinkedHashMap<>();
++        LocalDate upTo = date;
++        if (chain.size() > 1) {
++            // A parent started on a later date than the day read stood then as at the end of its first day.
++            LocalDate first = jdbc.query("SELECT MIN(made_on) FROM sheet_history WHERE sheet_id = ?",
++                    rs -> rs.next() && rs.getDate(1) != null ? rs.getDate(1).toLocalDate() : null, sheetId);
++            if (first != null && first.isAfter(date)) upTo = first;
++        }
+         jdbc.query("SELECT entity, entity_id, state FROM sheet_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
+                 rs -> {
+                     latest.put(rs.getString(1) + ":" + rs.getString(2), rs.getString(3));
+-                }, sheetId, Date.valueOf(date));
++                }, sheetId, Date.valueOf(upTo));
+         Map<String, Class<?>> types = new HashMap<>();
+         HistoryListener.KEPT.forEach((type, name) -> types.put(name, type));
+         Sheet sheet = null;
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index b1c166d8..8e1d0a8d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -102,6 +102,14 @@ public class Person {
+     @Column(name = "arrived_on")
+     private LocalDate arrivedOn;
+ 
++    /** The reason a steward flagged the person for; null when never flagged. */
++    @Column(name = "flag_reason")
++    private String flagReason;
++
++    /** The last day the person's flag is in force; null when never flagged. */
++    @Column(name = "flag_until")
++    private LocalDate flagUntil;
++
+     /** The person's place in the sheet's list: people are listed by it, lowest first. */
+     @Column(name = "list_position", nullable = false)
+     private Long position;
+@@ -176,6 +184,8 @@ public class Person {
+         datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom())));
+         copy.contact = contact;
+         copy.tags = tags;
++        copy.flagReason = flagReason;
++        copy.flagUntil = flagUntil;
+         copy.position = position;
+         return copy;
+     }
+@@ -347,6 +357,30 @@ public class Person {
+         return arrivedOn;
+     }
+ 
++    /** Flags the person with {@code reason} until {@code until}, in place of any flag they had. */
++    public void flag(String reason, LocalDate until) {
++        this.flagReason = reason;
++        this.flagUntil = until;
++    }
++
++    public String getFlagReason() {
++        return flagReason;
++    }
++
++    public LocalDate getFlagUntil() {
++        return flagUntil;
++    }
++
++    /** Whether the person's flag is in force on {@code today}: on or before its until date. */
++    public boolean isFlaggedOn(LocalDate today) {
++        return flagReason != null && flagUntil != null && today != null && !today.isAfter(flagUntil);
++    }
++
++    /** The reason of the person's flag in force on {@code today}; null when none is. */
++    public String flagOn(LocalDate today) {
++        return isFlaggedOn(today) ? flagReason : null;
++    }
++
+     public Long getPosition() {
+         return position;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 437edf44..eb8f88f2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -65,7 +65,7 @@ public class PersonController {
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
+             String contact, List<String> aliases, boolean clashing, String origin,
+-            List<RetirementView> retirements, List<String> tags, Integer undatedTerms) {
++            List<RetirementView> retirements, List<String> tags, Integer undatedTerms, String flag) {
+         public static PersonView of(Person person, LocalDate today, boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+@@ -73,7 +73,7 @@ public class PersonController {
+                     person.getHolds().stream().map(HoldView::of).toList(), person.termsOn(today),
+                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
+                     person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags(),
+-                    person.getTerms());
++                    person.getTerms(), person.flagOn(today));
+         }
+     }
+ 
+@@ -107,6 +107,10 @@ public class PersonController {
+     public record RetireRequest(LocalDate from) {
+     }
+ 
++    /** A flag to put on a person: a reason (not blank) and the last day it is in force. */
++    public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
++    }
++
+     /** A hold to put a person on: from {@code from} (the sheet's today when left out) to {@code to}
+      * (no end when left out). */
+     public record HoldRequest(LocalDate from, LocalDate to) {
+@@ -415,6 +419,14 @@ public class PersonController {
+                 request == null ? null : request.from(), request == null ? null : request.to()));
+     }
+ 
++    @PostMapping("/{personId}/flag")
++    public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid FlagRequest request) {
++        return view(sheetId, service.flag(sheetId.trim(), user.trim(), personId, request.reason(), request.until()));
++    }
++
+     @ExceptionHandler(PersonContactTakenException.class)
+     public ResponseEntity<RefusedView> contactTaken() {
+         return ResponseEntity.status(HttpStatus.CONFLICT).body(new RefusedView("contact-taken"));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonFlagException.java b/src/main/java/net/officefloor/hq/app/person/PersonFlagException.java
+new file mode 100644
+index 00000000..5147c667
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonFlagException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A flag refused: by a user who is not a steward, or with a blank reason or no until date. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class PersonFlagException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 22ebfd52..feb61617 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -9,6 +9,8 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.SheetTag;
+ import net.officefloor.hq.app.claim.SheetTagRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -30,11 +32,13 @@ public class PersonService {
+     private final PersonTree tree;
+     private final SheetTagRepository tagRepository;
+     private final PersonSnapshotRepository snapshots;
++    private final SettingsService settings;
+ 
+     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
+             SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
+-            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots) {
++            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots, SettingsService settings) {
+         this.people = people;
++        this.settings = settings;
+         this.snapshots = snapshots;
+         this.tagRepository = tagRepository;
+         this.tree = tree;
+@@ -147,14 +151,12 @@ public class PersonService {
+         if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
+             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+         }
+-        boolean termsChanged;
++        // The terms are recorded when those saved differ from the terms shown, those in force today.
++        boolean termsChanged = !Objects.equals(person.termsOn(today), terms);
+         if (termsFrom == null) {
+-            termsChanged = !Objects.equals(person.getTerms(), terms);
+             person.setTerms(terms);
+         } else {
+-            List<PersonTerms> was = person.getDatedTerms();
+             person.setTerms(terms, termsFrom);
+-            termsChanged = !sameTerms(was, person.getDatedTerms());
+         }
+         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
+         person.setContact(contact);
+@@ -170,17 +172,6 @@ public class PersonService {
+         return person;
+     }
+ 
+-    /** Whether two lists of dated terms, by from-date, give the same terms from the same dates. */
+-    private static boolean sameTerms(List<PersonTerms> a, List<PersonTerms> b) {
+-        if (a.size() != b.size()) return false;
+-        for (int i = 0; i < a.size(); i++) {
+-            if (!a.get(i).getFrom().equals(b.get(i).getFrom()) || !Objects.equals(a.get(i).getTerms(), b.get(i).getTerms())) {
+-                return false;
+-            }
+-        }
+-        return true;
+-    }
+-
+     /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the
+      * person form saves it, keeping their name, terms, contact and tags. */
+     @Transactional
+@@ -243,6 +234,23 @@ public class PersonService {
+         return person;
+     }
+ 
++    /** Flags the person with {@code reason} (kept without the spaces around it) until {@code until},
++     * in place of any flag they had: while the sheet's today is on or before it, only a steward may open
++     * a claim of theirs. Refused unless the user is a steward, and when the reason is blank or the until
++     * date is left out. */
++    @Transactional
++    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD || reason == null || reason.isBlank() || until == null) {
++            throw new PersonFlagException();
++        }
++        person.flag(reason.trim(), until);
++        people.flush();
++        audit.change("PERSON_FLAGGED", sheetId, user, "name=" + person.getName(), "reason=" + reason.trim(),
++                "until=" + until);
++        return person;
++    }
++
+     /** Puts the person on a hold from {@code from} (the sheet's today when left out) to {@code to}
+      * (no end when left out); refused when it would end before it starts. The same hold may be put on
+      * again. A hold ends on its to-date: there is no release. */
+diff --git a/src/main/resources/db/migration/V100__person_flag.sql b/src/main/resources/db/migration/V100__person_flag.sql
+new file mode 100644
+index 00000000..8779a917
+--- /dev/null
++++ b/src/main/resources/db/migration/V100__person_flag.sql
+@@ -0,0 +1,4 @@
++-- The flag a steward put on a person: a reason and the last day it is in force. While the sheet's
++-- today is on or before that day, only a steward may open a claim of theirs; null when never flagged.
++ALTER TABLE person ADD COLUMN flag_reason VARCHAR(200);
++ALTER TABLE person ADD COLUMN flag_until DATE;
