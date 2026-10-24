@@ -34,11 +34,21 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
-    /** The date the claim is due by, fixed when it is added: its date plus the terms of its person's
-     * grade in force on that date, moved past the sheet's holidays then to the next day that is not one.
-     * Later changes to the terms, to its date or to the holidays leave it as it is. */
+    /** The date the claim is due by: the terms-th business day after its due-from (see
+     * {@link net.officefloor.hq.app.holiday.HolidayService#dueBy}), skipping weekends and the sheet's
+     * holidays now; worked out again whenever the sheet's holidays change. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The date the claim's due-by counts from: its date when it was added. Later changes to its date
+     * leave it as it is. */
+    @Column(name = "due_from", nullable = false)
+    private LocalDate dueFrom;
+
+    /** The terms, in business days, the claim was fixed with when it was added: those of its person, else
+     * of their grade in force on its date, else the sheet's then. Later changes to the terms leave it. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -172,6 +182,20 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public LocalDate getDueFrom() {
+        return dueFrom;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    /** Fix the date the claim's due-by counts from and the terms it is due by. */
+    public void fixTerms(LocalDate dueFrom, int terms) {
+        this.dueFrom = dueFrom;
+        this.terms = terms;
     }
 
     public String getNote() {

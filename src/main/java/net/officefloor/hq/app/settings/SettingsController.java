@@ -116,7 +116,7 @@ public class SettingsController {
         }
     }
 
-    /** Terms: a whole number of days, 0 or more. */
+    /** Terms: a whole number of business days, 0 or more. */
     public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         int termsValue() {
@@ -128,7 +128,7 @@ public class SettingsController {
         }
     }
 
-    /** A grade's own terms: a whole number of days, 0 or more; blank or null to use the sheet's terms. */
+    /** A grade's own terms: a whole number of business days, 0 or more; blank or null to use the sheet's terms. */
     public record GradeTermsRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         Integer termsValue() {

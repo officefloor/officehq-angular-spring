@@ -1,27 +1,37 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The holidays on a sheet. A claim's due-by, when it is fixed as the claim is added, is moved past the
- * holidays on the sheet then (see {@link #pastHolidays}); a holiday added later leaves it as it is. */
+/** The holidays on a sheet. A claim's due-by is the terms-th business day after the date it counts from,
+ * skipping every Saturday, Sunday and holiday on the sheet (see {@link #dueBy}); when a holiday is added
+ * the due-by of every claim on the sheet is worked out again with the holidays then. */
 @Service
 public class HolidayService {
 
     private final SheetRepository sheets;
     private final SheetHolidayRepository holidays;
+    private final ClaimRepository claims;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, Audit audit) {
+    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, ClaimRepository claims,
+            RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.holidays = holidays;
+        this.claims = claims;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -36,18 +46,43 @@ public class HolidayService {
     public SheetHoliday add(String sheetId, String by, LocalDate date) {
         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new HolidayTakenException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetHoliday added = holidays.saveAndFlush(new SheetHoliday(sheetId, date));
+        Set<LocalDate> off = offOn(sheetId);
+        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
+            LocalDate dueBy = dueBy(off, claim.getDueFrom(), claim.getTerms());
+            if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
+        }
+        claims.flush();
         audit.change("HOLIDAY_ADDED", sheetId, by, "date=" + date);
+        rollup.recordSince(sheetId, by, before);
         return added;
     }
 
-    /** {@code date} when it is not a holiday on the sheet, else the next day after it that is not. */
+    /** The due-by of a claim counting from {@code from} with {@code terms}: the terms-th business day
+     * after it, counting forward from the day after and skipping every Saturday, Sunday and holiday on
+     * the sheet; with terms of 0, {@code from} itself. */
     @Transactional(readOnly = true)
-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
-        Set<LocalDate> off = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
+    public LocalDate dueBy(String sheetId, LocalDate from, int terms) {
+        return dueBy(offOn(sheetId), from, terms);
+    }
+
+    private Set<LocalDate> offOn(String sheetId) {
+        return holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
                 .collect(Collectors.toSet());
-        LocalDate on = date;
-        while (off.contains(on)) on = on.plusDays(1);
+    }
+
+    private static LocalDate dueBy(Set<LocalDate> off, LocalDate from, int terms) {
+        LocalDate on = from;
+        for (int counted = 0; counted < terms;) {
+            on = on.plusDays(1);
+            if (isBusinessDay(off, on)) counted++;
+        }
         return on;
+    }
+
+    private static boolean isBusinessDay(Set<LocalDate> off, LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !off.contains(date);
     }
 }

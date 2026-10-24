@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
- * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many days after its date a claim is due by (each grade may have its own
+ * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many business days after its date a claim is due by (each grade may have its own
  * terms in their place), and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its

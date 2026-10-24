@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A holiday on the sheet (YYYY-MM-DD): a claim added is not due by one, but by the next day that is not. */
+/** A holiday on the sheet (YYYY-MM-DD): not a business day, so no claim's terms count it and none is due by it. */
 export interface Holiday {
   id: number;
   date: string;

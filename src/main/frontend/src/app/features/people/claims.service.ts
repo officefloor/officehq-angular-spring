@@ -10,8 +10,8 @@ export interface Claim {
   amount: string;
   /** YYYY-MM-DD */
   date: string;
-  /** The date (YYYY-MM-DD) the claim is due by, fixed when it was added: its date plus the terms of
-   *  its person's grade in force then (the sheet's terms when the grade has none of its own). */
+  /** The date (YYYY-MM-DD) the claim is due by: the terms-th business day after its date when it was
+   *  added, with the terms fixed then, skipping weekends and the sheet's holidays now. */
   dueBy: string;
   note: string;
   status: ClaimStatus;

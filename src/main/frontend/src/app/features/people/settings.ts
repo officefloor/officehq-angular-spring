@@ -150,7 +150,7 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
-        <label for="setting-terms">Terms (days)</label>
+        <label for="setting-terms">Terms (business days)</label>
         <input
           id="setting-terms"
           data-testid="setting-terms"
@@ -169,7 +169,7 @@ const STANDING: Record<PermAction, string> = {
         />
         <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
         @for (g of grades; track g) {
-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
           <input
             [id]="'setting-terms-' + g"
             [attr.data-testid]="'setting-terms-' + g"
@@ -635,13 +635,13 @@ export class Settings {
       return;
     }
     if (saveTerms && !TERMS.test(terms)) {
-      this.settingsError.set('Type terms as a whole number of days, 0 or more.');
+      this.settingsError.set('Type terms as a whole number of business days, 0 or more.');
       return;
     }
     const badGrade = gradeTerms.find(({ text }) => text !== '' && !TERMS.test(text));
     if (badGrade) {
       this.settingsError.set(
-        `Type terms for grade ${badGrade.grade} as a whole number of days, 0 or more, or leave them blank for the sheet's terms.`,
+        `Type terms for grade ${badGrade.grade} as a whole number of business days, 0 or more, or leave them blank for the sheet's terms.`,
       );
       return;
     }

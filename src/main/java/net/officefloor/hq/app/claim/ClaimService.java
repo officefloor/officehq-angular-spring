@@ -25,8 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
  * or its today when that is off. A claim's
- * due-by is fixed when it is added, from the terms of its person's grade in force on its date, moved
- * past the holidays on the sheet then to the next day that is not one, and the
+ * terms are fixed when it is added, from those of its person's grade in force on its date, and its due-by
+ * is the terms-th business day after that date, skipping weekends and the holidays on the sheet now; the
  * claim belongs to the period containing that due-by (not its date). Only a DRAFT claim can be edited.
  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
  * change status; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
@@ -81,11 +81,13 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        LocalDate dueBy = dueByOf(sheetId, person, dated);
+        int terms = termsOf(sheetId, person, dated);
+        LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        claim.fixTerms(dated, terms);
         claim.setDueBy(dueBy);
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
@@ -299,7 +301,9 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
-        split.setDueBy(dueByOf(sheetId, person, claim.getDate()));
+        int terms = termsOf(sheetId, person, claim.getDate());
+        split.fixTerms(claim.getDate(), terms);
+        split.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
         refuseClosed(sheetId, split.getDueBy());
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
         split.setListed(sheets.nextInSequence(sheetId, "listed"));
@@ -547,12 +551,6 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
-    }
-
-    /** The due-by fixed for a claim of the person dated {@code date} added now: its date plus its terms,
-     * moved past the holidays on the sheet now to the next day that is not one. */
-    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
-        return holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheetId, person, date)));
     }
 
     /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those

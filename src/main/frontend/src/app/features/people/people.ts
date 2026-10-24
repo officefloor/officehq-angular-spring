@@ -101,7 +101,7 @@ import { Summary, SummaryPerson } from './summary';
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
-        <label for="person-form-terms">Terms (days)</label>
+        <label for="person-form-terms">Terms (business days)</label>
         <input
           id="person-form-terms"
           inputmode="numeric"
@@ -1258,7 +1258,7 @@ export class People {
     if (!/^\d{0,4}$/.test(fields.terms)) {
       // Nothing is saved: the editor closes, so the form is ready for the next person.
       this.reset();
-      this.error.set('Terms are a whole number of days, or blank for none.');
+      this.error.set('Terms are a whole number of business days, or blank for none.');
       return;
     }
     const id = this.editingId();
