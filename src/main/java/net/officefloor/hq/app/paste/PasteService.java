@@ -17,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** Adds a DRAFT claim per pasted line of {@code name,amount,date,note}, in order, for the person on the
  * sheet with that name (compared as names are). The date may be blank (the sheet's today); the note may
  * hold commas, or be left out. Each line is held to the claim form's rules; it is one change: when any
- * line is refused no claim is added, and nothing is recorded. Blank lines are skipped. */
+ * line is refused no claim is added, and nothing is recorded. Blank lines are skipped. A note ending in
+ * {@code " #<reference>"} gives the claim that external reference, which is not part of the note. */
 @Service
 public class PasteService {
 
@@ -26,6 +27,9 @@ public class PasteService {
 
     /** The longest note the claim form takes. */
     private static final int NOTE_MAX = 500;
+
+    /** The longest reference the claim form takes. */
+    private static final int REF_MAX = 120;
 
     private final PersonRepository people;
     private final ClaimService claimService;
@@ -48,9 +52,15 @@ public class PasteService {
             Person person = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(fields[0]))
                     .orElseThrow(PersonNotFoundException::new);
             String note = fields.length > 3 ? fields[3].trim() : "";
-            if (note.length() > NOTE_MAX) throw new PasteLineException();
+            String ref = null;
+            int hash = note.lastIndexOf(" #");
+            if (hash >= 0 && !note.substring(hash + 2).isBlank()) {
+                ref = note.substring(hash + 2).trim();
+                note = note.substring(0, hash).trim();
+            }
+            if (note.length() > NOTE_MAX || (ref != null && ref.length() > REF_MAX)) throw new PasteLineException();
             BigDecimal amount = new BigDecimal(fields[1].trim()).setScale(2);
-            added.add(claimService.add(sheetId, user, person.getId(), amount, dateOf(fields), note, null));
+            added.add(claimService.add(sheetId, user, person.getId(), amount, dateOf(fields), note, null, ref));
         }
         if (added.isEmpty()) throw new PasteLineException();
         return added;

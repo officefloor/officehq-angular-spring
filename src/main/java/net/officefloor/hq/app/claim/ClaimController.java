@@ -42,7 +42,8 @@ public class ClaimController {
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn) {
+            LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
+            String ref) {
         /** The claims as views, each with its status log, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -61,7 +62,7 @@ public class ClaimController {
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.isLateEntry(), claim.getRemindedOn());
+                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -76,12 +77,14 @@ public class ClaimController {
     }
 
     /** A claim's amount (with up to two decimals; negative on a correction), date (the sheet's today
-     * when left out), note (may be empty) and, on a correction, the number of the claim it corrects. */
+     * when left out), note (may be empty), on a correction, the number of the claim it corrects, and its
+     * external reference (none when blank). */
     public record ClaimRequest(
             @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            @Size(max = 120) String corrects) {
+            @Size(max = 120) String corrects,
+            @Size(max = 120) String ref) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
@@ -90,6 +93,11 @@ public class ClaimController {
         /** The number named, trimmed; null when none is. */
         String correctsValue() {
             return corrects == null || corrects.isBlank() ? null : corrects.trim();
+        }
+
+        /** The reference given, trimmed; null when none is. */
+        String refValue() {
+            return ref == null || ref.isBlank() ? null : ref.trim();
         }
     }
 
@@ -160,7 +168,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
-                request.note(), request.correctsValue()));
+                request.note(), request.correctsValue(), request.refValue()));
     }
 
     @PutMapping("/claims/{claimId}")
@@ -169,7 +177,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), claimId, request.amountValue(), request.date(),
-                request.note(), request.correctsValue()));
+                request.note(), request.correctsValue(), request.refValue()));
     }
 
     @PostMapping("/claims/{claimId}/lock")

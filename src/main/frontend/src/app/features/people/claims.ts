@@ -53,6 +53,13 @@ const PAST: Record<ClaimAction, string> = {
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
+      <label [for]="fieldId('ref')">Reference</label>
+      <input
+        [id]="fieldId('ref')"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -75,6 +82,7 @@ const PAST: Record<ClaimAction, string> = {
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
+            <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
@@ -294,6 +302,7 @@ export class Claims {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  protected readonly ref = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
@@ -398,14 +407,15 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const was = this.editingId();
+    // The form shows the claim at once, so what is typed while the lock is asked for is kept.
+    this.release(sheet, was, claim.id);
+    this.fill(claim);
     try {
       await this.service.lock(sheet, claim.id);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       if (status === 412 || status === 403) {
-        this.release(sheet, was, claim.id);
-        this.fill(claim);
         this.rowErrors.update((errors) => ({
           ...errors,
           [claim.id]:
@@ -422,9 +432,6 @@ export class Claims {
       );
       return;
     }
-    if (this.session.sheetId() !== sheet) return;
-    this.release(sheet, was, claim.id);
-    this.fill(claim);
   }
 
   /** Release the lock of the editor that was open before another claim's editor replaced it. */
@@ -441,6 +448,7 @@ export class Claims {
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
+    this.ref.set(claim.ref ?? '');
     this.error.set(null);
   }
 
@@ -677,6 +685,7 @@ export class Claims {
         date: claim.date,
         note: claim.note,
         corrects: claim.corrects,
+        ref: claim.ref,
       });
       if (this.session.sheetId() !== sheet) return;
       this.inlineAmounts.update(({ [claim.id]: _, ...rest }) => rest);
@@ -791,6 +800,7 @@ export class Claims {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -815,6 +825,7 @@ export class Claims {
       date: this.date().trim() || null,
       note: this.note(),
       corrects: corrects === '' ? null : corrects,
+      ref: this.ref().trim() || null,
     };
     const id = this.editingId();
     this.submitting = true;
@@ -834,6 +845,10 @@ export class Claims {
             ? 'A claim cannot be dated after the person retired.'
           : e instanceof HttpErrorResponse && e.status === 400
             ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects (and only a correction names one).'
+          : fields.ref !== null && e instanceof HttpErrorResponse && e.status === 409
+            ? id === null
+              ? 'That reference is already used on this sheet.'
+              : 'That reference is already used on this sheet, or the claim is no longer a draft.'
           : id !== null && e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a draft claim can be edited; void it and add a new one instead.'
           : id !== null && e instanceof HttpErrorResponse && e.status === 412

@@ -144,7 +144,7 @@ import { Summary, SummaryPerson } from './summary';
       </form>
 
       <form (submit)="paste($event)" aria-label="Paste claims" data-testid="paste-form">
-        <label for="paste-claims">Claims to paste, one per line: name,amount,date,note</label>
+        <label for="paste-claims">Claims to paste, one per line: name,amount,date,note (a note may end with " #reference")</label>
         <textarea
           id="paste-claims"
           data-testid="paste-claims"
@@ -1378,7 +1378,9 @@ export class People {
             ? 'A line falls in a closed period.'
             : e instanceof HttpErrorResponse && e.status === 422
               ? 'A line is dated after the person retired.'
-              : 'Those claims could not be added.',
+              : e instanceof HttpErrorResponse && e.status === 409
+                ? 'A line gives a reference already used on the sheet or in the paste.'
+                : 'Those claims could not be added.',
       );
     } finally {
       this.pasting = false;

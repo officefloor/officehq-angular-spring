@@ -45,6 +45,8 @@ export interface Claim {
   /** The sheet's today (YYYY-MM-DD) on which a reminder of the claim was last written; null when
    *  none ever was. */
   remindedOn: string | null;
+  /** The claim's external reference; null when it has none. */
+  ref: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -118,6 +120,8 @@ export interface ClaimFields {
   note: string;
   /** The number of the claim a correction corrects; null on a claim that is not a correction. */
   corrects: string | null;
+  /** The claim's external reference (trimmed by the server); null or blank for none. */
+  ref: string | null;
 }
 
 /** Whether a claim is a correction: one with a negative amount. */

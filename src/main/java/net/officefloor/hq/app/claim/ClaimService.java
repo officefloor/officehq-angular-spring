@@ -78,6 +78,14 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /** Add a claim with the external reference {@code ref} (none when null), refused when another claim
+     * on the sheet has it (compared without regard to case). */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
@@ -86,14 +94,17 @@ public class ClaimService {
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
+        refuseRefTaken(sheetId, null, ref);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        claim.setRef(ref);
         claim.fixTerms(dated, terms);
         claim.setDueBy(dueBy);
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         claim = claims.saveAndFlush(claim);
         log(user, person, claim);
-        record("CLAIM_ADDED", user, person, claim, claim.getNumber());
+        if (ref != null) record("CLAIM_ADDED", user, person, claim, claim.getNumber(), "ref=" + ref);
+        else record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         if (claim.isLateEntry()) record("LATE_ENTRY", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -101,7 +112,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
@@ -111,11 +122,13 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, person.getId(), amount, corrects);
+        refuseRefTaken(sheetId, claim.getId(), ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrects);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
+        claim.setRef(ref);
         claim.unlock();
         claims.flush();
         record("CLAIM_EDITED", user, person, claim, claim.getNumber());
@@ -542,6 +555,17 @@ public class ClaimService {
         claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
                 .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
                 .orElseThrow(ClaimCorrectionException::new);
+    }
+
+    /** Refuse the external reference {@code ref} when a claim on the sheet other than {@code claimId} has
+     * it, compared without regard to case. */
+    private void refuseRefTaken(String sheetId, Long claimId, String ref) {
+        if (ref == null) return;
+        claims.findBySheetIdAndRefKey(sheetId, Claim.keyOf(ref))
+                .filter(other -> !other.getId().equals(claimId))
+                .ifPresent(other -> {
+                    throw new ClaimRefTakenException();
+                });
     }
 
     /** Refuse a change to a claim due by {@code date} when a closed period of the sheet contains it. */

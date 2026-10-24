@@ -124,6 +124,14 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The claim's external reference; null when it has none. Unique on its sheet without regard to case. */
+    @Column(name = "ref")
+    private String ref;
+
+    /** The reference as compared: lower-cased; null when there is none. */
+    @Column(name = "ref_key")
+    private String refKey;
+
     protected Claim() {
     }
 
@@ -338,6 +346,21 @@ public class Claim {
     public void unlock() {
         this.lockedBy = null;
         this.lockedOn = null;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    /** Give the claim the external reference {@code ref}, or none when null. */
+    public void setRef(String ref) {
+        this.ref = ref;
+        this.refKey = keyOf(ref);
+    }
+
+    /** A reference as compared: lower-cased; null for none. */
+    public static String keyOf(String ref) {
+        return ref == null ? null : ref.toLowerCase(java.util.Locale.ROOT);
     }
 
     public String getLockedBy() {
