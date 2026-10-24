@@ -34,6 +34,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** How many days after its to-date an open period is closed when the sheet's today passes them; null when that is off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {
     }
 
@@ -89,5 +93,13 @@ public class Sheet {
      * today is on or after it. */
     public boolean numbersByPeriod() {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 }

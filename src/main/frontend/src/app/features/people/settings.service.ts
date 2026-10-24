@@ -70,13 +70,16 @@ export interface SheetSettings {
   /** The permission matrix as set: for each action, the roles that may take it as a comma separated
    *  list; blank for the action's standing rule. */
   permissions: Record<PermAction, string>;
+  /** How many days after its to-date an open period is closed when the sheet's today is changed;
+   *  null when off. */
+  graceDays: number | null;
 }
 
 /** The actions the permission matrix decides who may take. */
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from and its grace days), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -173,6 +176,13 @@ export class SettingsService {
         { value },
         { headers: this.session.headers() },
       ),
+    );
+  }
+
+  /** A null value turns the grace days off. */
+  setGraceDays(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/grace-days`, { value }, { headers: this.session.headers() }),
     );
   }
 

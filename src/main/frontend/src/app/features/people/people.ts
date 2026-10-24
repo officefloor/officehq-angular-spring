@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSignal } from '@angular/core';
+import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSignal, untracked } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Header } from './header';
@@ -583,6 +583,23 @@ export class People {
       this.pasteError.set(null);
       if (sheet) void this.read(sheet);
     });
+    // A change of the sheet's today may close periods its grace days have passed: re-read them.
+    let shownToday: string | null = null;
+    effect(() => {
+      const today = this.session.today();
+      const sheet = untracked(() => this.sheet());
+      if (shownToday !== null && today !== shownToday && sheet) void this.readPeriods(sheet);
+      shownToday = today;
+    });
+  }
+
+  private async readPeriods(sheet: string): Promise<void> {
+    try {
+      const periods = await this.periodsService.list(sheet);
+      if (this.sheet() === sheet) this.periods.set(periods);
+    } catch {
+      // The periods could not be read; they show as they were.
+    }
   }
 
   protected value(event: Event): string {

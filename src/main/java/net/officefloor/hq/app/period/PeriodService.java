@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,10 +89,33 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefusedException("already closed");
         }
+        return close(period, user);
+    }
+
+    /** Close, as {@link #close(String, String, long)} would, every open period of the sheet whose to-date
+     * plus its grace days is before its today, in order of their to-dates, each marked auto=yes; nothing
+     * when the grace days are off or the user's role may not close. */
+    @Transactional
+    public void closeOverdue(String sheetId, String user) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Integer grace = sheet.getGraceDays();
+        if (grace == null || !settings.allowed(sheetId, user, Action.CLOSE)) return;
+        List<Period> due = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(sheet.getToday()))
+                .sorted(Comparator.comparing(Period::getTo)).toList();
+        for (Period open : due) {
+            Period period = periods.lockByIdAndSheetId(open.getId(), sheetId).orElseThrow(PeriodNotFoundException::new);
+            if (!period.isClosed()) close(period, user, "auto=yes");
+        }
+    }
+
+    private Period close(Period period, String user, String... extra) {
         period.close(personTotalsOf(period));
         periods.flush();
-        audit.change("PERIOD_CLOSED", sheetId, user, "period=" + period.getName(),
-                "total=" + period.getClosedTotal().toPlainString());
+        List<String> fields = new ArrayList<>(List.of("period=" + period.getName(),
+                "total=" + period.getClosedTotal().toPlainString()));
+        fields.addAll(List.of(extra));
+        audit.change("PERIOD_CLOSED", period.getSheetId(), user, fields.toArray(String[]::new));
         return period;
     }
 

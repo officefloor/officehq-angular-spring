@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -18,11 +19,13 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final RollupService rollup;
+    private final PeriodService periods;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets, RollupService rollup) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
     }
 
     @Transactional
@@ -49,13 +52,15 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::numbersByPeriod).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today; the figures it moves are recorded as {@code user}'s change. */
+    /** Change the sheet's today, closing the open periods its grace days have passed (see
+     * {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         sheets.flush();
+        periods.closeOverdue(id, user);
         rollup.recordSince(id, user, before);
         return sheet;
     }

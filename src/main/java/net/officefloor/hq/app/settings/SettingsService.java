@@ -25,10 +25,12 @@ import org.springframework.transaction.annotation.Transactional;
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
  * period numbering from, the date from which a claim opened is numbered within its period (off when null),
- * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null).
+ * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null),
+ * and its grace days, how many days after its to-date an open period is closed when the sheet's today
+ * is changed (off when null).
  * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent and the proof threshold)
- * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date and the
- * period numbering from are not. Its permission matrix, also not dated, gives for each {@link Action}
+ * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date, the
+ * period numbering from and the grace days are not. Its permission matrix, also not dated, gives for each {@link Action}
  * the roles that may take it; a blank entry keeps the action's standing rule. */
 @Service
 public class SettingsService {
@@ -297,6 +299,22 @@ public class SettingsService {
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=period-numbering-from",
                 "value=" + (from == null ? "" : from.toString()));
+        return sheet;
+    }
+
+    /** The sheet's grace days; null when they are off. */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getGraceDays();
+    }
+
+    /** Set the sheet's grace days; null turns them off. They take effect when the sheet's today is next changed. */
+    @Transactional
+    public Sheet setGraceDays(String sheetId, String by, Integer graceDays) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setGraceDays(graceDays);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=grace-days", "value=" + (graceDays == null ? "" : graceDays));
         return sheet;
     }
 }

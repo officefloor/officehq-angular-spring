@@ -35,10 +35,10 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off. */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
-            String proofThreshold, Map<String, String> permissions) {
+            String proofThreshold, Map<String, String> permissions, Integer graceDays) {
     }
 
     /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
@@ -166,6 +166,13 @@ public class SettingsController {
         }
     }
 
+    /** Grace days, a whole number of days; blank or null turns them off. */
+    public record GraceDaysRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+        Integer daysValue() {
+            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
+        }
+    }
+
     private final SettingsService service;
 
     public SettingsController(SettingsService service) {
@@ -184,7 +191,7 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
-                text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)));
+                text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)), service.graceDays(sheet));
     }
 
     private static Map<String, String> permissionsOf(Map<Action, String> matrix) {
@@ -282,6 +289,15 @@ public class SettingsController {
             @RequestBody @Valid PeriodNumberingFromRequest request) {
         String sheet = sheetId.trim();
         service.setPeriodNumberingFrom(sheet, user.trim(), request.dateValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/grace-days")
+    public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GraceDaysRequest request) {
+        String sheet = sheetId.trim();
+        service.setGraceDays(sheet, user.trim(), request.daysValue());
         return get(sheet, user);
     }
 
