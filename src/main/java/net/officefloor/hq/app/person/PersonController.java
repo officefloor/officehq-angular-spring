@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -117,6 +118,27 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PatronRequest request) {
         return PatronView.of(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
+    }
+
+    /** The ids of the people the signed-in user watches. */
+    @GetMapping("/watched")
+    public List<Long> watched(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.watched(sheetId.trim(), user.trim());
+    }
+
+    @PostMapping("/{personId}/watch")
+    public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.watch(sheetId.trim(), user.trim(), personId, true));
+    }
+
+    @DeleteMapping("/{personId}/watch")
+    public PersonView unwatch(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.watch(sheetId.trim(), user.trim(), personId, false));
     }
 
     @PostMapping

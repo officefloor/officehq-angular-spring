@@ -35,6 +35,7 @@ import { Summary, SummaryPerson } from './summary';
 // (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
 // sum of their figures is above it, the row shows the cap and the difference as their excess; every
 // total of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
+// Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
   imports: [Claims, Header, Periods, Rates, Settings, Summary],
@@ -189,6 +190,7 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Retired</th>
               <th scope="col">Retired from</th>
               <th scope="col">On hold</th>
+              <th scope="col">Watched</th>
               <th scope="col">Patrons</th>
               <th scope="col">Backing</th>
               <th scope="col">Claims</th>
@@ -214,6 +216,7 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
                 <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
                 <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+                <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
                 <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
                 <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
                 <td>
@@ -291,6 +294,15 @@ import { Summary, SummaryPerson } from './summary';
                     (click)="hold(p)"
                   >
                     Hold
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="person-watch"
+                    [attr.aria-label]="(watched().has(p.id) ? 'Stop watching ' : 'Watch ') + p.name"
+                    [attr.aria-pressed]="watched().has(p.id)"
+                    (click)="toggleWatch(p)"
+                  >
+                    {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
@@ -410,6 +422,8 @@ export class People {
     for (const s of this.statements()) by.set(s.personId, [...(by.get(s.personId) ?? []), s]);
     return by;
   });
+  /** The ids of the people the signed-in user watches. */
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The sheet's patrons, in the order they were named. */
   protected readonly patrons = signal<Patron[]>([]);
   /** The patron chosen on each person's row (a person id), by person id. */
@@ -572,6 +586,7 @@ export class People {
       this.holdFroms.set({});
       this.holdTos.set({});
       this.patrons.set([]);
+      this.watched.set(new Set());
       this.patronChoices.set({});
       this.patronErrors.set({});
       this.reset();
@@ -671,6 +686,30 @@ export class People {
   private clearRowError(id: number): void {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
     this.patronErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /** Start or stop the signed-in user watching the person. */
+  protected async toggleWatch(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const on = !this.watched().has(person.id);
+    try {
+      await this.service.watch(sheet, person.id, on);
+      if (this.sheet() !== sheet) return;
+      this.watched.update((ids) => {
+        const next = new Set(ids);
+        if (on) next.add(person.id);
+        else next.delete(person.id);
+        return next;
+      });
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: on ? 'That person could not be watched.' : 'That person could not be unwatched.',
+      }));
+    }
   }
 
   protected patronNamesOf(personId: number): string {
@@ -1105,7 +1144,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -1113,6 +1152,7 @@ export class People {
         this.periodsService.list(sheet),
         this.settingsService.get(sheet),
         this.service.patrons(sheet),
+        this.service.watched(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -1124,6 +1164,7 @@ export class People {
         this.statements.set(statements);
         this.claims.set(claims);
         this.patrons.set(patrons);
+        this.watched.set(new Set(watched));
         this.people.set(list);
       }
     } catch {

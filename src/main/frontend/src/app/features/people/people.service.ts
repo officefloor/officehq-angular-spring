@@ -142,6 +142,23 @@ export class PeopleService {
     );
   }
 
+  /** The ids of the people the signed-in user watches. */
+  watched(sheet: string): Promise<number[]> {
+    return firstValueFrom(
+      this.http.get<number[]>(`${this.url(sheet)}/watched`, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Start (`on`) or stop watching the person as the signed-in user; refused (409) when they already
+   *  do, or do not. */
+  watch(sheet: string, id: number, on: boolean): Promise<Person> {
+    const url = `${this.url(sheet)}/${id}/watch`;
+    const options = { headers: this.session.headers() };
+    return firstValueFrom(
+      on ? this.http.post<Person>(url, null, options) : this.http.delete<Person>(url, options),
+    );
+  }
+
   /** Add a DRAFT claim of `amount`, dated the sheet's today, for the person named `name`, adding
    *  them with grade A first when no one on the sheet has that name; all or nothing. */
   quickAdd(sheet: string, name: string, amount: string): Promise<QuickAdded> {

@@ -11,6 +11,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Action;
@@ -36,10 +38,12 @@ public class ClaimService {
     private final SheetService sheets;
     private final PeriodRepository periods;
     private final SettingsService settings;
+    private final PersonWatchRepository watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
-            PeriodRepository periods, SettingsService settings, Audit audit) {
+            PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, Audit audit) {
+        this.watches = watches;
         this.claims = claims;
         this.logs = logs;
         this.people = people;
@@ -159,6 +163,7 @@ public class ClaimService {
         };
         if (next == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
+            notifyWatchers(user, person, claim);
         } else {
             record(event, user, person, claim, number);
         }
@@ -239,6 +244,7 @@ public class ClaimService {
         claims.flush();
         log(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), "due=" + dueText(due));
+        notifyWatchers(user, person, claim);
         rollup.recordSince(sheetId, user, before);
         return claim;
     }
@@ -326,6 +332,7 @@ public class ClaimService {
         claims.flush();
         log(user, person, claim);
         record("CLAIM_RESETTLED", user, person, claim, claim.getNumber(), "old=" + dueText(old), "new=" + dueText(due));
+        notifyWatchers(user, person, claim);
         rollup.recordSince(sheetId, user, before);
         return claim;
     }
@@ -371,6 +378,15 @@ public class ClaimService {
         if (number != null) fields.add("number=" + number);
         fields.addAll(List.of(extra));
         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
+    }
+
+    /** Notify each user watching the person, in the order they started watching, that the claim was
+     * settled, approved or re-settled. */
+    private void notifyWatchers(String user, Person person, Claim claim) {
+        for (PersonWatch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.change("NOTIFY", claim.getSheetId(), user, "user=" + watch.getUser(), "person=" + person.getName(),
+                    "number=" + claim.getNumber());
+        }
     }
 
     /** The number a claim dated {@code date} is given when opened now: within the period containing

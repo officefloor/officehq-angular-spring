@@ -21,11 +21,13 @@ public class PersonService {
     private final RollupService rollup;
     private final SheetService sheetService;
     private final PersonPatronRepository patrons;
+    private final PersonWatchRepository watches;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
-            SheetService sheetService, PersonPatronRepository patrons) {
+            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches) {
         this.people = people;
         this.patrons = patrons;
+        this.watches = watches;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
@@ -132,6 +134,29 @@ public class PersonService {
         PersonPatron added = patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
         audit.change("PATRON_ADDED", sheetId, user, "name=" + person.getName(), "patron=" + patron.getName());
         return added;
+    }
+
+    /** The ids of the people the user watches on the sheet, in the order they started watching. */
+    @Transactional(readOnly = true)
+    public List<Long> watched(String sheetId, String user) {
+        return watches.findBySheetIdAndUserOrderByIdAsc(sheetId, user).stream().map(PersonWatch::getPersonId).toList();
+    }
+
+    /** Starts (on) or stops (off) the user watching the person; refused when they already do, or
+     * do not. */
+    @Transactional
+    public Person watch(String sheetId, String user, long personId, boolean on) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        var current = watches.findByPersonIdAndUser(person.getId(), user);
+        if (on == current.isPresent()) throw new PersonWatchException();
+        if (on) {
+            watches.saveAndFlush(new PersonWatch(sheetId, person.getId(), user));
+        } else {
+            watches.delete(current.get());
+            watches.flush();
+        }
+        audit.change(on ? "PERSON_WATCHED" : "PERSON_UNWATCHED", sheetId, user, "name=" + person.getName());
+        return person;
     }
 
     /** Refuses a name another person on the sheet (other than {@code self}) already has. */
