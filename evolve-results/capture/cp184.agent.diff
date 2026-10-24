@@ -1,0 +1,133 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index 8d260ad3..5918ae6d 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -72,7 +72,7 @@ export interface Claim {
+   reviewLate: boolean;
+   /** Whether a steward waived the claim's late charge: it bears none from then on. */
+   waived: boolean;
+-  /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live
++  /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live due
+    *  total, as a claim of a held person does. */
+   held: boolean;
+   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5405c6c8..474e6c05 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -42,8 +42,8 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // is kept on their row as a past one, and no claim can be dated after its from-date and before its
+ // to-date. A person can be put on several holds over time, each from a date (the
+ // sheet's today when left blank) and to an optional date: their OPEN and PENDING claims dated within a
+-// hold count in no live total (theirs, the sheet's or a period's) unless a statement binds them;
+-// SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
++// hold count in no live due figure (theirs, the sheet's or a period's) unless a statement binds them,
++// though they still count in what is claimed; SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
+ // A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
+ // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
+ // what is due on them. An overdue claim's due gains, for every full 30 days it is overdue, the sheet's
+@@ -1864,6 +1864,17 @@ export class People {
+     return this.countsAs(claim, claim.status, person);
+   }
+ 
++  /** Whether the claim counts in what its person has claimed: as countsLive says, but a hold, the
++   *  person's or the claim's own, does not take it out. */
++  private countsClaimed(claim: Claim, person: Person): boolean {
++    if (!counts(claim)) return false;
++    if (!isOpen(claim)) return true;
++    const today = this.session.today();
++    if (deferred(claim, today)) return false;
++    const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
++    return claim.stated || !retired;
++  }
++
+   /** Whether the claim would count in the live totals were its status `status` (see countsLive). */
+   private countsAs(claim: Claim, status: ClaimStatus, person: Person): boolean {
+     const as = { ...claim, status };
+@@ -1901,11 +1912,11 @@ export class People {
+     return money(this.claimedCentsOf(person));
+   }
+ 
+-  /** What the person's OPEN and SETTLED claims add up to (unbound OPEN ones dated within a hold left
+-   *  out); drafts, voided claims and corrections do not count. */
++  /** What the person's OPEN, PENDING and SETTLED claims add up to, held ones included (see
++   *  countsClaimed); drafts, voided claims and corrections do not count. */
+   private claimedCentsOf(person: Person): number {
+     return this.claimsOf(person.id).reduce(
+-      (sum, c) => sum + (this.countsLive(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
++      (sum, c) => sum + (this.countsClaimed(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
+       0,
+     );
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 39051d5f..b3279442 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -183,7 +183,7 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
+-    /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live
++    /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live due
+      * total, as a claim of a held person does. */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6216f595..acbc83a9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -436,7 +436,7 @@ public class ClaimService {
+     }
+ 
+     /** Hold an OPEN or PENDING claim that is not held, or release one that is: while held and unbound by a
+-     * statement it counts in no live total, as a claim of a held person does. Refused unless the claim is
++     * statement it counts in no live due figure (it stays in what is claimed), as a claim of a held person does. Refused unless the claim is
+      * OPEN or PENDING. */
+     @Transactional
+     public Claim toggleHold(String sheetId, String user, long claimId) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 3cb6f12d..56734c3c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -29,9 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
+- * claims that are not corrections, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
+- * retirement date is reached on the sheet's today, that no statement binds)
+- * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
++ * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
++ * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
++ * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
+  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
+  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
+  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
+@@ -95,8 +95,9 @@ public class RollupService {
+             BigDecimal overdue = zero();
+             boolean any = false;
+             for (Claim claim : all) {
+-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
+-                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
++                if (!claim.getPersonId().equals(person.getId())) continue;
++                if (countsClaimed(claim, person, today) && !claim.isCorrection()) claimed = claimed.add(claim.getAmount());
++                if (!countsLive(claim, person, today)) continue;
+                 BigDecimal figure = shownOf(claim, person, basis);
+                 if (figure == null) continue;
+                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
+@@ -174,6 +175,16 @@ public class RollupService {
+         return countsAs(claim, claim.getStatus(), person, today);
+     }
+ 
++    /** Whether the claim counts in what its person has claimed on the sheet's {@code today}: as it counts in
++     * the live totals (see {@link #countsLive}), but a hold, the person's or the claim's own, does not take it out. */
++    public static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
++        ClaimStatus status = claim.getStatus();
++        if (!status.counts()) return false;
++        if (!status.isOpen()) return true;
++        if (claim.isDeferredOn(today)) return false;
++        return claim.isStated() || !person.isRetiredOn(today);
++    }
++
+     /** Whether the claim would count in the live totals on the sheet's {@code today} were its status
+      * {@code status} (see {@link #countsLive}). */
+     public static boolean countsAs(Claim claim, ClaimStatus status, Person person, LocalDate today) {
