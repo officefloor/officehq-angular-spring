@@ -1,0 +1,64 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "07e1f5f17ddee7a34db76ff5bb169608b0e87192",
+  "reset_sha": "",
+  "preagent_sha": "10667a566d92c6bc932f9b1e462a45eea9a4706f",
+  "prev_sha": "10667a566d92c6bc932f9b1e462a45eea9a4706f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.44597680000000006,
+    "input_tokens": 28,
+    "output_tokens": 4163,
+    "cache_read_tokens": 417584,
+    "cache_creation_tokens": 34886,
+    "num_turns": 14,
+    "duration_ms": 192817,
+    "duration_api_ms": 61954,
+    "model": "claude-opus-5-5",
+    "session_id": "d0de60d2-b789-4b6b-91b9-7df3d76a88ec",
+    "stop_reason": "success",
+    "result_text": "The Summary section now shows a due-total for each calendar month, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What it shows:** one row per month (yyyy-mm) that any claim on the sheet is dated in, sorted by month, labelled `month-<yyyy-mm>-due-total`. Each value adds up what's due on the claims dated in that month that count, as each claim shows it. \"Count\" uses the same rule as the existing rollup due-total: OPEN, PENDING and SETTLED claims count, while DRAFT, VOID and claims during a hold don't. A month that only has claims that don't count still appears, showing `0.00`.\n\n**Where:**\n- `src/main/frontend/src/app/features/people/people.ts`: a new `monthDueTotals` value, built the same way as the existing per-tag totals.\n- `src/main/frontend/src/app/features/people/summary.ts`: a new \"Month / Due\" table between the tag table and the status table.\n\n**One thing to know:** the monthly totals are plain sums. Each person's cap and the trimming used for the sheet's overall due-total are not applied. That matches how the per-tag totals work, and the tests expect it, but it means the months may not add up to the sheet's due-total when a cap applies.\n\nThis is a front-end-only change: the totals are worked out from claim data the screen already loads, the same way the other summary totals are. Nothing changed in the server or stored data, and the spec expects no new audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.44597680000000006,
+        "num_turns": 14,
+        "duration_ms": 192817,
+        "duration_api_ms": 61954,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
