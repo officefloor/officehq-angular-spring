@@ -1,0 +1,1926 @@
+diff --git a/src/main/frontend/src/app/core/figure.pipe.ts b/src/main/frontend/src/app/core/figure.pipe.ts
+new file mode 100644
+index 00000000..f9961ab0
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figure.pipe.ts
+@@ -0,0 +1,20 @@
++import { Pipe, PipeTransform, inject } from '@angular/core';
++import { Session } from './session';
++
++const FIGURE = /^(-?)(\d+)\.(\d{2})$/;
++
++/** Shows a figure (a value whose whole text is a number with two decimals) in the signed-in user's
++ * locale: under 'de' as 1.234,56, under 'en' as it is. Any other value is shown as it is. Impure, so a
++ * change of locale re-renders every figure. */
++@Pipe({ name: 'figure', pure: false })
++export class FigurePipe implements PipeTransform {
++  private readonly session = inject(Session);
++
++  transform<T>(value: T): T | string {
++    if (this.session.locale() !== 'de') return value;
++    if (typeof value !== 'string' && typeof value !== 'number') return value;
++    const m = FIGURE.exec(String(value).trim());
++    if (!m) return value;
++    return `${m[1]}${m[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${m[3]}`;
++  }
++}
+diff --git a/src/main/frontend/src/app/core/session-bar.ts b/src/main/frontend/src/app/core/session-bar.ts
+index 5f9be961..31a9df5b 100644
+--- a/src/main/frontend/src/app/core/session-bar.ts
++++ b/src/main/frontend/src/app/core/session-bar.ts
+@@ -1,5 +1,5 @@
+ import { Component, inject, signal } from '@angular/core';
+-import { Session } from './session';
++import { LOCALES, Session } from './session';
+ 
+ // Sign-in by name (no password), the signed-in name, and the sheet chooser with the active id.
+ @Component({
+@@ -38,6 +38,26 @@ import { Session } from './session';
+             />
+             <button type="submit" data-testid="sheet-today-save">Set today</button>
+           </form>
++          <form (submit)="saveLocale($event)">
++            <label for="user-locale">Locale</label>
++            <select
++              id="user-locale"
++              data-testid="user-locale"
++              [value]="localeInput() ?? session.locale()"
++              (change)="localeInput.set(value($event)); localeError.set(false)"
++            >
++              @for (l of locales; track l) {
++                <option [value]="l" [selected]="l === (localeInput() ?? session.locale())">{{ l }}</option>
++              }
++            </select>
++            <button type="submit" data-testid="user-locale-save">Save locale</button>
++          </form>
++          <span
++            >Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></span
++          >
++          @if (localeError()) {
++            <p role="alert" class="error" data-testid="user-locale-error">That locale could not be saved.</p>
++          }
+           <span
+             >Archived
+             <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></span
+@@ -150,6 +170,10 @@ export class SessionBar {
+   protected readonly cloneError = signal(false);
+   protected readonly asOfInput = signal('');
+   protected readonly asOfError = signal(false);
++  protected readonly locales = LOCALES;
++  /** The locale chosen in the select and not yet saved; null while it shows the saved one. */
++  protected readonly localeInput = signal<string | null>(null);
++  protected readonly localeError = signal(false);
+ 
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+@@ -160,12 +184,22 @@ export class SessionBar {
+     this.signinError.set(!this.session.signIn(this.nameInput()));
+   }
+ 
++  protected async saveLocale(event: Event): Promise<void> {
++    event.preventDefault();
++    this.localeError.set(false);
++    const ok = await this.session.setLocale(this.localeInput() ?? this.session.locale());
++    if (ok) this.localeInput.set(null);
++    this.localeError.set(!ok);
++  }
++
+   protected async load(event: Event): Promise<void> {
+     event.preventDefault();
+     this.sheetError.set(false);
+     this.todayError.set(false);
+     this.archiveError.set(false);
+     this.cloneError.set(false);
++    this.localeError.set(false);
++    this.localeInput.set(null);
+     this.sheetError.set(!(await this.session.loadSheet(this.sheetInput())));
+   }
+ 
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 5b47c626..357320eb 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -2,6 +2,11 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
++/** A locale a user may choose. */
++export type Locale = 'en' | 'de';
++
++export const LOCALES: readonly Locale[] = ['en', 'de'];
++
+ interface SheetView {
+   id: string;
+   /** The sheet's today (YYYY-MM-DD): every date-dependent decision and default uses it. */
+@@ -39,6 +44,8 @@ export class Session {
+   readonly asOf = signal<string | null>(null);
+   /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
+   readonly loads = signal(0);
++  /** The signed-in user's locale on the active sheet: how figures are shown to them ('en' or 'de'). */
++  readonly locale = signal<Locale>('en');
+   readonly signedIn = computed(() => this.user() !== null);
+ 
+   signIn(name: string): boolean {
+@@ -51,6 +58,7 @@ export class Session {
+     this.lastSettleBatch.set(null);
+     this.parent.set(null);
+     this.asOf.set(null);
++    this.locale.set('en');
+     return true;
+   }
+ 
+@@ -86,7 +94,13 @@ export class Session {
+           headers: this.headers(),
+         }),
+       );
++      const { locale } = await firstValueFrom(
++        this.http.get<{ locale: Locale }>(`/api/sheets/${encodeURIComponent(view.id)}/locale`, {
++          headers: this.headers(),
++        }),
++      );
+       this.show(view);
++      this.locale.set(locale);
+       this.loads.update((n) => n + 1);
+       return true;
+     } catch {
+@@ -150,6 +164,25 @@ export class Session {
+     }
+   }
+ 
++  /** Choose the signed-in user's locale on the active sheet; resolves false when refused. */
++  async setLocale(locale: string): Promise<boolean> {
++    const sheet = this.sheetId();
++    if (!sheet || !LOCALES.includes(locale as Locale)) return false;
++    try {
++      const view = await firstValueFrom(
++        this.http.put<{ locale: Locale }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/locale`,
++          { locale },
++          { headers: this.headers() },
++        ),
++      );
++      if (this.sheetId() === sheet) this.locale.set(view.locale);
++      return true;
++    } catch {
++      return false;
++    }
++  }
++
+   private show(view: SheetView): void {
+     this.sheetId.set(view.id);
+     this.today.set(view.today);
+diff --git a/src/main/frontend/src/app/features/people/audit.ts b/src/main/frontend/src/app/features/people/audit.ts
+index 9d99337e..be615d5c 100644
+--- a/src/main/frontend/src/app/features/people/audit.ts
++++ b/src/main/frontend/src/app/features/people/audit.ts
+@@ -1,12 +1,14 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { AuditService } from './audit.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The audit viewer: the sheet's audit lines exactly as the audit file holds them, newest first, or with
+ // a name in the filter only the lines about that person (name= or person= that name, case and
+ // surrounding spaces ignored). It reads the file; it records nothing.
+ @Component({
+   selector: 'app-audit',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="audit-heading">
+       <h2 id="audit-heading">Audit</h2>
+@@ -15,13 +17,13 @@ import { AuditService } from './audit.service';
+         <input id="audit-filter" data-testid="audit-filter" [value]="filter()" (input)="filter.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="audit-show">Show audit</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="audit-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="audit-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (lines().length > 0) {
+         <ol data-testid="audit-list">
+           @for (line of lines(); track $index) {
+-            <li data-testid="audit-line">{{ line }}</li>
++            <li data-testid="audit-line">{{ (line) | figure }}</li>
+           }
+         </ol>
+       }
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index ab703b82..bd06b975 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -8,6 +8,7 @@ import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
+ import { Dated } from './settings.service';
+ import { TemplatesService } from './templates.service';
+ import { VoidReasonsService } from './void-reasons.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ /** The fields of the claim form. */
+ type FormField = 'amount' | 'date' | 'note' | 'corrects' | 'ref' | 'tags';
+@@ -29,6 +30,7 @@ const PAST: Record<ClaimAction, string> = {
+ // editor is opened, saves changes to it.
+ @Component({
+   selector: 'app-claims',
++  imports: [FigurePipe],
+   template: `
+     <form (submit)="submit($event)" [attr.aria-label]="'Claim for ' + personName()" data-testid="claim-form">
+       <label [for]="fieldId('amount')">Amount</label>
+@@ -76,10 +78,10 @@ const PAST: Record<ClaimAction, string> = {
+         (input)="tags.set(value($event)); error.set(null)"
+       />
+       <button type="submit" data-testid="claim-form-submit">
+-        {{ editingId() === null ? 'Add claim' : 'Save claim' }}
++        {{ (editingId() === null ? 'Add claim' : 'Save claim') | figure }}
+       </button>
+       @if (error(); as message) {
+-        <p role="alert" class="error" data-testid="claim-form-error">{{ message }}</p>
++        <p role="alert" class="error" data-testid="claim-form-error">{{ (message) | figure }}</p>
+       }
+     </form>
+     <div class="from-template">
+@@ -91,7 +93,7 @@ const PAST: Record<ClaimAction, string> = {
+       >
+         <option value="" [selected]="template() === ''">Choose a template</option>
+         @for (t of templateList(); track t.id) {
+-          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
++          <option [value]="t.name" [selected]="template() === t.name">{{ (t.name) | figure }}</option>
+         }
+       </select>
+       <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
+@@ -107,40 +109,40 @@ const PAST: Record<ClaimAction, string> = {
+               [checked]="selected().has(c.id)"
+               (change)="selectToggled.emit({ id: c.id, selected: checked($event) })"
+             />
+-            <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+-            <span data-testid="claim-amount">{{ c.amount }}</span>
+-            <span data-testid="claim-date">{{ c.date }}</span>
+-            <span data-testid="claim-note">{{ c.note }}</span>
+-            <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+-            <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
+-            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+-            <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
+-            <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
+-            <span data-testid="claim-status">{{ c.status }}</span>
+-            <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
+-            <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+-            <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+-            <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+-            <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+-            <span>Deferred <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span></span>
+-            <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+-            <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+-            <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+-            <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+-            <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
++            <span>No. <span data-testid="claim-number">{{ (c.number ?? '') | figure }}</span></span>
++            <span data-testid="claim-amount">{{ (c.amount) | figure }}</span>
++            <span data-testid="claim-date">{{ (c.date) | figure }}</span>
++            <span data-testid="claim-note">{{ (c.note) | figure }}</span>
++            <span>Ref <span data-testid="claim-ref">{{ (c.ref ?? '') | figure }}</span></span>
++            <span>Tags <span data-testid="claim-tags">{{ (c.tags.join(', ')) | figure }}</span></span>
++            <span>Due <span data-testid="claim-due">{{ (dueOf(c)) | figure }}</span></span>
++            <span>Due by <span data-testid="claim-due-by">{{ (dueBy(c)) | figure }}</span></span>
++            <span>Overdue <span data-testid="claim-overdue">{{ (isOverdue(c) ? 'yes' : 'no') | figure }}</span></span>
++            <span data-testid="claim-status">{{ (c.status) | figure }}</span>
++            <span>Batch <span data-testid="claim-batch">{{ (c.settleBatch ?? '') | figure }}</span></span>
++            <span>Opened by <span data-testid="claim-opened-by">{{ (c.openedBy ?? '') | figure }}</span></span>
++            <span>Stated <span data-testid="claim-stated">{{ (c.stated ? 'yes' : 'no') | figure }}</span></span>
++            <span>Period <span data-testid="claim-period">{{ (periodOf(c)) | figure }}</span></span>
++            <span>Corrects <span data-testid="claim-corrects">{{ (c.corrects ?? '') | figure }}</span></span>
++            <span>Deferred <span data-testid="claim-deferred">{{ (isDeferred(c) ? 'yes' : 'no') | figure }}</span></span>
++            <span>Until <span data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | figure }}</span></span>
++            <span>Proofs <span data-testid="claim-proofs">{{ (c.proofs) | figure }}</span></span>
++            <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
++            <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
++            <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
+             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+               @for (line of c.log; track $index) {
+-                <li data-testid="claim-log-line">{{ line }}</li>
++                <li data-testid="claim-log-line">{{ (line) | figure }}</li>
+               }
+             </ol>
+             <ol class="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+               @for (line of c.comments; track $index) {
+-                <li data-testid="claim-comments-line">{{ line }}</li>
++                <li data-testid="claim-comments-line">{{ (line) | figure }}</li>
+               }
+             </ol>
+             <ol class="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+               @for (line of c.lines; track $index) {
+-                <li data-testid="claim-lines-line">{{ line }}</li>
++                <li data-testid="claim-lines-line">{{ (line) | figure }}</li>
+               }
+             </ol>
+             <label [for]="fieldId('line-label-' + c.id)">Line label</label>
+@@ -205,7 +207,7 @@ const PAST: Record<ClaimAction, string> = {
+               >
+                 <option value="" [selected]="!voidReasons()[c.id]">Choose a reason</option>
+                 @for (r of voidReasonList(); track r.id) {
+-                  <option [value]="r.reason" [selected]="voidReasons()[c.id] === r.reason">{{ r.reason }}</option>
++                  <option [value]="r.reason" [selected]="voidReasons()[c.id] === r.reason">{{ (r.reason) | figure }}</option>
+                 }
+               </select>
+             }
+@@ -216,7 +218,7 @@ const PAST: Record<ClaimAction, string> = {
+                 [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
+                 (click)="act(c, a.action)"
+               >
+-                {{ a.label }}
++                {{ (a.label) | figure }}
+               </button>
+             }
+             <button
+@@ -299,7 +301,7 @@ const PAST: Record<ClaimAction, string> = {
+             >
+               <option value="" [selected]="!reassignTos()[c.id]">Choose a person</option>
+               @for (o of others(); track o.id) {
+-                <option [value]="o.id" [selected]="reassignTos()[c.id] === '' + o.id">{{ o.name }}</option>
++                <option [value]="o.id" [selected]="reassignTos()[c.id] === '' + o.id">{{ (o.name) | figure }}</option>
+               }
+             </select>
+             <button
+@@ -338,7 +340,7 @@ const PAST: Record<ClaimAction, string> = {
+               <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+             }
+             @if (rowErrors()[c.id]; as message) {
+-              <p role="alert" class="error" data-testid="claim-error">{{ message }}</p>
++              <p role="alert" class="error" data-testid="claim-error">{{ (message) | figure }}</p>
+             }
+           </li>
+         }
+diff --git a/src/main/frontend/src/app/features/people/delegations.ts b/src/main/frontend/src/app/features/people/delegations.ts
+index b30c383a..de475598 100644
+--- a/src/main/frontend/src/app/features/people/delegations.ts
++++ b/src/main/frontend/src/app/features/people/delegations.ts
+@@ -1,6 +1,7 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Delegation, DelegationsService } from './delegations.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -9,6 +10,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ // Read from the store every time a sheet is loaded.
+ @Component({
+   selector: 'app-delegations',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="delegations-heading">
+       <h2 id="delegations-heading">Delegations</h2>
+@@ -21,13 +23,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <input id="delegate-to" data-testid="delegate-to" [value]="to()" (input)="to.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="delegate-submit">Delegate</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="delegate-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="delegate-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (delegations().length > 0) {
+         <ul data-testid="delegate-list">
+           @for (d of delegations(); track d.id) {
+-            <li data-testid="delegate-line">{{ d.user }} for {{ d.delegator }} from {{ d.from }} to {{ d.to }}</li>
++            <li data-testid="delegate-line">{{ (d.user) | figure }} for {{ (d.delegator) | figure }} from {{ (d.from) | figure }} to {{ (d.to) | figure }}</li>
+           }
+         </ul>
+       }
+diff --git a/src/main/frontend/src/app/features/people/header.ts b/src/main/frontend/src/app/features/people/header.ts
+index b90151ee..9f161a3a 100644
+--- a/src/main/frontend/src/app/features/people/header.ts
++++ b/src/main/frontend/src/app/features/people/header.ts
+@@ -1,6 +1,7 @@
+ import { Component, computed, input } from '@angular/core';
+ import { Claim } from './claims.service';
+ import { STATUSES } from './summary';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The sheet's header, shown at all times: how many people are on the sheet (retired ones
+ // included), how many claims are in each status (as the summary counts them), and the sheet's
+@@ -8,34 +9,35 @@ import { STATUSES } from './summary';
+ // overdue-total when a person on the sheet has their name or alias.
+ @Component({
+   selector: 'app-header',
++  imports: [FigurePipe],
+   template: `
+     <header aria-label="Sheet counters" data-testid="header">
+       <dl>
+         <div>
+           <dt>People</dt>
+-          <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++          <dd data-testid="header-people-count">{{ (peopleCount()) | figure }}</dd>
+         </div>
+         @for (s of byStatus(); track s.status) {
+           <div>
+-            <dt>{{ s.status }}</dt>
+-            <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++            <dt>{{ (s.status) | figure }}</dt>
++            <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ (s.count) | figure }}</dd>
+           </div>
+         }
+         <div>
+           <dt>Due</dt>
+-          <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++          <dd data-testid="header-due-total">{{ (dueTotal()) | figure }}</dd>
+         </div>
+         <div>
+           <dt>Overdue</dt>
+-          <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++          <dd data-testid="header-overdue-total">{{ (overdueTotal()) | figure }}</dd>
+         </div>
+         <div>
+           <dt>My due</dt>
+-          <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++          <dd data-testid="my-due-total">{{ (myDueTotal()) | figure }}</dd>
+         </div>
+         <div>
+           <dt>My overdue</dt>
+-          <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++          <dd data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</dd>
+         </div>
+       </dl>
+     </header>
+diff --git a/src/main/frontend/src/app/features/people/holidays.ts b/src/main/frontend/src/app/features/people/holidays.ts
+index 5746deec..d6b722da 100644
+--- a/src/main/frontend/src/app/features/people/holidays.ts
++++ b/src/main/frontend/src/app/features/people/holidays.ts
+@@ -1,6 +1,7 @@
+ import { Component, effect, inject, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Holiday, HolidaysService } from './holidays.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -9,6 +10,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ // re-fixes the due-by of the sheet's claims on the server; `added` tells the screen to re-read them.
+ @Component({
+   selector: 'app-holidays',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="holidays-heading">
+       <h2 id="holidays-heading">Holidays</h2>
+@@ -17,13 +19,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <input id="holiday-date" data-testid="holiday-date" placeholder="YYYY-MM-DD" [value]="date()" (input)="date.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="holiday-add">Add holiday</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="holiday-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="holiday-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (holidays().length > 0) {
+         <ul data-testid="holiday-list">
+           @for (h of holidays(); track h.id) {
+-            <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
++            <li [attr.data-testid]="'holiday-row-' + h.date">{{ (h.date) | figure }}</li>
+           }
+         </ul>
+       }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 283c2d72..f3d437f6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -23,6 +23,7 @@ import { Plans } from './plans';
+ import { Plan, PlansService } from './plans.service';
+ import { PoolsService } from './pools.service';
+ import { Audit } from './audit';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The people on the active sheet, in list order (each has a position; new people go to the end, and
+ // the up and down buttons on a row swap the person with their neighbour), and the form that adds a person
+@@ -60,7 +61,7 @@ import { Audit } from './audit';
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+ @Component({
+   selector: 'app-people',
+-  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
++  imports: [FigurePipe, Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -72,9 +73,9 @@ import { Audit } from './audit';
+     />
+     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
+       <span>Over this sheet and the sheets below it:</span>
+-      <span>People <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong></span>
+-      <span>Due <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong></span>
+-      <span>Overdue <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></span>
++      <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
++      <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
++      <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
+     </section>
+     <app-settings
+       (floorSaved)="floors.set($event)"
+@@ -123,7 +124,7 @@ import { Audit } from './audit';
+           (change)="grade.set(gradeOf($event)); error.set(null)"
+         >
+           @for (g of grades; track g) {
+-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
++            <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
+           }
+         </select>
+         <label for="person-form-grade-from">Grade from</label>
+@@ -157,13 +158,13 @@ import { Audit } from './audit';
+           (input)="tags.set(value($event)); error.set(null)"
+         />
+         <button type="submit" data-testid="person-form-submit">
+-          {{ editingId() === null ? 'Add person' : 'Save person' }}
++          {{ (editingId() === null ? 'Add person' : 'Save person') | figure }}
+         </button>
+         @if (editingId() !== null) {
+           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
+         }
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="person-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="person-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+ 
+@@ -185,7 +186,7 @@ import { Audit } from './audit';
+         />
+         <button type="submit" data-testid="quick-submit">Quick add claim</button>
+         @if (quickError(); as message) {
+-          <p role="alert" class="error" data-testid="quick-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="quick-error">{{ (message) | figure }}</p>
+         }
+       </form>
+ 
+@@ -200,13 +201,13 @@ import { Audit } from './audit';
+         ></textarea>
+         <button type="submit" data-testid="import-submit">Import people</button>
+         @if (importAdded() !== null) {
+-          Added <span data-testid="import-added">{{ importAdded() }}</span>
++          Added <span data-testid="import-added">{{ (importAdded()) | figure }}</span>
+         }
+         @if (importUpdated() !== null) {
+-          Updated <span data-testid="import-updated">{{ importUpdated() }}</span>
++          Updated <span data-testid="import-updated">{{ (importUpdated()) | figure }}</span>
+         }
+         @if (importError(); as message) {
+-          <p role="alert" class="error" data-testid="import-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="import-error">{{ (message) | figure }}</p>
+         }
+       </form>
+ 
+@@ -221,20 +222,20 @@ import { Audit } from './audit';
+         ></textarea>
+         <button type="submit" data-testid="paste-submit">Paste claims</button>
+         @if (pasteAdded() !== null) {
+-          Pasted and opened <span data-testid="paste-added">{{ pasteAdded() }}</span>
++          Pasted and opened <span data-testid="paste-added">{{ (pasteAdded()) | figure }}</span>
+         }
+         @if (pasteError(); as message) {
+-          <p role="alert" class="error" data-testid="paste-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="paste-error">{{ (message) | figure }}</p>
+         }
+       </form>
+ 
+       <div class="generate">
+         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+         @if (planGenerated() !== null) {
+-          Made <span data-testid="plan-generated-count">{{ planGenerated() }}</span>
++          Made <span data-testid="plan-generated-count">{{ (planGenerated()) | figure }}</span>
+         }
+         @if (planGenerateError(); as message) {
+-          <p role="alert" class="error" data-testid="plan-generate-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="plan-generate-error">{{ (message) | figure }}</p>
+         }
+       </div>
+ 
+@@ -250,7 +251,7 @@ import { Audit } from './audit';
+       <label for="sort-by">Sort people by</label>
+       <select id="sort-by" data-testid="sort-by" (change)="sortKey.set(sortKeyOf($event))">
+         @for (k of sortKeys; track k) {
+-          <option [value]="k" [selected]="sortKey() === k">{{ k }}</option>
++          <option [value]="k" [selected]="sortKey() === k">{{ (k) | figure }}</option>
+         }
+       </select>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+@@ -259,17 +260,17 @@ import { Audit } from './audit';
+       <p>
+         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+         @if (bulkOpened(); as result) {
+-          Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
+-          refused <span data-testid="bulk-refused">{{ result.refused }}</span>
++          Opened <span data-testid="bulk-opened">{{ (result.opened) | figure }}</span>,
++          refused <span data-testid="bulk-refused">{{ (result.refused) | figure }}</span>
+         }
+       </p>
+ 
+       <p>
+         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+-        Last batch <span data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</span>
++        Last batch <span data-testid="bulk-settle-batch">{{ (session.lastSettleBatch() ?? '') | figure }}</span>
+         @if (bulkSettled(); as result) {
+-          Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
+-          refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span>
++          Settled <span data-testid="bulk-settled">{{ (result.settled) | figure }}</span>,
++          refused <span data-testid="bulk-settle-refused">{{ (result.refused) | figure }}</span>
+         }
+       </p>
+ 
+@@ -282,13 +283,13 @@ import { Audit } from './audit';
+         >
+           <option value="" [selected]="!bulkReassignTo()">Choose a person</option>
+           @for (p of people(); track p.id) {
+-            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ p.name }}</option>
++            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ (p.name) | figure }}</option>
+           }
+         </select>
+         <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
+         @if (bulkReassigned(); as result) {
+-          Moved <span data-testid="bulk-reassigned">{{ result.reassigned }}</span>,
+-          refused <span data-testid="bulk-reassign-refused">{{ result.refused }}</span>
++          Moved <span data-testid="bulk-reassigned">{{ (result.reassigned) | figure }}</span>,
++          refused <span data-testid="bulk-reassign-refused">{{ (result.refused) | figure }}</span>
+         }
+       </p>
+ 
+@@ -303,8 +304,8 @@ import { Audit } from './audit';
+         />
+         <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
+         @if (bulkRedated(); as result) {
+-          Re-dated <span data-testid="bulk-redated">{{ result.redated }}</span>,
+-          refused <span data-testid="bulk-redate-refused">{{ result.refused }}</span>
++          Re-dated <span data-testid="bulk-redated">{{ (result.redated) | figure }}</span>,
++          refused <span data-testid="bulk-redate-refused">{{ (result.refused) | figure }}</span>
+         }
+       </p>
+ 
+@@ -317,7 +318,7 @@ import { Audit } from './audit';
+           (change)="bulkGradeChoice.set(gradeOf($event)); bulkGradeError.set(null)"
+         >
+           @for (g of grades; track g) {
+-            <option [value]="g" [selected]="bulkGradeChoice() === g">{{ g }}</option>
++            <option [value]="g" [selected]="bulkGradeChoice() === g">{{ (g) | figure }}</option>
+           }
+         </select>
+         <label for="bulk-grade-from">From</label>
+@@ -330,10 +331,10 @@ import { Audit } from './audit';
+         />
+         <button type="button" data-testid="bulk-grade-apply" (click)="bulkGrade()">Grade selected people</button>
+         @if (bulkGraded() !== null) {
+-          Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span>
++          Changed <span data-testid="bulk-graded">{{ (bulkGraded()) | figure }}</span>
+         }
+         @if (bulkGradeError(); as message) {
+-          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
++          <span role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</span>
+         }
+       </p>
+ 
+@@ -348,10 +349,10 @@ import { Audit } from './audit';
+         />
+         <button type="button" data-testid="bulk-retire" (click)="bulkRetire()">Retire selected people</button>
+         @if (bulkRetired() !== null) {
+-          Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span>
++          Retired <span data-testid="bulk-retired">{{ (bulkRetired()) | figure }}</span>
+         }
+         @if (bulkRetireError(); as message) {
+-          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
++          <span role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</span>
+         }
+       </p>
+ 
+@@ -375,7 +376,7 @@ import { Audit } from './audit';
+               <th scope="col">Settled due</th>
+               <th scope="col">Open due</th>
+               @for (pd of periods(); track pd.id) {
+-                <th scope="col">Due in {{ pd.name }}</th>
++                <th scope="col">Due in {{ (pd.name) | figure }}</th>
+               }
+               <th scope="col">Excess</th>
+               <th scope="col">Cut total</th>
+@@ -412,45 +413,45 @@ import { Audit } from './audit';
+                     (change)="selectPerson(p.id, checked($event))"
+                   />
+                 </td>
+-                <td data-testid="person-name">{{ p.name }}</td>
+-                <td data-testid="person-grade">{{ gradeNow(p) }}</td>
+-                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+-                <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+-                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+-                <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+-                <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+-                <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
+-                <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
++                <td data-testid="person-name">{{ (p.name) | figure }}</td>
++                <td data-testid="person-grade">{{ (gradeNow(p)) | figure }}</td>
++                <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
++                <td data-testid="person-contact">{{ (p.contact ?? '') | figure }}</td>
++                <td data-testid="person-tags">{{ (p.tags.join(', ')) | figure }}</td>
++                <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | figure }}</td>
++                <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="person-origin">{{ (p.origin ?? '') | figure }}</td>
++                <td data-testid="person-claimed">{{ (claimedOf(p)) | figure }}</td>
++                <td data-testid="person-due-total">{{ (dueTotalOf(p) ?? 'n/a') | figure }}</td>
+                 @let split = splitOf(p);
+-                <td data-testid="person-settled-total">{{ money(split.settled) }}</td>
+-                <td data-testid="person-open-total">{{ money(split.open) }}</td>
++                <td data-testid="person-settled-total">{{ (money(split.settled)) | figure }}</td>
++                <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
+                 @for (pd of periods(); track pd.id) {
+-                  <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ money(personPeriodCents().get(p.id)?.[pd.name] ?? 0) }}</td>
++                  <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (money(personPeriodCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
+                 }
+-                <td data-testid="person-excess">{{ excessOf(p) }}</td>
+-                <td data-testid="person-cut-total">{{ money(cutCents().get(p.id) ?? 0) }}</td>
+-                <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
+-                <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
++                <td data-testid="person-excess">{{ (excessOf(p)) | figure }}</td>
++                <td data-testid="person-cut-total">{{ (money(cutCents().get(p.id) ?? 0)) | figure }}</td>
++                <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
++                <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
+                 @let aged = agedOf(p);
+-                <td data-testid="person-aged-0-30">{{ money(aged[0]) }}</td>
+-                <td data-testid="person-aged-31-60">{{ money(aged[1]) }}</td>
+-                <td data-testid="person-aged-61">{{ money(aged[2]) }}</td>
+-                <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
+-                <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
+-                <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
+-                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+-                <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+-                <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+-                <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+-                <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+-                <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
++                <td data-testid="person-aged-0-30">{{ (money(aged[0])) | figure }}</td>
++                <td data-testid="person-aged-31-60">{{ (money(aged[1])) | figure }}</td>
++                <td data-testid="person-aged-61">{{ (money(aged[2])) | figure }}</td>
++                <td data-testid="person-statement-count">{{ (statementsOf(p.id).length) | figure }}</td>
++                <td data-testid="person-stated-total">{{ (lastStatementOf(p.id)?.dueTotal ?? '') | figure }}</td>
++                <td data-testid="person-statement-date">{{ (lastStatementOf(p.id)?.date ?? '') | figure }}</td>
++                <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
++                <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="person-active">{{ (isActive(p) ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="person-patrons">{{ (patronNamesOf(p.id)) | figure }}</td>
+                 <td>
+                   @for (line of snapshotLinesOf(p.id); track $index) {
+-                    <div data-testid="person-snapshot-line">{{ line }}</div>
++                    <div data-testid="person-snapshot-line">{{ (line) | figure }}</div>
+                   }
+                 </td>
+-                <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
++                <td data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</td>
+                 <td>
+                   <app-claims
+                     [personId]="p.id"
+@@ -530,7 +531,7 @@ import { Audit } from './audit';
+                     (change)="setInlineGrade(p.id, value($event))"
+                   >
+                     @for (g of grades; track g) {
+-                      <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ g }}</option>
++                      <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ (g) | figure }}</option>
+                     }
+                   </select>
+                   <button
+@@ -566,12 +567,12 @@ import { Audit } from './audit';
+                   </button>
+                   <ul class="retirements">
+                     @for (r of p.retirements; track $index) {
+-                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
++                      <li data-testid="person-retirement-line">{{ (r.from) | figure }} to {{ (r.to) | figure }}</li>
+                     }
+                   </ul>
+                   <ul class="holds">
+                     @for (h of p.holds; track $index) {
+-                      <li data-testid="person-hold-line">held from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
++                      <li data-testid="person-hold-line">held from {{ (h.from) | figure }}{{ (h.to ? ' to ' + h.to : '') | figure }}</li>
+                     }
+                   </ul>
+                   <label [for]="'person-hold-from-' + p.id">Hold from</label>
+@@ -618,10 +619,10 @@ import { Audit } from './audit';
+                     [attr.aria-pressed]="watched().has(p.id)"
+                     (click)="toggleWatch(p)"
+                   >
+-                    {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
++                    {{ (watched().has(p.id) ? 'Unwatch' : 'Watch') | figure }}
+                   </button>
+                   @if (rowErrors()[p.id]; as message) {
+-                    <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
++                    <p role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</p>
+                   }
+                   <label [for]="'person-patron-select-' + p.id">Patron</label>
+                   <select
+@@ -633,7 +634,7 @@ import { Audit } from './audit';
+                     <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
+                     @for (o of people(); track o.id) {
+                       @if (o.id !== p.id) {
+-                        <option [value]="o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
++                        <option [value]="o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ (o.name) | figure }}</option>
+                       }
+                     }
+                   </select>
+@@ -646,7 +647,7 @@ import { Audit } from './audit';
+                     Add patron
+                   </button>
+                   @if (patronErrors()[p.id]; as message) {
+-                    <p role="alert" class="error" data-testid="person-patron-error">{{ message }}</p>
++                    <p role="alert" class="error" data-testid="person-patron-error">{{ (message) | figure }}</p>
+                   }
+                   <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                   <select
+@@ -657,7 +658,7 @@ import { Audit } from './audit';
+                   >
+                     <option value="" [selected]="!mergeChoices()[p.id]">Choose a person</option>
+                     @for (o of people(); track o.id) {
+-                      <option [value]="o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
++                      <option [value]="o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ (o.name) | figure }}</option>
+                     }
+                   </select>
+                   <button
+@@ -690,21 +691,21 @@ import { Audit } from './audit';
+         </table>
+       }
+       <p>
+-        Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
++        Claimed in total: <span data-testid="rollup-claimed-total">{{ (claimedTotal()) | figure }}</span>
+       </p>
+       <p>
+-        Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
++        Due in total: <span data-testid="rollup-due-total">{{ (dueTotal()) | figure }}</span>
+       </p>
+       <p>
+-        Settled due in total: <span data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</span>,
+-        open due in total: <span data-testid="rollup-open-total">{{ money(splitTotal().open) }}</span>
++        Settled due in total: <span data-testid="rollup-settled-total">{{ (money(splitTotal().settled)) | figure }}</span>,
++        open due in total: <span data-testid="rollup-open-total">{{ (money(splitTotal().open)) | figure }}</span>
+       </p>
+       <p>
+-        Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
+-        due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
++        Overdue: <span data-testid="rollup-overdue-count">{{ (overdueTotal().count) | figure }}</span>,
++        due on them <span data-testid="rollup-overdue-total">{{ (money(overdueTotal().cents)) | figure }}</span>
+       </p>
+       <p>
+-        Cut in total: <span data-testid="rollup-cut-total">{{ money(cutTotal()) }}</span>
++        Cut in total: <span data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</span>
+       </p>
+     </section>
+   `,
+diff --git a/src/main/frontend/src/app/features/people/periods.ts b/src/main/frontend/src/app/features/people/periods.ts
+index fbac2508..3dbc4d91 100644
+--- a/src/main/frontend/src/app/features/people/periods.ts
++++ b/src/main/frontend/src/app/features/people/periods.ts
+@@ -3,6 +3,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { Session } from '../../core/session';
+ import { Period, PeriodsService } from './periods.service';
+ import { fiscalYearOf } from './settings.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ const YEAR = /^\d{4}$/;
+@@ -13,6 +14,7 @@ const YEAR = /^\d{4}$/;
+ // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
+ @Component({
+   selector: 'app-periods',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="periods-heading">
+       <h2 id="periods-heading">Periods</h2>
+@@ -51,7 +53,7 @@ const YEAR = /^\d{4}$/;
+         />
+         <button type="submit" data-testid="period-form-submit">Add period</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="period-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="period-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       <form (submit)="generate($event)" aria-label="Generate monthly periods" data-testid="period-generate-form">
+@@ -72,7 +74,7 @@ const YEAR = /^\d{4}$/;
+           (input)="generateTo.set(value($event)); generateError.set(null)"
+         />
+         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+-        <span aria-live="polite">Made: <span data-testid="period-generated">{{ generated() ?? '' }}</span></span>
++        <span aria-live="polite">Made: <span data-testid="period-generated">{{ (generated() ?? '') | figure }}</span></span>
+         <label for="period-generate-fy-year">Fiscal year</label>
+         <input
+           id="period-generate-fy-year"
+@@ -86,7 +88,7 @@ const YEAR = /^\d{4}$/;
+           Generate fiscal year
+         </button>
+         @if (generateError(); as message) {
+-          <p role="alert" class="error" data-testid="period-generate-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="period-generate-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (sorted().length > 0) {
+@@ -106,13 +108,13 @@ const YEAR = /^\d{4}$/;
+           <tbody>
+             @for (p of sorted(); track p.id) {
+               <tr [attr.data-testid]="'period-row-' + p.name">
+-                <td data-testid="period-name">{{ p.name }}</td>
+-                <td data-testid="period-from">{{ p.from }}</td>
+-                <td data-testid="period-to">{{ p.to }}</td>
+-                <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
+-                <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+-                <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
+-                <td data-testid="period-closed">{{ p.closed ? (p.soft ? 'soft' : 'yes') : 'no' }}</td>
++                <td data-testid="period-name">{{ (p.name) | figure }}</td>
++                <td data-testid="period-from">{{ (p.from) | figure }}</td>
++                <td data-testid="period-to">{{ (p.to) | figure }}</td>
++                <td data-testid="period-fy">{{ (fiscalYear(p)) | figure }}</td>
++                <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
++                <td data-testid="period-due-total">{{ (dueTotals()[p.name] ?? '0.00') | figure }}</td>
++                <td data-testid="period-closed">{{ (p.closed ? (p.soft ? 'soft' : 'yes') : 'no') | figure }}</td>
+                 <td>
+                   @if (!p.closed || p.soft) {
+                     <button
+@@ -141,7 +143,7 @@ const YEAR = /^\d{4}$/;
+                     Reopen
+                   </button>
+                   @if (rowErrors()[p.id]; as message) {
+-                    <p role="alert" class="error" data-testid="period-error">{{ message }}</p>
++                    <p role="alert" class="error" data-testid="period-error">{{ (message) | figure }}</p>
+                   }
+                 </td>
+               </tr>
+diff --git a/src/main/frontend/src/app/features/people/plans.ts b/src/main/frontend/src/app/features/people/plans.ts
+index 018a424a..d53a2e13 100644
+--- a/src/main/frontend/src/app/features/people/plans.ts
++++ b/src/main/frontend/src/app/features/people/plans.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Plan, PlansService } from './plans.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+@@ -12,17 +13,18 @@ const DAY = /^\d{1,2}$/;
+ // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
+ @Component({
+   selector: 'app-plans',
++  imports: [FigurePipe],
+   template: `
+     @if (plans().length > 0) {
+       <ul class="plans" [attr.aria-label]="'Plans of ' + personName()">
+         @for (pl of plans(); track pl.id) {
+           <li [attr.data-testid]="'plan-row-' + pl.id">
+-            {{ pl.amount }}
+-            from {{ pl.start }}
+-            @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
+-            to {{ pl.end }}, made
+-            <span data-testid="plan-generated">{{ pl.generated }}</span>, next
+-            <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
++            {{ (pl.amount) | figure }}
++            from {{ (pl.start) | figure }}
++            @if (pl.day !== null) { monthly on day {{ (pl.day) | figure }} } @else { every {{ (pl.every) | figure }} days }
++            to {{ (pl.end) | figure }}, made
++            <span data-testid="plan-generated">{{ (pl.generated) | figure }}</span>, next
++            <span data-testid="plan-next-dates">{{ (pl.nextDates) | figure }}</span>
+           </li>
+         }
+       </ul>
+@@ -40,7 +42,7 @@ const DAY = /^\d{1,2}$/;
+       <input [id]="'plan-form-end-' + personId()" data-testid="plan-form-end" placeholder="YYYY-MM-DD" [value]="end()" (input)="end.set(value($event)); error.set(null)" />
+       <button type="submit" data-testid="plan-form-submit">Add plan</button>
+       @if (error(); as message) {
+-        <p role="alert" class="error" data-testid="plan-error">{{ message }}</p>
++        <p role="alert" class="error" data-testid="plan-error">{{ (message) | figure }}</p>
+       }
+     </form>
+   `,
+diff --git a/src/main/frontend/src/app/features/people/pools.ts b/src/main/frontend/src/app/features/people/pools.ts
+index de9483a5..c3a0bcc3 100644
+--- a/src/main/frontend/src/app/features/people/pools.ts
++++ b/src/main/frontend/src/app/features/people/pools.ts
+@@ -2,6 +2,7 @@ import { Component, DOCUMENT, effect, inject, input, signal } from '@angular/cor
+ import { Session } from '../../core/session';
+ import { Person } from './people.service';
+ import { Pool, PoolMember, PoolsService } from './pools.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ /** A share as typed: a percent with at most two decimals. */
+ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+@@ -18,6 +19,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+ // A button downloads the pools, re-read from the store, as a CSV file: one line per member.
+ @Component({
+   selector: 'app-pools',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="pools-heading">
+       <h2 id="pools-heading">Pools</h2>
+@@ -26,23 +28,23 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+         <input id="pool-form-name" data-testid="pool-form-name" [value]="name()" (input)="name.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="pool-form-submit">Add pool</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="pool-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="pool-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools (CSV)</button>
+       @for (pool of service.pools(); track pool.id) {
+         <div class="pool" [attr.data-testid]="'pool-row-' + pool.name">
+-          <h3>{{ pool.name }}</h3>
++          <h3>{{ (pool.name) | figure }}</h3>
+           <p>
+-            Total share <span data-testid="pool-total-share">{{ pool.totalShare }}</span>,
+-            balanced <span data-testid="pool-balanced">{{ pool.balanced ? 'yes' : 'no' }}</span>
++            Total share <span data-testid="pool-total-share">{{ (pool.totalShare) | figure }}</span>,
++            balanced <span data-testid="pool-balanced">{{ (pool.balanced ? 'yes' : 'no') | figure }}</span>
+           </p>
+           @if (pool.members.length > 0) {
+             <ul>
+               @for (m of pool.members; track memberKey(m)) {
+                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
+-                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>
+-                  cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
++                  {{ (m.name) | figure }} <span data-testid="pool-share">{{ (m.share) | figure }}</span>
++                  cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span>
+                 </li>
+               }
+             </ul>
+@@ -56,11 +58,11 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+             >
+               <option value="" [selected]="!picked()[pool.id]">Choose a person or pool</option>
+               @for (p of people(); track p.id) {
+-                <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ p.name }}</option>
++                <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ (p.name) | figure }}</option>
+               }
+               @for (other of service.pools(); track other.id) {
+                 @if (other.id !== pool.id) {
+-                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ other.name }}</option>
++                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ (other.name) | figure }}</option>
+                 }
+               }
+             </select>
+@@ -89,7 +91,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+             />
+             <button type="submit" data-testid="pool-member-add">Add member</button>
+             @if (memberErrors()[pool.id]; as message) {
+-              <p role="alert" class="error" data-testid="pool-error">{{ message }}</p>
++              <p role="alert" class="error" data-testid="pool-error">{{ (message) | figure }}</p>
+             }
+           </form>
+         </div>
+diff --git a/src/main/frontend/src/app/features/people/rates.ts b/src/main/frontend/src/app/features/people/rates.ts
+index 13d2128a..b5aae7ba 100644
+--- a/src/main/frontend/src/app/features/people/rates.ts
++++ b/src/main/frontend/src/app/features/people/rates.ts
+@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { Session } from '../../core/session';
+ import { GRADES, Grade } from './people.service';
+ import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+@@ -9,6 +10,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ // sheet's today, and the form that sets a grade's rate from a date.
+ @Component({
+   selector: 'app-rates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="rates-heading">
+       <h2 id="rates-heading">Rates</h2>
+@@ -21,7 +23,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           (change)="grade.set(gradeOf($event)); error.set(null)"
+         >
+           @for (g of grades; track g) {
+-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
++            <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
+           }
+         </select>
+         <label for="rate-form-pct">Rate (%)</label>
+@@ -50,7 +52,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+         />
+         <button type="submit" data-testid="rate-form-submit">Set rate</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="rate-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       <form (submit)="importRates($event)" aria-label="Import rates" data-testid="import-rates-form">
+@@ -64,10 +66,10 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+         ></textarea>
+         <button type="submit" data-testid="import-rates-submit">Import rates</button>
+         @if (imported() !== null) {
+-          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ imported() }}</span></span>
++          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ (imported()) | figure }}</span></span>
+         }
+         @if (importError(); as message) {
+-          <p role="alert" class="error" data-testid="import-rates-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="import-rates-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
+@@ -79,7 +81,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           (change)="previewGrade.set(gradeOf($event)); clearPreview()"
+         >
+           @for (g of grades; track g) {
+-            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
++            <option [value]="g" [selected]="g === previewGrade()">{{ (g) | figure }}</option>
+           }
+         </select>
+         <label for="rate-preview-pct">Candidate rate (%)</label>
+@@ -93,16 +95,16 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+         <button type="submit" data-testid="rate-preview">Preview</button>
+         @if (previewed(); as p) {
+           <p aria-live="polite">
+-            Claims changed: <span data-testid="rate-preview-count">{{ p.count }}</span>,
+-            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
++            Claims changed: <span data-testid="rate-preview-count">{{ (p.count) | figure }}</span>,
++            difference: <span data-testid="rate-preview-diff">{{ (p.diff) | figure }}</span>
+           </p>
+         }
+         @if (previewError(); as message) {
+-          <p role="alert" class="error" data-testid="rate-preview-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="rate-preview-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       <table data-testid="rate-list">
+-        <caption>Rate in force on {{ session.today() }}</caption>
++        <caption>Rate in force on {{ (session.today()) | figure }}</caption>
+         <thead>
+           <tr>
+             <th scope="col">Grade</th>
+@@ -112,9 +114,9 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+         <tbody>
+           @for (g of grades; track g) {
+             <tr>
+-              <td>{{ g }}</td>
++              <td>{{ (g) | figure }}</td>
+               <td [attr.data-testid]="'rate-current-' + g">
+-                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ currentOf(g) ?? 'n/a' }}</span>
++                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ (currentOf(g) ?? 'n/a') | figure }}</span>
+               </td>
+             </tr>
+           }
+@@ -135,11 +137,11 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           <tbody>
+             @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
+               <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+-                <td>{{ r.grade }}</td>
+-                <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+-                <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+-                <td data-testid="rate-pct">{{ r.pct }}</td>
+-                <td data-testid="rate-version">{{ r.version }}</td>
++                <td>{{ (r.grade) | figure }}</td>
++                <td data-testid="rate-from">{{ (r.from ?? 'the start') | figure }}</td>
++                <td data-testid="rate-to">{{ (r.to ?? '') | figure }}</td>
++                <td data-testid="rate-pct">{{ (r.pct) | figure }}</td>
++                <td data-testid="rate-version">{{ (r.version) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index f298e946..b97d5e1c 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -3,6 +3,7 @@ import { GRADES, Grade } from './people.service';
+ import { Session } from '../../core/session';
+ import { Graces } from './rates.service';
+ import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+ const TERMS = /^\d{1,4}$/;
+@@ -45,6 +46,7 @@ const STANDING: Record<PermAction, string> = {
+ // they were last saved.
+ @Component({
+   selector: 'app-settings',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="settings-heading">
+       <h2 id="settings-heading">Settings</h2>
+@@ -67,7 +69,7 @@ const STANDING: Record<PermAction, string> = {
+           (input)="limitFrom.set(value($event)); limitChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
++          In force: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span>
+           @if (clerkLimit() === null) {
+             (no limit)
+           }
+@@ -89,7 +91,7 @@ const STANDING: Record<PermAction, string> = {
+           [value]="floorFrom()"
+           (input)="floorFrom.set(value($event)); floorChanged = true; settingsError.set(null)"
+         />
+-        <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
++        <span>In force: <span data-testid="setting-floor-current">{{ (floor()) | figure }}</span></span>
+         <label for="setting-cap">Cap</label>
+         <input
+           id="setting-cap"
+@@ -108,7 +110,7 @@ const STANDING: Record<PermAction, string> = {
+           (input)="capFrom.set(value($event)); capChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
++          In force: <span data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</span>
+           @if (cap() === null) {
+             (no cap)
+           }
+@@ -130,7 +132,7 @@ const STANDING: Record<PermAction, string> = {
+           (input)="roundingFrom.set(value($event)); roundingChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span>
++          In force: <span data-testid="setting-rounding-current">{{ (rounding() ?? '') | figure }}</span>
+           @if (rounding() === null) {
+             (by the policy date)
+           }
+@@ -153,13 +155,13 @@ const STANDING: Record<PermAction, string> = {
+           (input)="proofThresholdFrom.set(value($event)); proofThresholdChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span>
++          In force: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span>
+           @if (proofThreshold() === null) {
+             (none)
+           }
+         </span>
+         @for (g of grades; track g) {
+-          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }}</label>
++          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ (g) | figure }}</label>
+           <input
+             [id]="'setting-proof-threshold-' + g"
+             [attr.data-testid]="'setting-proof-threshold-' + g"
+@@ -168,7 +170,7 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeProofThresholdInput(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
+             (keydown)="gradeProofThresholdChanged.add(g)"
+           />
+-          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from</label>
++          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ (g) | figure }} from</label>
+           <input
+             [id]="'setting-proof-threshold-' + g + '-from'"
+             [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+@@ -177,7 +179,7 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeProofThresholdFrom(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
+           />
+           <span>
+-            In force: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholdShown(g) }}</span>
++            In force: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (gradeProofThresholdShown(g)) | figure }}</span>
+             @if (gradeProofThresholds()[g] === undefined) {
+               (the sheet's proof threshold)
+             }
+@@ -201,7 +203,7 @@ const STANDING: Record<PermAction, string> = {
+           (input)="noteThresholdFrom.set(value($event)); noteThresholdChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span>
++          In force: <span data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</span>
+           @if (noteThreshold() === null) {
+             (none)
+           }
+@@ -224,7 +226,7 @@ const STANDING: Record<PermAction, string> = {
+           (input)="reviewThresholdFrom.set(value($event)); reviewThresholdChanged = true; settingsError.set(null)"
+         />
+         <span>
+-          In force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span>
++          In force: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span>
+           @if (reviewThreshold() === null) {
+             (none)
+           }
+@@ -246,9 +248,9 @@ const STANDING: Record<PermAction, string> = {
+           [value]="termsFrom()"
+           (input)="termsFrom.set(value($event)); termsChanged = true; settingsError.set(null)"
+         />
+-        <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
++        <span>In force: <span data-testid="setting-terms-current">{{ (terms()) | figure }}</span></span>
+         @for (g of grades; track g) {
+-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
++          <label [for]="'setting-terms-' + g">Terms for grade {{ (g) | figure }} (business days)</label>
+           <input
+             [id]="'setting-terms-' + g"
+             [attr.data-testid]="'setting-terms-' + g"
+@@ -257,7 +259,7 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeTermsInput(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
+             (keydown)="gradeTermsChanged.add(g)"
+           />
+-          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from</label>
++          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ (g) | figure }} from</label>
+           <input
+             [id]="'setting-terms-' + g + '-from'"
+             [attr.data-testid]="'setting-terms-' + g + '-from'"
+@@ -266,14 +268,14 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeTermsFrom(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
+           />
+           <span>
+-            In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsShown(g) }}</span>
++            In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ (gradeTermsShown(g)) | figure }}</span>
+             @if (gradeTerms()[g] === undefined) {
+               (the sheet's terms)
+             }
+           </span>
+         }
+         @for (g of grades; track g) {
+-          <label [for]="'setting-grace-' + g">Grace for grade {{ g }} (days)</label>
++          <label [for]="'setting-grace-' + g">Grace for grade {{ (g) | figure }} (days)</label>
+           <input
+             [id]="'setting-grace-' + g"
+             [attr.data-testid]="'setting-grace-' + g"
+@@ -282,7 +284,7 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeGraceInput(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
+             (keydown)="gradeGraceChanged.add(g)"
+           />
+-          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ g }} from</label>
++          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ (g) | figure }} from</label>
+           <input
+             [id]="'setting-grace-' + g + '-from'"
+             [attr.data-testid]="'setting-grace-' + g + '-from'"
+@@ -291,7 +293,7 @@ const STANDING: Record<PermAction, string> = {
+             (input)="setGradeGraceFrom(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
+           />
+           <span>
+-            In force: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraceShown(g) }}</span>
++            In force: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ (gradeGraceShown(g)) | figure }}</span>
+             @if (gradeGraces()[g] === undefined) {
+               (none)
+             }
+@@ -314,7 +316,7 @@ const STANDING: Record<PermAction, string> = {
+           [value]="latePctFrom()"
+           (input)="latePctFrom.set(value($event)); latePctChanged = true; settingsError.set(null)"
+         />
+-        <span>In force: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></span>
++        <span>In force: <span data-testid="setting-late-pct-current">{{ (latePct()) | figure }}</span></span>
+         <label for="setting-policy-date">Policy date</label>
+         <input
+           id="setting-policy-date"
+@@ -325,7 +327,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="policyDateChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span>
++          In force: <span data-testid="setting-policy-date-current">{{ (policyDate() ?? '') | figure }}</span>
+           @if (policyDate() === null) {
+             (the sheet's today)
+           }
+@@ -340,7 +342,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="periodNumberingFromChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span>
++          In force: <span data-testid="setting-period-numbering-from-current">{{ (periodNumberingFrom() ?? '') | figure }}</span>
+           @if (periodNumberingFrom() === null) {
+             (off)
+           }
+@@ -355,7 +357,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="graceDaysChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span>
++          In force: <span data-testid="setting-grace-days-current">{{ (graceDays() ?? '') | figure }}</span>
+           @if (graceDays() === null) {
+             (off)
+           }
+@@ -370,7 +372,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="entryDateChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span>
++          In force: <span data-testid="setting-entry-date-current">{{ (entryDate() ?? '') | figure }}</span>
+           @if (entryDate() === null) {
+             (off)
+           }
+@@ -385,7 +387,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="fiscalStartMonthChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</span>
++          In force: <span data-testid="setting-fiscal-start-month-current">{{ (fiscalStartMonth()) | figure }}</span>
+         </span>
+         <label for="setting-pot">Pot</label>
+         <input
+@@ -397,7 +399,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="potChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span>
++          In force: <span data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</span>
+           @if (pot() === null) {
+             (none)
+           }
+@@ -412,7 +414,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="alertThresholdChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span>
++          In force: <span data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</span>
+           @if (alertThreshold() === null) {
+             (off)
+           }
+@@ -426,7 +428,7 @@ const STANDING: Record<PermAction, string> = {
+           (keydown)="parentChanged = true"
+         />
+         <span>
+-          In force: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span>
++          In force: <span data-testid="setting-parent-current">{{ (parent() ?? '') | figure }}</span>
+           @if (parent() === null) {
+             (none)
+           }
+@@ -434,7 +436,7 @@ const STANDING: Record<PermAction, string> = {
+         <fieldset>
+           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
+           @for (a of permActions; track a) {
+-            <label [for]="'setting-perm-' + a">Who may {{ a }}</label>
++            <label [for]="'setting-perm-' + a">Who may {{ (a) | figure }}</label>
+             <input
+               [id]="'setting-perm-' + a"
+               [attr.data-testid]="'setting-perm-' + a"
+@@ -443,16 +445,16 @@ const STANDING: Record<PermAction, string> = {
+               (keydown)="permChanged.add(a)"
+             />
+             <span>
+-              In force: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ perms()[a] }}</span>
++              In force: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ (perms()[a]) | figure }}</span>
+               @if (perms()[a] === '') {
+-                ({{ standing[a] }})
++                ({{ (standing[a]) | figure }})
+               }
+             </span>
+           }
+         </fieldset>
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as message) {
+-          <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="settings-error">{{ (message) | figure }}</p>
+         }
+       </form>
+ 
+@@ -479,7 +481,7 @@ const STANDING: Record<PermAction, string> = {
+         </datalist>
+         <button type="submit" data-testid="role-form-submit">Set role</button>
+         @if (roleError(); as message) {
+-          <p role="alert" class="error" data-testid="role-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="role-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (given().length > 0) {
+@@ -494,8 +496,8 @@ const STANDING: Record<PermAction, string> = {
+           <tbody>
+             @for (r of given(); track r.user) {
+               <tr [attr.data-testid]="'role-row-' + r.user">
+-                <td data-testid="role-user">{{ r.user }}</td>
+-                <td data-testid="role-value">{{ r.role }}</td>
++                <td data-testid="role-user">{{ (r.user) | figure }}</td>
++                <td data-testid="role-value">{{ (r.role) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/summary.ts b/src/main/frontend/src/app/features/people/summary.ts
+index dc879d3b..986a97c8 100644
+--- a/src/main/frontend/src/app/features/people/summary.ts
++++ b/src/main/frontend/src/app/features/people/summary.ts
+@@ -3,6 +3,7 @@ import { Claim, cents, money } from './claims.service';
+ import { GRADES, Grade } from './people.service';
+ import { Period } from './periods.service';
+ import { VoidReasonsService } from './void-reasons.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ /** The statuses the summary counts claims by. */
+ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+@@ -23,6 +24,7 @@ export interface SummaryPerson {
+ // per reason on the sheet's void reasons, how many VOID claims were voided with it.
+ @Component({
+   selector: 'app-summary',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="summary-heading" data-testid="summary">
+       <h2 id="summary-heading">Summary</h2>
+@@ -38,10 +40,10 @@ export interface SummaryPerson {
+         <tbody>
+           @for (g of byGrade(); track g.grade) {
+             <tr>
+-              <th scope="row">{{ g.grade }}</th>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
++              <th scope="row">{{ (g.grade) | figure }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ (g.count) | figure }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ (g.active) | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -58,9 +60,9 @@ export interface SummaryPerson {
+           <tbody>
+             @for (p of byPeriod(); track p.name) {
+               <tr>
+-                <th scope="row">{{ p.name }}</th>
+-                <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+-                <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
++                <th scope="row">{{ (p.name) | figure }}</th>
++                <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ (p.dueTotal) | figure }}</td>
++                <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ (p.change) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -77,8 +79,8 @@ export interface SummaryPerson {
+           <tbody>
+             @for (t of tagDueTotals(); track t.tag) {
+               <tr>
+-                <th scope="row">{{ t.tag }}</th>
+-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
++                <th scope="row">{{ (t.tag) | figure }}</th>
++                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ (t.dueTotal) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -95,8 +97,8 @@ export interface SummaryPerson {
+           <tbody>
+             @for (m of monthDueTotals(); track m.month) {
+               <tr>
+-                <th scope="row">{{ m.month }}</th>
+-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++                <th scope="row">{{ (m.month) | figure }}</th>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ (m.dueTotal) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -112,13 +114,13 @@ export interface SummaryPerson {
+         <tbody>
+           @for (p of classicByPeriod(); track p.name) {
+             <tr>
+-              <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <th scope="row">{{ (p.name) | figure }}</th>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ (p.dueTotal) | figure }}</td>
+             </tr>
+           }
+           <tr>
+             <th scope="row">Sheet</th>
+-            <td data-testid="classic-due-total">{{ classicDueTotal() }}</td>
++            <td data-testid="classic-due-total">{{ (classicDueTotal()) | figure }}</td>
+           </tr>
+         </tbody>
+       </table>
+@@ -132,8 +134,8 @@ export interface SummaryPerson {
+         <tbody>
+           @for (s of byStatus(); track s.status) {
+             <tr>
+-              <th scope="row">{{ s.status }}</th>
+-              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++              <th scope="row">{{ (s.status) | figure }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ (s.count) | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -149,8 +151,8 @@ export interface SummaryPerson {
+           <tbody>
+             @for (v of byVoidReason(); track v.reason) {
+               <tr>
+-                <th scope="row">{{ v.reason }}</th>
+-                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
++                <th scope="row">{{ (v.reason) | figure }}</th>
++                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ (v.count) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/templates.ts b/src/main/frontend/src/app/features/people/templates.ts
+index 2bab75f9..51d4ab61 100644
+--- a/src/main/frontend/src/app/features/people/templates.ts
++++ b/src/main/frontend/src/app/features/people/templates.ts
+@@ -1,6 +1,7 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { TemplatesService } from './templates.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+ 
+@@ -8,6 +9,7 @@ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+ // amount the claim form would refuse, is refused; saving a name again replaces that template).
+ @Component({
+   selector: 'app-templates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="templates-heading">
+       <h2 id="templates-heading">Claim templates</h2>
+@@ -26,16 +28,16 @@ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+         <input id="template-form-note" data-testid="template-form-note" [value]="note()" (input)="note.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="template-form-submit">Save template</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="template-form-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="template-form-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (service.templates().length > 0) {
+         <ul data-testid="template-list">
+           @for (t of service.templates(); track t.id) {
+             <li [attr.data-testid]="'template-row-' + t.name">
+-              <span data-testid="template-name">{{ t.name }}</span>
+-              <span data-testid="template-amount">{{ t.amount }}</span>
+-              <span data-testid="template-note">{{ t.note }}</span>
++              <span data-testid="template-name">{{ (t.name) | figure }}</span>
++              <span data-testid="template-amount">{{ (t.amount) | figure }}</span>
++              <span data-testid="template-note">{{ (t.note) | figure }}</span>
+             </li>
+           }
+         </ul>
+diff --git a/src/main/frontend/src/app/features/people/tree-search.ts b/src/main/frontend/src/app/features/people/tree-search.ts
+index 9cec1d9b..d2e70849 100644
+--- a/src/main/frontend/src/app/features/people/tree-search.ts
++++ b/src/main/frontend/src/app/features/people/tree-search.ts
+@@ -1,12 +1,14 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Found, TreeSearchService } from './tree-search.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The tree search: every person of this sheet and the other sheets of its tree whose name or an alias
+ // contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>. It changes
+ // nothing.
+ @Component({
+   selector: 'app-tree-search',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="search-heading">
+       <h2 id="search-heading">Search the tree</h2>
+@@ -14,15 +16,15 @@ import { Found, TreeSearchService } from './tree-search.service';
+         <label for="search-name">Name or alias</label>
+         <input id="search-name" data-testid="search-name" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="search">Search</button>
+-        <span>Found <span data-testid="search-count">{{ count() }}</span></span>
++        <span>Found <span data-testid="search-count">{{ (count()) | figure }}</span></span>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="search-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="search-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (found().length > 0) {
+         <ol data-testid="search-list">
+           @for (f of found(); track $index) {
+-            <li data-testid="search-line">{{ f.sheet }} {{ f.name }} {{ f.dueTotal }}</li>
++            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (f.name) | figure }} {{ (f.dueTotal) | figure }}</li>
+           }
+         </ol>
+       }
+diff --git a/src/main/frontend/src/app/features/people/void-reasons.ts b/src/main/frontend/src/app/features/people/void-reasons.ts
+index 1f051834..16a7d8e8 100644
+--- a/src/main/frontend/src/app/features/people/void-reasons.ts
++++ b/src/main/frontend/src/app/features/people/void-reasons.ts
+@@ -1,11 +1,13 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { VoidReasonsService } from './void-reasons.service';
++import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The sheet's void reasons, one line each, in the order they were added, and the entry by which one is
+ // added (a blank one, or one already on the list, is refused).
+ @Component({
+   selector: 'app-void-reasons',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="void-reasons-heading">
+       <h2 id="void-reasons-heading">Void reasons</h2>
+@@ -14,13 +16,13 @@ import { VoidReasonsService } from './void-reasons.service';
+         <input id="void-reason-text" data-testid="void-reason-text" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
+         <button type="submit" data-testid="void-reason-add">Add void reason</button>
+         @if (error(); as message) {
+-          <p role="alert" class="error" data-testid="void-reason-error">{{ message }}</p>
++          <p role="alert" class="error" data-testid="void-reason-error">{{ (message) | figure }}</p>
+         }
+       </form>
+       @if (service.reasons().length > 0) {
+         <ul data-testid="void-reason-list">
+           @for (r of service.reasons(); track r.id) {
+-            <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason }}</li>
++            <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ (r.reason) | figure }}</li>
+           }
+         </ul>
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java b/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java
+index cd16623d..730d3868 100644
+--- a/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java
++++ b/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java
+@@ -21,7 +21,7 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/claims/bulk-*");
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/officefloor/hq/app/locale/LocaleController.java b/src/main/java/net/officefloor/hq/app/locale/LocaleController.java
+new file mode 100644
+index 00000000..a7c84ff6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/LocaleController.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.locale;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The signed-in user's locale on a sheet. The signed-in user's name travels in the {@code X-User} header.
++ * Choosing it is not a change to the sheet: it goes through on an archived sheet, as of a date and for a
++ * viewer (see the guards' exclusions). */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/locale")
++@Validated
++public class LocaleController {
++
++    /** A user's locale. */
++    public record LocaleView(String locale) {
++    }
++
++    /** A locale asked. */
++    public record LocaleRequest(@NotNull @Size(max = 10) String locale) {
++    }
++
++    private final LocaleService service;
++
++    public LocaleController(LocaleService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public LocaleView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return new LocaleView(service.localeOf(sheetId.trim(), user.trim()));
++    }
++
++    @PutMapping
++    public LocaleView choose(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid LocaleRequest request) {
++        return new LocaleView(service.choose(sheetId.trim(), user.trim(), request.locale().trim()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/LocaleService.java b/src/main/java/net/officefloor/hq/app/locale/LocaleService.java
+new file mode 100644
+index 00000000..4c27d556
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/LocaleService.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.locale;
++
++import java.util.Set;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The locale each user has chosen on a sheet: how the screen shows figures to them. Writes no audit. */
++@Service
++public class LocaleService {
++
++    /** The locale a user has until they choose another. */
++    public static final String DEFAULT = "en";
++
++    /** The locales a user may choose. */
++    public static final Set<String> LOCALES = Set.of("en", "de");
++
++    private final SheetRepository sheets;
++    private final UserLocaleRepository locales;
++
++    public LocaleService(SheetRepository sheets, UserLocaleRepository locales) {
++        this.sheets = sheets;
++        this.locales = locales;
++    }
++
++    @Transactional(readOnly = true)
++    public String localeOf(String sheetId, String user) {
++        return locales.findBySheetIdAndUser(sheetId, user).map(UserLocale::getLocale).orElse(DEFAULT);
++    }
++
++    @Transactional
++    public String choose(String sheetId, String user, String locale) {
++        if (!LOCALES.contains(locale)) throw new LocaleUnknownException();
++        if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
++        locales.findBySheetIdAndUser(sheetId, user).ifPresentOrElse(l -> l.setLocale(locale),
++                () -> locales.save(new UserLocale(sheetId, user, locale)));
++        return locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/LocaleUnknownException.java b/src/main/java/net/officefloor/hq/app/locale/LocaleUnknownException.java
+new file mode 100644
+index 00000000..ef89c043
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/LocaleUnknownException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.locale;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A locale asked that is not one a user may choose. */
++@ResponseStatus(HttpStatus.BAD_REQUEST)
++public class LocaleUnknownException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/UserLocale.java b/src/main/java/net/officefloor/hq/app/locale/UserLocale.java
+new file mode 100644
+index 00000000..e09341d8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/UserLocale.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.locale;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** The locale a user name has chosen on a sheet. */
++@Entity
++@Table(name = "user_locale")
++public class UserLocale {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserLocale() {
++    }
++
++    public UserLocale(String sheetId, String user, String locale) {
++        this.sheetId = sheetId;
++        this.user = user;
++        this.locale = locale;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java b/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java
+new file mode 100644
+index 00000000..7aa72537
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.locale;
++
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserLocaleRepository extends JpaRepository<UserLocale, Long> {
++
++    Optional<UserLocale> findBySheetIdAndUser(String sheetId, String user);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+index c36d365b..b3f1b0cb 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+@@ -26,7 +26,7 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/claims/bulk-*",
+                         "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java b/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
+index 2a0d5893..df3f60ea 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
+@@ -26,7 +26,7 @@ public class SheetArchivedGuard implements WebMvcConfigurer, HandlerInterceptor
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/claims/bulk-*",
+                         "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
+     }
+ 
+diff --git a/src/main/resources/db/migration/V87__user_locale.sql b/src/main/resources/db/migration/V87__user_locale.sql
+new file mode 100644
+index 00000000..084234d9
+--- /dev/null
++++ b/src/main/resources/db/migration/V87__user_locale.sql
+@@ -0,0 +1,9 @@
++-- The locale each user name has chosen on a sheet: en or de. A name with no row has en. Only how the
++-- screen shows figures to that user; not part of the sheet's history and not cloned.
++CREATE TABLE user_locale (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    locale    VARCHAR(10)  NOT NULL CHECK (locale IN ('en', 'de'))
++);
++CREATE UNIQUE INDEX user_locale_sheet_user ON user_locale (sheet_id, user_name);
