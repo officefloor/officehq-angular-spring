@@ -1,0 +1,286 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 22adffc0..d2c3246b 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -39,6 +39,8 @@ export interface Person {
+   contact: string | null;
+   /** The other names the person goes by, sorted as names are compared. */
+   aliases: string[];
++  /** Whether the person's name or an alias of theirs is used on another sheet of the sheet's tree. */
++  clashing: boolean;
+ }
+ 
+ /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b6b7de01..e8b4e7c1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -275,6 +275,7 @@ import { Audit } from './audit';
+               <th scope="col">Terms</th>
+               <th scope="col">Contact</th>
+               <th scope="col">Aliases</th>
++              <th scope="col">Clashing</th>
+               <th scope="col">Claimed</th>
+               <th scope="col">Due</th>
+               <th scope="col">Settled due</th>
+@@ -319,6 +320,7 @@ import { Audit } from './audit';
+                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
++                <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
+                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                 @let split = splitOf(p);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3b7d0ebf..3c1936d7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -49,16 +49,17 @@ public class PersonController {
+ 
+     /** A person: the grade in force on the sheet's {@code today}, and every grade they were given by
+      * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
+-     * have any hold, listed in {@code holds} by from-date. */
++     * have any hold, listed in {@code holds} by from-date; {@code clashing} is whether their name or an
++     * alias of theirs is used on another sheet of the sheet's tree. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
+-            String contact, List<String> aliases) {
+-        public static PersonView of(Person person, LocalDate today) {
++            String contact, List<String> aliases, boolean clashing) {
++        public static PersonView of(Person person, LocalDate today, boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
+-                    person.getContact(), person.getAliases());
++                    person.getContact(), person.getAliases(), clashing);
+         }
+     }
+ 
+@@ -156,11 +157,11 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+         if (asOf != null) {
+-            return history.read(sheetId.trim(), asOf).people().stream().map(person -> PersonView.of(person, asOf))
++            return history.read(sheetId.trim(), asOf).people().stream().map(person -> PersonView.of(person, asOf, service.clashes(person)))
+                     .toList();
+         }
+         LocalDate today = service.today(sheetId.trim());
+-        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today)).toList();
++        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today, service.clashes(person))).toList();
+     }
+ 
+     @GetMapping("/patrons")
+@@ -293,11 +294,12 @@ public class PersonController {
+     public ResponseEntity<StaleView> stale(PersonStaleException e) {
+         Person current = e.getCurrent();
+         return ResponseEntity.status(HttpStatus.CONFLICT)
+-                .body(new StaleView("stale", PersonView.of(current, service.today(current.getSheetId()))));
++                .body(new StaleView("stale", PersonView.of(current, service.today(current.getSheetId()),
++                        service.clashes(current))));
+     }
+ 
+     /** The person as the sheet shows them on its today. */
+     private PersonView view(String sheetId, Person person) {
+-        return PersonView.of(person, service.today(sheetId.trim()));
++        return PersonView.of(person, service.today(sheetId.trim()), service.clashes(person));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index a456695b..c14a701d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+@@ -23,6 +24,12 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+         return findBySheetIdAndNameKey(sheetId, key).or(() -> findBySheetIdAndAliasKey(sheetId, key));
+     }
+ 
++    boolean existsBySheetIdInAndNameKey(Collection<String> sheetIds, String nameKey);
++
++    /** Whether a person on one of the sheets has an alias with the key {@code aliasKey}. */
++    @Query("select count(p) > 0 from Person p join p.aliases a where p.sheetId in :sheetIds and a.aliasKey = :aliasKey")
++    boolean existsAliasInSheets(@Param("sheetIds") Collection<String> sheetIds, @Param("aliasKey") String aliasKey);
++
+     Optional<Person> findBySheetIdAndContact(String sheetId, String contact);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 817e4bcc..b2079168 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -24,10 +24,12 @@ public class PersonService {
+     private final SheetService sheetService;
+     private final PersonPatronRepository patrons;
+     private final PersonWatchRepository watches;
++    private final PersonTree tree;
+ 
+     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
+-            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches) {
++            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree) {
+         this.people = people;
++        this.tree = tree;
+         this.patrons = patrons;
+         this.watches = watches;
+         this.sheets = sheets;
+@@ -53,13 +55,14 @@ public class PersonService {
+     }
+ 
+     /** Adds a person with their own terms (none when null) and contact (none when blank); refused when
+-     * another person on the sheet has the name or the contact. */
++     * another person on the sheet has the name or the contact, or another sheet of its tree uses the name. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+         if (!sheets.existsById(sheetId)) {
+             throw new SheetNotFoundException();
+         }
+         requireFree(sheetId, name, null);
++        tree.requireFree(sheetId, name);
+         requireContactFree(sheetId, contact, null);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Person created = new Person(sheetId, name, grade);
+@@ -83,7 +86,8 @@ public class PersonService {
+     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
+      * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
+      * have been saved since. The person's own terms become {@code terms} (none when null), and their
+-     * contact {@code contact} (none when blank), refused when another person on the sheet has it. */
++     * contact {@code contact} (none when blank), refused when another person on the sheet has it. Refused
++     * too while the new name, or any alias of theirs, is used on another sheet of the sheet's tree. */
+     @Transactional
+     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
+@@ -92,6 +96,8 @@ public class PersonService {
+             throw new PersonStaleException(person);
+         }
+         requireFree(sheetId, name, person.getId());
++        tree.requireFree(sheetId, name);
++        person.getAliases().forEach(alias -> tree.requireFree(sheetId, alias));
+         requireContactFree(sheetId, contact, person.getId());
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate today = sheetService.today(sheetId);
+@@ -186,14 +192,14 @@ public class PersonService {
+     }
+ 
+     /** Gives the person the alias {@code alias}; refused when it is blank, or equals (as names are
+-     * compared) any name or alias on the sheet. */
++     * compared) any name or alias on the sheet or on another sheet of its tree. */
+     @Transactional
+     public Person addAlias(String sheetId, String user, long personId, String alias) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         if (alias == null || alias.isBlank()) throw new PersonAliasException();
+         String key = Person.keyOf(alias);
+         if (people.findBySheetIdAndNameKey(sheetId, key).isPresent()
+-                || people.findBySheetIdAndAliasKey(sheetId, key).isPresent()) {
++                || people.findBySheetIdAndAliasKey(sheetId, key).isPresent() || tree.taken(sheetId, alias)) {
+             throw new PersonAliasException();
+         }
+         person.addAlias(alias);
+@@ -202,6 +208,12 @@ public class PersonService {
+         return person;
+     }
+ 
++    /** Whether the person's name or an alias of theirs is used on another sheet of their tree. */
++    @Transactional(readOnly = true)
++    public boolean clashes(Person person) {
++        return tree.clashes(person);
++    }
++
+     /** Refuses a name another person on the sheet (other than {@code self}) already has, and a name
+      * any alias on the sheet has. */
+     private void requireFree(String sheetId, String name, Long self) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTree.java b/src/main/java/net/officefloor/hq/app/person/PersonTree.java
+new file mode 100644
+index 00000000..bd735759
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTree.java
+@@ -0,0 +1,71 @@
++package net.officefloor.hq.app.person;
++
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The names and aliases used across a sheet's tree: the sheet's ancestors, and every sheet below its
++ * topmost ancestor, among the sheets that exist. A name or alias one of them uses may not be used on the
++ * sheet; a person whose name or alias one of them uses clashes. */
++@Service
++public class PersonTree {
++
++    private final SheetRepository sheets;
++    private final PersonRepository people;
++
++    public PersonTree(SheetRepository sheets, PersonRepository people) {
++        this.sheets = sheets;
++        this.people = people;
++    }
++
++    /** The ids of the other sheets of the sheet's tree. */
++    @Transactional(readOnly = true)
++    public Set<String> othersOf(String sheetId) {
++        Set<String> seen = new LinkedHashSet<>();
++        String root = sheetId;
++        for (Sheet up = sheets.findById(sheetId).orElse(null); up != null && seen.add(up.getId());
++                up = up.getParentId() == null ? null : sheets.findById(up.getParentId()).orElse(null)) {
++            root = up.getId();
++        }
++        Set<String> tree = new LinkedHashSet<>(seen);
++        Deque<String> below = new ArrayDeque<>(List.of(root));
++        while (!below.isEmpty()) {
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
++                if (tree.add(child.getId())) below.add(child.getId());
++            }
++        }
++        tree.remove(sheetId);
++        return tree;
++    }
++
++    /** Whether another sheet of the sheet's tree uses {@code name} as a name or alias (as names are
++     * compared). */
++    @Transactional(readOnly = true)
++    public boolean taken(String sheetId, String name) {
++        return taken(othersOf(sheetId), name);
++    }
++
++    /** Whether the person's name or any alias of theirs is used on another sheet of their tree. */
++    @Transactional(readOnly = true)
++    public boolean clashes(Person person) {
++        Set<String> others = othersOf(person.getSheetId());
++        return taken(others, person.getName()) || person.getAliases().stream().anyMatch(a -> taken(others, a));
++    }
++
++    /** Refuses {@code name} when another sheet of the sheet's tree uses it. */
++    void requireFree(String sheetId, String name) {
++        if (taken(sheetId, name)) throw new PersonNameTakenException();
++    }
++
++    private boolean taken(Set<String> others, String name) {
++        if (others.isEmpty()) return false;
++        String key = Person.keyOf(name);
++        return people.existsBySheetIdInAndNameKey(others, key) || people.existsAliasInSheets(others, key);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+index 09e4586d..17474694 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -56,7 +56,8 @@ public class QuickAddController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid QuickAddRequest request) {
+         QuickAddService.Added added = service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue());
+-        PersonView person = PersonView.of(added.person(), personService.today(sheetId.trim()));
++        PersonView person = PersonView.of(added.person(), personService.today(sheetId.trim()),
++                personService.clashes(added.person()));
+         return new QuickAddView(person, ClaimView.of(added.claim(), claimService));
+     }
+ }
