@@ -1,0 +1,64 @@
+{
+  "checkpoint": 30,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp30_corrections",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim with a negative amount is a correction. It is allowed only when the claim form names, by\nnumber, a SETTLED claim of the same person that it corrects; otherwise it is refused. A\ncorrection's due is its amount times the rate, rounded like any claim, with no floor and no late\ncharge. It is numbered, opened and settled like any claim, counts in every total, and shows the\nnumber it corrects.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim with a negative amount is a correction. It is allowed only when the claim form names, by\nnumber, a SETTLED claim of the same person that it corrects; otherwise it is refused. A\ncorrection's due is its amount times the rate, rounded like any claim, with no floor and no late\ncharge. It is numbered, opened and settled like any claim, counts in every total, and shows the\nnumber it corrects.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f6c07f5f3ab21375c8bbb59f5105c3867793fd8e",
+  "reset_sha": "",
+  "preagent_sha": "a2334262c0bacf447ce9c7cde9d61012a6a817da",
+  "prev_sha": "a2334262c0bacf447ce9c7cde9d61012a6a817da",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0039584000000001,
+    "input_tokens": 42,
+    "output_tokens": 11323,
+    "cache_read_tokens": 1127372,
+    "cache_creation_tokens": 68982,
+    "num_turns": 22,
+    "duration_ms": 249122,
+    "duration_api_ms": 126600,
+    "model": "claude-opus-5-5",
+    "session_id": "9e38f662-fa0b-471c-87e9-2ce2f8ef1c24",
+    "stop_reason": "success",
+    "result_text": "Corrections are in, and `bin/e2e` passes all 4 tests: the corrections test plus the three existing scenarios.\n\n**What it does now**\n- **Adding a correction:** the claim form has a new \"Corrects claim no.\" field (`claim-form-corrects`). An amount may now be negative. A negative claim is refused, with `claim-form-error` shown, unless that field gives the number of a settled claim belonging to the same person. Each claim row shows the number it corrects in `claim-corrects`.\n- **Due:** a correction's due is its amount times the rate, rounded half-to-even like any claim. It gets no floor and no late charge. I made this change on both the server and the front end, because the front end works out dues itself.\n- **Everything else:** corrections are numbered, opened and settled like any claim, and their negative amounts and dues count in every total. A negative due counts as within any clerk limit. Quick add still only takes non-negative amounts.\n\n**Database (`V26__claim_corrects.sql`)**\n- It adds a nullable `corrects` column to claims.\n- The original schema had an unnamed `CHECK (amount >= 0)` on the amount column, which blocked negative amounts at the database. Because it has no name, the migration can't drop it directly. Instead it copies the amount into a new column, drops the old column and renames the new one. It then adds a named check that only allows a negative amount when `corrects` is filled in. The app runs on in-memory H2, so no existing data is affected.\n\n**Choices beyond the request**\n- Editing a draft uses the same rule as adding.\n- A non-negative claim that names a claim to correct is refused, because only corrections name one.\n- The audit records are unchanged; the test doesn't expect a `corrects` field in them.\n- An open correction that is past its due-by date still counts as overdue in the overdue count and total. It just never gets a late charge. The request didn't say either way, so say if corrections should be left out of the overdue figures.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0039584000000001,
+        "num_turns": 22,
+        "duration_ms": 249122,
+        "duration_api_ms": 126600,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp30.agent.jsonl",
+  "agent_diff_file": "cp30.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
