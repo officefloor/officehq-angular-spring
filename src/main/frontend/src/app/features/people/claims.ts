@@ -1,7 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, cents, money } from './claims.service';
-import { dueCents } from './rates.service';
+import { Grade } from './people.service';
+import { Rate, dueCents, rateOn } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -108,8 +109,10 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The rate of the person's grade, or null when the grade has no rate. */
-  readonly rate = input.required<string | null>();
+  /** The person's grade. */
+  readonly grade = input.required<Grade>();
+  /** The sheet's rates. */
+  readonly rates = input.required<Rate[]>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -134,11 +137,12 @@ export class Claims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** What is due on the claim at the person's rate; n/a when the grade has no rate. A claim settled
+  /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
+   *  their grade applies then. A claim settled
    *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
   protected dueOf(claim: Claim): string {
     if (claim.status === 'SETTLED' && claim.settledDue !== null) return claim.settledDue;
-    const due = dueCents(cents(claim.amount), this.rate());
+    const due = dueCents(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
     return due === null ? 'n/a' : money(due);
   }
 

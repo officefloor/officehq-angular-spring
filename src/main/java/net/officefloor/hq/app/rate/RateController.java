@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,15 +24,19 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RateController {
 
-    /** A grade's rate; the percent is sent as text with two decimals so it is never rounded on the way. */
-    public record RateView(String grade, String pct) {
+    /** A grade's rate and the date it applies from (null: from the beginning of time); the percent is
+     * sent as text with two decimals so it is never rounded on the way. */
+    public record RateView(String grade, String pct, LocalDate from) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    rate.getFrom());
         }
     }
 
-    /** A rate: a percent of 0.00 or more, with up to two decimals. */
-    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
+    /** A rate: a percent of 0.00 or more, with up to two decimals, and the date it applies from (null: from
+     * the beginning of time). */
+    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
+            LocalDate from) {
 
         BigDecimal pctValue() {
             return new BigDecimal(pct.trim()).setScale(2);
@@ -55,6 +60,6 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.pctValue()));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.pctValue()));
     }
 }

@@ -1,11 +1,12 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { GRADES, Grade } from './people.service';
-import { Rate, RatesService } from './rates.service';
+import { Rate, RatesService, rateOn } from './rates.service';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
-// The rate of each grade on the sheet, and the form that sets a grade's rate.
+// The rates of each grade on the sheet, each from its from-date, with the one in force on the
+// sheet's today, and the form that sets a grade's rate from a date.
 @Component({
   selector: 'app-rates',
   template: `
@@ -31,12 +32,21 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           [value]="pct()"
           (input)="pct.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-from">From</label>
+        <input
+          id="rate-form-from"
+          type="date"
+          data-testid="rate-form-from"
+          [value]="from()"
+          (input)="from.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
         }
       </form>
       <table data-testid="rate-list">
+        <caption>Rate in force on {{ session.today() }}</caption>
         <thead>
           <tr>
             <th scope="col">Grade</th>
@@ -45,15 +55,36 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="rateOf(g) === null ? null : 'rate-row-' + g + '-start'">
+            <tr>
               <td>{{ g }}</td>
               <td [attr.data-testid]="'rate-current-' + g">
-                <span [attr.data-testid]="rateOf(g) === null ? null : 'rate-pct'">{{ rateOf(g) ?? 'n/a' }}</span>
+                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ currentOf(g) ?? 'n/a' }}</span>
               </td>
             </tr>
           }
         </tbody>
       </table>
+      @if (sorted().length > 0) {
+        <table data-testid="rate-history">
+          <caption>All rates</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              <th scope="col">From</th>
+              <th scope="col">Rate (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
+              <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+                <td>{{ r.grade }}</td>
+                <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+                <td data-testid="rate-pct">{{ r.pct }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </section>
   `,
   styles: `
@@ -72,6 +103,10 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
       border-collapse: collapse;
       margin-bottom: 1rem;
     }
+    caption {
+      text-align: left;
+      font-weight: bold;
+    }
     th,
     td {
       text-align: left;
@@ -80,17 +115,24 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
   `,
 })
 export class Rates {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly service = inject(RatesService);
 
-  /** The sheet's rates, by grade. */
+  /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
+  /** The rates by grade, then by from-date (one with none first). */
+  protected readonly sorted = computed(() =>
+    [...this.rates()].sort(
+      (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
+    ),
+  );
   /** A grade's rate was set. */
   readonly saved = output<Rate>();
 
   protected readonly grades = GRADES;
   protected readonly grade = signal<Grade>('A');
   protected readonly pct = signal('');
+  protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
 
   protected value(event: Event): string {
@@ -101,8 +143,10 @@ export class Rates {
     return (event.target as HTMLSelectElement).value as Grade;
   }
 
-  protected rateOf(grade: Grade): string | null {
-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+  /** The grade's rate in force on the sheet's today. */
+  protected currentOf(grade: Grade): string | null {
+    const today = this.session.today();
+    return today === null ? null : rateOn(this.rates(), grade, today);
   }
 
   protected async submit(event: Event): Promise<void> {
@@ -115,11 +159,17 @@ export class Rates {
       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    const from = this.from().trim();
+    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.error.set('Type a from-date as YYYY-MM-DD, or leave it blank.');
+      return;
+    }
     try {
-      const rate = await this.service.set(sheet, this.grade(), pct);
+      const rate = await this.service.set(sheet, this.grade(), pct, from || null);
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(rate);
       this.pct.set('');
+      this.from.set('');
     } catch {
       this.error.set('That rate could not be set.');
     }

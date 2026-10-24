@@ -8,6 +8,19 @@ export interface Rate {
   grade: Grade;
   /** The percent with two decimals, as text (e.g. "12.50"). */
   pct: string;
+  /** The date the rate applies from (YYYY-MM-DD); null when it applies from the beginning of time. */
+  from: string | null;
+}
+
+/** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
+ *  one with no from-date when none has; null when no rate applies yet. */
+export function rateOn(rates: Rate[], grade: Grade, date: string): string | null {
+  let best: Rate | null = null;
+  for (const r of rates) {
+    if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
+    if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
+  }
+  return best?.pct ?? null;
 }
 
 /** What is due on an amount at a rate: amount times pct, divided by 100, rounded half up to two
@@ -29,9 +42,10 @@ export class RatesService {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheet), { headers: this.session.headers() }));
   }
 
-  set(sheet: string, grade: Grade, pct: string): Promise<Rate> {
+  /** A null from sets the rate that applies from the beginning of time. */
+  set(sheet: string, grade: Grade, pct: string, from: string | null): Promise<Rate> {
     return firstValueFrom(
-      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct }, { headers: this.session.headers() }),
+      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from }, { headers: this.session.headers() }),
     );
   }
 

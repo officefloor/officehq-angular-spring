@@ -5,12 +5,12 @@ import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Rates } from './rates';
-import { Rate, RatesService, dueCents } from './rates.service';
+import { Rate, RatesService, dueCents, rateOn } from './rates.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
 // and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it at their
-// grade's rate; the sheet's
+// grade's rate in force on the sheet's today; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
@@ -76,7 +76,8 @@ import { Rate, RatesService, dueCents } from './rates.service';
                     [personId]="p.id"
                     [personName]="p.name"
                     [claims]="claimsOf(p.id)"
-                    [rate]="rateOf(p.grade)"
+                    [grade]="p.grade"
+                    [rates]="rates()"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -199,12 +200,14 @@ export class People {
     return this.claimsOf(personId).reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0);
   }
 
-  protected rateOf(grade: Grade): string | null {
-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+  /** The grade's rate in force on the sheet's today. */
+  private rateOf(grade: Grade): string | null {
+    const today = this.session.today();
+    return today === null ? null : rateOn(this.rates(), grade, today);
   }
 
-  /** The person's claimed times their grade's rate, divided by 100 and rounded half up; null when
-   *  their grade has no rate. */
+  /** The person's claimed times their grade's rate in force on the sheet's today, divided by 100 and
+   *  rounded half up; null when no rate of their grade applies then. */
   protected dueTotalOf(person: Person): string | null {
     const due = this.dueCentsOf(person);
     return due === null ? null : money(due);
@@ -214,9 +217,12 @@ export class People {
     return dueCents(this.claimedCentsOf(person.id), this.rateOf(person.grade));
   }
 
-  /** Put a set rate in place of the grade's old one. */
+  /** Put a set rate in place of the grade's old one for the same from-date. */
   protected rateSaved(rate: Rate): void {
-    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
+    this.rates.update((list) => [
+      ...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from),
+      rate,
+    ]);
   }
 
   /** Put an added claim first, or a saved one in its place. */
