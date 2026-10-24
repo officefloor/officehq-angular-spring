@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f4a7b5fcae46a3946a3c628e320902c1aec90e27",
+  "reset_sha": "",
+  "preagent_sha": "d70dd82f9a62f0c1df67f5e07ec0500221affe38",
+  "prev_sha": "d70dd82f9a62f0c1df67f5e07ec0500221affe38",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3132431999999996,
+    "input_tokens": 56,
+    "output_tokens": 12425,
+    "cache_read_tokens": 1853836,
+    "cache_creation_tokens": 86719,
+    "num_turns": 29,
+    "duration_ms": 400896,
+    "duration_api_ms": 156993,
+    "model": "claude-opus-5-5",
+    "session_id": "501cceef-4815-442b-a2a5-23cb12e51644",
+    "stop_reason": "success",
+    "result_text": "Bulk grade is built, and 3 of the 4 tests pass. The fourth, \"bulk grade scenario 3\", fails at a step that has nothing to do with bulk grade, and I didn't change the app to get past it.\n\n**Why scenario 3 fails**\n\nAt `e2e/specs/acceptance.spec.ts:739` the test expects adding a proof to Ada's claim (dated 2026-03-10) to succeed. But the period P1 (2026-03-01 to 2026-03-15) has already closed by then; the test's own expected audit lists `PERIOD_CLOSED \u2026 period=P1 \u2026 auto=yes` just before that step. The app refuses any change to a claim dated in a closed period (`ClaimService.java:331`), and proofs are no exception. Every other claim action follows the same rule.\n\nTo check that nothing else was wrong, I briefly switched that check off for proofs. All 4 tests passed, so this is the only thing blocking the suite. I then put the check back, because allowing proofs on claims in closed periods is a change to an existing rule and wasn't part of this request.\n\n**What I built**\n- **Server:** a new `POST /api/sheets/{id}/people/bulk-grade` endpoint that takes the selected people, a grade and an optional from-date. A new `PersonBulkService` saves each person through the same `PersonService.update` the person form uses, in list order, keeping their name and terms. So each person gets their own `PERSON_EDITED` line and the usual rollup lines, and the from-date defaults to the sheet's today. Like the other actions, it's refused as a whole for a viewer, an archived sheet or a sheet shown as of a past date.\n- **Front end** (`people.ts`, `people.service.ts`):\n  - a `person-select` checkbox on each row;\n  - a grade dropdown, from-date field and apply button (`bulk-grade`, `bulk-grade-from`, `bulk-grade-apply`);\n  - the number changed (`bulk-graded`), cleared while the action runs;\n  - a `person-error` message if the action is refused.\n\n**Decision for you:** should proofs be allowed on claims in a closed period? If yes, removing that one `refuseClosed` line in `addProof` makes all 4 tests pass. If not, the scenario 3 spec needs fixing instead, which I'm not allowed to edit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3132431999999996,
+        "num_turns": 29,
+        "duration_ms": 400896,
+        "duration_api_ms": 156993,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
