@@ -19,6 +19,8 @@ import { Templates } from './templates';
 import { TreeSearch } from './tree-search';
 import { VoidReasons } from './void-reasons';
 import { Pools } from './pools';
+import { Crews } from './crews';
+import { CrewsService } from './crews.service';
 import { Plans } from './plans';
 import { Plan, PlansService } from './plans.service';
 import { PoolsService } from './pools.service';
@@ -61,7 +63,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -90,6 +92,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-holidays (added)="holidayAdded()" />
     <app-void-reasons />
     <app-pools [people]="people()" />
+    <app-crews [people]="people()" [dueCents]="dueCentsById()" />
     <app-templates />
     <app-tree-search />
     <app-audit />
@@ -837,6 +840,7 @@ export class People {
   private readonly statementsService = inject(StatementsService);
   private readonly periodsService = inject(PeriodsService);
   private readonly poolsService = inject(PoolsService);
+  private readonly crewsService = inject(CrewsService);
   private readonly plansService = inject(PlansService);
   private readonly document = inject(DOCUMENT);
 
@@ -1130,6 +1134,8 @@ export class People {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum(this.people().map((p) => this.dueCentsOf(p)).filter((c): c is number => c !== null))),
   );
+  /** Each person's due-total, in cents, as their row shows it, by person id; null when it is n/a. */
+  protected readonly dueCentsById = computed(() => new Map(this.people().map((p) => [p.id, this.dueCentsOf(p)] as const)));
   /** Each person's cut total, in cents, by person id: their cuts across every pool they are a member of,
    *  added up (a pool that shows no cuts adds nothing). */
   protected readonly cutCents = computed(() => {
@@ -1633,7 +1639,7 @@ export class People {
       await this.service.merge(sheet, person.id, Number(choice));
       if (this.sheet() !== sheet) return;
       this.mergeChoices.update(({ [person.id]: _, ...rest }) => rest);
-      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet)]);
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet), this.crewsService.refresh(sheet)]);
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({
@@ -1663,7 +1669,7 @@ export class People {
       await this.service.transfer(sheet, person.id, to);
       if (this.sheet() !== sheet) return;
       this.transferInputs.update(({ [person.id]: _, ...rest }) => rest);
-      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet)]);
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet), this.crewsService.refresh(sheet)]);
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({

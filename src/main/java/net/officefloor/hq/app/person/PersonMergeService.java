@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.SheetPoolMember;
 import net.officefloor.hq.app.pool.SheetPoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -24,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * keeping any figure a statement bound), and so do their statements (see {@link #carryStatements}); their name and aliases become aliases of the other; their
  * patrons are added to the other's (not the other themselves, no repeats), and anyone naming them as
  * patron names the other instead (no repeats); their pool memberships move to the other (shares added
- * where the other is already a member), and any due-total a closed period fixed for them is added to
+ * where the other is already a member), and so do their crews (see {@link CrewService#personMerged}), and any due-total a closed period fixed for them is added to
  * the other's. Their holds, watchers and contact are dropped, and they leave the sheet.
  */
 @Service
@@ -36,6 +37,7 @@ public class PersonMergeService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final SheetPoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final PeriodRepository periods;
     private final SettingsService settings;
     private final SheetService sheets;
@@ -44,7 +46,7 @@ public class PersonMergeService {
 
     public PersonMergeService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
             ClaimRepository claims, StatementRepository statements, SheetPoolMemberRepository poolMembers,
-            PeriodRepository periods, SettingsService settings, SheetService sheets, RollupService rollup,
+            CrewService crews, PeriodRepository periods, SettingsService settings, SheetService sheets, RollupService rollup,
             Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -52,6 +54,7 @@ public class PersonMergeService {
         this.claims = claims;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.periods = periods;
         this.settings = settings;
         this.sheets = sheets;
@@ -112,6 +115,8 @@ public class PersonMergeService {
             }
             poolMembers.flush();
         }
+
+        crews.personMerged(from.getId(), into.getId());
 
         periods.findBySheetIdOrderByFromAsc(sheetId).forEach(period -> period.mergePersonTotal(from.getId(), into.getId()));
         periods.flush();

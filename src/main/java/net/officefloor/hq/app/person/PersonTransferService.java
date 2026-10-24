@@ -18,6 +18,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.SheetPoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
@@ -35,8 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
  * next number of the other sheet, in the order the claims were opened (by the sheet's today when each was
  * opened, then by the order they were added). Figures a statement bound are kept, and their statements go
  * with them (as a merge carries them, when they are merged into one already there); references are not
- * carried. The person leaves this sheet entirely: their holds, patron links, pool memberships and watches
- * are dropped.
+ * carried. The person leaves this sheet entirely: their holds, patron links, pool memberships, crew memberships, the crews they lead
+ * and watches are dropped.
  */
 @Service
 public class PersonTransferService {
@@ -51,6 +52,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final SheetPoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final PeriodRepository periods;
     private final SettingsService settings;
     private final SheetService sheets;
@@ -60,7 +62,7 @@ public class PersonTransferService {
     public PersonTransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimLineRepository lines, ClaimService claimService, StatementRepository statements,
-            SheetPoolMemberRepository poolMembers, PeriodRepository periods, SettingsService settings,
+            SheetPoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods, SettingsService settings,
             SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -72,6 +74,7 @@ public class PersonTransferService {
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.periods = periods;
         this.settings = settings;
         this.sheets = sheets;
@@ -165,6 +168,7 @@ public class PersonTransferService {
         patrons.deleteAll(patrons.findByPersonIdOrderByIdAsc(from.getId()));
         patrons.deleteAll(patrons.findByPatronIdOrderByIdAsc(from.getId()));
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(from.getId()));
+        crews.personLeaving(from.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         PersonMergeService.carryStatements(statements, sheetId, from.getId(), toSheetId, arrived.getId());
         periods.findBySheetIdOrderByFromAsc(sheetId).forEach(period -> period.dropPersonTotal(from.getId()));

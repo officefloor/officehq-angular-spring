@@ -26,6 +26,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonPatronRepository;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.SheetPool;
 import net.officefloor.hq.app.pool.SheetPoolMember;
 import net.officefloor.hq.app.pool.SheetPoolMemberRepository;
@@ -54,7 +55,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A steward's clone of a sheet to another id, one never used. The clone gets the sheet's today, settings,
  * roles, permissions, rates (with their older versions), holidays, void reasons, templates, tags, people (grades, terms, contacts,
- * aliases, holds and retirements, patrons), pools and periods (all open), and its claims with their status,
+ * aliases, holds and retirements, patrons), pools, crews and periods (all open), and its claims with their status,
  * frozen figures, dates, notes, lines and logs; each claim that had a number is given the next number of the
  * clone, in the order the claims were opened (by the sheet's today when each was opened, then by the order
  * they were added to the clone: by person in list order, each person's oldest first). Statements are not
@@ -78,6 +79,7 @@ public class SheetCloneService {
     private final PersonPatronRepository patrons;
     private final SheetPoolRepository pools;
     private final SheetPoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final PeriodRepository periods;
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
@@ -93,7 +95,7 @@ public class SheetCloneService {
             RateVersionRepository rateVersions,
             SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons, ClaimTemplateRepository templates,
             SheetTagRepository tags, PersonRepository people, PersonPatronRepository patrons,
-            SheetPoolRepository pools, SheetPoolMemberRepository poolMembers, PeriodRepository periods,
+            SheetPoolRepository pools, SheetPoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods,
             ClaimRepository claims, ClaimLogRepository logs, ClaimLineRepository lines, ClaimService claimService, SheetService sheetService,
             RollupService rollup, Audit audit) {
         this.sheets = sheets;
@@ -111,6 +113,7 @@ public class SheetCloneService {
         this.patrons = patrons;
         this.pools = pools;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.periods = periods;
         this.claims = claims;
         this.logs = logs;
@@ -190,6 +193,8 @@ public class SheetCloneService {
                 poolMembers.save(copy.dated(m.getFromDate(), m.getToDate()));
             });
         }
+
+        crews.cloneTo(sheetId, toSheetId, personIds);
 
         cloneClaims(sheetId, toSheetId, originals, personIds);
         sheets.flush();
