@@ -6,6 +6,7 @@ import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
+import { TemplatesService } from './templates.service';
 import { VoidReasonsService } from './void-reasons.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
@@ -75,6 +76,20 @@ const PAST: Record<ClaimAction, string> = {
         <p role="alert" class="error" data-testid="claim-form-error">{{ message }}</p>
       }
     </form>
+    <div class="from-template">
+      <label [for]="fieldId('template')">Template</label>
+      <select
+        [id]="fieldId('template')"
+        data-testid="claim-template-select"
+        (change)="template.set(value($event)); error.set(null)"
+      >
+        <option value="" [selected]="template() === ''">Choose a template</option>
+        @for (t of templateList(); track t.id) {
+          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
+    </div>
     @if (claims().length > 0) {
       <ul class="claims" [attr.aria-label]="'Claims of ' + personName()">
         @for (c of claims(); track c.id) {
@@ -299,6 +314,12 @@ const PAST: Record<ClaimAction, string> = {
       color: #a40000;
       margin: 0;
     }
+    .from-template {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+      margin-top: 0.25rem;
+    }
     .claims {
       margin: 0.25rem 0 0;
       padding-left: 1rem;
@@ -313,6 +334,9 @@ export class Claims {
   private readonly service = inject(ClaimsService);
   /** The sheet's void reasons: while there are any, a void names one of them. */
   protected readonly voidReasonList = inject(VoidReasonsService).reasons;
+  private readonly templates = inject(TemplatesService);
+  /** The sheet's claim templates, any of which a DRAFT claim can be added from. */
+  protected readonly templateList = this.templates.templates;
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -350,6 +374,8 @@ export class Claims {
   protected readonly ref = signal('');
   protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
+  /** The name of the template chosen to add a claim from; '' for none. */
+  protected readonly template = signal('');
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
@@ -908,6 +934,42 @@ export class Claims {
     this.ref.set('');
     this.tags.set('');
     this.error.set(null);
+  }
+
+  /** Add a DRAFT claim from the chosen template: its amount and note as they are now, dated like a
+   *  claim with no date, refused as the claim form refuses it. The claim form and any editor open on it
+   *  are left as they are. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const name = this.template();
+    if (name === '') {
+      this.error.set('Choose a template.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const claim = await this.templates.claim(sheet, this.personId(), name);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? 'A claim dated in a closed period cannot be added.'
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'A claim cannot be dated after the person retired.'
+          : e instanceof HttpErrorResponse && e.status === 400
+            ? 'A negative amount is a correction: add it with the claim form, naming the claim it corrects.'
+          : e instanceof HttpErrorResponse && e.status === 404
+            ? 'That template is no longer on the sheet.'
+          : 'That claim could not be added.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async submit(event: Event): Promise<void> {
