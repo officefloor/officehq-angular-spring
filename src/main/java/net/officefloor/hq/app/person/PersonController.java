@@ -52,13 +52,13 @@ public class PersonController {
      * have any hold, listed in {@code holds} by from-date. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
-            String contact) {
+            String contact, List<String> aliases) {
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
-                    person.getContact());
+                    person.getContact(), person.getAliases());
         }
     }
 
@@ -98,6 +98,10 @@ public class PersonController {
         Integer termsValue() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
         }
+    }
+
+    /** An alias to give a person (blank is refused). */
+    public record AliasRequest(@Size(max = 200) String alias) {
     }
 
     /** A grade to give the people {@code personIds} together, from {@code from} (the sheet's today when
@@ -227,6 +231,14 @@ public class PersonController {
             @RequestBody(required = false) RetireRequest request) {
         return view(sheetId, service.retire(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from()));
+    }
+
+    @PostMapping("/{personId}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AliasRequest request) {
+        return view(sheetId, service.addAlias(sheetId.trim(), user.trim(), personId, request.alias()));
     }
 
     @PostMapping("/{personId}/hold")

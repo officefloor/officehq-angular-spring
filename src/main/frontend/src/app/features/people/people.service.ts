@@ -37,6 +37,8 @@ export interface Person {
   terms: number | null;
   /** The person's contact, without surrounding spaces and in lower case; null when none. */
   contact: string | null;
+  /** The other names the person goes by, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
@@ -144,6 +146,16 @@ export class PeopleService {
   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { from, to }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Give the person the alias `alias`; refused (409) when it is blank, or equals a name or alias on
+   *  the sheet. */
+  addAlias(sheet: string, id: number, alias: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/aliases`, { alias }, {
         headers: this.session.headers(),
       }),
     );

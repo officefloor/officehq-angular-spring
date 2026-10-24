@@ -49,7 +49,7 @@ public class PasteService {
             if (fields.length < 2 || fields[0].isBlank() || !AMOUNT.matcher(fields[1]).matches()) {
                 throw new PasteLineException();
             }
-            Person person = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(fields[0]))
+            Person person = people.findBySheetIdAndNameOrAlias(sheetId, fields[0])
                     .orElseThrow(PersonNotFoundException::new);
             String note = fields.length > 3 ? fields[3].trim() : "";
             String ref = null;

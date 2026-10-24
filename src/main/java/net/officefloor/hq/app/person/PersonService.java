@@ -185,13 +185,34 @@ public class PersonService {
         return person;
     }
 
-    /** Refuses a name another person on the sheet (other than {@code self}) already has. */
+    /** Gives the person the alias {@code alias}; refused when it is blank, or equals (as names are
+     * compared) any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long personId, String alias) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (alias == null || alias.isBlank()) throw new PersonAliasException();
+        String key = Person.keyOf(alias);
+        if (people.findBySheetIdAndNameKey(sheetId, key).isPresent()
+                || people.findBySheetIdAndAliasKey(sheetId, key).isPresent()) {
+            throw new PersonAliasException();
+        }
+        person.addAlias(alias);
+        people.flush();
+        audit.change("PERSON_ALIAS_ADDED", sheetId, user, "name=" + person.getName(), "alias=" + alias.trim());
+        return person;
+    }
+
+    /** Refuses a name another person on the sheet (other than {@code self}) already has, and a name
+     * any alias on the sheet has. */
     private void requireFree(String sheetId, String name, Long self) {
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 .filter(other -> !other.getId().equals(self))
                 .ifPresent(other -> {
                     throw new PersonNameTakenException();
                 });
+        if (people.findBySheetIdAndAliasKey(sheetId, Person.keyOf(name)).isPresent()) {
+            throw new PersonNameTakenException();
+        }
     }
 
     /** Refuses a contact another person on the sheet (other than {@code self}) already has; a blank

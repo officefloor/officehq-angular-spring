@@ -58,6 +58,13 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<PersonHold> holds = new ArrayList<>();
 
+    /** The other names the person goes by; each unique on the sheet among its names and aliases. Loaded
+     * by a sub-select, so it loads eagerly beside the grades. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonAlias> aliases = new ArrayList<>();
+
     /** The person's own terms in days, in place of their grade's and the sheet's; null when they have none. */
     @Column(name = "terms")
     private Integer terms;
@@ -148,6 +155,19 @@ public class Person {
     /** Gives the person {@code contact} (none when blank), kept in its {@link #contactOf stored form}. */
     public void setContact(String contact) {
         this.contact = contactOf(contact);
+    }
+
+    /** The person's aliases, sorted as names are compared. */
+    public List<String> getAliases() {
+        return aliases.stream()
+                .sorted(Comparator.comparing(PersonAlias::getAliasKey).thenComparing(PersonAlias::getAlias))
+                .map(PersonAlias::getAlias)
+                .toList();
+    }
+
+    /** Gives the person the alias {@code alias}, kept without the spaces around it. */
+    public void addAlias(String alias) {
+        aliases.add(new PersonAlias(alias));
     }
 
     public LocalDate getRetiredFrom() {

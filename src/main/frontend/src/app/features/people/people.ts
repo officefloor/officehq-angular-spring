@@ -261,6 +261,7 @@ import { Audit } from './audit';
               <th scope="col">Grade</th>
               <th scope="col">Terms</th>
               <th scope="col">Contact</th>
+              <th scope="col">Aliases</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
               <th scope="col">Settled due</th>
@@ -304,6 +305,7 @@ import { Audit } from './audit';
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 @let split = splitOf(p);
@@ -422,6 +424,21 @@ import { Audit } from './audit';
                   >
                     Hold
                   </button>
+                  <label [for]="'person-alias-input-' + p.id">Alias</label>
+                  <input
+                    [id]="'person-alias-input-' + p.id"
+                    data-testid="person-alias-input"
+                    [value]="aliasInputs()[p.id] ?? ''"
+                    (input)="setAliasInput(p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-alias-add"
+                    [attr.aria-label]="'Add an alias for ' + p.name"
+                    (click)="addAlias(p)"
+                  >
+                    Add alias
+                  </button>
                   <button
                     type="button"
                     data-testid="person-watch"
@@ -538,6 +555,8 @@ export class People {
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdFroms = signal<Record<number, string>>({});
   protected readonly holdTos = signal<Record<number, string>>({});
+  /** The alias typed on each person's row, by person id. */
+  protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -793,6 +812,7 @@ export class People {
       this.statementAsOfs.set({});
       this.holdFroms.set({});
       this.holdTos.set({});
+      this.aliasInputs.set({});
       this.patrons.set([]);
       this.watched.set(new Set());
       this.patronChoices.set({});
@@ -1002,6 +1022,35 @@ export class People {
   protected setHoldDate(dates: WritableSignal<Record<number, string>>, id: number, date: string): void {
     dates.update((typed) => ({ ...typed, [id]: date }));
     this.clearRowError(id);
+  }
+
+  protected setAliasInput(id: number, alias: string): void {
+    this.aliasInputs.update((typed) => ({ ...typed, [id]: alias }));
+    this.clearRowError(id);
+  }
+
+  /** Give the person the alias typed on their row; a blank one is refused. */
+  protected async addAlias(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const alias = this.aliasInputs()[person.id] ?? '';
+    if (!alias.trim()) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type an alias for the person.' }));
+      return;
+    }
+    try {
+      const saved = await this.service.addAlias(sheet, person.id, alias);
+      if (this.sheet() !== sheet) return;
+      this.put(saved);
+      this.aliasInputs.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That alias is already a name or alias on the sheet.',
+      }));
+    }
   }
 
   /** Put the person on a hold from the date typed on their row (the sheet's today when blank) to the

@@ -3,6 +3,8 @@ package net.officefloor.hq.app.person;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
@@ -10,6 +12,16 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
 
     Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+
+    /** The person on the sheet who has an alias with the key {@code aliasKey}. */
+    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and a.aliasKey = :aliasKey")
+    Optional<Person> findBySheetIdAndAliasKey(@Param("sheetId") String sheetId, @Param("aliasKey") String aliasKey);
+
+    /** The person on the sheet with the name, or else with an alias, {@code name} (as names are compared). */
+    default Optional<Person> findBySheetIdAndNameOrAlias(String sheetId, String name) {
+        String key = Person.keyOf(name);
+        return findBySheetIdAndNameKey(sheetId, key).or(() -> findBySheetIdAndAliasKey(sheetId, key));
+    }
 
     Optional<Person> findBySheetIdAndContact(String sheetId, String contact);
 

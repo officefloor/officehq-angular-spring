@@ -410,8 +410,12 @@ export class Claims {
     return overdue(claim, this.session.today(), overdueFrom(claim, this.grades(), this.graces()));
   }
 
+  /** Whether the claim shows as deferred: deferred now, or voided while deferred until a date still
+   *  after the sheet's today (a voided claim keeps the deferral it was voided with). */
   protected isDeferred(claim: Claim): boolean {
-    return deferred(claim, this.session.today());
+    const today = this.session.today();
+    if (deferred(claim, today)) return true;
+    return claim.status === 'VOID' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
   }
 
   /** The name of the period whose dates contain the claim's due-by; empty when none does. */
