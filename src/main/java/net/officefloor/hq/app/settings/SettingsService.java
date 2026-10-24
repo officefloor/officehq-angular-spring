@@ -417,6 +417,22 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The sheet's escalation gap in days; null when it is off. */
+    @Transactional(readOnly = true)
+    public Integer escalateAfter(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEscalateAfter();
+    }
+
+    /** Set the sheet's escalation gap; null turns it off. */
+    @Transactional
+    public Sheet setEscalateAfter(String sheetId, String by, Integer days) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setEscalateAfter(days);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=escalate-after", "value=" + (days == null ? "" : days));
+        return sheet;
+    }
+
     /** The sheet's grace days; null when they are off. */
     @Transactional(readOnly = true)
     public Integer graceDays(String sheetId) {

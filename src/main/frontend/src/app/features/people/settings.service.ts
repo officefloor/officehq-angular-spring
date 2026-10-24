@@ -81,6 +81,8 @@ export interface SheetSettings {
   /** How many days after its to-date an open period is closed when the sheet's today is changed;
    *  null when off. */
   graceDays: number | null;
+  /** How many days after a claim's previous reminder reminding it escalates it; null when off. */
+  escalateAfter: number | null;
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
@@ -268,6 +270,13 @@ export class SettingsService {
         { value },
         { headers: this.session.headers() },
       ),
+    );
+  }
+
+  /** A null value turns the escalation gap off. */
+  setEscalateAfter(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/escalate-after`, { value }, { headers: this.session.headers() }),
     );
   }
 

@@ -136,6 +136,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? 1 : sheet.getFiscalStartMonth();
     }
 
+    /** The escalation gap then; null when it was off. */
+    public Integer escalateAfter() {
+        return sheet == null ? null : sheet.getEscalateAfter();
+    }
+
     /** The grace days then; null when they were off. */
     public Integer graceDays() {
         return sheet == null ? null : sheet.getGraceDays();

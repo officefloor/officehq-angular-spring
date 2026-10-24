@@ -134,6 +134,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder of the claim has ever escalated it; it is escalated once at most. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The claim's external reference; null when it has none. Unique on its sheet without regard to case. */
     @Column(name = "ref")
     private String ref;
@@ -185,6 +189,7 @@ public class Claim {
         copy.proofs = proofs;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;
@@ -382,6 +387,14 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
     }
 
     public LocalDate getRemindedOn() {

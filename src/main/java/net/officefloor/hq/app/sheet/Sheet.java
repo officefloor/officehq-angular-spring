@@ -39,6 +39,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** How many days after a claim's previous reminder reminding it escalates it; null when that is off. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The month (1 to 12) the sheet's fiscal year starts in. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -80,13 +84,14 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, fiscal start month, entry date, pot, alert threshold and parent) come
+     * today and its settings (policy date, period numbering, grace days, escalation gap, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.graceDays = graceDays;
+        copy.escalateAfter = escalateAfter;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
         copy.pot = pot;
@@ -148,6 +153,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     public int getFiscalStartMonth() {

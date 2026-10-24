@@ -425,7 +425,8 @@ public class ClaimService {
 
     /** Remind an OPEN or PENDING claim: a reminder is written and the claim is reminded on the sheet's
      * today. Refused unless the claim is OPEN or PENDING, when it was already reminded on the sheet's
-     * today, and when its due-by is in a closed period. */
+     * today, and when its due-by is in a closed period. A claim not yet escalated whose previous reminder was
+     * at least the sheet's escalation gap before the sheet's today is escalated too, written after the reminder. */
     @Transactional
     public Claim remind(String sheetId, String user, long claimId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -437,9 +438,15 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDueBy());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
+        Integer gap = settings.escalateAfter(sheetId);
+        LocalDate previous = claim.getRemindedOn();
+        boolean escalate = gap != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(gap).isAfter(today);
         claim.setRemindedOn(today);
+        if (escalate) claim.setEscalated(true);
         claims.flush();
         record("REMIND", user, person, claim, claim.getNumber());
+        if (escalate) record("ESCALATE", user, person, claim, claim.getNumber());
         return claim;
     }
 
