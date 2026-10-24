@@ -45,6 +45,14 @@ export class PeriodsService {
     return firstValueFrom(this.http.post<Period>(this.url(sheet), fields, { headers: this.session.headers() }));
   }
 
+  /** Make one period per month from the from-date's month to the to-date's month (a blank date is the
+   *  sheet's today), leaving out a month whose name is taken or whose days overlap a period: those made. */
+  generate(sheet: string, from: string | null, to: string | null): Promise<Period[]> {
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheet)}/generate`, { from, to }, { headers: this.session.headers() }),
+    );
+  }
+
   /** Close the period, fixing its due-total now. */
   close(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(

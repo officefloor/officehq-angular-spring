@@ -54,6 +54,10 @@ public class PeriodController {
             @NotNull LocalDate to) {
     }
 
+    /** The dates whose months periods are generated for, both inclusive; a missing one is the sheet's today. */
+    public record GenerateRequest(LocalDate from, LocalDate to) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -72,6 +76,15 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+    }
+
+    /** Generate one period per month between the dates: the periods made, in order. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody GenerateRequest request) {
+        return service.generate(sheetId.trim(), user.trim(), request.from(), request.to()).stream()
+                .map(PeriodView::of).toList();
     }
 
     @PostMapping("/{periodId}/close")

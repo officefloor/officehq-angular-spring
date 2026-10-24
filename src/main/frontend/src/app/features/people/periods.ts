@@ -42,6 +42,29 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" class="error" data-testid="period-form-error">{{ message }}</p>
         }
       </form>
+      <form (submit)="generate($event)" aria-label="Generate monthly periods" data-testid="period-generate-form">
+        <label for="period-generate-from">Months from</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="generateFrom()"
+          (input)="generateFrom.set(value($event)); generateError.set(null)"
+        />
+        <label for="period-generate-to">To</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="generateTo()"
+          (input)="generateTo.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        <span aria-live="polite">Made: <span data-testid="period-generated">{{ generated() ?? '' }}</span></span>
+        @if (generateError(); as message) {
+          <p role="alert" class="error" data-testid="period-generate-error">{{ message }}</p>
+        }
+      </form>
       @if (sorted().length > 0) {
         <table data-testid="period-list">
           <thead>
@@ -143,10 +166,17 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly generateFrom = signal('');
+  protected readonly generateTo = signal('');
+  /** How many periods the last generate made; null while one runs or before the first. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
   /** The error of the last refused action on each period, by period id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
+  /** A generate is waiting for its answer; another meanwhile is ignored. */
+  private generating = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -191,6 +221,43 @@ export class Periods {
             ? 'Your role may not reopen a period on this sheet.'
             : 'That period could not be reopened.',
       }));
+    }
+  }
+
+  /** Generate one period per month between the dates, showing how many were made; a to-date
+   * before the from-date is refused with an error. */
+  protected async generate(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const from = this.generateFrom().trim();
+    const to = this.generateTo().trim();
+    if ((from && !DATE.test(from)) || (to && !DATE.test(to))) {
+      this.generateError.set('Type a from and a to date as YYYY-MM-DD.');
+      return;
+    }
+    if (from && to && to < from) {
+      this.generateError.set('The to-date must not be before the from-date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.service.generate(sheet, from || null, to || null);
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of made) this.added.emit(period);
+      this.generated.set(made.length);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'The to-date must not be before the from-date.'
+          : 'Those periods could not be generated.',
+      );
+    } finally {
+      this.generating = false;
     }
   }
 

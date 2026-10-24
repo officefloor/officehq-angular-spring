@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -76,6 +77,37 @@ public class PeriodService {
         audit.change("PERIOD_ADDED", sheetId, user, "period=" + period.getName(), "from=" + period.getFrom(),
                 "to=" + period.getTo());
         return period;
+    }
+
+    /** Make one period per calendar month from the from-date's month to the to-date's month, each from
+     * the first to the last day of its month and named yyyy-mm, in order; a month whose name is
+     * already a period's or whose days overlap a period on the sheet is left out. A missing date is
+     * the sheet's today; a to-date before the from-date is refused. */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        LocalDate start = from == null ? sheet.getToday() : from;
+        LocalDate end = to == null ? sheet.getToday() : to;
+        if (end.isBefore(start)) {
+            throw new PeriodRefusedException("to before from");
+        }
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(start); !month.isAfter(YearMonth.from(end)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            String key = Period.keyOf(name);
+            if (existing.stream().anyMatch(p -> Period.keyOf(p.getName()).equals(key) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.change("PERIOD_ADDED", sheetId, user, "period=" + period.getName(), "from=" + period.getFrom(),
+                    "to=" + period.getTo());
+            existing.add(period);
+            made.add(period);
+        }
+        return made;
     }
 
     /** Close the period, fixing its due-total now; refused when the user's role may not close (see
