@@ -1,0 +1,159 @@
+diff --git a/src/main/frontend/src/app/features/people/holidays.ts b/src/main/frontend/src/app/features/people/holidays.ts
+index 54eea7eb..5746deec 100644
+--- a/src/main/frontend/src/app/features/people/holidays.ts
++++ b/src/main/frontend/src/app/features/people/holidays.ts
+@@ -1,11 +1,12 @@
+-import { Component, effect, inject, signal } from '@angular/core';
++import { Component, effect, inject, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Holiday, HolidaysService } from './holidays.service';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ // The sheet's holidays, one line each, earliest first, and the entry by which one is added (a date
+-// already on the list is refused). Read from the store every time a sheet is loaded.
++// already on the list is refused). Read from the store every time a sheet is loaded. An added holiday
++// re-fixes the due-by of the sheet's claims on the server; `added` tells the screen to re-read them.
+ @Component({
+   selector: 'app-holidays',
+   template: `
+@@ -46,6 +47,8 @@ export class Holidays {
+   private readonly session = inject(Session);
+   private readonly service = inject(HolidaysService);
+ 
++  readonly added = output<void>();
++
+   protected readonly holidays = signal<Holiday[]>([]);
+   protected readonly date = signal('');
+   protected readonly error = signal<string | null>(null);
+@@ -87,6 +90,7 @@ export class Holidays {
+       if (this.session.sheetId() !== sheet) return;
+       this.holidays.set(all);
+       this.date.set('');
++      this.added.emit();
+     } catch {
+       this.error.set('That date is already a holiday, or is not a date.');
+     } finally {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f6c19179..f8dc7551 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -64,7 +64,7 @@ import { VoidReasons } from './void-reasons';
+       (policyDateSaved)="policyDate.set($event)"
+     />
+     <app-delegations />
+-    <app-holidays />
++    <app-holidays (added)="holidayAdded()" />
+     <app-void-reasons />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+@@ -1169,6 +1169,18 @@ export class People {
+     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
+   }
+ 
++  /** Re-read the sheet's claims: an added holiday re-fixes their due-by on the server. */
++  protected async holidayAdded(): Promise<void> {
++    const sheet = this.sheet();
++    if (!sheet) return;
++    try {
++      const claims = await this.claimsService.list(sheet);
++      if (this.sheet() === sheet) this.claims.set(claims);
++    } catch {
++      // The claims could not be re-read; they show as they were until the sheet is loaded again.
++    }
++  }
++
+   /** Put a set rate in place of the grade's old one for the same from-date. */
+   protected rateSaved(rate: Rate): void {
+     this.rates.update((list) => [
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 226a0d67..5779f59b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -36,7 +36,8 @@ public class Claim {
+ 
+     /** The date the claim is due by: the terms-th business day after its due-from (see
+      * {@link net.officefloor.hq.app.holiday.HolidayService#dueBy}), skipping weekends and the sheet's
+-     * holidays when it was added; a holiday added later leaves it as it is. */
++     * holidays; a holiday added later on or before it works it out again from its date while the claim is
++     * not SETTLED or VOID. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index 4af91bde..169ffca1 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -6,6 +6,9 @@ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -13,20 +16,22 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The holidays on a sheet. A claim's due-by is the terms-th business day after the date it counts from,
+- * skipping every Saturday, Sunday and holiday on the sheet when it is added (see {@link #dueBy}); a holiday
+- * added later counts only for the claims added after it. */
++ * skipping every Saturday, Sunday and holiday on the sheet (see {@link #dueBy}); a holiday added later
++ * re-fixes the due-by of every claim not SETTLED or VOID whose due-by is on or after it (see {@link #add}). */
+ @Service
+ public class HolidayService {
+ 
+     private final SheetRepository sheets;
+     private final SheetHolidayRepository holidays;
++    private final ClaimRepository claims;
+     private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, RollupService rollup,
+-            Audit audit) {
++    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, ClaimRepository claims,
++            RollupService rollup, Audit audit) {
+         this.sheets = sheets;
+         this.holidays = holidays;
++        this.claims = claims;
+         this.rollup = rollup;
+         this.audit = audit;
+     }
+@@ -37,13 +42,16 @@ public class HolidayService {
+         return holidays.findBySheetIdOrderByDateAsc(sheetId);
+     }
+ 
+-    /** Add a holiday on {@code date}; refused when the date is already on the sheet's list. */
++    /** Add a holiday on {@code date}; refused when the date is already on the sheet's list. Every claim on
++     * the sheet that is not SETTLED or VOID and whose due-by is on or after {@code date} has its due-by
++     * worked out again from its date, with the terms it was fixed with, over the sheet's holidays now. */
+     @Transactional
+     public SheetHoliday add(String sheetId, String by, LocalDate date) {
+         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+         if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new HolidayTakenException();
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetHoliday added = holidays.saveAndFlush(new SheetHoliday(sheetId, date));
++        redate(sheetId, date);
+         audit.change("HOLIDAY_ADDED", sheetId, by, "date=" + date);
+         rollup.recordSince(sheetId, by, before);
+         return added;
+@@ -57,6 +65,17 @@ public class HolidayService {
+         return dueBy(offOn(sheetId), from, terms);
+     }
+ 
++    private void redate(String sheetId, LocalDate holiday) {
++        Set<LocalDate> off = offOn(sheetId);
++        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
++            if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
++            if (claim.getDueBy() == null || claim.getDueBy().isBefore(holiday)) continue;
++            LocalDate dueBy = dueBy(off, claim.getDate(), claim.getTerms());
++            if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
++        }
++        claims.flush();
++    }
++
+     private Set<LocalDate> offOn(String sheetId) {
+         return holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
+                 .collect(Collectors.toSet());
