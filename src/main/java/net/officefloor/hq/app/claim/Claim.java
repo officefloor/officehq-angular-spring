@@ -57,7 +57,7 @@ public class Claim {
     private LocalDate dueFrom;
 
     /** The terms, in business days, the claim was fixed with when it was added: those of its person, else
-     * of their grade in force on its date, else the sheet's then. Later changes to the terms leave it. */
+     * of their grade, else the sheet's, each in force on the day it was added (the sheet's today then). Later changes to the terms leave it. */
     @Column(name = "terms", nullable = false)
     private int terms;
 

@@ -200,7 +200,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        int terms = termsOf(sheetId, person, dated);
+        int terms = termsOf(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
@@ -510,7 +510,7 @@ public class ClaimService {
     /** Split {@code amount} (more than 0.00 and less than the claim's amount) off an OPEN claim: the
      * claim keeps the rest and loses any figure a statement bound it to; a new OPEN claim of the split-off
      * amount, with the same person, date and note, is given the next number, is opened by the user, has
-     * its due-by fixed now from the terms in force on its date and names the claim's number as the one
+     * its due-by fixed now from its date and the terms in force on the sheet's today and names the claim's number as the one
      * it was split from; it is a late entry when that due-by falls in a soft-closed period. Refused unless
      * the claim is OPEN and not deferred on the sheet's today, and when its due-by or the new claim's falls
      * in a closed period. Both claims are returned, the original first. */
@@ -528,7 +528,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
-        int terms = termsOf(sheetId, person, claim.getDate());
+        int terms = termsOf(sheetId, person, sheets.today(sheetId));
         split.fixTerms(claim.getDate(), terms);
         split.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
         refuseClosed(sheetId, split.getDueBy());
@@ -882,8 +882,8 @@ public class ClaimService {
         return note == null ? "" : note.trim();
     }
 
-    /** The terms a claim of the person dated {@code date} is due by: the person's own terms in force on that date, else those
-     * of their grade in force on that date, else the sheet's then. */
+    /** The terms a claim of the person created on {@code date} (the sheet's today then) is due by: the person's own terms
+     * in force on that day, else those of their grade in force on that day, else the sheet's then. */
     private int termsOf(String sheetId, Person person, LocalDate date) {
         Integer own = person.termsOn(date);
         return own != null ? own : settings.termsFor(sheetId, person.gradeOn(date), date);
