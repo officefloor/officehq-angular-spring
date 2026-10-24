@@ -4,6 +4,8 @@ import { firstValueFrom } from 'rxjs';
 
 interface SheetView {
   id: string;
+  /** The sheet's today (YYYY-MM-DD): every date-dependent decision and default uses it. */
+  today: string;
 }
 
 // Who is signed in and which sheet is active. Every request to the server carries the signed-in
@@ -14,6 +16,8 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
+  /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. */
+  readonly today = signal<string | null>(null);
   readonly signedIn = computed(() => this.user() !== null);
 
   signIn(name: string): boolean {
@@ -21,6 +25,7 @@ export class Session {
     if (!user) return false;
     this.user.set(user);
     this.sheetId.set(null);
+    this.today.set(null);
     return true;
   }
 
@@ -38,10 +43,35 @@ export class Session {
           headers: this.headers(),
         }),
       );
-      this.sheetId.set(view.id);
+      this.show(view);
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** Change the active sheet's today; resolves false when refused. */
+  async setToday(date: string): Promise<boolean> {
+    const sheet = this.sheetId();
+    const today = date.trim();
+    if (!sheet || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return false;
+    try {
+      const view = await firstValueFrom(
+        this.http.put<SheetView>(
+          `/api/sheets/${encodeURIComponent(sheet)}/today`,
+          { today },
+          { headers: this.headers() },
+        ),
+      );
+      if (this.sheetId() === view.id) this.show(view);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private show(view: SheetView): void {
+    this.sheetId.set(view.id);
+    this.today.set(view.today);
   }
 }

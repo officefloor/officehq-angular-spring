@@ -24,6 +24,25 @@ import { Session } from './session';
           <span
             >Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></span
           >
+          <span
+            >Today <strong data-testid="sheet-today">{{ session.today() }}</strong></span
+          >
+          <form (submit)="saveToday($event)">
+            <label for="sheet-today-input">Change today</label>
+            <input
+              id="sheet-today-input"
+              type="date"
+              data-testid="sheet-today-input"
+              [value]="todayInput()"
+              (input)="todayInput.set(value($event)); todayError.set(false)"
+            />
+            <button type="submit" data-testid="sheet-today-save">Set today</button>
+          </form>
+          @if (todayError()) {
+            <p role="alert" class="error" data-testid="sheet-error">
+              That date could not be set as today.
+            </p>
+          }
         }
         @if (sheetError()) {
           <p role="alert" class="error" data-testid="sheet-load-error">
@@ -72,6 +91,8 @@ export class SessionBar {
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal(false);
   protected readonly sheetError = signal(false);
+  protected readonly todayInput = signal('');
+  protected readonly todayError = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -85,6 +106,13 @@ export class SessionBar {
   protected async load(event: Event): Promise<void> {
     event.preventDefault();
     this.sheetError.set(false);
+    this.todayError.set(false);
     this.sheetError.set(!(await this.session.loadSheet(this.sheetInput())));
+  }
+
+  protected async saveToday(event: Event): Promise<void> {
+    event.preventDefault();
+    this.todayError.set(false);
+    this.todayError.set(!(await this.session.setToday(this.todayInput())));
   }
 }
