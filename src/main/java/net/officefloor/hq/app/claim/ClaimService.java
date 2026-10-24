@@ -186,6 +186,40 @@ public class ClaimService {
         return claim;
     }
 
+    /** Split {@code amount} (more than 0.00 and less than the claim's amount) off an OPEN claim: the
+     * claim keeps the rest and loses any figure a statement bound it to; a new OPEN claim of the split-off
+     * amount, with the same person, date and note, is given the next number, is opened by the user, has
+     * its due-by fixed now from the terms in force on its date and names the claim's number as the one
+     * it was split from. Refused unless the claim is OPEN and not deferred on the sheet's today, and when
+     * it is dated in a closed period. Both claims are returned, the original first. */
+    @Transactional
+    public List<Claim> split(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ClaimStatusChangeException();
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) throw new ClaimSplitException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.unbind();
+        Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
+        split.setDueBy(claim.getDate().plusDays(settings.termsFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate())));
+        split.setListed(sheets.nextInSequence(sheetId, "listed"));
+        split.setStatus(ClaimStatus.OPEN);
+        split.setNumber(nextNumber(sheetId, claim.getDate()));
+        split.setOpenedBy(user);
+        split.setSplitFrom(claim.getNumber());
+        split = claims.saveAndFlush(split);
+        log(user, person, split);
+        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), "into=" + split.getNumber());
+        record("CLAIM_OPENED", user, person, split, split.getNumber());
+        rollup.recordSince(sheetId, user, before);
+        return List.of(claim, split);
+    }
+
     /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
      * live figure, which no statement binds while it is PENDING, together with its late charge then).
      * Refused unless the claim is PENDING, when the user is not a steward or opened the claim, and when it

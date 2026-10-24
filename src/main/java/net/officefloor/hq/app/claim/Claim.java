@@ -88,6 +88,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this one was split off; null on a claim that was not split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     protected Claim() {
     }
 
@@ -219,6 +223,14 @@ public class Claim {
     /** Whether the claim is a correction: one with a negative amount. */
     public boolean isCorrection() {
         return amount.signum() < 0;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public LocalDate getDeferredUntil() {

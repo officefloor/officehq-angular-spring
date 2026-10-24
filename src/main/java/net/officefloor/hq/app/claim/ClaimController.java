@@ -36,7 +36,7 @@ public class ClaimController {
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
-            LocalDate deferredUntil, int proofs) {
+            LocalDate deferredUntil, int proofs, String splitFrom) {
         /** The claims as views, each with its status log, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -54,7 +54,7 @@ public class ClaimController {
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
-                    claim.getDeferredUntil(), claim.getProofs());
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -92,6 +92,14 @@ public class ClaimController {
 
     /** The date a claim is deferred until. */
     public record DeferRequest(@NotNull LocalDate until) {
+    }
+
+    /** The amount split off a claim: more than 0.00, with up to two decimals. */
+    public record SplitRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2);
+        }
     }
 
     /** The person a claim is moved to, by id. */
@@ -201,7 +209,16 @@ public class ClaimController {
         return view(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
     }
 
-        @PostMapping("/claims/{claimId}/reassign")
+    /** Split an amount off the claim: the claim as it is now, then the new claim. */
+    @PostMapping("/claims/{claimId}/split")
+    public List<ClaimView> split(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SplitRequest request) {
+        return views(service.split(sheetId.trim(), user.trim(), claimId, request.amountValue()));
+    }
+
+    @PostMapping("/claims/{claimId}/reassign")
     public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,

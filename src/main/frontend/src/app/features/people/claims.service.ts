@@ -38,6 +38,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has been given. */
   proofs: number;
+  /** The number of the claim this one was split off; null when it was not split off another. */
+  splitFrom: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -191,6 +193,18 @@ export class ClaimsService {
   resettle(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/resettle`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Split an amount off an OPEN claim into a new OPEN claim: the claim as it is now, then the new
+   *  claim; refused (400) when the amount is not more than 0.00 with up to two decimals, (422) when it
+   *  is not less than the claim's amount, (409) when the claim is not OPEN or is deferred and (423) when
+   *  it is dated in a closed period. */
+  split(sheet: string, id: number, amount: string): Promise<Claim[]> {
+    return firstValueFrom(
+      this.http.post<Claim[]>(`${this.url(sheet)}/claims/${id}/split`, { amount }, {
         headers: this.session.headers(),
       }),
     );
