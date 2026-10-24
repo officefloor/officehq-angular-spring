@@ -9,10 +9,17 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonPatron;
+import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.settings.SheetDelegation;
+import net.officefloor.hq.app.settings.SheetPermission;
+import net.officefloor.hq.app.settings.SheetRole;
 import net.officefloor.hq.app.settings.SheetSetting;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.statement.Statement;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.service.spi.EventListenerRegistry;
@@ -32,7 +39,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Writes a line to the sheet's history (see {@code V51__sheet_history.sql}) for every row of what a
- * sheet's figures are made of — the sheet, its people, claims, rates and dated settings — as it stands
+ * sheet's screen is made of — the sheet, its people, claims, rates, dated settings, periods, statements,
+ * patrons, watches, roles, permissions and delegations — as it stands
  * after each change, with the sheet's today then. The line is written on the change's own connection,
  * so it commits or rolls back with it.
  */
@@ -41,8 +49,12 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
         PostCollectionRecreateEventListener, PostCollectionUpdateEventListener {
 
     /** The entities kept, by the name their lines carry. */
-    static final Map<Class<?>, String> KEPT = Map.of(Sheet.class, "sheet", Person.class, "person",
-            Claim.class, "claim", Rate.class, "rate", SheetSetting.class, "setting");
+    static final Map<Class<?>, String> KEPT = Map.ofEntries(Map.entry(Sheet.class, "sheet"),
+            Map.entry(Person.class, "person"), Map.entry(Claim.class, "claim"), Map.entry(Rate.class, "rate"),
+            Map.entry(SheetSetting.class, "setting"), Map.entry(Period.class, "period"),
+            Map.entry(Statement.class, "statement"), Map.entry(PersonPatron.class, "patron"),
+            Map.entry(PersonWatch.class, "watch"), Map.entry(SheetRole.class, "role"),
+            Map.entry(SheetPermission.class, "permission"), Map.entry(SheetDelegation.class, "delegation"));
 
     public HistoryListener(EntityManagerFactory entityManagerFactory) {
         EventListenerRegistry registry = entityManagerFactory.unwrap(SessionFactoryImplementor.class)
@@ -93,6 +105,13 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
                 : entity instanceof Claim claim ? claim.getSheetId()
                 : entity instanceof Rate rate ? rate.getSheetId()
                 : entity instanceof SheetSetting setting ? setting.getSheetId()
+                : entity instanceof Period period ? period.getSheetId()
+                : entity instanceof Statement statement ? statement.getSheetId()
+                : entity instanceof PersonPatron patron ? patron.getSheetId()
+                : entity instanceof PersonWatch watch ? watch.getSheetId()
+                : entity instanceof SheetRole role ? role.getSheetId()
+                : entity instanceof SheetPermission permission ? permission.getSheetId()
+                : entity instanceof SheetDelegation delegation ? delegation.getSheetId()
                 : null;
         if (sheetId == null) return;
         Connection connection = session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection();

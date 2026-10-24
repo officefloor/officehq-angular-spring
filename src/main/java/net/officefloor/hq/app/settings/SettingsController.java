@@ -8,10 +8,15 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -175,14 +180,19 @@ public class SettingsController {
 
     private final SettingsService service;
 
-    public SettingsController(SettingsService service) {
+    private final SheetHistory history;
+
+    public SettingsController(SettingsService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping("/settings")
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         String sheet = sheetId.trim();
+        if (asOf != null) return viewOf(history.read(sheet, asOf));
         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
                 text(service.cap(sheet)), service.terms(sheet),
                 service.gradeTerms(sheet),
@@ -192,6 +202,30 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
                 text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)), service.graceDays(sheet));
+    }
+
+    /** The settings as they stood on the sheet as of a date, that date standing in for its today. */
+    private static SettingsView viewOf(SheetAsOf then) {
+        LocalDate today = then.today();
+        Map<String, Integer> gradeTerms = new LinkedHashMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            then.valueOn(DatedSettings.gradeTermsKey(grade), today).map(Integer::valueOf)
+                    .ifPresent(own -> gradeTerms.put(grade, own));
+        }
+        Map<Action, String> matrix = new EnumMap<>(Action.class);
+        for (Action action : Action.values()) matrix.put(action, "");
+        for (SheetPermission set : then.permissions()) matrix.put(set.getAction(), set.getRoles());
+        return new SettingsView(
+                text(then.valueOn(DatedSettings.CLERK_LIMIT, today).map(BigDecimal::new).orElse(null)),
+                text(then.floorOn(today)), text(then.cap()),
+                then.valueOn(DatedSettings.TERMS, today).map(Integer::valueOf).orElse(DatedSettings.TERMS_START),
+                gradeTerms, text(then.latePctOn(today)), then.policyDate(),
+                then.roles().stream().map(RoleView::of).toList(), then.periodNumberingFrom(),
+                then.history(DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
+                then.history(DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
+                then.history(DatedSettings.CAP).stream().map(DatedView::of).toList(),
+                text(then.valueOn(DatedSettings.PROOF_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
+                permissionsOf(matrix), then.graceDays());
     }
 
     private static Map<String, String> permissionsOf(Map<Action, String> matrix) {
@@ -207,7 +241,7 @@ public class SettingsController {
             @RequestBody @Valid PermissionRequest request) {
         String sheet = sheetId.trim();
         service.setPermission(sheet, user.trim(), Action.valueOf(action.toUpperCase(Locale.ROOT)), request.rolesValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -216,7 +250,7 @@ public class SettingsController {
             @RequestBody @Valid ClerkLimitRequest request) {
         String sheet = sheetId.trim();
         service.setClerkLimit(sheet, user.trim(), request.limitValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/cap")
@@ -225,7 +259,7 @@ public class SettingsController {
             @RequestBody @Valid CapRequest request) {
         String sheet = sheetId.trim();
         service.setCap(sheet, user.trim(), request.capValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/proof-threshold")
@@ -234,7 +268,7 @@ public class SettingsController {
             @RequestBody @Valid ProofThresholdRequest request) {
         String sheet = sheetId.trim();
         service.setProofThreshold(sheet, user.trim(), request.thresholdValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/floor")
@@ -243,7 +277,7 @@ public class SettingsController {
             @RequestBody @Valid FloorRequest request) {
         String sheet = sheetId.trim();
         service.setFloor(sheet, user.trim(), request.floorValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/terms")
@@ -252,7 +286,7 @@ public class SettingsController {
             @RequestBody @Valid TermsRequest request) {
         String sheet = sheetId.trim();
         service.setTerms(sheet, user.trim(), request.termsValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/terms/{grade}")
@@ -262,7 +296,7 @@ public class SettingsController {
             @RequestBody @Valid GradeTermsRequest request) {
         String sheet = sheetId.trim();
         service.setGradeTerms(sheet, user.trim(), grade, request.termsValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/late-pct")
@@ -271,7 +305,7 @@ public class SettingsController {
             @RequestBody @Valid LatePctRequest request) {
         String sheet = sheetId.trim();
         service.setLatePct(sheet, user.trim(), request.latePctValue(), request.fromValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/policy-date")
@@ -280,7 +314,7 @@ public class SettingsController {
             @RequestBody @Valid PolicyDateRequest request) {
         String sheet = sheetId.trim();
         service.setPolicyDate(sheet, user.trim(), request.dateValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/period-numbering-from")
@@ -289,7 +323,7 @@ public class SettingsController {
             @RequestBody @Valid PeriodNumberingFromRequest request) {
         String sheet = sheetId.trim();
         service.setPeriodNumberingFrom(sheet, user.trim(), request.dateValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/settings/grace-days")
@@ -298,7 +332,7 @@ public class SettingsController {
             @RequestBody @Valid GraceDaysRequest request) {
         String sheet = sheetId.trim();
         service.setGraceDays(sheet, user.trim(), request.daysValue());
-        return get(sheet, user);
+        return get(sheet, user, null);
     }
 
     @PutMapping("/roles/{name}")

@@ -7,6 +7,9 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,15 +47,21 @@ public class StatementController {
     private final StatementService service;
     private final ClaimService claimService;
 
-    public StatementController(StatementService service, ClaimService claimService) {
+    private final SheetHistory history;
+
+    public StatementController(StatementService service, ClaimService claimService, SheetHistory history) {
+        this.history = history;
         this.service = service;
         this.claimService = claimService;
     }
 
     @GetMapping("/statements")
     public List<StatementView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(StatementView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<Statement> statements = asOf == null ? service.list(sheetId.trim())
+                : history.read(sheetId.trim(), asOf).statements();
+        return statements.stream().map(StatementView::of).toList();
     }
 
     /** A statement to take: as of {@code asOf}, or now when it is null. */

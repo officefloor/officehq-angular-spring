@@ -10,6 +10,11 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -126,14 +131,24 @@ public class ClaimController {
     private final ClaimService service;
     private final ClaimBulkService bulk;
 
-    public ClaimController(ClaimService service, ClaimBulkService bulk) {
+    private final SheetHistory history;
+
+    public ClaimController(ClaimService service, ClaimBulkService bulk, SheetHistory history) {
+        this.history = history;
         this.service = service;
         this.bulk = bulk;
     }
 
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            SheetAsOf then = history.read(sheetId.trim(), asOf);
+            Map<Long, List<ClaimLog>> logs = service.logsOf(then.claims());
+            return then.claims().stream()
+                    .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())))).toList();
+        }
         return views(service.list(sheetId.trim()));
     }
 
@@ -256,7 +271,9 @@ public class ClaimController {
     @PostMapping("/claims/bulk-open")
     public BulkOpenView bulkOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
             @RequestBody @Valid BulkRequest request) {
+        if (asOf != null) return new BulkOpenView(0, Set.copyOf(request.claimIds()).size(), List.of());
         ClaimBulkService.Outcome outcome = bulk.open(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkOpenView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));
@@ -265,7 +282,9 @@ public class ClaimController {
     @PostMapping("/claims/bulk-settle")
     public BulkSettleView bulkSettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
             @RequestBody @Valid BulkRequest request) {
+        if (asOf != null) return new BulkSettleView(0, Set.copyOf(request.claimIds()).size(), List.of());
         ClaimBulkService.Outcome outcome = bulk.settle(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkSettleView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));

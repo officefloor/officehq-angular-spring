@@ -5,6 +5,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,16 +35,23 @@ public class SheetController {
 
     private final SheetService service;
 
-    public SheetController(SheetService service) {
+    private final SheetHistory history;
+
+    public SheetController(SheetService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
-    /** Load a sheet by id, starting it empty if it has never been loaded. */
+    /** Load a sheet by id, starting it empty if it has never been loaded; as it stood at the end of
+     * {@code asOf}, that date standing in for its today, when one is given. */
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Sheet sheet = service.load(id.trim(), user.trim());
-        return SheetView.of(sheet);
+        if (asOf == null) return SheetView.of(sheet);
+        SheetAsOf then = history.read(sheet.getId(), asOf);
+        return new SheetView(sheet.getId(), asOf, then.archived());
     }
 
     /** Change the sheet's today. */

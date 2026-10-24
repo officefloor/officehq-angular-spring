@@ -11,17 +11,23 @@ interface SheetView {
 }
 
 // Who is signed in and which sheet is active. Every request to the server carries the signed-in
-// name in the X-User header (see `headers()`); everything else in the app is kept per sheet.
+// name in the X-User header (see `headers()`); everything else in the app is kept per sheet. While an
+// as-of date is set, every request also carries it in the X-As-Of header: the server then shows each
+// sheet as it stood at the end of that date (that date standing in for its today) and refuses every
+// change. The as-of date belongs to this screen alone.
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
-  /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. */
+  /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. While an as-of date is
+   *  set, it is that date. */
   readonly today = signal<string | null>(null);
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
+  /** The date (YYYY-MM-DD) the sheets are shown as of; null when they are shown as they stand. */
+  readonly asOf = signal<string | null>(null);
   /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
   readonly loads = signal(0);
   readonly signedIn = computed(() => this.user() !== null);
@@ -33,11 +39,30 @@ export class Session {
     this.sheetId.set(null);
     this.today.set(null);
     this.archived.set(false);
+    this.asOf.set(null);
     return true;
   }
 
   headers(): HttpHeaders {
-    return new HttpHeaders({ 'X-User': this.user() ?? '' });
+    const asOf = this.asOf();
+    return new HttpHeaders(asOf ? { 'X-User': this.user() ?? '', 'X-As-Of': asOf } : { 'X-User': this.user() ?? '' });
+  }
+
+  /** Show the sheets as of a date (YYYY-MM-DD), re-reading the active one; resolves false when the
+   *  date is not one. */
+  async setAsOf(date: string): Promise<boolean> {
+    const asOf = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return false;
+    this.asOf.set(asOf);
+    const sheet = this.sheetId();
+    return sheet ? this.loadSheet(sheet) : true;
+  }
+
+  /** Show the sheets as they stand again, re-reading the active one. */
+  async clearAsOf(): Promise<boolean> {
+    this.asOf.set(null);
+    const sheet = this.sheetId();
+    return sheet ? this.loadSheet(sheet) : true;
   }
 
   /** Load a sheet by id (starting it empty if never used); resolves false when refused. */

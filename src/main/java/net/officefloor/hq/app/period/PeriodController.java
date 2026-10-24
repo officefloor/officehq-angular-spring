@@ -11,6 +11,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -60,14 +63,20 @@ public class PeriodController {
 
     private final PeriodService service;
 
-    public PeriodController(PeriodService service) {
+    private final SheetHistory history;
+
+    public PeriodController(PeriodService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<Period> periods = asOf == null ? service.list(sheetId.trim())
+                : history.read(sheetId.trim(), asOf).periods();
+        return periods.stream().map(PeriodView::of).toList();
     }
 
     @PostMapping

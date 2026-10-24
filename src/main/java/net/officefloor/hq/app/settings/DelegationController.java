@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,13 +47,19 @@ public class DelegationController {
 
     private final DelegationService service;
 
-    public DelegationController(DelegationService service) {
+    private final SheetHistory history;
+
+    public DelegationController(DelegationService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
-    public List<DelegationView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.delegations(sheetId.trim()).stream().map(DelegationView::of).toList();
+    public List<DelegationView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<SheetDelegation> delegations = asOf == null ? service.delegations(sheetId.trim())
+                : history.read(sheetId.trim(), asOf).delegations();
+        return delegations.stream().map(DelegationView::of).toList();
     }
 
     @PostMapping
@@ -59,6 +68,6 @@ public class DelegationController {
             @RequestBody @Valid DelegateRequest request) {
         String sheet = sheetId.trim();
         service.delegate(sheet, user.trim(), request.user().trim(), request.fromValue(), request.toValue());
-        return list(sheet);
+        return list(sheet, null);
     }
 }

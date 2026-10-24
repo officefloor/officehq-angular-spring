@@ -3,13 +3,10 @@ package net.officefloor.hq.app.history;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import net.officefloor.hq.app.claim.Claim;
-import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.settings.SheetSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -35,30 +32,31 @@ public class SheetHistory {
                 rs -> {
                     latest.put(rs.getString(1) + ":" + rs.getString(2), rs.getString(3));
                 }, sheetId, Date.valueOf(date));
+        Map<String, Class<?>> types = new HashMap<>();
+        HistoryListener.KEPT.forEach((type, name) -> types.put(name, type));
         Sheet sheet = null;
-        List<Person> people = new ArrayList<>();
-        List<Claim> claims = new ArrayList<>();
-        List<Rate> rates = new ArrayList<>();
-        List<SheetSetting> settings = new ArrayList<>();
+        Map<Class<?>, List<Object>> rows = new HashMap<>();
         for (Map.Entry<String, String> row : latest.entrySet()) {
             String state = row.getValue();
             if (state == null) continue;
-            switch (row.getKey().substring(0, row.getKey().indexOf(':'))) {
-                case "sheet" -> sheet = read(state, Sheet.class);
-                case "person" -> people.add(read(state, Person.class));
-                case "claim" -> claims.add(read(state, Claim.class));
-                case "rate" -> rates.add(read(state, Rate.class));
-                case "setting" -> settings.add(read(state, SheetSetting.class));
-                default -> {
-                }
-            }
+            Class<?> type = types.get(row.getKey().substring(0, row.getKey().indexOf(':')));
+            if (type == null) continue;
+            Object entity = read(state, type);
+            if (entity instanceof Sheet stood) sheet = stood;
+            else rows.computeIfAbsent(type, t -> new ArrayList<>()).add(entity);
         }
         if (sheet == null) {
             // The sheet was started on a later date than its today was then set to: it stood as started.
             sheet = jdbc.query("SELECT state FROM sheet_history WHERE sheet_id = ? AND entity = 'sheet' ORDER BY id",
                     rs -> rs.next() ? read(rs.getString(1), Sheet.class) : null, sheetId);
         }
-        return new SheetAsOf(date, sheet == null ? null : sheet.getPolicyDate(), people, claims, rates, settings);
+        return new SheetAsOf(date, sheet, rows);
+    }
+
+    /** The sheet as it stood at the end of {@code date} (see {@link #asOf}), read on its own. */
+    @Transactional(readOnly = true)
+    public SheetAsOf read(String sheetId, LocalDate date) {
+        return asOf(sheetId, date);
     }
 
     private static <T> T read(String state, Class<T> type) {

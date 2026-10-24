@@ -371,17 +371,17 @@ import { Summary, SummaryPerson } from './summary';
             }
           </tbody>
         </table>
-        <p>
-          Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
-        </p>
-        <p>
-          Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
-        </p>
-        <p>
-          Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
-          due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
-        </p>
       }
+      <p>
+        Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
+      </p>
+      <p>
+        Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
+      </p>
+      <p>
+        Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
+        due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
+      </p>
     </section>
   `,
   styles: `
@@ -710,12 +710,13 @@ export class People {
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
       return;
     }
+    // The as-of date goes with this statement only, taken or refused: the next is taken now unless typed again.
+    this.statementAsOfs.update(({ [person.id]: _, ...rest }) => rest);
     try {
       const taken = await this.statementsService.take(sheet, person.id, asOf || null);
       if (this.sheet() !== sheet) return;
       for (const c of taken.claims) this.claimSaved(c);
       this.statements.update((list) => [...list, taken.statement]);
-      this.statementAsOfs.update(({ [person.id]: _, ...rest }) => rest);
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'A statement could not be taken.' }));

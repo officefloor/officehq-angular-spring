@@ -7,9 +7,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -99,21 +102,32 @@ public class PersonController {
 
     private final PersonService service;
 
-    public PersonController(PersonService service) {
+    private final SheetHistory history;
+
+    public PersonController(PersonService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.read(sheetId.trim(), asOf).people().stream().map(person -> PersonView.of(person, asOf))
+                    .toList();
+        }
         LocalDate today = service.today(sheetId.trim());
         return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today)).toList();
     }
 
     @GetMapping("/patrons")
     public List<PatronView> patrons(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.patrons(sheetId.trim()).stream().map(PatronView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<PersonPatron> patrons = asOf == null ? service.patrons(sheetId.trim())
+                : history.read(sheetId.trim(), asOf).patrons();
+        return patrons.stream().map(PatronView::of).toList();
     }
 
     @PostMapping("/{personId}/patrons")
@@ -128,7 +142,9 @@ public class PersonController {
     /** The ids of the people the signed-in user watches. */
     @GetMapping("/watched")
     public List<Long> watched(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) return history.read(sheetId.trim(), asOf).watchedBy(user.trim());
         return service.watched(sheetId.trim(), user.trim());
     }
 

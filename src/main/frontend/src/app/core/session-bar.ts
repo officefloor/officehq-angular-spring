@@ -45,6 +45,24 @@ import { Session } from './session';
           <button type="button" data-testid="sheet-archive" (click)="archive()">
             Archive sheet
           </button>
+          <form (submit)="setAsOf($event)">
+            <label for="asof-date">Show as of</label>
+            <input
+              id="asof-date"
+              type="date"
+              data-testid="asof-date"
+              [value]="asOfInput()"
+              (input)="asOfInput.set(value($event)); asOfError.set(false)"
+            />
+            <button type="submit" data-testid="asof-set">Set as of</button>
+            <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+          </form>
+          <span
+            >As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></span
+          >
+          @if (asOfError()) {
+            <p role="alert" class="error" data-testid="asof-error">Type a date to show the sheet as of.</p>
+          }
           @if (todayError()) {
             <p role="alert" class="error" data-testid="sheet-error">
               That date could not be set as today.
@@ -106,6 +124,8 @@ export class SessionBar {
   protected readonly todayInput = signal('');
   protected readonly todayError = signal(false);
   protected readonly archiveError = signal(false);
+  protected readonly asOfInput = signal('');
+  protected readonly asOfError = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -129,6 +149,21 @@ export class SessionBar {
     this.todayError.set(false);
     this.archiveError.set(false);
     this.todayError.set(!(await this.session.setToday(this.todayInput())));
+  }
+
+  protected async setAsOf(event: Event): Promise<void> {
+    event.preventDefault();
+    this.asOfError.set(false);
+    this.todayError.set(false);
+    this.archiveError.set(false);
+    this.asOfError.set(!(await this.session.setAsOf(this.asOfInput())));
+  }
+
+  protected async clearAsOf(): Promise<void> {
+    this.asOfError.set(false);
+    this.todayError.set(false);
+    this.archiveError.set(false);
+    await this.session.clearAsOf();
   }
 
   protected async archive(): Promise<void> {

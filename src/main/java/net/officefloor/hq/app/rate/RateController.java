@@ -9,6 +9,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.SheetHistory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -46,14 +49,19 @@ public class RateController {
 
     private final RateService service;
 
-    public RateController(RateService service) {
+    private final SheetHistory history;
+
+    public RateController(RateService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<Rate> rates = asOf == null ? service.list(sheetId.trim()) : history.read(sheetId.trim(), asOf).rates();
+        return rates.stream().map(RateView::of).toList();
     }
 
     @PutMapping("/{grade}")
