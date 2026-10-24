@@ -1,0 +1,478 @@
+diff --git a/src/main/frontend/src/app/features/people/holidays.service.ts b/src/main/frontend/src/app/features/people/holidays.service.ts
+new file mode 100644
+index 00000000..ad3348b2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/holidays.service.ts
+@@ -0,0 +1,30 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A holiday on the sheet (YYYY-MM-DD): a claim added is not due by one, but by the next day that is not. */
++export interface Holiday {
++  id: number;
++  date: string;
++}
++
++// The holidays on a sheet, read from and written to the server.
++@Injectable({ providedIn: 'root' })
++export class HolidaysService {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  list(sheet: string): Promise<Holiday[]> {
++    return firstValueFrom(this.http.get<Holiday[]>(this.url(sheet), { headers: this.session.headers() }));
++  }
++
++  /** Add a holiday. Refused (409) when the date is already on the list. Resolves to every holiday on the sheet. */
++  add(sheet: string, date: string): Promise<Holiday[]> {
++    return firstValueFrom(this.http.post<Holiday[]>(this.url(sheet), { date }, { headers: this.session.headers() }));
++  }
++
++  private url(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}/holidays`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/holidays.ts b/src/main/frontend/src/app/features/people/holidays.ts
+new file mode 100644
+index 00000000..54eea7eb
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/holidays.ts
+@@ -0,0 +1,105 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { Holiday, HolidaysService } from './holidays.service';
++
++const DATE = /^\d{4}-\d{2}-\d{2}$/;
++
++// The sheet's holidays, one line each, earliest first, and the entry by which one is added (a date
++// already on the list is refused). Read from the store every time a sheet is loaded.
++@Component({
++  selector: 'app-holidays',
++  template: `
++    <section aria-labelledby="holidays-heading">
++      <h2 id="holidays-heading">Holidays</h2>
++      <form (submit)="submit($event)" aria-label="Holiday" data-testid="holiday-form">
++        <label for="holiday-date">Date</label>
++        <input id="holiday-date" data-testid="holiday-date" placeholder="YYYY-MM-DD" [value]="date()" (input)="date.set(value($event)); error.set(null)" />
++        <button type="submit" data-testid="holiday-add">Add holiday</button>
++        @if (error(); as message) {
++          <p role="alert" class="error" data-testid="holiday-error">{{ message }}</p>
++        }
++      </form>
++      @if (holidays().length > 0) {
++        <ul data-testid="holiday-list">
++          @for (h of holidays(); track h.id) {
++            <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
++          }
++        </ul>
++      }
++    </section>
++  `,
++  styles: `
++    form {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 0.5rem;
++      align-items: center;
++      margin-bottom: 0.5rem;
++    }
++    .error {
++      color: #a40000;
++      margin: 0;
++    }
++  `,
++})
++export class Holidays {
++  private readonly session = inject(Session);
++  private readonly service = inject(HolidaysService);
++
++  protected readonly holidays = signal<Holiday[]>([]);
++  protected readonly date = signal('');
++  protected readonly error = signal<string | null>(null);
++  private saving = false;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheetId();
++      this.session.loads();
++      this.holidays.set([]);
++      this.date.set('');
++      this.error.set(null);
++      if (sheet) void this.read(sheet);
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async submit(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.saving) return;
++    this.error.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const date = this.date().trim();
++    if (!DATE.test(date)) {
++      this.error.set('Type the date as YYYY-MM-DD.');
++      return;
++    }
++    if (this.holidays().some((h) => h.date === date)) {
++      this.error.set('That date is already a holiday.');
++      return;
++    }
++    this.saving = true;
++    try {
++      const all = await this.service.add(sheet, date);
++      if (this.session.sheetId() !== sheet) return;
++      this.holidays.set(all);
++      this.date.set('');
++    } catch {
++      this.error.set('That date is already a holiday, or is not a date.');
++    } finally {
++      this.saving = false;
++    }
++  }
++
++  private async read(sheet: string): Promise<void> {
++    try {
++      const all = await this.service.list(sheet);
++      if (this.session.sheetId() === sheet) this.holidays.set(all);
++    } catch {
++      // The holidays could not be read; they show as none.
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b9f2ac54..bdfad72a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,6 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
+ import { Session } from '../../core/session';
+ import { Claims } from './claims';
+ import { Delegations } from './delegations';
++import { Holidays } from './holidays';
+ import { Header } from './header';
+ import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
+ import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
+@@ -46,7 +47,7 @@ import { Summary, SummaryPerson } from './summary';
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Delegations, Header, Periods, Rates, Settings, Summary],
++  imports: [Claims, Delegations, Header, Holidays, Periods, Rates, Settings, Summary],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -61,6 +62,7 @@ import { Summary, SummaryPerson } from './summary';
+       (policyDateSaved)="policyDate.set($event)"
+     />
+     <app-delegations />
++    <app-holidays />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+     <app-summary
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 91d19b33..55fdce93 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -35,7 +35,8 @@ public class Claim {
+     private LocalDate date;
+ 
+     /** The date the claim is due by, fixed when it is added: its date plus the terms of its person's
+-     * grade in force on that date. Later changes to the terms or to its date leave it as it is. */
++     * grade in force on that date, moved past the sheet's holidays then to the next day that is not one.
++     * Later changes to the terms, to its date or to the holidays leave it as it is. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 10d6207a..7d8d2059 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -8,6 +8,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+@@ -24,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
+  * or its today when that is off. A claim's
+- * due-by is fixed when it is added, from the terms of its person's grade in force on its date, and the
++ * due-by is fixed when it is added, from the terms of its person's grade in force on its date, moved
++ * past the holidays on the sheet then to the next day that is not one, and the
+  * claim belongs to the period containing that due-by (not its date). Only a DRAFT claim can be edited.
+  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
+  * change status; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
+@@ -41,10 +43,13 @@ public class ClaimService {
+     private final PeriodRepository periods;
+     private final SettingsService settings;
+     private final PersonWatchRepository watches;
++    private final HolidayService holidays;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
+-            PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, Audit audit) {
++            PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
++            Audit audit) {
++        this.holidays = holidays;
+         this.watches = watches;
+         this.claims = claims;
+         this.logs = logs;
+@@ -76,7 +81,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
+-        LocalDate dueBy = dated.plusDays(termsOf(sheetId, person, dated));
++        LocalDate dueBy = dueByOf(sheetId, person, dated);
+         refuseClosed(sheetId, dueBy);
+         person.requireClaimable(dated);
+         refuseBadCorrection(sheetId, personId, amount, corrects);
+@@ -294,7 +299,7 @@ public class ClaimService {
+         claim.setAmount(claim.getAmount().subtract(amount));
+         claim.unbind();
+         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
+-        split.setDueBy(claim.getDate().plusDays(termsOf(sheetId, person, claim.getDate())));
++        split.setDueBy(dueByOf(sheetId, person, claim.getDate()));
+         refuseClosed(sheetId, split.getDueBy());
+         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
+         split.setListed(sheets.nextInSequence(sheetId, "listed"));
+@@ -544,6 +549,12 @@ public class ClaimService {
+         return note == null ? "" : note.trim();
+     }
+ 
++    /** The due-by fixed for a claim of the person dated {@code date} added now: its date plus its terms,
++     * moved past the holidays on the sheet now to the next day that is not one. */
++    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
++        return holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheetId, person, date)));
++    }
++
+     /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those
+      * of their grade in force on that date, else the sheet's then. */
+     private int termsOf(String sheetId, Person person, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+new file mode 100644
+index 00000000..8c06ca4b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+@@ -0,0 +1,58 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The holidays on a sheet. The signed-in user's name travels in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/holidays")
++@Validated
++public class HolidayController {
++
++    /** A holiday: its id and its date. */
++    public record HolidayView(long id, LocalDate date) {
++        static HolidayView of(SheetHoliday h) {
++            return new HolidayView(h.getId(), h.getDate());
++        }
++    }
++
++    /** A holiday asked: its date (YYYY-MM-DD). */
++    public record HolidayRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String date) {
++        LocalDate dateValue() {
++            return LocalDate.parse(date.trim());
++        }
++    }
++
++    private final HolidayService service;
++
++    public HolidayController(HolidayService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<HolidayView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return service.holidays(sheetId.trim()).stream().map(HolidayView::of).toList();
++    }
++
++    @PostMapping
++    public List<HolidayView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid HolidayRequest request) {
++        String sheet = sheetId.trim();
++        service.add(sheet, user.trim(), request.dateValue());
++        return list(sheet);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+new file mode 100644
+index 00000000..78e892be
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The holidays on a sheet. A claim's due-by, when it is fixed as the claim is added, is moved past the
++ * holidays on the sheet then (see {@link #pastHolidays}); a holiday added later leaves it as it is. */
++@Service
++public class HolidayService {
++
++    private final SheetRepository sheets;
++    private final SheetHolidayRepository holidays;
++    private final Audit audit;
++
++    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, Audit audit) {
++        this.sheets = sheets;
++        this.holidays = holidays;
++        this.audit = audit;
++    }
++
++    /** The sheet's holidays, earliest first. */
++    @Transactional(readOnly = true)
++    public List<SheetHoliday> holidays(String sheetId) {
++        return holidays.findBySheetIdOrderByDateAsc(sheetId);
++    }
++
++    /** Add a holiday on {@code date}; refused when the date is already on the sheet's list. */
++    @Transactional
++    public SheetHoliday add(String sheetId, String by, LocalDate date) {
++        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new HolidayTakenException();
++        SheetHoliday added = holidays.saveAndFlush(new SheetHoliday(sheetId, date));
++        audit.change("HOLIDAY_ADDED", sheetId, by, "date=" + date);
++        return added;
++    }
++
++    /** {@code date} when it is not a holiday on the sheet, else the next day after it that is not. */
++    @Transactional(readOnly = true)
++    public LocalDate pastHolidays(String sheetId, LocalDate date) {
++        Set<LocalDate> off = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
++                .collect(Collectors.toSet());
++        LocalDate on = date;
++        while (off.contains(on)) on = on.plusDays(1);
++        return on;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayTakenException.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayTakenException.java
+new file mode 100644
+index 00000000..9609c90f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayTakenException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.holiday;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A holiday asked for a date already on the sheet's list. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class HolidayTakenException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/SheetHoliday.java b/src/main/java/net/officefloor/hq/app/holiday/SheetHoliday.java
+new file mode 100644
+index 00000000..a94120cd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/SheetHoliday.java
+@@ -0,0 +1,45 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A holiday on a sheet: a date no claim added from then on is due by. */
++@Entity
++@Table(name = "sheet_holiday")
++public class SheetHoliday {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "holiday_date", nullable = false)
++    private LocalDate date;
++
++    protected SheetHoliday() {
++    }
++
++    public SheetHoliday(String sheetId, LocalDate date) {
++        this.sheetId = sheetId;
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/SheetHolidayRepository.java b/src/main/java/net/officefloor/hq/app/holiday/SheetHolidayRepository.java
+new file mode 100644
+index 00000000..bb7129b0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/SheetHolidayRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetHolidayRepository extends JpaRepository<SheetHoliday, Long> {
++
++    List<SheetHoliday> findBySheetIdOrderByDateAsc(String sheetId);
++
++    boolean existsBySheetIdAndDate(String sheetId, LocalDate date);
++}
+diff --git a/src/main/resources/db/migration/V54__sheet_holiday.sql b/src/main/resources/db/migration/V54__sheet_holiday.sql
+new file mode 100644
+index 00000000..b6b0049a
+--- /dev/null
++++ b/src/main/resources/db/migration/V54__sheet_holiday.sql
+@@ -0,0 +1,7 @@
++-- The holidays on a sheet, one row each: a claim's due-by fixed when it is added is moved past them.
++CREATE TABLE sheet_holiday (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    holiday_date DATE         NOT NULL,
++    CONSTRAINT sheet_holiday_unique UNIQUE (sheet_id, holiday_date)
++);
