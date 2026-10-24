@@ -1,0 +1,227 @@
+diff --git a/src/main/frontend/src/app/features/people/audit.service.ts b/src/main/frontend/src/app/features/people/audit.service.ts
+index c90abe15..1e1e9294 100644
+--- a/src/main/frontend/src/app/features/people/audit.service.ts
++++ b/src/main/frontend/src/app/features/people/audit.service.ts
+@@ -18,4 +18,13 @@ export class AuditService {
+       }),
+     );
+   }
++
++  /** The claim's timeline: the sheet's lines about it, newest first. */
++  claimLines(sheet: string, claimId: number): Promise<string[]> {
++    return firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/claims/${claimId}`, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index bd06b975..125478df 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -6,6 +6,7 @@ import { PersonGrade } from './people.service';
+ import { Period, periodOn } from './periods.service';
+ import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
+ import { Dated } from './settings.service';
++import { AuditService } from './audit.service';
+ import { TemplatesService } from './templates.service';
+ import { VoidReasonsService } from './void-reasons.service';
+ import { FigurePipe } from '../../core/figure.pipe';
+@@ -135,6 +136,21 @@ const PAST: Record<ClaimAction, string> = {
+                 <li data-testid="claim-log-line">{{ (line) | figure }}</li>
+               }
+             </ol>
++            <button
++              type="button"
++              data-testid="claim-timeline"
++              [attr.aria-label]="'Show timeline of claim of ' + c.amount + ' on ' + c.date"
++              (click)="showTimeline(c)"
++            >
++              Timeline
++            </button>
++            @if (timelines()[c.id]; as timeline) {
++              <ol class="claim-timeline" [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
++                @for (line of timeline; track $index) {
++                  <li data-testid="claim-timeline-line">{{ (line) | figure }}</li>
++                }
++              </ol>
++            }
+             <ol class="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+               @for (line of c.comments; track $index) {
+                 <li data-testid="claim-comments-line">{{ (line) | figure }}</li>
+@@ -376,6 +392,7 @@ const PAST: Record<ClaimAction, string> = {
+ export class Claims {
+   private readonly session = inject(Session);
+   private readonly service = inject(ClaimsService);
++  private readonly audit = inject(AuditService);
+   /** The sheet's void reasons: while there are any, a void names one of them. */
+   protected readonly voidReasonList = inject(VoidReasonsService).reasons;
+   private readonly templates = inject(TemplatesService);
+@@ -427,6 +444,8 @@ export class Claims {
+   private submitting = false;
+   /** The error of the last refused action on each claim, by claim id. */
+   protected readonly rowErrors = signal<Record<number, string>>({});
++  /** The timeline shown for each claim, by claim id: its audit lines, newest first. */
++  protected readonly timelines = signal<Record<number, string[]>>({});
+   /** The reason typed for rejecting each PENDING claim, by claim id. */
+   protected readonly rejectReasons = signal<Record<number, string>>({});
+   /** The reason chosen from the sheet's list for voiding each claim, by claim id. */
+@@ -718,6 +737,22 @@ export class Claims {
+   /** Write a reminder of the OPEN or PENDING claim, once per sheet's today; a viewer's, one on a claim
+    *  in any other status or dated in a closed period, and a second one the same day are refused with an
+    *  error. */
++  /** Read the claim's timeline afresh; the one shown before is gone while it is read. */
++  protected async showTimeline(claim: Claim): Promise<void> {
++    this.clearRowError(claim.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.timelines.update(({ [claim.id]: _, ...rest }) => rest);
++    try {
++      const lines = await this.audit.claimLines(sheet, claim.id);
++      if (this.session.sheetId() !== sheet) return;
++      this.timelines.update((all) => ({ ...all, [claim.id]: lines }));
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'The timeline could not be read.' }));
++    }
++  }
++
+   protected async remind(claim: Claim): Promise<void> {
+     this.clearRowError(claim.id);
+     const sheet = this.session.sheetId();
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 4e6207dc..a5a1d975 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -7,8 +7,10 @@ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.settings.DelegationService;
+ import org.springframework.beans.factory.ObjectProvider;
+@@ -99,6 +101,47 @@ public class Audit {
+         return found;
+     }
+ 
++    /**
++     * The lines the file holds for a sheet about one claim, exactly as written, newest first: with a
++     * {@code number}, those whose {@code number=} field is it; without one, those carrying no number
++     * whose {@code person=} (compared as names are), {@code amount=} and {@code date=} fields are the
++     * claim's.
++     */
++    public synchronized List<String> claimLines(String sheetId, String number, String person, String amount,
++            String date) {
++        String key = person.trim().toLowerCase(Locale.ROOT);
++        List<String> found = new ArrayList<>();
++        for (String line : lines(sheetId, "")) {
++            Map<String, String> fields = fieldsOf(line);
++            boolean about = number != null
++                    ? number.equals(fields.get("number"))
++                    : !fields.containsKey("number")
++                            && key.equals(fields.getOrDefault("person", "").trim().toLowerCase(Locale.ROOT))
++                            && amount.equals(fields.get("amount")) && date.equals(fields.get("date"));
++            if (about) found.add(line);
++        }
++        return found;
++    }
++
++    /** A line's fields by name, each the first of that name (a value runs to the next field). */
++    private static Map<String, String> fieldsOf(String line) {
++        Map<String, String> fields = new HashMap<>();
++        String field = null;
++        StringBuilder value = new StringBuilder();
++        for (String token : (line + " end=").split(" ")) {
++            int eq = token.indexOf('=');
++            if (eq > 0) {
++                if (field != null) fields.putIfAbsent(field, value.toString());
++                field = token.substring(0, eq);
++                value.setLength(0);
++                value.append(token.substring(eq + 1));
++            } else if (field != null) {
++                value.append(' ').append(token);
++            }
++        }
++        return fields;
++    }
++
+     private static boolean ofSheet(String line, String sheetId) {
+         String[] tokens = line.split(" ", 3);
+         return tokens.length >= 2 && tokens[1].equals("sheet=" + sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 753605c3..42b3f7b5 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -30,4 +30,11 @@ public class AuditController {
+             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
+         return audit.lines(sheetId.trim(), name);
+     }
++
++    /** The claim's timeline: the lines about it, newest first. */
++    @GetMapping("/claims/{claimId}")
++    public List<String> claimLines(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId) {
++        return audit.claimLines(sheetId.trim(), claimId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditService.java b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+index 61a767bf..b8948649 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.audit;
+ 
++import java.math.RoundingMode;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
+ import java.util.Deque;
+@@ -7,6 +8,9 @@ import java.util.List;
+ import java.util.Set;
+ import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimNotFoundException;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -21,9 +25,11 @@ public class AuditService {
+     private final Audit audit;
+     private final PersonRepository people;
+     private final SheetRepository sheets;
++    private final ClaimRepository claims;
+ 
+-    public AuditService(Audit audit, PersonRepository people, SheetRepository sheets) {
++    public AuditService(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
+         this.audit = audit;
++        this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
+     }
+@@ -48,6 +54,21 @@ public class AuditService {
+         return lines;
+     }
+ 
++    /**
++     * The claim's timeline: the sheet's lines about the claim, newest first — those carrying its number,
++     * or for a claim with no number those naming its person, amount and date together.
++     */
++    @Transactional(readOnly = true)
++    public List<String> claimLines(String sheetId, long claimId) {
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(ClaimNotFoundException::new);
++        String number = claim.getNumber() == null || claim.getNumber().isBlank() ? null : claim.getNumber();
++        return audit.claimLines(sheetId, number, person.getName(),
++                claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
++                String.valueOf(claim.getDate()));
++    }
++
+     /** The ids of the sheet's children, their children, and so on, in id order. */
+     private Set<String> descendantsOf(String sheetId) {
+         Set<String> found = new TreeSet<>();
