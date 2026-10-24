@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -46,14 +47,21 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
         requireFree(sheetId, name, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Person person = people.saveAndFlush(new Person(sheetId, name, grade));
-        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
+        Person created = new Person(sheetId, name, grade);
+        created.setTerms(terms);
+        Person person = people.saveAndFlush(created);
+        if (terms == null) {
+            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
+        } else {
+            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade,
+                    "terms=" + terms);
+        }
         rollup.recordSince(sheetId, user, before);
         return person;
     }
@@ -66,10 +74,10 @@ public class PersonService {
 
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
      * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
-     * have been saved since. */
+     * have been saved since. The person's own terms become {@code terms} (none when null). */
     @Transactional
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
@@ -79,8 +87,15 @@ public class PersonService {
         LocalDate today = sheetService.today(sheetId);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
+        person.setTerms(terms);
         people.flush();
-        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today));
+        if (termsChanged) {
+            audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today),
+                    "terms=" + (terms == null ? "" : terms));
+        } else {
+            audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today));
+        }
         rollup.recordSince(sheetId, user, before);
         return person;
     }

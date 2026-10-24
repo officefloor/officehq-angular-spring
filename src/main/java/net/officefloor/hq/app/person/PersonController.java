@@ -48,12 +48,12 @@ public class PersonController {
      * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
      * have any hold, listed in {@code holds} by from-date. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms) {
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
-                    person.getHolds().stream().map(HoldView::of).toList());
+                    person.getHolds().stream().map(HoldView::of).toList(), person.getTerms());
         }
     }
 
@@ -79,12 +79,17 @@ public class PersonController {
 
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
      * without regard to case) and grade, one of A, B or C, given from {@code gradeFrom} on a save (the
-     * sheet's today when left out; a person's first grade applies from the beginning of time). */
+     * sheet's today when left out; a person's first grade applies from the beginning of time), and
+     * their own terms, a whole number of days, 0 or more (blank or null for none). */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
+            @Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String terms,
             Long version) {
+        Integer termsValue() {
+            return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
     }
 
     /** A save refused because the person was saved by someone else since the editor loaded them:
@@ -146,7 +151,8 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
+        return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
+                request.termsValue()));
     }
 
     @PutMapping("/{personId}")
@@ -159,7 +165,7 @@ public class PersonController {
         }
         try {
             return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom()));
+                    request.name(), request.grade(), request.gradeFrom(), request.termsValue()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));

@@ -94,6 +94,14 @@ import { Summary, SummaryPerson } from './summary';
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
+        <label for="person-form-terms">Terms (days)</label>
+        <input
+          id="person-form-terms"
+          inputmode="numeric"
+          data-testid="person-form-terms"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -180,6 +188,7 @@ import { Summary, SummaryPerson } from './summary';
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
+              <th scope="col">Terms</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
               @for (pd of periods(); track pd.id) {
@@ -206,6 +215,7 @@ import { Summary, SummaryPerson } from './summary';
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 @for (pd of periods(); track pd.id) {
@@ -533,6 +543,8 @@ export class People {
   protected readonly grade = signal<Grade>('A');
   /** The date a save gives the grade from; blank for the sheet's today. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms in days, as typed; blank for none. */
+  protected readonly terms = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
@@ -992,6 +1004,7 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeNow(person));
     this.gradeFrom.set('');
+    this.terms.set(person.terms === null ? '' : String(person.terms));
     this.error.set(null);
   }
 
@@ -1000,6 +1013,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -1009,9 +1023,15 @@ export class People {
     this.error.set(null);
     const sheet = this.sheet();
     if (!sheet) return;
-    const fields = { name: this.name(), grade: this.grade() };
+    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim() };
     if (!fields.name.trim()) {
       this.error.set('Type a name for the person.');
+      return;
+    }
+    if (!/^\d{0,4}$/.test(fields.terms)) {
+      // Nothing is saved: the editor closes, so the form is ready for the next person.
+      this.reset();
+      this.error.set('Terms are a whole number of days, or blank for none.');
       return;
     }
     const id = this.editingId();
@@ -1045,6 +1065,7 @@ export class People {
           this.editingVersion = current.version;
           this.name.set(current.name);
           this.grade.set(this.gradeNow(current));
+          this.terms.set(current.terms === null ? '' : String(current.terms));
         }
         this.error.set('Someone else saved this person since you opened it; their changes are shown.');
         return;

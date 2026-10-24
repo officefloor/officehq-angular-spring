@@ -33,6 +33,8 @@ export interface Person {
   /** The holds the person has been put on, by from-date: their OPEN and PENDING claims dated within
    *  one count in no live total, unless a statement binds them. */
   holds: PersonHold[];
+  /** The person's own terms in days, in place of their grade's and the sheet's; null when none. */
+  terms: number | null;
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
@@ -65,6 +67,8 @@ export interface PersonFields {
   grade: Grade;
   /** On a save, the date the grade is given from (YYYY-MM-DD); null for the sheet's today. */
   gradeFrom?: string | null;
+  /** The person's own terms in days, as typed; blank for none. */
+  terms: string;
 }
 
 /** The grade in force on a date: the one with the latest from-date on or before it, or the first

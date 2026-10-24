@@ -78,7 +78,7 @@ public class ClaimService {
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
-        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated)));
+        claim.setDueBy(dated.plusDays(termsOf(sheetId, person, dated)));
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim = claims.saveAndFlush(claim);
         log(user, person, claim);
@@ -211,7 +211,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
-        split.setDueBy(claim.getDate().plusDays(settings.termsFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate())));
+        split.setDueBy(claim.getDate().plusDays(termsOf(sheetId, person, claim.getDate())));
         split.setListed(sheets.nextInSequence(sheetId, "listed"));
         split.setStatus(ClaimStatus.OPEN);
         split.setNumber(nextNumber(sheetId, claim.getDate()));
@@ -437,5 +437,11 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
+    }
+
+    /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those
+     * of their grade in force on that date, else the sheet's then. */
+    private int termsOf(String sheetId, Person person, LocalDate date) {
+        return person.getTerms() != null ? person.getTerms() : settings.termsFor(sheetId, person.gradeOn(date), date);
     }
 }

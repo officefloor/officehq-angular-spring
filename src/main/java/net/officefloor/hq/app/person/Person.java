@@ -56,6 +56,10 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private Set<PersonHold> holds = new HashSet<>();
 
+    /** The person's own terms in days, in place of their grade's and the sheet's; null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -114,6 +118,14 @@ public class Person {
             best = g;
         }
         return best == null ? null : best.getGrade();
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {
