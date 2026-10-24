@@ -1,0 +1,64 @@
+{
+  "checkpoint": 99,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp99_person-contact",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8d66057a81011e8a62cd9249191cb924578c2855",
+  "reset_sha": "",
+  "preagent_sha": "1d1ad39195599194b480d78bc19514662b17ad09",
+  "prev_sha": "1d1ad39195599194b480d78bc19514662b17ad09",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1313296000000002,
+    "input_tokens": 48,
+    "output_tokens": 17276,
+    "cache_read_tokens": 1237848,
+    "cache_creation_tokens": 67256,
+    "num_turns": 25,
+    "duration_ms": 641646,
+    "duration_api_ms": 200851,
+    "model": "claude-opus-5-5",
+    "session_id": "d004b795-6c6c-4040-886d-098c2456fb47",
+    "stop_reason": "success",
+    "result_text": "People now have a contact. `bin/e2e` passes all 4 tests in the spec, on two runs in a row.\n\n**What changed**\n- **Database:** migration `V63__person_contact.sql` adds a `contact` column to `person`, with a unique index per sheet. Blank contacts are stored as null, so any number of people can have none.\n- **Server:**\n  - `Person` stores the contact with surrounding spaces removed and lower-cased.\n  - `PersonService` refuses a contact that another person on the sheet already has, using the new `PersonContactTakenException` (409, with body `{\"error\":\"contact-taken\"}`). The refusal happens before anything is written, so nothing reaches the store or the audit file.\n  - `PERSON_ADDED` gets `contact=<contact>` at the end when one was given. `PERSON_EDITED` gets it when the contact changed, with an empty value when it was cleared.\n  - The REST view and request now include `contact`. Quick-add and bulk grade still work: bulk grade keeps each person's existing contact.\n- **Front end:** the person form has a `person-form-contact` field and the row has a `person-contact` cell. A duplicate contact shows its own message in `person-form-error`.\n\n**One thing that works differently from the name check:** the contact duplicate is caught in the browser first, against the people already loaded, and the server checks again. I needed this because when a save changes only the contact, the test helper counts it as successful unless the error appears straight away. A refusal that waits for the server reply always looked like a success. To keep the browser from working on out-of-date data, a refusal caught this way re-reads the people from the store. If someone else saved that person in the meantime, the editor switches to the stored version, as it already does for a stale save. The test needs this: Uma's refused save on a person Vic had just edited is followed by a save that must go through.\n\nI didn't edit the spec, `e2e/support/`, `bin/*` or the instruction files.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1313296000000002,
+        "num_turns": 25,
+        "duration_ms": 641646,
+        "duration_api_ms": 200851,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp99.agent.jsonl",
+  "agent_diff_file": "cp99.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
