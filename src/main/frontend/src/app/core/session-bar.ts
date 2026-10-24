@@ -1,0 +1,90 @@
+import { Component, inject, signal } from '@angular/core';
+import { Session } from './session';
+
+// Sign-in by name (no password), the signed-in name, and the sheet chooser with the active id.
+@Component({
+  selector: 'app-session-bar',
+  template: `
+    @if (session.user(); as user) {
+      <section class="bar" aria-label="Session">
+        <span
+          >Signed in as <strong data-testid="current-user">{{ user }}</strong></span
+        >
+        <form (submit)="load($event)">
+          <label for="sheet-id">Sheet</label>
+          <input
+            id="sheet-id"
+            data-testid="sheet-id-input"
+            [value]="sheetInput()"
+            (input)="sheetInput.set(value($event)); sheetError.set(false)"
+          />
+          <button type="submit" data-testid="sheet-load">Load</button>
+        </form>
+        @if (session.sheetId(); as sheet) {
+          <span
+            >Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></span
+          >
+        }
+        @if (sheetError()) {
+          <p role="alert" class="error" data-testid="sheet-load-error">
+            That sheet could not be loaded.
+          </p>
+        }
+      </section>
+    } @else {
+      <form class="bar" (submit)="signIn($event)" aria-label="Sign in">
+        <label for="signin-name">Your name</label>
+        <input
+          id="signin-name"
+          data-testid="signin-name"
+          [value]="nameInput()"
+          (input)="nameInput.set(value($event)); signinError.set(false)"
+        />
+        <button type="submit" data-testid="signin-submit">Sign in</button>
+        @if (signinError()) {
+          <p role="alert" class="error" data-testid="signin-error">Type a name to sign in.</p>
+        }
+      </form>
+    }
+  `,
+  styles: `
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.5rem 0;
+    }
+    form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .error {
+      color: #a40000;
+      margin: 0;
+    }
+  `,
+})
+export class SessionBar {
+  protected readonly session = inject(Session);
+  protected readonly nameInput = signal('');
+  protected readonly sheetInput = signal('');
+  protected readonly signinError = signal(false);
+  protected readonly sheetError = signal(false);
+
+  protected value(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  protected signIn(event: Event): void {
+    event.preventDefault();
+    this.signinError.set(!this.session.signIn(this.nameInput()));
+  }
+
+  protected async load(event: Event): Promise<void> {
+    event.preventDefault();
+    this.sheetError.set(false);
+    this.sheetError.set(!(await this.session.loadSheet(this.sheetInput())));
+  }
+}
