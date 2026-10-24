@@ -5,9 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,13 +29,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** A period, with whether it is closed and the due-total fixed when it was closed (null while it is
-     * open), sent as text with two decimals so it is never rounded on the way. */
+     * open) and each person's due-total for it fixed then, by person id (empty while it is open), sent
+     * as text with two decimals so they are never rounded on the way. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal) {
+            String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
+            Map<Long, String> personTotals = new TreeMap<>();
+            period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, text(total)));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
-                    period.isClosed(), period.getClosedTotal() == null ? null
-                            : period.getClosedTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    period.isClosed(), period.getClosedTotal() == null ? null : text(period.getClosedTotal()),
+                    personTotals);
+        }
+
+        private static String text(BigDecimal amount) {
+            return amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
         }
     }
 

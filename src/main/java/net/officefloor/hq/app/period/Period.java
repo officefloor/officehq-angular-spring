@@ -1,18 +1,26 @@
 package net.officefloor.hq.app.period;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 /** A sheet's period: a name, unique on the sheet without regard to case, and the dates it runs from
  * and to, both inclusive. A claim belongs to the period whose dates contain its date. Once closed, its
- * due-total is the one fixed when it was closed, until it is reopened. */
+ * due-total, and each person's due-total for it, are the ones fixed when it was closed, until it is
+ * reopened. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -42,6 +50,14 @@ public class Period {
     /** The due-total fixed when the period was closed; null while it is open. */
     @Column(name = "closed_total", precision = 12, scale = 2)
     private BigDecimal closedTotal;
+
+    /** Each person's due-total for the period fixed when it was closed, by person id; empty while it
+     * is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_total", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "total", precision = 12, scale = 2, nullable = false)
+    private Map<Long, BigDecimal> closedPersonTotals = new HashMap<>();
 
     protected Period() {
     }
@@ -87,16 +103,24 @@ public class Period {
         return closedTotal;
     }
 
-    /** Close the period, fixing its due-total at {@code total}. */
-    public void close(BigDecimal total) {
+    public Map<Long, BigDecimal> getClosedPersonTotals() {
+        return Map.copyOf(closedPersonTotals);
+    }
+
+    /** Close the period, fixing each person's due-total for it at {@code personTotals}, by person id,
+     * and its own due-total at their sum. */
+    public void close(Map<Long, BigDecimal> personTotals) {
         this.closed = true;
-        this.closedTotal = total;
+        this.closedPersonTotals.clear();
+        this.closedPersonTotals.putAll(personTotals);
+        this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
         this.closedTotal = null;
+        this.closedPersonTotals.clear();
     }
 
     /** Whether this period shares a day with the dates {@code from} to {@code to}, both inclusive. */

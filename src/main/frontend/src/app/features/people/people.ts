@@ -159,6 +159,9 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Grade</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
+              @for (pd of periods(); track pd.id) {
+                <th scope="col">Due in {{ pd.name }}</th>
+              }
               <th scope="col">Excess</th>
               <th scope="col">Overdue</th>
               <th scope="col">Overdue due</th>
@@ -181,6 +184,9 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                @for (pd of periods(); track pd.id) {
+                  <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ money(personPeriodCents().get(p.id)?.[pd.name] ?? 0) }}</td>
+                }
                 <td data-testid="person-excess">{{ excessOf(p) }}</td>
                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
                 <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
@@ -434,18 +440,33 @@ export class People {
   }));
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
-   *  each claim shows it (a claim with nothing due is skipped). */
-  protected readonly periodDueTotals = computed(() => {
-    const sums: Record<string, number> = {};
-    for (const p of this.periods()) sums[p.name] = 0;
+  /** Each person's due-total for each period, in cents, by person id and period name. While a period
+   *  is open it is what is due on their counting claims dated in it, as each claim shows it (a claim
+   *  with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
+   *  added later). */
+  protected readonly personPeriodCents = computed(() => {
+    const by = new Map<number, Record<string, number>>();
     for (const person of this.people()) {
+      const sums: Record<string, number> = {};
+      for (const p of this.periods()) {
+        sums[p.name] = p.closed ? cents(p.closedPersonTotals[person.id] ?? '0.00') : 0;
+      }
       for (const c of this.claimsOf(person.id)) {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
-        if (period === null) continue;
+        if (period === null || period.closed) continue;
         sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
       }
+      by.set(person.id, sums);
+    }
+    return by;
+  });
+  /** Each period's due-total, by name: the sum of the people's figures for it. */
+  protected readonly periodDueTotals = computed(() => {
+    const sums: Record<string, number> = {};
+    for (const p of this.periods()) sums[p.name] = 0;
+    for (const figures of this.personPeriodCents().values()) {
+      for (const [name, sum] of Object.entries(figures)) sums[name] += sum;
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
   });

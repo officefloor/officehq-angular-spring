@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -76,10 +77,10 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefusedException("already closed");
         }
-        BigDecimal total = dueTotalOf(period);
-        period.close(total);
+        period.close(personTotalsOf(period));
         periods.flush();
-        audit.change("PERIOD_CLOSED", sheetId, user, "period=" + period.getName(), "total=" + total.toPlainString());
+        audit.change("PERIOD_CLOSED", sheetId, user, "period=" + period.getName(),
+                "total=" + period.getClosedTotal().toPlainString());
         return period;
     }
 
@@ -100,20 +101,21 @@ public class PeriodService {
         return period;
     }
 
-    /** The due-total of the period now: the sum of what is due on the counting claims dated in it, as
-     * each shows it, late charges included (a
+    /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
+     * what is due on their counting claims dated in it, as each shows it, late charges included (a
      * claim with no figure adds nothing, nor does an unbound OPEN claim dated within one of its person's holds). */
-    private BigDecimal dueTotalOf(Period period) {
+    private Map<Long, BigDecimal> personTotalsOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));
         for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId())) {
             if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
             Person person = byId.get(claim.getPersonId());
             if (person == null || !RollupService.countsLive(claim, person)) continue;
             BigDecimal figure = rollup.shownOf(claim, person);
-            if (figure != null) total = total.add(figure);
+            if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
         }
-        return total;
+        return totals;
     }
 }

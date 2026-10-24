@@ -95,7 +95,7 @@ export class Summary {
   readonly people = input.required<SummaryPerson[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
-  /** Each open period's live due-total, by name. */
+  /** Each period's due-total, by name. */
   readonly periodDueTotals = input.required<Record<string, string>>();
   /** The sheet's claims. */
   readonly claims = input.required<Claim[]>();
@@ -111,13 +111,13 @@ export class Summary {
     }),
   );
 
-  /** Each period's due-total as its row shows it: fixed once it is closed, live while it is open. */
+  /** Each period's due-total as its row shows it: the sum of the people's figures for it. */
   protected readonly byPeriod = computed(() =>
     [...this.periods()]
       .sort((a, b) => a.from.localeCompare(b.from))
       .map((p) => ({
         name: p.name,
-        dueTotal: p.closed ? p.closedTotal : (this.periodDueTotals()[p.name] ?? '0.00'),
+        dueTotal: this.periodDueTotals()[p.name] ?? '0.00',
       })),
   );
 

@@ -60,7 +60,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                 <td data-testid="period-name">{{ p.name }}</td>
                 <td data-testid="period-from">{{ p.from }}</td>
                 <td data-testid="period-to">{{ p.to }}</td>
-                <td data-testid="period-due-total">{{ p.closed ? p.closedTotal : (dueTotals()[p.name] ?? '0.00') }}</td>
+                <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
                 <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
                 <td>
                   @if (!p.closed) {
@@ -129,7 +129,7 @@ export class Periods {
 
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
-  /** Each period's due-total, by name. */
+  /** Each period's due-total, by name: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Record<string, string>>();
   /** A period was added. */
   readonly added = output<Period>();
