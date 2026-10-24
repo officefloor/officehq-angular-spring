@@ -1,0 +1,64 @@
+{
+  "checkpoint": 9,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp09_numbering",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a claim is opened it receives the next number on the sheet: 1 for the first claim ever\nopened on the sheet, then 2, and so on, with no gaps and never reused, even when two users open\nclaims at the same moment. A draft has no number, and voiding a claim clears its number (the\nnumber is not given to anyone else). Show the number on the claim. Every audit line about a\nclaim that has a number gains number=<number> at its end (so CLAIM_OPENED and CLAIM_SETTLED\ncarry it; a CLAIM_VOIDED line carries the number the claim had).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a claim is opened it receives the next number on the sheet: 1 for the first claim ever\nopened on the sheet, then 2, and so on, with no gaps and never reused, even when two users open\nclaims at the same moment. A draft has no number, and voiding a claim clears its number (the\nnumber is not given to anyone else). Show the number on the claim. Every audit line about a\nclaim that has a number gains number=<number> at its end (so CLAIM_OPENED and CLAIM_SETTLED\ncarry it; a CLAIM_VOIDED line carries the number the claim had).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "20f6e1896e66e37c15288e3f70f489174265614a",
+  "reset_sha": "",
+  "preagent_sha": "b34f2dee050e7b0acd52caf8b3ebbab9a4f9df79",
+  "prev_sha": "b34f2dee050e7b0acd52caf8b3ebbab9a4f9df79",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4627872,
+    "input_tokens": 20,
+    "output_tokens": 6236,
+    "cache_read_tokens": 298256,
+    "cache_creation_tokens": 34792,
+    "num_turns": 12,
+    "duration_ms": 113917,
+    "duration_api_ms": 62609,
+    "model": "claude-opus-5-5",
+    "session_id": "9475e0cf-4d48-4f55-ba21-cd09da95d96b",
+    "stop_reason": "success",
+    "result_text": "Claims now get a number when they're opened, and it shows on each claim. `bin/e2e` passes all 4 tests in `e2e/specs/acceptance.spec.ts`, including the one where two users open claims at the same moment.\n\n**Stored data** (new migration `V8__claim_number.sql`):\n- Each sheet remembers the last number it gave out, starting at 0.\n- Each claim has a number column that can be empty.\n- No two claims on the same sheet can share a number; the database enforces this.\n\n**Server:**\n- **Getting the next number:** `SheetService.nextClaimNumber` adds one to the sheet's counter in a single database update. That update locks the sheet's row until the transaction ends, so two people opening claims at once get two different numbers in sequence. A refused or rolled-back change uses up no number, so there are no gaps.\n- **Locking the claim:** `ClaimService.changeStatus` now also locks the claim row before checking its status. Without this, two users opening the same draft at once could both get through and burn two numbers.\n- **Status rules:** opening gives the claim the next number; settling keeps it; voiding clears it. A cleared number is never given out again because the counter only goes up.\n- **Audit lines:** these now end with `number=<n>` whenever the claim has a number. A `CLAIM_VOIDED` line carries the number the claim had before voiding, and a voided draft's line has none.\n- **API:** the claim data sent to the browser now includes `number`.\n\n**Front end:** each claim row shows \"No.\" followed by `data-testid=\"claim-number\"`, which is empty for drafts and voided claims.\n\nOne choice to confirm: following \"every audit line about a claim that has a number\", `CLAIM_EDITED` lines for an open or settled claim also get `number=` at the end. None of the edits in the test have it, so it doesn't affect the result, but say if you'd rather edit lines never carry it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4627872,
+        "num_turns": 12,
+        "duration_ms": 113917,
+        "duration_api_ms": 62609,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp09.agent.jsonl",
+  "agent_diff_file": "cp09.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
