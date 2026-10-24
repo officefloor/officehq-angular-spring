@@ -1246,8 +1246,8 @@ export class People {
     }
   }
 
-  /** Settle the selected claims together, in list order, each by the rules of settling one; those
-   *  that cannot be settled are left as they are. Shows how many were settled and refused; the old
+  /** Settle the selected claims together, in list order, each by the rules of settling one, all or
+   *  nothing: if any cannot be settled, none is. Shows how many were settled and refused; the old
    *  counts are gone while it runs. */
   protected async bulkSettle(): Promise<void> {
     const sheet = this.session.sheetId();

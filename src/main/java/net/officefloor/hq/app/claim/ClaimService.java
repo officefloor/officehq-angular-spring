@@ -92,15 +92,24 @@ public class ClaimService {
     }
 
     /** Make the claims, settled (or left PENDING) by one bulk settle, the sheet's next settle batch,
-     * returning them with its number, in the order given. */
+     * returning them with its number, in the order given; records BATCH_SETTLED with the batch's number,
+     * how many claims it has and the frozen figures of those SETTLED added up. */
     @Transactional
-    public List<Claim> settleBatch(String sheetId, List<Claim> settled) {
+    public List<Claim> settleBatch(String sheetId, String user, List<Claim> settled) {
         int batch = sheets.nextSettleBatch(sheetId);
-        return settled.stream().map(c -> {
+        List<Claim> batched = settled.stream().map(c -> {
             Claim claim = claims.lockByIdAndSheetId(c.getId(), sheetId).orElseThrow(ClaimNotFoundException::new);
             claim.setSettleBatch(batch);
             return claims.save(claim);
         }).toList();
+        BigDecimal total = batched.stream()
+                .filter(c -> c.getStatus() == ClaimStatus.SETTLED && c.getSettledDue() != null)
+                .map(Claim::getSettledDue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        audit.change("BATCH_SETTLED", sheetId, user, "batch=" + batch, "count=" + batched.size(),
+                "total=" + total.toPlainString());
+        return batched;
     }
 
     /** Comment on the claim, whatever its status: {@code text} (not blank) is kept with the user and the

@@ -16,9 +16,12 @@ import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Status changes asked of several claims at once. Each claim changes in its own transaction, through
- * {@link ClaimService}, so a refused one changes (and records) nothing while the others go through. A
+ * {@link ClaimService}, so a refused one changes (and records) nothing while the others go through,
+ * except a bulk settle, which is all or nothing in one transaction. A
  * viewer's bulk change, or one on an archived sheet, goes through with nothing done: every claim asked
  * is refused. */
 @Service
@@ -33,9 +36,11 @@ public class ClaimBulkService {
     private final PersonRepository people;
     private final SettingsService settings;
     private final SheetRepository sheets;
+    private final TransactionTemplate transactions;
 
     public ClaimBulkService(ClaimService service, ClaimRepository claims, PersonRepository people,
-            SettingsService settings, SheetRepository sheets) {
+            SettingsService settings, SheetRepository sheets, PlatformTransactionManager transactionManager) {
+        this.transactions = new TransactionTemplate(transactionManager);
         this.sheets = sheets;
         this.service = service;
         this.claims = claims;
@@ -50,14 +55,31 @@ public class ClaimBulkService {
         return change(sheetId, user, claimIds, ClaimStatus.OPEN);
     }
 
-    /** Settle each of the claims that can be settled, in list order, by exactly the rules of settling
-     * one claim (one that goes to PENDING instead counts as settled); any that cannot be settled (or
-     * is not on the sheet) is left as it is and counted as refused. One that settles at least one claim is
-     * the sheet's next settle batch: each claim it settled carries the batch's number. */
+    /** Settle the claims all or nothing, by exactly the rules of settling one claim (one that goes to
+     * PENDING instead counts as settled): when any of them cannot be settled (or is not on the sheet)
+     * none is settled, every one counts as refused and nothing is written. Otherwise each is settled in
+     * list order, and they are the sheet's next settle batch: each carries the batch's number, and
+     * BATCH_SETTLED is recorded after the claims' own lines. */
     public Outcome settle(String sheetId, String user, Collection<Long> claimIds) {
-        Outcome outcome = change(sheetId, user, claimIds, ClaimStatus.SETTLED);
-        if (outcome.changed().isEmpty()) return outcome;
-        return new Outcome(service.settleBatch(sheetId, outcome.changed()), outcome.refused());
+        Set<Long> asked = Set.copyOf(claimIds);
+        if (refusesAll(sheetId, user)) return new Outcome(List.of(), asked.size());
+        Outcome outcome = transactions.execute(status -> {
+            List<Claim> found = inListOrder(sheetId, asked);
+            if (found.size() != asked.size()) return null;
+            List<Claim> changed = new ArrayList<>();
+            for (Claim claim : found) {
+                try {
+                    changed.add(service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
+                } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNoteRequiredException | ClaimNotFoundException | ClaimNotStewardException
+                        | PersonNotFoundException e) {
+                    status.setRollbackOnly();
+                    return null;
+                }
+            }
+            if (changed.isEmpty()) return new Outcome(changed, 0);
+            return new Outcome(service.settleBatch(sheetId, user, changed), 0);
+        });
+        return outcome == null ? new Outcome(List.of(), asked.size()) : outcome;
     }
 
     /** Move each of the claims that can be moved to the person, in list order, by exactly the rules of
