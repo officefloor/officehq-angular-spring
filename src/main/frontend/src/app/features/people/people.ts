@@ -285,6 +285,24 @@ import { Audit } from './audit';
         }
       </p>
 
+      <p>
+        <label for="bulk-retire-date">Retire selected people from</label>
+        <input
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); bulkRetireError.set(null)"
+        />
+        <button type="button" data-testid="bulk-retire" (click)="bulkRetire()">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span>
+        }
+        @if (bulkRetireError(); as message) {
+          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
+        }
+      </p>
+
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
       } @else {
@@ -947,6 +965,13 @@ export class People {
   protected readonly bulkGradeError = signal<string | null>(null);
   /** A bulk grade is waiting for its answer; another meanwhile is ignored. */
   private bulkGrading = false;
+  /** The date a bulk retire retires from; blank for the sheet's today. */
+  protected readonly bulkRetireFrom = signal('');
+  /** How many people the last bulk retire retired; null before one, and while one runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal<string | null>(null);
+  /** A bulk retire is waiting for its answer; another meanwhile is ignored. */
+  private bulkRetiring = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -976,6 +1001,9 @@ export class People {
       this.bulkGradeFrom.set('');
       this.bulkGraded.set(null);
       this.bulkGradeError.set(null);
+      this.bulkRetireFrom.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set(null);
       this.retireDates.set({});
       this.statementAsOfs.set({});
       this.holdFroms.set({});
@@ -1607,6 +1635,7 @@ export class People {
 
   protected selectPerson(id: number, selected: boolean): void {
     this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
     this.clearRowError(id);
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
@@ -1636,6 +1665,33 @@ export class People {
       if (this.session.sheetId() === sheet) this.bulkGradeError.set('The selected people could not be given that grade.');
     } finally {
       this.bulkGrading = false;
+    }
+  }
+
+  /** Retire the selected people from the chosen date (the sheet's today when blank), in list order,
+   *  each as the row's retire would. Shows how many were retired; the old count is gone while it
+   *  runs. */
+  protected async bulkRetire(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || this.bulkRetiring) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
+    const from = this.bulkRetireFrom().trim();
+    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.bulkRetireError.set('Type a date as YYYY-MM-DD.');
+      return;
+    }
+    this.bulkRetiring = true;
+    try {
+      const result = await this.service.bulkRetire(sheet, [...this.selectedPeople()], from || null);
+      if (this.session.sheetId() !== sheet) return;
+      for (const p of result.people) this.put(p);
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(result.retired);
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkRetireError.set('The selected people could not be retired.');
+    } finally {
+      this.bulkRetiring = false;
     }
   }
 

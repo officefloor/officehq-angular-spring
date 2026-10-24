@@ -84,6 +84,12 @@ export interface BulkGraded {
   people: Person[];
 }
 
+/** How a bulk retire went: how many people it retired, and those people as saved. */
+export interface BulkRetired {
+  retired: number;
+  people: Person[];
+}
+
 export interface PersonFields {
   name: string;
   grade: Grade;
@@ -165,6 +171,16 @@ export class PeopleService {
   bulkGrade(sheet: string, personIds: number[], grade: Grade, from: string | null): Promise<BulkGraded> {
     return firstValueFrom(
       this.http.post<BulkGraded>(`${this.url(sheet)}/bulk-grade`, { personIds, grade, from }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Retire each of the people from `from` (the sheet's today when null), in list order, each as the
+   *  row's retire would. */
+  bulkRetire(sheet: string, personIds: number[], from: string | null): Promise<BulkRetired> {
+    return firstValueFrom(
+      this.http.post<BulkRetired>(`${this.url(sheet)}/bulk-retire`, { personIds, from }, {
         headers: this.session.headers(),
       }),
     );

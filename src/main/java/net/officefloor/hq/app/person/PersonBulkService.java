@@ -12,10 +12,12 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
-/** A grade given to several people at once. Each person is saved in their own transaction, through
+/** A grade given to, or a retirement of, several people at once. Each person is saved in their own transaction, through
  * {@link PersonService#update}, exactly as the person form saves them (keeping their name and terms),
- * so each records its own PERSON_EDITED and rollup lines. A viewer's bulk grade, or one on an archived
- * sheet, goes through with nothing done: no one is changed. */
+ * so each records its own PERSON_EDITED and rollup lines; a bulk retire retires each through
+ * {@link PersonService#retire}, exactly as the row's retire does, recording its PERSON_RETIRED and rollup
+ * lines. A viewer's bulk change, or one on an archived sheet, goes through with nothing done: no one is
+ * changed. */
 @Service
 public class PersonBulkService {
 
@@ -48,6 +50,26 @@ public class PersonBulkService {
                 changed.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
                         grade, from, person.getTerms(), person.getContact()));
             } catch (PersonStaleException | PersonNotFoundException | ObjectOptimisticLockingFailureException e) {
+                // Left as it is.
+            }
+        }
+        return changed;
+    }
+
+    /** Retires each of the people from {@code from} (the sheet's today when left out), in list order;
+     * those not on the sheet are left out. The people it retired. */
+    public List<Person> retire(String sheetId, String user, Collection<Long> personIds, LocalDate from) {
+        Set<Long> asked = Set.copyOf(personIds);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
+        if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return List.of();
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> asked.contains(p.getId()))
+                .toList();
+        List<Person> changed = new ArrayList<>();
+        for (Person person : listed) {
+            try {
+                changed.add(service.retire(sheetId, user, person.getId(), from));
+            } catch (PersonNotFoundException | ObjectOptimisticLockingFailureException e) {
                 // Left as it is.
             }
         }
