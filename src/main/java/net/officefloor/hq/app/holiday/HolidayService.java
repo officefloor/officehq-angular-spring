@@ -6,8 +6,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
-import net.officefloor.hq.app.claim.Claim;
-import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -15,22 +13,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The holidays on a sheet. A claim's due-by is the terms-th business day after the date it counts from,
- * skipping every Saturday, Sunday and holiday on the sheet (see {@link #dueBy}); when a holiday is added
- * the due-by of every claim on the sheet is worked out again with the holidays then. */
+ * skipping every Saturday, Sunday and holiday on the sheet when it is added (see {@link #dueBy}); a holiday
+ * added later counts only for the claims added after it. */
 @Service
 public class HolidayService {
 
     private final SheetRepository sheets;
     private final SheetHolidayRepository holidays;
-    private final ClaimRepository claims;
     private final RollupService rollup;
     private final Audit audit;
 
-    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, ClaimRepository claims,
-            RollupService rollup, Audit audit) {
+    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, RollupService rollup,
+            Audit audit) {
         this.sheets = sheets;
         this.holidays = holidays;
-        this.claims = claims;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -48,12 +44,6 @@ public class HolidayService {
         if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new HolidayTakenException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetHoliday added = holidays.saveAndFlush(new SheetHoliday(sheetId, date));
-        Set<LocalDate> off = offOn(sheetId);
-        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
-            LocalDate dueBy = dueBy(off, claim.getDueFrom(), claim.getTerms());
-            if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
-        }
-        claims.flush();
         audit.change("HOLIDAY_ADDED", sheetId, by, "date=" + date);
         rollup.recordSince(sheetId, by, before);
         return added;

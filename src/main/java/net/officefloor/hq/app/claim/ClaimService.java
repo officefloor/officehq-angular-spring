@@ -27,10 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
  * or its today when that is off. A claim's
  * terms are fixed when it is added, from those of its person's grade in force on its date, and its due-by
- * is the terms-th business day after that date, skipping weekends and the holidays on the sheet now; the
+ * is the terms-th business day after that date, skipping weekends and the holidays on the sheet when it is added; the
  * claim belongs to the period containing that due-by (not its date). Only a DRAFT claim can be edited.
  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
- * change status; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
+ * change status, nor be edited to a date whose due-by, with its terms, would; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
  * person; a claim that is not a correction names none. */
 @Service
@@ -162,6 +162,7 @@ public class ClaimService {
         if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         refuseClosed(sheetId, claim.getDueBy());
+        refuseClosed(sheetId, holidays.dueBy(sheetId, dated, claim.getTerms()));
         if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
@@ -260,7 +261,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
             BigDecimal due = rollup.liveDueOf(claim, figure);
-            refuseUnproved(claim, due);
+            refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
         }
@@ -406,7 +407,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal figure = rollup.dueOf(claim, person);
         BigDecimal due = rollup.liveDueOf(claim, figure);
-        refuseUnproved(claim, due);
+        refuseUnproved(claim, person, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         claims.flush();
@@ -610,10 +611,11 @@ public class ClaimService {
     }
 
     /** Refuse a settle or approval of the claim, whose due is {@code due}, while it has no proofs and that
-     * due is above the proof threshold in force on its date (a due that is n/a is within any threshold). */
-    private void refuseUnproved(Claim claim, BigDecimal due) {
+     * due is above the proof threshold in force on its date: its person's grade's own then, else the sheet's
+     * (a due that is n/a is within any threshold). */
+    private void refuseUnproved(Claim claim, Person person, BigDecimal due) {
         if (due == null || claim.getProofs() > 0) return;
-        BigDecimal threshold = settings.proofThresholdOn(claim.getSheetId(), claim.getDate());
+        BigDecimal threshold = settings.proofThresholdFor(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
     }
 

@@ -41,11 +41,11 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null). */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's). */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
             String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
-            Map<String, Integer> gradeGraces, Map<String, List<DatedView>> graces) {
+            Map<String, Integer> gradeGraces, Map<String, List<DatedView>> graces, Map<String, String> gradeProofThresholds) {
     }
 
     /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
@@ -224,7 +224,8 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
                 text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)), service.graceDays(sheet),
                 text(service.noteThreshold(sheet)), service.entryDate(sheet), service.gradeGraces(sheet),
-                gracesOf(grade -> service.history(sheet, DatedSettings.gradeGraceKey(grade))));
+                gracesOf(grade -> service.history(sheet, DatedSettings.gradeGraceKey(grade))),
+                textOf(service.gradeProofThresholds(sheet)));
     }
 
     /** Every grace recorded for each grade, oldest first, by grade. */
@@ -249,6 +250,11 @@ public class SettingsController {
             Integer grace = then.graceOn(grade, today);
             if (grace != null) gradeGraces.put(grade, grace);
         }
+        Map<String, BigDecimal> gradeProofThresholds = new LinkedHashMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            then.valueOn(DatedSettings.gradeProofThresholdKey(grade), today).map(BigDecimal::new)
+                    .ifPresent(own -> gradeProofThresholds.put(grade, own));
+        }
         Map<Action, String> matrix = new EnumMap<>(Action.class);
         for (Action action : Action.values()) matrix.put(action, "");
         for (SheetPermission set : then.permissions()) matrix.put(set.getAction(), set.getRoles());
@@ -265,7 +271,15 @@ public class SettingsController {
                 permissionsOf(matrix), then.graceDays(),
                 text(then.valueOn(DatedSettings.NOTE_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
                 then.entryDate(), gradeGraces,
-                gracesOf(grade -> then.history(DatedSettings.gradeGraceKey(grade))));
+                gracesOf(grade -> then.history(DatedSettings.gradeGraceKey(grade))),
+                textOf(gradeProofThresholds));
+    }
+
+    /** Each grade's threshold as text with two decimals, by grade. */
+    private static Map<String, String> textOf(Map<String, BigDecimal> byGrade) {
+        Map<String, String> texts = new LinkedHashMap<>();
+        byGrade.forEach((grade, threshold) -> texts.put(grade, text(threshold)));
+        return texts;
     }
 
     private static Map<String, String> permissionsOf(Map<Action, String> matrix) {
@@ -308,6 +322,16 @@ public class SettingsController {
             @RequestBody @Valid ProofThresholdRequest request) {
         String sheet = sheetId.trim();
         service.setProofThreshold(sheet, user.trim(), request.thresholdValue(), request.fromValue());
+        return get(sheet, user, null);
+    }
+
+    @PutMapping("/settings/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeProofThreshold(sheet, user.trim(), grade, request.thresholdValue(), request.fromValue());
         return get(sheet, user, null);
     }
 

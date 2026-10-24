@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
  * period numbering from, the date from which a claim opened is numbered within its period (off when null),
- * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null),
+ * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null; each grade may
+ * have its own in its place),
  * and its grace days, how many days after its to-date an open period is closed when the sheet's today
  * is changed (off when null), and each grade's grace days, how many days past its due-by a claim of the
  * grade is overdue from (none when null).
@@ -261,6 +262,33 @@ public class SettingsService {
     @Transactional
     public void setProofThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
         record(sheetId, by, DatedSettings.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from, false);
+    }
+
+    /** The grades with their own proof threshold in force on the sheet's today, by grade. */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> gradeProofThresholds(String sheetId) {
+        LocalDate today = today(sheetId);
+        Map<String, BigDecimal> thresholds = new LinkedHashMap<>();
+        for (String grade : GRADES) {
+            BigDecimal own = dated.gradeProofThresholdOn(sheetId, grade, today);
+            if (own != null) thresholds.put(grade, own);
+        }
+        return thresholds;
+    }
+
+    /** The proof threshold of a claim dated {@code date} of a person of {@code grade} (see
+     * {@link DatedSettings#proofThresholdFor}). */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdFor(String sheetId, String grade, LocalDate date) {
+        return dated.proofThresholdFor(sheetId, grade, date);
+    }
+
+    /** Record the grade's own proof threshold from {@code from} (the sheet's today when null); null
+     * records that the grade uses the sheet's proof threshold from then. */
+    @Transactional
+    public void setGradeProofThreshold(String sheetId, String by, String grade, BigDecimal threshold, LocalDate from) {
+        record(sheetId, by, DatedSettings.gradeProofThresholdKey(grade), threshold == null ? null : threshold.toPlainString(),
+                from, false);
     }
 
     /** The note threshold in force on the sheet's today; null when there is none. */

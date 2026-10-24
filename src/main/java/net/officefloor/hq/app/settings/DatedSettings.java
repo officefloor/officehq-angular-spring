@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
- * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no note threshold, no grade's own terms and no grade's grace days). A claim's floor, late
+ * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no grade's own terms and no grade's grace days). A claim's floor, late
  * percent, terms, proof threshold and note threshold are those in force on its date; the clerk limit and the cap those on the sheet's
  * today. */
 @Service
@@ -41,6 +41,11 @@ public class DatedSettings {
     /** The key a grade's own terms are kept under. */
     public static String gradeTermsKey(String grade) {
         return TERMS + "-" + grade;
+    }
+
+    /** The key a grade's own proof threshold is kept under. */
+    public static String gradeProofThresholdKey(String grade) {
+        return PROOF_THRESHOLD + "-" + grade;
     }
 
     /** The key a grade's grace days are kept under. */
@@ -107,6 +112,20 @@ public class DatedSettings {
     @Transactional(readOnly = true)
     public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
         return valueOn(sheetId, PROOF_THRESHOLD, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The grade's own proof threshold in force on the date; null when it has none then. */
+    @Transactional(readOnly = true)
+    public BigDecimal gradeProofThresholdOn(String sheetId, String grade, LocalDate date) {
+        return grade == null ? null : valueOn(sheetId, gradeProofThresholdKey(grade), date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The proof threshold of a claim dated {@code date} of a person of {@code grade}: the grade's own in
+     * force then, or else the sheet's in force then; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdFor(String sheetId, String grade, LocalDate date) {
+        BigDecimal own = gradeProofThresholdOn(sheetId, grade, date);
+        return own != null ? own : proofThresholdOn(sheetId, date);
     }
 
     /** The note threshold in force on the date; null when there is none. */

@@ -32,7 +32,8 @@ const STANDING: Record<PermAction, string> = {
 // for the standing rule) and the role each user name has been given (any other name is a clerk).
 // Each grade's grace days (a claim of a person of that grade on its date, dated on or after the
 // grace's from-date, is overdue only once its due-by plus them is past, and its late charge counts from
-// there; blank for none) are dated too.
+// there; blank for none) and each grade's own proof threshold (used in place of the sheet's for a claim
+// of a person of that grade on its date; blank for the sheet's) are dated too.
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -131,6 +132,31 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }}</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeProofThresholdInput()[g]"
+            (input)="setGradeProofThresholdInput(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
+            (keydown)="gradeProofThresholdChanged.add(g)"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            type="date"
+            [value]="gradeProofThresholdFrom()[g]"
+            (input)="setGradeProofThresholdFrom(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
+          />
+          <span>
+            In force: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholdShown(g) }}</span>
+            @if (gradeProofThresholds()[g] === undefined) {
+              (the sheet's proof threshold)
+            }
+          </span>
+        }
         <label for="setting-note-threshold">Note threshold</label>
         <input
           id="setting-note-threshold"
@@ -422,6 +448,9 @@ export class Settings {
   protected readonly grades = GRADES;
   /** The grades' own terms in force, in days, by grade; a grade not in it uses the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The grades' own proof thresholds in force, with two decimals, by grade; a grade not in it uses
+   *  the sheet's. */
+  protected readonly gradeProofThresholds = signal<Partial<Record<Grade, string>>>({});
   /** The grades' grace days in force, by grade; a grade not in it has none. */
   protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
   /** Every grace recorded for each grade, each from its date, oldest first, once one is saved. */
@@ -460,6 +489,7 @@ export class Settings {
   protected readonly latePctInput = signal('');
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeGraceInput = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
@@ -474,6 +504,7 @@ export class Settings {
   protected readonly latePctFrom = signal('');
   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeGraceFrom = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeProofThresholdFrom = signal<Record<Grade, string>>(blankGrades());
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -486,6 +517,7 @@ export class Settings {
   protected latePctChanged = false;
   protected readonly gradeTermsChanged = new Set<Grade>();
   protected readonly gradeGraceChanged = new Set<Grade>();
+  protected readonly gradeProofThresholdChanged = new Set<Grade>();
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
@@ -532,6 +564,10 @@ export class Settings {
       this.gradeGraceInput.set(blankGrades());
       this.gradeGraceChanged.clear();
       this.gradeGraceFrom.set(blankGrades());
+      this.gradeProofThresholds.set({});
+      this.gradeProofThresholdInput.set(blankGrades());
+      this.gradeProofThresholdChanged.clear();
+      this.gradeProofThresholdFrom.set(blankGrades());
       this.latePct.set('');
       this.latePctInput.set('');
       this.latePctChanged = false;
@@ -592,6 +628,19 @@ export class Settings {
     this.gradeGraceInput.update((inputs) => ({ ...inputs, [grade]: text }));
   }
 
+  protected setGradeProofThresholdFrom(grade: Grade, text: string): void {
+    this.gradeProofThresholdFrom.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  protected setGradeProofThresholdInput(grade: Grade, text: string): void {
+    this.gradeProofThresholdInput.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  /** The grade's own proof threshold in force; empty when it uses the sheet's. */
+  protected gradeProofThresholdShown(grade: Grade): string {
+    return this.gradeProofThresholds()[grade] ?? '';
+  }
+
   /** The grade's grace days in force, as text; empty when it has none. */
   protected gradeGraceShown(grade: Grade): string {
     const grace = this.gradeGraces()[grade];
@@ -635,6 +684,9 @@ export class Settings {
     const gradeGraces = GRADES.map((grade) => ({ grade, text: this.gradeGraceInput()[grade].trim() })).filter(
       ({ grade, text }) => this.gradeGraceChanged.has(grade) || text !== this.gradeGraceShown(grade),
     );
+    const gradeProofThresholds = GRADES.map((grade) => ({ grade, text: this.gradeProofThresholdInput()[grade].trim() })).filter(
+      ({ grade, text }) => this.gradeProofThresholdChanged.has(grade) || text !== this.gradeProofThresholdShown(grade),
+    );
     const latePct = this.latePctInput().trim();
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
     const policyDate = this.policyDateInput().trim();
@@ -658,6 +710,7 @@ export class Settings {
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom = { ...this.gradeTermsFrom() };
     const gradeGraceFrom = { ...this.gradeGraceFrom() };
+    const gradeProofThresholdFrom = { ...this.gradeProofThresholdFrom() };
     const badFrom = [
       saveLimit ? limitFrom : '',
       saveFloor ? floorFrom : '',
@@ -668,6 +721,7 @@ export class Settings {
       saveLatePct ? latePctFrom : '',
       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
       ...gradeGraces.map(({ grade }) => gradeGraceFrom[grade].trim()),
+      ...gradeProofThresholds.map(({ grade }) => gradeProofThresholdFrom[grade].trim()),
     ].some((from) => from !== '' && !DATE.test(from));
     if (badFrom) {
       this.settingsError.set('Type a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
@@ -687,6 +741,13 @@ export class Settings {
     }
     if (saveProofThreshold && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    const badProofThreshold = gradeProofThresholds.find(({ text }) => text !== '' && !LIMIT.test(text));
+    if (badProofThreshold) {
+      this.settingsError.set(
+        `Type a proof threshold for grade ${badProofThreshold.grade} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`,
+      );
       return;
     }
     if (saveNoteThreshold && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
@@ -775,6 +836,16 @@ export class Settings {
         if (this.proofThresholdInput().trim() === proofThreshold && this.proofThresholdFrom().trim() === proofThresholdFrom) {
           this.proofThresholdChanged = false;
           this.proofThresholdFrom.set('');
+        }
+        this.show(settings);
+      }
+      for (const { grade, text } of gradeProofThresholds) {
+        const from = gradeProofThresholdFrom[grade].trim();
+        const settings = await this.service.setGradeProofThreshold(sheet, grade, text || null, from || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.gradeProofThresholdInput()[grade].trim() === text && this.gradeProofThresholdFrom()[grade].trim() === from) {
+          this.gradeProofThresholdChanged.delete(grade);
+          this.setGradeProofThresholdFrom(grade, '');
         }
         this.show(settings);
       }
@@ -868,6 +939,7 @@ export class Settings {
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
       this.showGradeGraceInputs();
+      this.showGradeProofThresholdInputs();
       this.showPermInputs();
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
@@ -930,7 +1002,7 @@ export class Settings {
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
         this.showGradeGraceInputs();
-      this.showGradeGraceInputs();
+        this.showGradeProofThresholdInputs();
         this.showPermInputs();
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
@@ -960,6 +1032,17 @@ export class Settings {
     });
   }
 
+  /** Show each grade's own proof threshold in force in its field, but keep what was typed in one since. */
+  private showGradeProofThresholdInputs(): void {
+    this.gradeProofThresholdInput.update((inputs) => {
+      const next = { ...inputs };
+      for (const grade of GRADES) {
+        if (!this.gradeProofThresholdChanged.has(grade)) next[grade] = this.gradeProofThresholdShown(grade);
+      }
+      return next;
+    });
+  }
+
   /** Show each action's roles as set in its field, but keep what was typed in one since. */
   private showPermInputs(): void {
     this.permInput.update((inputs) => {
@@ -979,6 +1062,7 @@ export class Settings {
     this.terms.set(String(settings.terms));
     this.gradeTerms.set(settings.gradeTerms ?? {});
     this.gradeGraces.set(settings.gradeGraces ?? {});
+    this.gradeProofThresholds.set(settings.gradeProofThresholds ?? {});
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);

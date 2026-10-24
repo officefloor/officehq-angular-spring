@@ -72,6 +72,9 @@ export interface SheetSettings {
   /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
    *  null when there is none. */
   proofThreshold: string | null;
+  /** The grades with their own proof threshold in force on the sheet's today, with two decimals, by
+   *  grade; a grade not in it uses the sheet's. */
+  gradeProofThresholds: Partial<Record<Grade, string>>;
   /** The permission matrix as set: for each action, the roles that may take it as a comma separated
    *  list; blank for the action's standing rule. */
   permissions: Record<PermAction, string>;
@@ -138,6 +141,18 @@ export class SettingsService {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/proof-threshold`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
+    );
+  }
+
+  /** A null value records that the grade uses the sheet's proof threshold; a null from records it
+   *  from the sheet's today. */
+  setGradeProofThreshold(sheet: string, grade: Grade, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/proof-threshold/${grade}`,
         { value, from },
         { headers: this.session.headers() },
       ),
