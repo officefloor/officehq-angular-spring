@@ -8,8 +8,10 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetAsOf;
 import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.rollup.ConsolidatedService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -40,9 +42,18 @@ public class SheetController {
 
     private final SheetHistory history;
 
-    public SheetController(SheetService service, SheetHistory history) {
+    private final ConsolidatedService consolidated;
+
+    public SheetController(SheetService service, SheetHistory history, ConsolidatedService consolidated) {
         this.service = service;
         this.history = history;
+        this.consolidated = consolidated;
+    }
+
+    /** The figures of the sheet's descendants as they stand, added up (see {@link ConsolidatedService}). */
+    @GetMapping("/{id}/descendants")
+    public ConsolidatedService.Figures descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return consolidated.descendantsOf(id.trim());
     }
 
     /** Load a sheet by id, starting it empty if it has never been loaded; as it stood at the end of

@@ -94,6 +94,14 @@ export function gradeOn(grades: PersonGrade[], date: string | null): Grade | nul
   return best?.grade ?? null;
 }
 
+/** A sheet's descendants' figures added up: their people (retired ones included), and each one's
+ *  due-total and overdue-total as that sheet shows it, with two decimals. */
+export interface DescendantFigures {
+  peopleCount: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
 // The people kept on a sheet, read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class PeopleService {
@@ -103,6 +111,16 @@ export class PeopleService {
   list(sheet: string): Promise<Person[]> {
     return firstValueFrom(
       this.http.get<Person[]>(this.url(sheet), { headers: this.session.headers() }),
+    );
+  }
+
+  /** The figures of the sheet's descendants (its children, their children, and so on) as they stand,
+   *  added up. */
+  descendants(sheet: string): Promise<DescendantFigures> {
+    return firstValueFrom(
+      this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`, {
+        headers: this.session.headers(),
+      }),
     );
   }
 

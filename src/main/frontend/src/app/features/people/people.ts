@@ -6,7 +6,7 @@ import { Delegations } from './delegations';
 import { Holidays } from './holidays';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
-import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
+import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -62,6 +62,12 @@ import { Audit } from './audit';
       [dueTotal]="dueTotal()"
       [overdueTotal]="money(overdueTotal().cents)"
     />
+    <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
+      <span>Over this sheet and the sheets below it:</span>
+      <span>People <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong></span>
+      <span>Due <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong></span>
+      <span>Overdue <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></span>
+    </section>
     <app-settings
       (floorSaved)="floors.set($event)"
       (capSaved)="caps.set($event)"
@@ -526,6 +532,12 @@ import { Audit } from './audit';
     </section>
   `,
   styles: `
+    .consolidated {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin: 0 0 1rem;
+    }
     form {
       display: flex;
       flex-wrap: wrap;
@@ -778,6 +790,17 @@ export class People {
       cents: trimmedSum(each.map((o) => o.cents)),
     };
   });
+  /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
+  protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+  /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up. */
+  protected readonly consolidated = computed(() => {
+    const d = this.descendants();
+    return {
+      peopleCount: this.people().length + d.peopleCount,
+      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
+      overdueTotal: money(this.overdueTotal().cents + cents(d.overdueTotal)),
+    };
+  });
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   /** The date a save gives the grade from; blank for the sheet's today. */
@@ -851,6 +874,7 @@ export class People {
       this.policyDate.set(null);
       this.statements.set([]);
       this.periods.set([]);
+      this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
       this.rowErrors.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpened.set(null);
@@ -1696,7 +1720,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -1706,6 +1730,8 @@ export class People {
         this.service.patrons(sheet),
         this.service.watched(sheet),
         this.claimsService.tags(sheet),
+        // Without its descendants' figures the sheet shows only its own as consolidated.
+        this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -1720,6 +1746,7 @@ export class People {
         this.sheetTags.set(tags);
         this.patrons.set(patrons);
         this.watched.set(new Set(watched));
+        this.descendants.set(descendants);
         this.people.set(list);
       }
     } catch {
