@@ -14,7 +14,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
-    /** The claim, locked until the transaction ends so two status changes to it never overlap. */
+    /** The claim, locked until the transaction ends so two changes to it (an edit, a status change) never overlap. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM Claim c WHERE c.id = :id AND c.sheetId = :sheetId")
     Optional<Claim> lockByIdAndSheetId(Long id, String sheetId);

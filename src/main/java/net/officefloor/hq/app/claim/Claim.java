@@ -40,7 +40,8 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number on its sheet, given when it is opened; null while DRAFT and once VOID. */
+    /** The claim's number on its sheet, given when it is opened and kept once VOID; null while
+     * DRAFT (and on a claim voided as a draft). */
     @Column(name = "claim_number")
     private Integer number;
 

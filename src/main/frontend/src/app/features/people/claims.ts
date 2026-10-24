@@ -159,8 +159,18 @@ export class Claims {
     return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
+  /** Open the claim's editor; only a DRAFT can be edited, so the edit of any other claim is refused with
+   *  an error on the claim (an open claim is changed by voiding it and adding a new one). */
   protected edit(claim: Claim): void {
     this.clearRowError(claim.id);
+    if (claim.status !== 'DRAFT') {
+      if (this.editingId() === claim.id) this.reset();
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: 'Only a draft claim can be edited; void it and add a new one instead.',
+      }));
+      return;
+    }
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
@@ -228,6 +238,8 @@ export class Claims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'A claim dated in a closed period cannot be changed.'
+          : id !== null && e instanceof HttpErrorResponse && e.status === 409
+            ? 'Only a draft claim can be edited; void it and add a new one instead.'
           : id === null
             ? 'That claim could not be added.'
             : 'That claim could not be saved.',

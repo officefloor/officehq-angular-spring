@@ -15,8 +15,9 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. No
- * claim dated inside a closed period can be added, edited or change status. */
+/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. Only a
+ * DRAFT claim can be edited. No claim dated inside a closed period can be added, edited or change
+ * status. */
 @Service
 public class ClaimService {
 
@@ -57,10 +58,11 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
-        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, dated);
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dated);
@@ -75,7 +77,8 @@ public class ClaimService {
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
-     * its person's rate then); the user who opened it cannot settle it. */
+     * its person's rate then); the user who opened it cannot settle it. A voided claim keeps its number,
+     * if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -92,7 +95,7 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person));
         claim.setStatus(next);
-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        claim.setNumber(number);
         claims.flush();
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
