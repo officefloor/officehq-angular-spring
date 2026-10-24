@@ -306,6 +306,7 @@ import { Audit } from './audit';
                 <th scope="col">Due in {{ pd.name }}</th>
               }
               <th scope="col">Excess</th>
+              <th scope="col">Cut total</th>
               <th scope="col">Overdue</th>
               <th scope="col">Overdue due</th>
               <th scope="col">Due aged 0–30 days</th>
@@ -352,6 +353,7 @@ import { Audit } from './audit';
                   <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ money(personPeriodCents().get(p.id)?.[pd.name] ?? 0) }}</td>
                 }
                 <td data-testid="person-excess">{{ excessOf(p) }}</td>
+                <td data-testid="person-cut-total">{{ money(cutCents().get(p.id) ?? 0) }}</td>
                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
                 <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
                 @let aged = agedOf(p);
@@ -583,6 +585,9 @@ import { Audit } from './audit';
       <p>
         Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
         due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
+      </p>
+      <p>
+        Cut in total: <span data-testid="rollup-cut-total">{{ money(cutTotal()) }}</span>
       </p>
     </section>
   `,
@@ -831,6 +836,21 @@ export class People {
   /** The sheet's due-total: everyone's due-totals added up (n/a ones skipped), trimmed. */
   protected readonly dueTotal = computed(() =>
     money(trimmedSum(this.people().map((p) => this.dueCentsOf(p)).filter((c): c is number => c !== null))),
+  );
+  /** Each person's cut total, in cents, by person id: their cuts across every pool they are a member of,
+   *  added up (a pool that shows no cuts adds nothing). */
+  protected readonly cutCents = computed(() => {
+    const by = new Map<number, number>();
+    for (const pool of this.poolsService.pools()) {
+      for (const m of pool.members) {
+        if (m.personId !== null && m.cut !== null) by.set(m.personId, (by.get(m.personId) ?? 0) + cents(m.cut));
+      }
+    }
+    return by;
+  });
+  /** The sheet's cut total, in cents: everyone's cut totals added up. */
+  protected readonly cutTotal = computed(() =>
+    this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0),
   );
   /** Everyone's settled-totals and open-totals, in cents, each simply added up (not trimmed). */
   protected readonly splitTotal = computed(() => {
