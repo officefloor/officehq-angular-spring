@@ -8,6 +8,7 @@ import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
+import { Settings } from './settings';
 import { Statement, StatementsService } from './statements.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
@@ -22,8 +23,9 @@ import { Statement, StatementsService } from './statements.service';
 // their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates],
+  imports: [Claims, Periods, Rates, Settings],
   template: `
+    <app-settings />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
     <section aria-labelledby="people-heading">

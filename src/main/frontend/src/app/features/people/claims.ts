@@ -178,8 +178,8 @@ export class Claims {
     this.error.set(null);
   }
 
-  /** Change the claim's status; a change its status does not allow, or a settle by the user who opened
-   *  the claim, is refused with an error. */
+  /** Change the claim's status; a change its status does not allow, a settle by the user who opened
+   *  the claim, or a clerk's settle of a claim whose due is above the clerk limit, is refused with an error. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
@@ -193,6 +193,8 @@ export class Claims {
         ...errors,
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
           ? 'You opened that claim, so another user must settle it.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? 'What is due on that claim is above the clerk limit, so a steward must settle it.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,

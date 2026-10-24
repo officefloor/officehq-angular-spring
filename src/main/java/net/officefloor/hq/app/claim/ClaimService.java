@@ -11,6 +11,8 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,15 +28,17 @@ public class ClaimService {
     private final RollupService rollup;
     private final SheetService sheets;
     private final PeriodRepository periods;
+    private final SettingsService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
-            PeriodRepository periods, Audit audit) {
+            PeriodRepository periods, SettingsService settings, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
         this.sheets = sheets;
         this.periods = periods;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -79,7 +83,8 @@ public class ClaimService {
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
-     * its person's rate then); the user who opened it cannot settle it. A voided claim keeps its number,
+     * its person's rate then); the user who opened it cannot settle it, and a clerk cannot settle it when
+     * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
      * if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -95,7 +100,11 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person));
+        if (next == ClaimStatus.SETTLED) {
+            BigDecimal due = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
+            refuseOverLimit(sheetId, user, due);
+            claim.setSettledDue(due);
+        }
         claim.setStatus(next);
         claim.setNumber(number);
         claims.flush();
@@ -130,6 +139,13 @@ public class ClaimService {
         if (number != null) fields.add("number=" + number);
         fields.addAll(List.of(extra));
         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
+    }
+
+    /** Refuse a clerk's settle of a claim whose due is above the sheet's clerk limit. */
+    private void refuseOverLimit(String sheetId, String user, BigDecimal due) {
+        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
+        BigDecimal limit = settings.clerkLimit(sheetId);
+        if (limit != null && due.compareTo(limit) > 0) throw new ClaimOverLimitException();
     }
 
     /** Refuse a change that touches {@code date} when a closed period of the sheet contains it. */
