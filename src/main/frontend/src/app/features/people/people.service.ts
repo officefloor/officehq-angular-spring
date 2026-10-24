@@ -62,6 +62,12 @@ export interface QuickAdded {
   claim: Claim;
 }
 
+/** How a bulk grade went: how many people it changed, and those people as saved. */
+export interface BulkGraded {
+  graded: number;
+  people: Person[];
+}
+
 export interface PersonFields {
   name: string;
   grade: Grade;
@@ -105,6 +111,16 @@ export class PeopleService {
   update(sheet: string, id: number, version: number, fields: PersonFields): Promise<Person> {
     return firstValueFrom(
       this.http.put<Person>(`${this.url(sheet)}/${id}`, { ...fields, version }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Give each of the people `grade` from `from` (the sheet's today when null), in list order, each
+   *  as the person form would save them. */
+  bulkGrade(sheet: string, personIds: number[], grade: Grade, from: string | null): Promise<BulkGraded> {
+    return firstValueFrom(
+      this.http.post<BulkGraded>(`${this.url(sheet)}/bulk-grade`, { personIds, grade, from }, {
         headers: this.session.headers(),
       }),
     );

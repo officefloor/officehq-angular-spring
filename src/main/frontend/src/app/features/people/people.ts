@@ -182,12 +182,42 @@ import { Summary, SummaryPerson } from './summary';
         }
       </p>
 
+      <p>
+        <label for="bulk-grade">Grade for selected people</label>
+        <select
+          id="bulk-grade"
+          data-testid="bulk-grade"
+          [value]="bulkGradeChoice()"
+          (change)="bulkGradeChoice.set(gradeOf($event)); bulkGradeError.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="bulkGradeChoice() === g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From</label>
+        <input
+          id="bulk-grade-from"
+          data-testid="bulk-grade-from"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkGradeFrom()"
+          (input)="bulkGradeFrom.set(value($event)); bulkGradeError.set(null)"
+        />
+        <button type="button" data-testid="bulk-grade-apply" (click)="bulkGrade()">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span>
+        }
+        @if (bulkGradeError(); as message) {
+          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
+        }
+      </p>
+
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
       } @else {
         <table data-testid="people-list">
           <thead>
             <tr>
+              <th scope="col"><span class="visually-hidden">Select</span></th>
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
               <th scope="col">Terms</th>
@@ -216,6 +246,15 @@ import { Summary, SummaryPerson } from './summary';
           <tbody>
             @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
+                <td>
+                  <input
+                    type="checkbox"
+                    data-testid="person-select"
+                    [attr.aria-label]="'Select ' + p.name"
+                    [checked]="selectedPeople().has(p.id)"
+                    (change)="selectPerson(p.id, checked($event))"
+                  />
+                </td>
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -602,6 +641,17 @@ export class People {
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   /** A bulk settle is waiting for its answer; another meanwhile is ignored. */
   private bulkSettling = false;
+  /** The ids of the people selected for a bulk grade. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** The grade a bulk grade gives. */
+  protected readonly bulkGradeChoice = signal<Grade>('A');
+  /** The date a bulk grade gives it from; blank for the sheet's today. */
+  protected readonly bulkGradeFrom = signal('');
+  /** How many people the last bulk grade changed; null before one, and while one runs. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkGradeError = signal<string | null>(null);
+  /** A bulk grade is waiting for its answer; another meanwhile is ignored. */
+  private bulkGrading = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -621,6 +671,11 @@ export class People {
       this.selectedClaims.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
+      this.selectedPeople.set(new Set());
+      this.bulkGradeChoice.set('A');
+      this.bulkGradeFrom.set('');
+      this.bulkGraded.set(null);
+      this.bulkGradeError.set(null);
       this.retireDates.set({});
       this.statementAsOfs.set({});
       this.holdFroms.set({});
@@ -1059,6 +1114,39 @@ export class People {
       if (this.session.sheetId() === sheet) this.bulkSettled.set({ settled: 0, refused: this.selectedClaims().size });
     } finally {
       this.bulkSettling = false;
+    }
+  }
+
+  protected selectPerson(id: number, selected: boolean): void {
+    this.bulkGradeError.set(null);
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give the selected people the chosen grade from the chosen date (the sheet's today when blank),
+   *  in list order, each as the person form would. Shows how many were changed; the old count is
+   *  gone while it runs. */
+  protected async bulkGrade(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || this.bulkGrading) return;
+    this.bulkGraded.set(null);
+    this.bulkGradeError.set(null);
+    this.bulkGrading = true;
+    try {
+      const result = await this.service.bulkGrade(sheet, [...this.selectedPeople()], this.bulkGradeChoice(),
+        this.bulkGradeFrom().trim() || null);
+      if (this.session.sheetId() !== sheet) return;
+      for (const p of result.people) this.put(p);
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(result.graded);
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkGradeError.set('The selected people could not be given that grade.');
+    } finally {
+      this.bulkGrading = false;
     }
   }
 

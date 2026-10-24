@@ -95,6 +95,17 @@ public class PersonController {
         }
     }
 
+    /** A grade to give the people {@code personIds} together, from {@code from} (the sheet's today when
+     * left out). */
+    public record BulkGradeRequest(@NotNull @Size(max = 1000) List<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
+    /** How a bulk grade went: how many people it changed, and those people. */
+    public record BulkGradeView(int graded, List<PersonView> people) {
+    }
+
     /** A save refused because the person was saved by someone else since the editor loaded them:
      * the person as now stored. */
     public record StaleView(String error, PersonView current) {
@@ -102,10 +113,13 @@ public class PersonController {
 
     private final PersonService service;
 
+    private final PersonBulkService bulk;
+
     private final SheetHistory history;
 
-    public PersonController(PersonService service, SheetHistory history) {
+    public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history) {
         this.service = service;
+        this.bulk = bulk;
         this.history = history;
     }
 
@@ -186,6 +200,15 @@ public class PersonController {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));
         }
+    }
+
+    @PostMapping("/bulk-grade")
+    public BulkGradeView bulkGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkGradeRequest request) {
+        List<Person> changed = bulk.grade(sheetId.trim(), user.trim(), request.personIds(), request.grade(),
+                request.from());
+        return new BulkGradeView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
     }
 
     @PostMapping("/{personId}/retire")
