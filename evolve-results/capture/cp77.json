@@ -1,0 +1,64 @@
+{
+  "checkpoint": 77,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp77_note-required",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a8cc87bbee8119d9d7241aed1a8040ac693807a6",
+  "reset_sha": "",
+  "preagent_sha": "4a0ad1aaeadc8ed6483e0dd756eafce2841a927f",
+  "prev_sha": "4a0ad1aaeadc8ed6483e0dd756eafce2841a927f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9644208000000002,
+    "input_tokens": 40,
+    "output_tokens": 9728,
+    "cache_read_tokens": 1044264,
+    "cache_creation_tokens": 70106,
+    "num_turns": 20,
+    "duration_ms": 188517,
+    "duration_api_ms": 120911,
+    "model": "claude-opus-5-5",
+    "session_id": "5b0c1326-4feb-4904-948b-2723ea4d58b5",
+    "stop_reason": "success",
+    "result_text": "The note threshold is in, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it behaves:** a sheet can now have a note threshold, dated like the floor. If a claim's note is empty and its due is above the threshold in force on the claim's date, opening it is refused. That holds for a single open (the error shows on the claim) and for the bulk open button (the claim counts as refused). A blank value means no threshold, and a claim with no due figure is never blocked. Saving the setting writes `SETTING_CHANGED ... key=note-threshold value=<amount>`, with `from=<date>` added when a date is given.\n\n**Server**\n- **Settings:** `DatedSettings` and `SettingsService` gained the new setting, alongside the existing proof threshold. There's a new `PUT /settings/note-threshold` endpoint, and the settings response now ends with a `noteThreshold` field, including for the as-of view. The endpoint reuses the proof threshold's request type, since the rules are the same.\n- **Opening a claim:** `ClaimService.changeStatus` runs the check before a claim number is used up. It compares the due the claim shows, which includes the floor and any late charge. That's why a 5.00 claim (whose due is lifted to the 2.00 floor) is refused against a 1.50 threshold.\n- **Refusal:** a refused open raises a new `ClaimNoteRequiredException` (HTTP 422), and `ClaimBulkService` counts it as refused.\n\n**Front end**\n- **Settings screen:** new fields `setting-note-threshold`, `setting-note-threshold-from` and `setting-note-threshold-current`, built the same way as the proof-threshold ones.\n- **Claim row:** a refused open shows \"That claim is due above the note threshold, so it needs a note before it can be opened.\"\n\nNo database migration was needed, because settings are already stored as key/value rows.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9644208000000002,
+        "num_turns": 20,
+        "duration_ms": 188517,
+        "duration_api_ms": 120911,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp77.agent.jsonl",
+  "agent_diff_file": "cp77.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
