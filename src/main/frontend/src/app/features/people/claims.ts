@@ -1,6 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimsService } from './claims.service';
+import { Claim, ClaimsService, cents, money } from './claims.service';
+import { dueCents } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -47,6 +48,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
+            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <button
               type="button"
               data-testid="claim-edit"
@@ -91,6 +93,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
+  /** The rate of the person's grade, or null when the grade has no rate. */
+  readonly rate = input.required<string | null>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -106,6 +110,12 @@ export class Claims {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** What is due on the claim at the person's rate; n/a when the grade has no rate. */
+  protected dueOf(claim: Claim): string {
+    const due = dueCents(cents(claim.amount), this.rate());
+    return due === null ? 'n/a' : money(due);
   }
 
   protected edit(claim: Claim): void {

@@ -4,14 +4,18 @@ import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
+import { Rates } from './rates';
+import { Rate, RatesService, dueCents } from './rates.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
-// and shows what they have claimed; the sheet's claimed-total adds up everyone's.
+// and shows what they have claimed and what is due on it at their grade's rate; the sheet's
+// claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
-  imports: [Claims],
+  imports: [Claims, Rates],
   template: `
+    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
 
@@ -54,6 +58,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
               <th scope="col">Claimed</th>
+              <th scope="col">Due</th>
               <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
@@ -64,11 +69,13 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ p.grade }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+                <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
                     [personName]="p.name"
                     [claims]="claimsOf(p.id)"
+                    [rate]="rateOf(p.grade)"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -88,6 +95,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
         </table>
         <p>
           Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
+        </p>
+        <p>
+          Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
         </p>
       }
     </section>
@@ -127,6 +137,7 @@ export class People {
   private readonly session = inject(Session);
   private readonly service = inject(PeopleService);
   private readonly claimsService = inject(ClaimsService);
+  private readonly ratesService = inject(RatesService);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -140,6 +151,13 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)),
   );
+  /** The sheet's rates, by grade. */
+  protected readonly rates = signal<Rate[]>([]);
+  protected readonly dueTotal = computed(() => {
+    let sum = 0;
+    for (const p of this.people()) sum += this.dueCentsOf(p) ?? 0;
+    return money(sum);
+  });
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
@@ -153,6 +171,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.rates.set([]);
       this.reset();
       if (sheet) void this.read(sheet);
     });
@@ -172,6 +191,27 @@ export class People {
 
   protected claimedOf(personId: number): string {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+  }
+
+  protected rateOf(grade: Grade): string | null {
+    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+  }
+
+  /** The person's claimed times their grade's rate, divided by 100 and rounded half up; null when
+   *  their grade has no rate. */
+  protected dueTotalOf(person: Person): string | null {
+    const due = this.dueCentsOf(person);
+    return due === null ? null : money(due);
+  }
+
+  private dueCentsOf(person: Person): number | null {
+    const claimed = this.claimsOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0);
+    return dueCents(claimed, this.rateOf(person.grade));
+  }
+
+  /** Put a set rate in place of the grade's old one. */
+  protected rateSaved(rate: Rate): void {
+    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
   }
 
   /** Put an added claim first, or a saved one in its place. */
@@ -229,11 +269,13 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims] = await Promise.all([
+      const [list, claims, rates] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
+        this.ratesService.list(sheet),
       ]);
       if (this.sheet() === sheet) {
+        this.rates.set(rates);
         this.claims.set(claims);
         this.people.set(list);
       }
