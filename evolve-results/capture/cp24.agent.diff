@@ -1,0 +1,504 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index ab0f3504..c74a1a34 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -118,6 +118,8 @@ export class Claims {
+   readonly grade = input.required<Grade>();
+   /** The sheet's rates. */
+   readonly rates = input.required<Rate[]>();
++  /** The sheet's floor, in cents: the least a claim's live due can be. */
++  readonly floor = input.required<number>();
+   /** The sheet's periods. */
+   readonly periods = input.required<Period[]>();
+   /** A claim was added or saved. */
+@@ -147,10 +149,10 @@ export class Claims {
+   }
+ 
+   /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
+-   *  their grade applies then. A claim settled
++   *  their grade applies then; never below the sheet's floor. A claim settled
+    *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
+   protected dueOf(claim: Claim): string {
+-    const due = claimDueCents(claim, this.rates(), this.grade());
++    const due = claimDueCents(claim, this.rates(), this.grade(), this.floor());
+     return due === null ? 'n/a' : money(due);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2d85b473..8a988d74 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,6 +9,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+ import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
+ import { Settings } from './settings';
++import { FLOOR_CENTS, SettingsService } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+ 
+ // The people on the active sheet, in the order they were added, and the form that adds a person
+@@ -25,7 +26,7 @@ import { Statement, StatementsService } from './statements.service';
+   selector: 'app-people',
+   imports: [Claims, Periods, Rates, Settings],
+   template: `
+-    <app-settings />
++    <app-settings (floorSaved)="floor.set($event)" />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
+     <section aria-labelledby="people-heading">
+@@ -133,6 +134,7 @@ import { Statement, StatementsService } from './statements.service';
+                     [claims]="claimsOf(p.id)"
+                     [grade]="p.grade"
+                     [rates]="rates()"
++                    [floor]="floor()"
+                     [periods]="periods()"
+                     (saved)="claimSaved($event)"
+                   />
+@@ -230,6 +232,7 @@ export class People {
+   private readonly service = inject(PeopleService);
+   private readonly claimsService = inject(ClaimsService);
+   private readonly ratesService = inject(RatesService);
++  private readonly settingsService = inject(SettingsService);
+   private readonly statementsService = inject(StatementsService);
+   private readonly periodsService = inject(PeriodsService);
+ 
+@@ -264,6 +267,8 @@ export class People {
+   protected readonly rowErrors = signal<Record<number, string>>({});
+   /** The sheet's rates, by grade. */
+   protected readonly rates = signal<Rate[]>([]);
++  /** The sheet's floor, in cents: the least a claim's live due can be. */
++  protected readonly floor = signal(FLOOR_CENTS);
+   /** The sheet's periods. */
+   protected readonly periods = signal<Period[]>([]);
+   /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
+@@ -276,7 +281,7 @@ export class People {
+         if (!this.countsLive(c, person)) continue;
+         const period = periodOn(this.periods(), c.date);
+         if (period === null) continue;
+-        sums[period.name] += claimDueCents(c, this.rates(), person.grade) ?? 0;
++        sums[period.name] += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
+       }
+     }
+     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+@@ -309,6 +314,7 @@ export class People {
+       this.people.set([]);
+       this.claims.set([]);
+       this.rates.set([]);
++      this.floor.set(FLOOR_CENTS);
+       this.statements.set([]);
+       this.periods.set([]);
+       this.rowErrors.set({});
+@@ -444,7 +450,7 @@ export class People {
+     let any = false;
+     for (const c of this.claimsOf(person.id)) {
+       if (!this.countsLive(c, person)) continue;
+-      const due = claimDueCents(c, this.rates(), person.grade);
++      const due = claimDueCents(c, this.rates(), person.grade, this.floor());
+       if (due === null) continue;
+       sum += due;
+       any = true;
+@@ -589,14 +595,16 @@ export class People {
+ 
+   private async read(sheet: string): Promise<void> {
+     try {
+-      const [list, claims, rates, statements, periods] = await Promise.all([
++      const [list, claims, rates, statements, periods, settings] = await Promise.all([
+         this.service.list(sheet),
+         this.claimsService.list(sheet),
+         this.ratesService.list(sheet),
+         this.statementsService.list(sheet),
+         this.periodsService.list(sheet),
++        this.settingsService.get(sheet),
+       ]);
+       if (this.sheet() === sheet) {
++        this.floor.set(cents(settings.floor));
+         this.rates.set(rates);
+         this.periods.set(periods);
+         this.statements.set(statements);
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index bb264c9e..d5263529 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -40,12 +40,13 @@ export function dueCents(amountCents: number, pct: string | null): number | null
+ 
+ /** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then; a
+  *  claim a statement bound keeps the figure it was bound to (null when that was none); otherwise
+- *  what is due on its amount at its person's grade's rate in force on the claim's date, null when
+- *  none applies then. */
+-export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade): number | null {
++ *  what is due on its amount at its person's grade's rate in force on the claim's date, raised to
++ *  the sheet's floor (in cents) when below it, null when no rate applies then. */
++export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade, floorCents: number): number | null {
+   if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
+   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+-  return dueCents(cents(claim.amount), rateOn(rates, grade, claim.date));
++  const due = dueCents(cents(claim.amount), rateOn(rates, grade, claim.date));
++  return due === null ? null : Math.max(due, floorCents);
+ }
+ 
+ // The rates of the grades on a sheet, read from and written to the server.
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index a449f484..0b34ab87 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -13,14 +13,19 @@ export interface RoleGiven {
+   role: Role;
+ }
+ 
++/** The floor a sheet starts with, in cents. */
++export const FLOOR_CENTS = 100;
++
+ export interface SheetSettings {
+   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
+   clerkLimit: string | null;
++  /** The least a claim's live due can be, with two decimals. */
++  floor: string;
+   /** The roles given on the sheet, by user name. */
+   roles: RoleGiven[];
+ }
+ 
+-// The settings of a sheet (its roles and its clerk limit), read from and written to the server.
++// The settings of a sheet (its roles, its clerk limit and its floor), read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsService {
+   private readonly http = inject(HttpClient);
+@@ -43,6 +48,12 @@ export class SettingsService {
+     );
+   }
+ 
++  setFloor(sheet: string, value: string): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/floor`, { value }, { headers: this.session.headers() }),
++    );
++  }
++
+   setRole(sheet: string, user: string, role: Role): Promise<RoleGiven> {
+     return firstValueFrom(
+       this.http.put<RoleGiven>(
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 4bb46fe3..ffc5086d 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -1,12 +1,14 @@
+-import { Component, effect, inject, signal } from '@angular/core';
++import { Component, effect, inject, output, signal } from '@angular/core';
++import { cents } from './claims.service';
+ import { Session } from '../../core/session';
+-import { ROLES, Role, RoleGiven, SettingsService } from './settings.service';
++import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
+ 
+ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+ 
+ // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
+-// limit) and the role each user name has been given (any other name is a clerk). Read from the
+-// store every time a sheet is loaded.
++// limit), its floor (the least a claim's live due can be) and the role each user name has been given (any other name is a clerk). Read from the
++// store every time a sheet is loaded. Saving the settings saves only the fields changed since
++// they were last saved.
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -19,7 +21,7 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+           data-testid="setting-clerk-limit"
+           inputmode="decimal"
+           [value]="limit()"
+-          (input)="limit.set(value($event)); settingsError.set(null)"
++          (input)="limit.set(value($event)); limitChanged = true; settingsError.set(null)"
+         />
+         <span>
+           In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
+@@ -27,6 +29,15 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+             (no limit)
+           }
+         </span>
++        <label for="setting-floor">Floor</label>
++        <input
++          id="setting-floor"
++          data-testid="setting-floor"
++          inputmode="decimal"
++          [value]="floorInput()"
++          (input)="floorInput.set(value($event)); floorChanged = true; settingsError.set(null)"
++        />
++        <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as message) {
+           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
+@@ -114,9 +125,18 @@ export class Settings {
+   protected readonly roles = ROLES;
+   /** The clerk limit in force; null when there is none. */
+   protected readonly clerkLimit = signal<string | null>(null);
++  /** The floor in force, with two decimals; empty until read. */
++  protected readonly floor = signal('');
+   protected readonly given = signal<RoleGiven[]>([]);
++  /** The floor saved, in cents. */
++  readonly floorSaved = output<number>();
+ 
+   protected readonly limit = signal('');
++  protected readonly floorInput = signal('');
++  /** Whether each field was typed in since the settings were last loaded or saved; a field is saved
++   *  when it was, or when it differs from the value in force. */
++  protected limitChanged = false;
++  protected floorChanged = false;
+   protected readonly settingsError = signal<string | null>(null);
+   protected readonly roleUser = signal('');
+   protected readonly role = signal('');
+@@ -130,8 +150,12 @@ export class Settings {
+       const sheet = this.session.sheetId();
+       this.session.loads();
+       this.clerkLimit.set(null);
++      this.floor.set('');
+       this.given.set([]);
+       this.limit.set('');
++      this.floorInput.set('');
++      this.limitChanged = false;
++      this.floorChanged = false;
+       this.settingsError.set(null);
+       this.roleUser.set('');
+       this.role.set('');
+@@ -151,16 +175,34 @@ export class Settings {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const limit = this.limit().trim();
+-    if (limit !== '' && !LIMIT.test(limit)) {
++    const floor = this.floorInput().trim();
++    const saveLimit = this.limitChanged || limit !== (this.clerkLimit() ?? '');
++    const saveFloor = this.floorChanged || floor !== this.floor();
++    if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    if (saveFloor && !LIMIT.test(floor)) {
++      this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
++      return;
++    }
+     this.savingSettings = true;
+     try {
+-      const settings = await this.service.setClerkLimit(sheet, limit || null);
+-      if (this.session.sheetId() !== sheet) return;
+-      this.clerkLimit.set(settings.clerkLimit);
+-      this.given.set(settings.roles);
++      if (saveLimit) {
++        const settings = await this.service.setClerkLimit(sheet, limit || null);
++        if (this.session.sheetId() !== sheet) return;
++        this.limitChanged = false;
++        this.show(settings);
++      }
++      if (saveFloor) {
++        const settings = await this.service.setFloor(sheet, floor);
++        if (this.session.sheetId() !== sheet) return;
++        this.floorChanged = false;
++        this.show(settings);
++        this.floorSaved.emit(cents(settings.floor));
++      }
++      this.limit.set(this.clerkLimit() ?? '');
++      this.floorInput.set(this.floor());
+     } catch {
+       this.settingsError.set('Those settings could not be saved.');
+     } finally {
+@@ -204,11 +246,18 @@ export class Settings {
+     try {
+       const settings = await this.service.get(sheet);
+       if (this.session.sheetId() === sheet) {
+-        this.clerkLimit.set(settings.clerkLimit);
+-        this.given.set(settings.roles);
++        this.show(settings);
++        if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
++        if (!this.floorChanged) this.floorInput.set(settings.floor);
+       }
+     } catch {
+       // The settings could not be read; they show as none.
+     }
+   }
++
++  private show(settings: SheetSettings): void {
++    this.clerkLimit.set(settings.clerkLimit);
++    this.floor.set(settings.floor);
++    this.given.set(settings.roles);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index d2a49d79..151b6974 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -120,11 +120,14 @@ public class RollupService {
+     }
+ 
+     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
+-     * divided by 100, rounded half to even to two decimals; null when no rate of their grade applies then. */
++     * divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when no
++     * rate of their grade applies then. */
+     public BigDecimal dueOf(Claim claim, Person person) {
++        BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(zero());
+         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
++                .map(due -> due.max(floor))
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 8ce90037..31bc14a8 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** A sheet's settings: its roles and its clerk limit. The signed-in user's name travels in the
++/** A sheet's settings: its roles, its clerk limit and its floor. The signed-in user's name travels in the
+  * {@code X-User} header. */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}")
+@@ -31,8 +31,8 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the clerk limit is sent as text with two decimals, null when there is none. */
+-    public record SettingsView(String clerkLimit, List<RoleView> roles) {
++    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none. */
++    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {
+     }
+ 
+     /** A role: clerk or steward. */
+@@ -49,6 +49,13 @@ public class SettingsController {
+         }
+     }
+ 
++    /** A floor: 0.00 or more, with up to two decimals. */
++    public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
++        BigDecimal floorValue() {
++            return new BigDecimal(value.trim()).setScale(2);
++        }
++    }
++
+     private final SettingsService service;
+ 
+     public SettingsController(SettingsService service) {
+@@ -59,7 +66,7 @@ public class SettingsController {
+     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         String sheet = sheetId.trim();
+-        return new SettingsView(text(service.clerkLimit(sheet)),
++        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
+                 service.roles(sheet).stream().map(RoleView::of).toList());
+     }
+ 
+@@ -72,6 +79,15 @@ public class SettingsController {
+         return get(sheet, user);
+     }
+ 
++    @PutMapping("/settings/floor")
++    public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid FloorRequest request) {
++        String sheet = sheetId.trim();
++        service.setFloor(sheet, user.trim(), request.floorValue());
++        return get(sheet, user);
++    }
++
+     @PutMapping("/roles/{name}")
+     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @NotBlank @Size(max = 100) String name,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index dd2ef1cb..c1fa56c5 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.settings;
+ import java.math.BigDecimal;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -10,17 +11,20 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
+- * limit, the most a clerk may settle a claim for (none when null). */
++ * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
++ * live due can be. */
+ @Service
+ public class SettingsService {
+ 
+     private final SheetRepository sheets;
+     private final SheetRoleRepository roles;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public SettingsService(SheetRepository sheets, SheetRoleRepository roles, Audit audit) {
++    public SettingsService(SheetRepository sheets, SheetRoleRepository roles, RollupService rollup, Audit audit) {
+         this.sheets = sheets;
+         this.roles = roles;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -53,7 +57,7 @@ public class SettingsService {
+     /** The sheet's clerk limit; null when there is none. */
+     @Transactional(readOnly = true)
+     public BigDecimal clerkLimit(String sheetId) {
+-        return sheets.findById(sheetId).map(Sheet::getClerkLimit).orElseThrow(SheetNotFoundException::new);
++        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
+     }
+ 
+     /** Set the sheet's clerk limit; null removes it. */
+@@ -66,4 +70,22 @@ public class SettingsService {
+                 "value=" + (limit == null ? "" : limit.toPlainString()));
+         return sheet;
+     }
++
++    /** The sheet's floor. */
++    @Transactional(readOnly = true)
++    public BigDecimal floor(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getFloor).orElseThrow(SheetNotFoundException::new);
++    }
++
++    /** Set the sheet's floor; the live dues, and so the figures, follow it. */
++    @Transactional
++    public Sheet setFloor(String sheetId, String by, BigDecimal floor) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        sheet.setFloor(floor);
++        sheets.flush();
++        audit.change("SETTING_CHANGED", sheetId, by, "key=floor", "value=" + floor.toPlainString());
++        rollup.recordSince(sheetId, by, before);
++        return sheet;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index bad48cd6..bd1db4e9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -30,6 +30,10 @@ public class Sheet {
+     @Column(name = "clerk_limit", precision = 12, scale = 2)
+     private BigDecimal clerkLimit;
+ 
++    /** The least a claim's live due can be. */
++    @Column(name = "due_floor", nullable = false, precision = 12, scale = 2)
++    private BigDecimal floor = new BigDecimal("1.00");
++
+     protected Sheet() {
+     }
+ 
+@@ -67,4 +71,12 @@ public class Sheet {
+     public void setClerkLimit(BigDecimal clerkLimit) {
+         this.clerkLimit = clerkLimit;
+     }
++
++    public BigDecimal getFloor() {
++        return floor;
++    }
++
++    public void setFloor(BigDecimal floor) {
++        this.floor = floor;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V21__sheet_floor.sql b/src/main/resources/db/migration/V21__sheet_floor.sql
+new file mode 100644
+index 00000000..52dc0b51
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__sheet_floor.sql
+@@ -0,0 +1,3 @@
++-- The least a claim's live due can be: a due worked out at a rate below it is raised to it. A
++-- figure already fixed (settled, bound by a statement, a closed period's total) is left as it was.
++ALTER TABLE sheet ADD COLUMN due_floor DECIMAL(12, 2) DEFAULT 1.00 NOT NULL CHECK (due_floor >= 0);
