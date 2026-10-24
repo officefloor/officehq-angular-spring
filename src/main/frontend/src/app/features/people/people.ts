@@ -10,7 +10,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Lateness, Rate, RatesService, Rounding, claimShownCents, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { FLOOR_CENTS, LATE_PCT, SettingsService } from './settings.service';
+import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { Summary, SummaryPerson } from './summary';
 
@@ -46,9 +46,9 @@ import { Summary, SummaryPerson } from './summary';
       [overdueTotal]="money(overdueTotal().cents)"
     />
     <app-settings
-      (floorSaved)="floor.set($event)"
-      (capSaved)="cap.set($event)"
-      (latePctSaved)="latePct.set($event)"
+      (floorSaved)="floors.set($event)"
+      (capSaved)="caps.set($event)"
+      (latePctSaved)="latePcts.set($event)"
       (policyDateSaved)="policyDate.set($event)"
     />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
@@ -205,9 +205,9 @@ import { Summary, SummaryPerson } from './summary';
                     [claims]="claimsOf(p.id)"
                     [grades]="p.grades"
                     [rates]="rates()"
-                    [floor]="floor()"
+                    [floors]="floors()"
                     [periods]="periods()"
-                    [latePct]="latePct()"
+                    [latePcts]="latePcts()"
                     [policyDate]="policyDateInForce()"
                     [others]="othersOf(p.id)"
                     [selected]="selectedClaims()"
@@ -423,12 +423,20 @@ export class People {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The sheet's rates, by grade. */
   protected readonly rates = signal<Rate[]>([]);
-  /** The sheet's floor, in cents: the least a claim's live due can be. */
-  protected readonly floor = signal(FLOOR_CENTS);
-  /** The sheet's cap, in cents: the most a person's due-total can be; null when there is none. */
-  protected readonly cap = signal<number | null>(null);
-  /** The sheet's late percent, with two decimals. */
-  protected readonly latePct = signal(LATE_PCT);
+  /** Every floor recorded on the sheet, each from its date, oldest first: the least a claim's live due
+   *  can be is the one in force on its date. */
+  protected readonly floors = signal<Dated[]>([]);
+  /** Every cap recorded on the sheet, each from its date, oldest first; null records no cap. */
+  protected readonly caps = signal<Dated<string | null>[]>([]);
+  /** The sheet's cap in force on its today, in cents: the most a person's due-total can be; null when
+   *  there is none. */
+  protected readonly cap = computed(() => {
+    const today = this.session.today();
+    const cap = today === null ? null : inForce(this.caps(), today, null);
+    return cap === null ? null : cents(cap);
+  });
+  /** Every late percent recorded on the sheet, each from its date, oldest first, with two decimals. */
+  protected readonly latePcts = signal<Dated[]>([]);
   /** The sheet's policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
   /** The policy date in force: the one set, or the sheet's today. */
@@ -436,7 +444,7 @@ export class People {
   /** What the claims' late charges are worked from. */
   private readonly lateness = computed<Lateness>(() => ({
     today: this.session.today(),
-    latePct: this.latePct(),
+    latePcts: this.latePcts(),
   }));
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
@@ -455,7 +463,7 @@ export class People {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null || period.closed) continue;
-        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
       }
       by.set(person.id, sums);
     }
@@ -526,9 +534,9 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
-      this.floor.set(FLOOR_CENTS);
-      this.cap.set(null);
-      this.latePct.set(LATE_PCT);
+      this.floors.set([]);
+      this.caps.set([]);
+      this.latePcts.set([]);
       this.policyDate.set(null);
       this.statements.set([]);
       this.periods.set([]);
@@ -769,7 +777,7 @@ export class People {
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
-      const due = claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id));
+      const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
       if (due === null) continue;
       sum += due;
       any = true;
@@ -786,7 +794,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person) || !overdue(c, today)) continue;
       count++;
-      sum += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+      sum += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
     }
     return { count, cents: sum };
   }
@@ -1010,9 +1018,9 @@ export class People {
         this.service.patrons(sheet),
       ]);
       if (this.sheet() === sheet) {
-        this.floor.set(cents(settings.floor));
-        this.cap.set(settings.cap === null ? null : cents(settings.cap));
-        this.latePct.set(settings.latePct);
+        this.floors.set(settings.floors);
+        this.caps.set(settings.caps);
+        this.latePcts.set(settings.latePcts);
         this.policyDate.set(settings.policyDate);
         this.rates.set(rates);
         this.periods.set(periods);

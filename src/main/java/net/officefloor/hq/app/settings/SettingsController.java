@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A sheet's settings: its roles, its clerk limit, its floor, its cap, its terms, its late percent and its policy date. The signed-in user's name travels in the
+/** A sheet's settings: its roles, its clerk limit, its floor, its cap, its terms, its late percent (each dated: saved with a from-date, the sheet's today when blank), its policy date and its period numbering from. The signed-in user's name travels in the
  * {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -33,9 +33,16 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null). */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
-            List<RoleView> roles, LocalDate periodNumberingFrom) {
+            List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps) {
+    }
+
+    /** A value of a dated setting, as text, and the date it is recorded from. */
+    public record DatedView(LocalDate from, String value) {
+        static DatedView of(SheetSetting setting) {
+            return new DatedView(setting.getFrom(), setting.getValue());
+        }
     }
 
     /** A role: clerk or steward. */
@@ -46,45 +53,80 @@ public class SettingsController {
     }
 
     /** A clerk limit: 0.00 or more, with up to two decimals; blank or null for no limit. */
-    public record ClerkLimitRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value) {
+    public record ClerkLimitRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         BigDecimal limitValue() {
             return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
         }
     }
 
     /** A floor: 0.00 or more, with up to two decimals. */
-    public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
+    public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         BigDecimal floorValue() {
             return new BigDecimal(value.trim()).setScale(2);
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
         }
     }
 
     /** A cap: 0.00 or more, with up to two decimals; blank or null for no cap. */
-    public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value) {
+    public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         BigDecimal capValue() {
             return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
         }
     }
 
     /** Terms: a whole number of days, 0 or more. */
-    public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+    public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         int termsValue() {
             return Integer.parseInt(value.trim());
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
         }
     }
 
     /** A grade's own terms: a whole number of days, 0 or more; blank or null to use the sheet's terms. */
-    public record GradeTermsRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+    public record GradeTermsRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         Integer termsValue() {
             return value == null || value.isBlank() ? null : Integer.parseInt(value.trim());
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
         }
     }
 
     /** A late percent: 0.00 or more, with up to two decimals. */
-    public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
+    public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         BigDecimal latePctValue() {
             return new BigDecimal(value.trim()).setScale(2);
         }
+
+        LocalDate fromValue() {
+            return fromOf(from);
+        }
+    }
+
+    /** A from-date (YYYY-MM-DD); null when blank or null, for the sheet's today. */
+    private static LocalDate fromOf(String from) {
+        return from == null || from.isBlank() ? null : LocalDate.parse(from.trim());
     }
 
     /** A policy date (YYYY-MM-DD); blank or null for the sheet's today. */
@@ -115,7 +157,10 @@ public class SettingsController {
                 text(service.cap(sheet)), service.terms(sheet),
                 service.gradeTerms(sheet),
                 text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList(),
-                service.periodNumberingFrom(sheet));
+                service.periodNumberingFrom(sheet),
+                service.history(sheet, DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
+                service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
+                service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList());
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -123,7 +168,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClerkLimitRequest request) {
         String sheet = sheetId.trim();
-        service.setClerkLimit(sheet, user.trim(), request.limitValue());
+        service.setClerkLimit(sheet, user.trim(), request.limitValue(), request.fromValue());
         return get(sheet, user);
     }
 
@@ -132,7 +177,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid CapRequest request) {
         String sheet = sheetId.trim();
-        service.setCap(sheet, user.trim(), request.capValue());
+        service.setCap(sheet, user.trim(), request.capValue(), request.fromValue());
         return get(sheet, user);
     }
 
@@ -141,7 +186,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FloorRequest request) {
         String sheet = sheetId.trim();
-        service.setFloor(sheet, user.trim(), request.floorValue());
+        service.setFloor(sheet, user.trim(), request.floorValue(), request.fromValue());
         return get(sheet, user);
     }
 
@@ -150,7 +195,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         String sheet = sheetId.trim();
-        service.setTerms(sheet, user.trim(), request.termsValue());
+        service.setTerms(sheet, user.trim(), request.termsValue(), request.fromValue());
         return get(sheet, user);
     }
 
@@ -160,7 +205,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GradeTermsRequest request) {
         String sheet = sheetId.trim();
-        service.setGradeTerms(sheet, user.trim(), grade, request.termsValue());
+        service.setGradeTerms(sheet, user.trim(), grade, request.termsValue(), request.fromValue());
         return get(sheet, user);
     }
 
@@ -169,7 +214,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid LatePctRequest request) {
         String sheet = sheetId.trim();
-        service.setLatePct(sheet, user.trim(), request.latePctValue());
+        service.setLatePct(sheet, user.trim(), request.latePctValue(), request.fromValue());
         return get(sheet, user);
     }
 

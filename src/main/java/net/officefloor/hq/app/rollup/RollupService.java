@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.settings.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
  * claims, leaving out the OPEN and PENDING ones dated within one of their holds that no statement binds)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
- * their grade is in force on the sheet's today, and at most the sheet's cap when it has one) and their
+ * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
  * sheet's today, as each shows it) — and the sheet's totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
@@ -43,10 +44,12 @@ public class RollupService {
     private final ClaimRepository claims;
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final DatedSettings dated;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
-            SheetRepository sheets, Audit audit) {
+            SheetRepository sheets, DatedSettings dated, Audit audit) {
+        this.dated = dated;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -67,7 +70,7 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        BigDecimal cap = sheet == null ? null : sheet.getCap();
+        BigDecimal cap = sheet == null ? null : dated.cap(sheetId);
         List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
@@ -155,7 +158,7 @@ public class RollupService {
         return figure == null ? null : figure.add(lateChargeOf(claim, figure));
     }
 
-    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: the sheet's late percent of that
+    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: the sheet's late percent in force on the claim's date of that
      * figure for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
      * the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
@@ -178,17 +181,17 @@ public class RollupService {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null) return zero();
         long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday())) / 30;
-        return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+        return figure.multiply(dated.latePctOn(sheet.getId(), claim.getDate())).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
                 .setScale(2, roundingOf(claim, sheet));
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}), and at least the sheet's floor (a correction,
+     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}), and at least the sheet's floor in force on the claim's date (a correction,
      * whose due is negative, has no floor); null when no
      * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
+        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
         RoundingMode rounding = roundingOf(claim, sheet);
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)

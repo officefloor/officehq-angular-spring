@@ -1,8 +1,7 @@
-import { Component, effect, inject, output, signal } from '@angular/core';
+import { Component, effect, inject, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from './people.service';
-import { cents } from './claims.service';
 import { Session } from '../../core/session';
-import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
+import { Dated, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
@@ -15,7 +14,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // grade; blank for the sheet's), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
-// a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk). Read from the
+// a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk).
+// The clerk limit, floor, cap, terms, grades' terms and late percent are dated: each is saved from the
+// date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
+// today. Read from the
 // store every time a sheet is loaded. Saving the settings saves only the fields changed since
 // they were last saved.
 @Component({
@@ -33,6 +35,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="limit.set(value($event)); limitChanged = true; settingsError.set(null)"
           (keydown)="limitChanged = true"
         />
+        <label for="setting-clerk-limit-from">Clerk limit from</label>
+        <input
+          id="setting-clerk-limit-from"
+          data-testid="setting-clerk-limit-from"
+          type="date"
+          [value]="limitFrom()"
+          (input)="limitFrom.set(value($event)); limitChanged = true; settingsError.set(null)"
+        />
         <span>
           In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
           @if (clerkLimit() === null) {
@@ -48,6 +58,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="floorInput.set(value($event)); floorChanged = true; settingsError.set(null)"
           (keydown)="floorChanged = true"
         />
+        <label for="setting-floor-from">Floor from</label>
+        <input
+          id="setting-floor-from"
+          data-testid="setting-floor-from"
+          type="date"
+          [value]="floorFrom()"
+          (input)="floorFrom.set(value($event)); floorChanged = true; settingsError.set(null)"
+        />
         <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
         <label for="setting-cap">Cap</label>
         <input
@@ -57,6 +75,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="capInput()"
           (input)="capInput.set(value($event)); capChanged = true; settingsError.set(null)"
           (keydown)="capChanged = true"
+        />
+        <label for="setting-cap-from">Cap from</label>
+        <input
+          id="setting-cap-from"
+          data-testid="setting-cap-from"
+          type="date"
+          [value]="capFrom()"
+          (input)="capFrom.set(value($event)); capChanged = true; settingsError.set(null)"
         />
         <span>
           In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
@@ -73,6 +99,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="termsInput.set(value($event)); termsChanged = true; settingsError.set(null)"
           (keydown)="termsChanged = true"
         />
+        <label for="setting-terms-from">Terms from</label>
+        <input
+          id="setting-terms-from"
+          data-testid="setting-terms-from"
+          type="date"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); termsChanged = true; settingsError.set(null)"
+        />
         <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
@@ -83,6 +117,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             [value]="gradeTermsInput()[g]"
             (input)="setGradeTermsInput(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
             (keydown)="gradeTermsChanged.add(g)"
+          />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            type="date"
+            [value]="gradeTermsFrom()[g]"
+            (input)="setGradeTermsFrom(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
           />
           <span>
             In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsShown(g) }}</span>
@@ -99,6 +141,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="latePctInput()"
           (input)="latePctInput.set(value($event)); latePctChanged = true; settingsError.set(null)"
           (keydown)="latePctChanged = true"
+        />
+        <label for="setting-late-pct-from">Late percent from</label>
+        <input
+          id="setting-late-pct-from"
+          data-testid="setting-late-pct-from"
+          type="date"
+          [value]="latePctFrom()"
+          (input)="latePctFrom.set(value($event)); latePctChanged = true; settingsError.set(null)"
         />
         <span>In force: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></span>
         <label for="setting-policy-date">Policy date</label>
@@ -222,8 +272,8 @@ export class Settings {
   protected readonly floor = signal('');
   /** The cap in force, with two decimals; null when there is none. */
   protected readonly cap = signal<string | null>(null);
-  /** The cap saved, in cents; null when there is none. */
-  readonly capSaved = output<number | null>();
+  /** Every cap recorded, each from its date, oldest first, once one is saved. */
+  readonly capSaved = output<Dated<string | null>[]>();
   protected readonly given = signal<RoleGiven[]>([]);
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
@@ -232,10 +282,10 @@ export class Settings {
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   /** The late percent in force, with two decimals; empty until read. */
   protected readonly latePct = signal('');
-  /** The floor saved, in cents. */
-  readonly floorSaved = output<number>();
-  /** The late percent saved, with two decimals. */
-  readonly latePctSaved = output<string>();
+  /** Every floor recorded, each from its date, oldest first, once one is saved. */
+  readonly floorSaved = output<Dated[]>();
+  /** Every late percent recorded, each from its date, oldest first, once one is saved. */
+  readonly latePctSaved = output<Dated[]>();
   /** The policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
   /** The policy date saved; null when it is the sheet's today. */
@@ -252,6 +302,13 @@ export class Settings {
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
+  /** The date each dated setting is saved from (YYYY-MM-DD); blank for the sheet's today. */
+  protected readonly limitFrom = signal('');
+  protected readonly floorFrom = signal('');
+  protected readonly capFrom = signal('');
+  protected readonly termsFrom = signal('');
+  protected readonly latePctFrom = signal('');
+  protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -302,16 +359,34 @@ export class Settings {
       this.periodNumberingFrom.set(null);
       this.periodNumberingFromInput.set('');
       this.periodNumberingFromChanged = false;
+      this.limitFrom.set('');
+      this.floorFrom.set('');
+      this.capFrom.set('');
+      this.termsFrom.set('');
+      this.latePctFrom.set('');
+      this.gradeTermsFrom.set(blankGrades());
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set(null);
       if (sheet) void this.read(sheet);
     });
+    // What is in force follows the sheet's today: re-read it when the today changes.
+    let shownToday: string | null = null;
+    effect(() => {
+      const today = this.session.today();
+      const sheet = untracked(() => this.session.sheetId());
+      if (shownToday !== null && today !== shownToday && sheet) void this.read(sheet);
+      shownToday = today;
+    });
   }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected setGradeTermsFrom(grade: Grade, text: string): void {
+    this.gradeTermsFrom.update((inputs) => ({ ...inputs, [grade]: text }));
   }
 
   protected setGradeTermsInput(grade: Grade, text: string): void {
@@ -351,6 +426,24 @@ export class Settings {
     const numberingFrom = this.periodNumberingFromInput().trim();
     const saveNumberingFrom =
       this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
+    const limitFrom = this.limitFrom().trim();
+    const floorFrom = this.floorFrom().trim();
+    const capFrom = this.capFrom().trim();
+    const termsFrom = this.termsFrom().trim();
+    const latePctFrom = this.latePctFrom().trim();
+    const gradeTermsFrom = { ...this.gradeTermsFrom() };
+    const badFrom = [
+      saveLimit ? limitFrom : '',
+      saveFloor ? floorFrom : '',
+      saveCap ? capFrom : '',
+      saveTerms ? termsFrom : '',
+      saveLatePct ? latePctFrom : '',
+      ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
+    ].some((from) => from !== '' && !DATE.test(from));
+    if (badFrom) {
+      this.settingsError.set('Type a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
+      return;
+    }
     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -389,43 +482,62 @@ export class Settings {
     this.savingSettings = true;
     try {
       if (saveLimit) {
-        const settings = await this.service.setClerkLimit(sheet, limit || null);
+        const settings = await this.service.setClerkLimit(sheet, limit || null, limitFrom || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.limit().trim() === limit) this.limitChanged = false;
+        if (this.limit().trim() === limit && this.limitFrom().trim() === limitFrom) {
+          this.limitChanged = false;
+          this.limitFrom.set('');
+        }
         this.show(settings);
       }
       if (saveFloor) {
-        const settings = await this.service.setFloor(sheet, floor);
+        const settings = await this.service.setFloor(sheet, floor, floorFrom || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.floorInput().trim() === floor) this.floorChanged = false;
+        if (this.floorInput().trim() === floor && this.floorFrom().trim() === floorFrom) {
+          this.floorChanged = false;
+          this.floorFrom.set('');
+        }
         this.show(settings);
-        this.floorSaved.emit(cents(settings.floor));
+        this.floorSaved.emit(settings.floors);
       }
       if (saveCap) {
-        const settings = await this.service.setCap(sheet, cap || null);
+        const settings = await this.service.setCap(sheet, cap || null, capFrom || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.capInput().trim() === cap) this.capChanged = false;
+        if (this.capInput().trim() === cap && this.capFrom().trim() === capFrom) {
+          this.capChanged = false;
+          this.capFrom.set('');
+        }
         this.show(settings);
-        this.capSaved.emit(settings.cap === null ? null : cents(settings.cap));
+        this.capSaved.emit(settings.caps);
       }
       if (saveTerms) {
-        const settings = await this.service.setTerms(sheet, terms);
+        const settings = await this.service.setTerms(sheet, terms, termsFrom || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.termsInput().trim() === terms) this.termsChanged = false;
+        if (this.termsInput().trim() === terms && this.termsFrom().trim() === termsFrom) {
+          this.termsChanged = false;
+          this.termsFrom.set('');
+        }
         this.show(settings);
       }
       for (const { grade, text } of gradeTerms) {
-        const settings = await this.service.setGradeTerms(sheet, grade, text || null);
+        const from = gradeTermsFrom[grade].trim();
+        const settings = await this.service.setGradeTerms(sheet, grade, text || null, from || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.gradeTermsInput()[grade].trim() === text) this.gradeTermsChanged.delete(grade);
+        if (this.gradeTermsInput()[grade].trim() === text && this.gradeTermsFrom()[grade].trim() === from) {
+          this.gradeTermsChanged.delete(grade);
+          this.setGradeTermsFrom(grade, '');
+        }
         this.show(settings);
       }
       if (saveLatePct) {
-        const settings = await this.service.setLatePct(sheet, latePct);
+        const settings = await this.service.setLatePct(sheet, latePct, latePctFrom || null);
         if (this.session.sheetId() !== sheet) return;
-        if (this.latePctInput().trim() === latePct) this.latePctChanged = false;
+        if (this.latePctInput().trim() === latePct && this.latePctFrom().trim() === latePctFrom) {
+          this.latePctChanged = false;
+          this.latePctFrom.set('');
+        }
         this.show(settings);
-        this.latePctSaved.emit(settings.latePct);
+        this.latePctSaved.emit(settings.latePcts);
       }
       if (savePolicyDate) {
         const settings = await this.service.setPolicyDate(sheet, policyDate || null);

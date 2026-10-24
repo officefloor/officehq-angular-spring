@@ -5,6 +5,7 @@ import { Claim, ClaimAction, ClaimsService, money, overdue } from './claims.serv
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
+import { Dated } from './settings.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\S.{0,119}$/;
@@ -182,12 +183,13 @@ export class Claims {
   readonly grades = input.required<PersonGrade[]>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
-  /** The sheet's floor, in cents: the least a claim's live due can be. */
-  readonly floor = input.required<number>();
+  /** Every floor recorded on the sheet, each from its date, oldest first: the least a claim's live
+   *  due can be is the one in force on its date. */
+  readonly floors = input.required<Dated[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
-  /** The sheet's late percent, with two decimals. */
-  readonly latePct = input.required<string>();
+  /** Every late percent recorded on the sheet, each from its date, oldest first, with two decimals. */
+  readonly latePcts = input.required<Dated[]>();
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
    *  or after it half to even; null until read. */
   readonly policyDate = input.required<string | null>();
@@ -235,13 +237,13 @@ export class Claims {
   }
 
   /** What is due on the claim at the rate in force on the claim's date of the person's grade in force
-   *  then; n/a when no rate of that grade applies then; never below the sheet's floor; with its late charge added while it is
+   *  then; n/a when no rate of that grade applies then; never below the sheet's floor in force then; with its late charge added while it is
    *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
-    const late = { today: this.session.today(), latePct: this.latePct() };
+    const late = { today: this.session.today(), latePcts: this.latePcts() };
     const rounding = { policyDate: this.policyDate(), claims: this.claims() };
-    const due = claimShownCents(claim, this.rates(), this.grades(), this.floor(), late, rounding);
+    const due = claimShownCents(claim, this.rates(), this.grades(), this.floors(), late, rounding);
     return due === null ? 'n/a' : money(due);
   }
 

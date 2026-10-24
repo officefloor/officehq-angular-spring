@@ -73,7 +73,7 @@ public class ClaimService {
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
-        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
+        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated)));
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim = claims.saveAndFlush(claim);
         log(user, person, claim);

@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, cents, isCorrection, isOpen } from './claims.service';
 import { Grade, PersonGrade, gradeOn } from './people.service';
+import { Dated, FLOOR, LATE_PCT, inForce } from './settings.service';
 
 export interface Rate {
   grade: Grade;
@@ -64,37 +65,39 @@ export function dueCents(amountCents: number, pct: string | null, halfUp = false
  *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
  *  what is due on its amount at the rate in force on the claim's date of the grade in force
  *  for its person then, rounded as the claim rounds (see roundsHalfUp), raised to
- *  the sheet's floor (in cents) when below it (a correction has no floor), null when no rate applies
- *  then. */
+ *  the sheet's floor in force on the claim's date when below it (a correction has no floor), null
+ *  when no rate applies then. `floors` is every floor recorded, oldest first. */
 export function claimDueCents(
   claim: Claim,
   rates: Rate[],
   grades: PersonGrade[],
-  floorCents: number,
+  floors: readonly Dated[],
   rounding: Rounding,
 ): number | null {
   if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
   const grade = gradeOn(grades, claim.date);
   const due = grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
-  return due === null ? null : isCorrection(claim) ? due : Math.max(due, floorCents);
+  return due === null ? null : isCorrection(claim) ? due : Math.max(due, cents(inForce(floors, claim.date, FLOOR)));
 }
 
-/** What a late charge is worked from: the sheet's today and its late percent
- *  with two decimals. */
+/** What a late charge is worked from: the sheet's today and every late percent recorded, oldest
+ *  first, with two decimals. */
 export interface Lateness {
   today: string | null;
-  latePct: string;
+  latePcts: readonly Dated[];
 }
 
-/** The late charge on a claim whose figure is figureCents, in cents: the late percent of that figure
+/** The late charge on a claim whose figure is figureCents, in cents: the late percent in force on the
+ *  claim's date of that figure
  *  for every full 30 days the claim is overdue (OPEN or PENDING, and past its due-by on the sheet's today),
  *  rounded like the claim's due; 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
 export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness, rounding: Rounding): number {
   if (!isOpen(claim) || late.today === null || isCorrection(claim)) return 0;
   const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
   const periods = Math.max(0, Math.floor(days / 30));
-  return dueCents(figureCents * periods, late.latePct, roundsHalfUp(claim, rounding)) ?? 0;
+  const latePct = inForce(late.latePcts, claim.date, LATE_PCT);
+  return dueCents(figureCents * periods, latePct, roundsHalfUp(claim, rounding)) ?? 0;
 }
 
 /** What is due on a claim as it shows and totals, in cents: its figure (see claimDueCents) plus its
@@ -103,11 +106,11 @@ export function claimShownCents(
   claim: Claim,
   rates: Rate[],
   grades: PersonGrade[],
-  floorCents: number,
+  floors: readonly Dated[],
   late: Lateness,
   rounding: Rounding,
 ): number | null {
-  const figure = claimDueCents(claim, rates, grades, floorCents, rounding);
+  const figure = claimDueCents(claim, rates, grades, floors, rounding);
   return figure === null ? null : figure + lateChargeCents(claim, figure, late, rounding);
 }
 

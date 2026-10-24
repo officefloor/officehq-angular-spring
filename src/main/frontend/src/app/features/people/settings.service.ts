@@ -14,11 +14,28 @@ export interface RoleGiven {
   role: Role;
 }
 
-/** The floor a sheet starts with, in cents. */
-export const FLOOR_CENTS = 100;
+/** The floor a sheet starts with, with two decimals: in force before every floor recorded. */
+export const FLOOR = '1.00';
 
-/** The late percent a sheet starts with. */
+/** The late percent a sheet starts with: in force before every late percent recorded. */
 export const LATE_PCT = '0.00';
+
+/** A value of a dated setting, as text, and the date (YYYY-MM-DD) it is recorded from. */
+export interface Dated<T = string> {
+  from: string;
+  value: T;
+}
+
+/** The value in force on a date: the one recorded with the latest from-date on or before it, or
+ *  `start` before every from-date. `history` is oldest first. */
+export function inForce<T>(history: readonly Dated<T>[], date: string, start: T): T {
+  let value = start;
+  for (const d of history) {
+    if (d.from > date) break;
+    value = d.value;
+  }
+  return value;
+}
 
 export interface SheetSettings {
   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
@@ -41,6 +58,12 @@ export interface SheetSettings {
   roles: RoleGiven[];
   /** The date (YYYY-MM-DD) from which a claim opened is numbered within its period; null when off. */
   periodNumberingFrom: string | null;
+  /** Every floor recorded, each from its date, oldest first. */
+  floors: Dated[];
+  /** Every late percent recorded, each from its date, oldest first. */
+  latePcts: Dated[];
+  /** Every cap recorded, each from its date, oldest first; null records no cap from then. */
+  caps: Dated<string | null>[];
 }
 
 // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
@@ -55,50 +78,51 @@ export class SettingsService {
     );
   }
 
-  /** A null value removes the limit. */
-  setClerkLimit(sheet: string, value: string | null): Promise<SheetSettings> {
+  /** A null value records no limit; a null from records it from the sheet's today. */
+  setClerkLimit(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/clerk-limit`,
-        { value },
+        { value, from },
         { headers: this.session.headers() },
       ),
     );
   }
 
-  setFloor(sheet: string, value: string): Promise<SheetSettings> {
+  setFloor(sheet: string, value: string, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
-      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/floor`, { value }, { headers: this.session.headers() }),
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/floor`, { value, from }, { headers: this.session.headers() }),
     );
   }
 
-  /** A null value removes the cap. */
-  setCap(sheet: string, value: string | null): Promise<SheetSettings> {
+  /** A null value records no cap; a null from records it from the sheet's today. */
+  setCap(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
-      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/cap`, { value }, { headers: this.session.headers() }),
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/cap`, { value, from }, { headers: this.session.headers() }),
     );
   }
 
-  setTerms(sheet: string, value: string): Promise<SheetSettings> {
+  setTerms(sheet: string, value: string, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
-      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value }, { headers: this.session.headers() }),
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value, from }, { headers: this.session.headers() }),
     );
   }
 
-  /** A null value removes the grade's own terms: it uses the sheet's terms. */
-  setGradeTerms(sheet: string, grade: Grade, value: string | null): Promise<SheetSettings> {
+  /** A null value records that the grade uses the sheet's terms; a null from records it from the
+   *  sheet's today. */
+  setGradeTerms(sheet: string, grade: Grade, value: string | null, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/terms/${grade}`,
-        { value },
+        { value, from },
         { headers: this.session.headers() },
       ),
     );
   }
 
-  setLatePct(sheet: string, value: string): Promise<SheetSettings> {
+  setLatePct(sheet: string, value: string, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
-      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/late-pct`, { value }, { headers: this.session.headers() }),
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/late-pct`, { value, from }, { headers: this.session.headers() }),
     );
   }
 
