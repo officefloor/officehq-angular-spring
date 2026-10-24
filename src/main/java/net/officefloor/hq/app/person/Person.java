@@ -62,6 +62,11 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, without surrounding spaces and in lower case, unique on the sheet; null
+     * when they have none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -128,6 +133,21 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The form a contact is kept in: without surrounding spaces, in lower case; null for a blank one. */
+    public static String contactOf(String contact) {
+        if (contact == null || contact.isBlank()) return null;
+        return contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    /** Gives the person {@code contact} (none when blank), kept in its {@link #contactOf stored form}. */
+    public void setContact(String contact) {
+        this.contact = contactOf(contact);
     }
 
     public LocalDate getRetiredFrom() {

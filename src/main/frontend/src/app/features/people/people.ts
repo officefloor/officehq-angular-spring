@@ -114,6 +114,13 @@ import { VoidReasons } from './void-reasons';
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
         />
+        <label for="person-form-contact">Contact</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (input)="contact.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -251,6 +258,7 @@ import { VoidReasons } from './void-reasons';
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
               <th scope="col">Terms</th>
+              <th scope="col">Contact</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
               <th scope="col">Settled due</th>
@@ -293,6 +301,7 @@ import { VoidReasons } from './void-reasons';
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 @let split = splitOf(p);
@@ -700,6 +709,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in days, as typed; blank for none. */
   protected readonly terms = signal('');
+  /** The person's contact, as typed; blank for none. */
+  protected readonly contact = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
@@ -1351,6 +1362,7 @@ export class People {
     this.grade.set(this.gradeNow(person));
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.contact.set(person.contact ?? '');
     this.error.set(null);
   }
 
@@ -1360,6 +1372,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.contact.set('');
     this.error.set(null);
   }
 
@@ -1369,7 +1382,7 @@ export class People {
     this.error.set(null);
     const sheet = this.sheet();
     if (!sheet) return;
-    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim() };
+    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim(), contact: this.contact() };
     if (!fields.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
@@ -1381,6 +1394,14 @@ export class People {
       return;
     }
     const id = this.editingId();
+    const contact = fields.contact.trim().toLowerCase();
+    if (contact && this.people().some((p) => p.id !== id && p.contact === contact)) {
+      // Refused at once, as the server would: nothing is saved and the editor stays open. The people
+      // are re-read, so a later save starts from them as now stored.
+      this.error.set('Another person on the sheet already has that contact.');
+      void this.reread(sheet, id, this.editorOpenings);
+      return;
+    }
     const opening = this.editorOpenings;
     this.submitting = true;
     try {
@@ -1412,12 +1433,16 @@ export class People {
           this.name.set(current.name);
           this.grade.set(this.gradeNow(current));
           this.terms.set(current.terms === null ? '' : String(current.terms));
+          this.contact.set(current.contact ?? '');
         }
         this.error.set('Someone else saved this person since you opened it; their changes are shown.');
         return;
       }
       if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('Another person on the sheet already has that name.');
+        const body = e.error as { error?: unknown } | null;
+        this.error.set(body?.error === 'contact-taken'
+          ? 'Another person on the sheet already has that contact.'
+          : 'Another person on the sheet already has that name.');
         return;
       }
       this.error.set(id === null ? 'That person could not be added.' : 'That person could not be saved.');
@@ -1503,6 +1528,27 @@ export class People {
   /** Put a saved person in place of their old row. */
   private put(person: Person): void {
     this.people.update((list) => list.map((p) => (p.id === person.id ? person : p)));
+  }
+
+  /** Re-read the sheet's people after a refusal decided here; when the editor is still as it was
+   *  opened (`opening`) on a person someone else has saved since, show them as now stored. */
+  private async reread(sheet: string, id: number | null, opening: number): Promise<void> {
+    try {
+      const list = await this.service.list(sheet);
+      if (this.sheet() !== sheet) return;
+      this.people.set(list);
+      const current = list.find((p) => p.id === id);
+      if (id === null || !current || this.editingId() !== id || this.editorOpenings !== opening) return;
+      if (current.version === this.editingVersion) return;
+      this.editingVersion = current.version;
+      this.name.set(current.name);
+      this.grade.set(this.gradeNow(current));
+      this.terms.set(current.terms === null ? '' : String(current.terms));
+      this.contact.set(current.contact ?? '');
+      this.error.set('Someone else saved this person since you opened it; their changes are shown.');
+    } catch {
+      // The people could not be re-read; the list stays as it was.
+    }
   }
 
   /** The person as now stored, when a save was refused for being made from an older version. */

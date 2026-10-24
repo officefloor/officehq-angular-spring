@@ -46,7 +46,7 @@ public class PersonBulkService {
         for (Person person : listed) {
             try {
                 changed.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
-                        grade, from, person.getTerms()));
+                        grade, from, person.getTerms(), person.getContact()));
             } catch (PersonStaleException | PersonNotFoundException | ObjectOptimisticLockingFailureException e) {
                 // Left as it is.
             }

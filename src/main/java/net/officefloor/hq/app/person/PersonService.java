@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.Audit;
@@ -48,20 +49,27 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    /** Adds a person with their own terms (none when null) and contact (none when blank); refused when
+     * another person on the sheet has the name or the contact. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
         requireFree(sheetId, name, null);
+        requireContactFree(sheetId, contact, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person created = new Person(sheetId, name, grade);
         created.setTerms(terms);
+        created.setContact(contact);
         Person person = people.saveAndFlush(created);
-        if (terms == null) {
-            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
-        } else {
-            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade,
-                    "terms=" + terms);
-        }
+        List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + grade));
+        if (terms != null) fields.add("terms=" + terms);
+        if (person.getContact() != null) fields.add("contact=" + person.getContact());
+        audit.change("PERSON_ADDED", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return person;
     }
@@ -74,28 +82,30 @@ public class PersonService {
 
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
      * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
-     * have been saved since. The person's own terms become {@code terms} (none when null). */
+     * have been saved since. The person's own terms become {@code terms} (none when null), and their
+     * contact {@code contact} (none when blank), refused when another person on the sheet has it. */
     @Transactional
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
         }
         requireFree(sheetId, name, person.getId());
+        requireContactFree(sheetId, contact, person.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheetService.today(sheetId);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setTerms(terms);
+        boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
+        person.setContact(contact);
         people.flush();
-        if (termsChanged) {
-            audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today),
-                    "terms=" + (terms == null ? "" : terms));
-        } else {
-            audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today));
-        }
+        List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + person.gradeOn(today)));
+        if (termsChanged) fields.add("terms=" + (terms == null ? "" : terms));
+        if (contactChanged) fields.add("contact=" + (person.getContact() == null ? "" : person.getContact()));
+        audit.change("PERSON_EDITED", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return person;
     }
@@ -181,6 +191,18 @@ public class PersonService {
                 .filter(other -> !other.getId().equals(self))
                 .ifPresent(other -> {
                     throw new PersonNameTakenException();
+                });
+    }
+
+    /** Refuses a contact another person on the sheet (other than {@code self}) already has; a blank
+     * contact is none, and is never refused. */
+    private void requireContactFree(String sheetId, String contact, Long self) {
+        String kept = Person.contactOf(contact);
+        if (kept == null) return;
+        people.findBySheetIdAndContact(sheetId, kept)
+                .filter(other -> !other.getId().equals(self))
+                .ifPresent(other -> {
+                    throw new PersonContactTakenException();
                 });
     }
 }

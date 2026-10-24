@@ -35,6 +35,8 @@ export interface Person {
   holds: PersonHold[];
   /** The person's own terms in days, in place of their grade's and the sheet's; null when none. */
   terms: number | null;
+  /** The person's contact, without surrounding spaces and in lower case; null when none. */
+  contact: string | null;
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
@@ -75,6 +77,8 @@ export interface PersonFields {
   gradeFrom?: string | null;
   /** The person's own terms in days, as typed; blank for none. */
   terms: string;
+  /** The person's contact, as typed; blank for none. */
+  contact: string;
 }
 
 /** The grade in force on a date: the one with the latest from-date on or before it, or the first
