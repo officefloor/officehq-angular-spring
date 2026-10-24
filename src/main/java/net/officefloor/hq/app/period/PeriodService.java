@@ -107,7 +107,7 @@ public class PeriodService {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(period.getSheetId())) {
+        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId())) {
             if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
             Person person = byId.get(claim.getPersonId());
             if (person == null || !RollupService.countsLive(claim, person)) continue;

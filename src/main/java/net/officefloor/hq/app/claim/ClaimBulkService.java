@@ -39,9 +39,10 @@ public class ClaimBulkService {
         Map<Long, Integer> personOrder = new HashMap<>();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
-        List<Claim> found = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> found = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> asked.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder())
                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
                 .toList();
         int refused = asked.size() - found.size();

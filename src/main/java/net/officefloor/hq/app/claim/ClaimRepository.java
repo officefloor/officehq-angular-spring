@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     /** The sheet's claims, newest first. */
-    List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+    List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
@@ -25,6 +25,6 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The person's claims, newest first, locked until the transaction ends so a statement never
      * overlaps a status change of one of them. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT c FROM Claim c WHERE c.sheetId = :sheetId AND c.personId = :personId ORDER BY c.id DESC")
+    @Query("SELECT c FROM Claim c WHERE c.sheetId = :sheetId AND c.personId = :personId ORDER BY c.listed DESC, c.id DESC")
     List<Claim> lockBySheetIdAndPersonId(String sheetId, Long personId);
 }

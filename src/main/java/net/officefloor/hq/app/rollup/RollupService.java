@@ -64,7 +64,7 @@ public class RollupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
-        List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
         BigDecimal dueTotal = zero();

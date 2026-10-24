@@ -47,7 +47,7 @@ public class ClaimService {
     /** The sheet's claims, newest first. */
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
     }
 
     @Transactional
@@ -59,7 +59,9 @@ public class ClaimService {
         refuseClosed(sheetId, dated);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrects));
+        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        claim.setListed(sheets.nextInSequence(sheetId, "listed"));
+        claim = claims.saveAndFlush(claim);
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -168,6 +170,36 @@ public class ClaimService {
         claim.setStatus(ClaimStatus.OPEN);
         claims.flush();
         record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), "reason=" + reason);
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** A steward's move of a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+     * number and date, loses any figure a statement bound it to (it is live again until its new
+     * person's next statement), and is listed as its new person's newest claim. Refused when the user
+     * is not a steward, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
+     * own person) or already belongs to the person, when it is dated in a closed period, and when it
+     * is dated after the new person's retirement date. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long claimId, long personId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        refuseClosed(sheetId, claim.getDate());
+        ClaimStatus status = claim.getStatus();
+        if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)
+                || claim.isCorrection() || claim.getPersonId() == personId) {
+            throw new ClaimReassignException();
+        }
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Person to = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        to.requireClaimable(claim.getDate());
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        claim.setListed(sheets.nextInSequence(sheetId, "listed"));
+        claims.flush();
+        record("CLAIM_REASSIGNED", user, to, claim, claim.getNumber(), "from=" + from.getName(), "to=" + to.getName());
         rollup.recordSince(sheetId, user, before);
         return claim;
     }

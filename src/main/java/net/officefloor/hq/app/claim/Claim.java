@@ -69,6 +69,11 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The claim's place in its sheet's list, newest (highest) first; given anew when it moves to
+     * another person. */
+    @Column(name = "listed", nullable = false)
+    private long listed;
+
     protected Claim() {
     }
 
@@ -91,6 +96,18 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public long getListed() {
+        return listed;
+    }
+
+    public void setListed(long listed) {
+        this.listed = listed;
     }
 
     public BigDecimal getAmount() {

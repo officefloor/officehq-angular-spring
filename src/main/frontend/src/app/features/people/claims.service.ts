@@ -130,6 +130,17 @@ export class ClaimsService {
     );
   }
 
+  /** Move the claim to another person on the sheet; refused (403) when the user is not a steward,
+   *  (409) when it is SETTLED or VOID, a correction or already theirs, (423) when it is dated in a
+   *  closed period and (422) when it is dated after the person retired. */
+  reassign(sheet: string, id: number, personId: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/reassign`, { personId }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Open each of the claims that can be opened, numbered in list order; the rest are left as they
    *  are and counted as refused. */
   bulkOpen(sheet: string, claimIds: number[]): Promise<BulkOpened> {

@@ -99,6 +99,25 @@ const PAST: Record<ClaimAction, string> = {
                 {{ a.label }}
               </button>
             }
+            <label [for]="fieldId('reassign-to-' + c.id)">Move to</label>
+            <select
+              [id]="fieldId('reassign-to-' + c.id)"
+              data-testid="claim-reassign-to"
+              (change)="setReassignTo(c.id, value($event))"
+            >
+              <option value="" [selected]="!reassignTos()[c.id]">Choose a person</option>
+              @for (o of others(); track o.id) {
+                <option [value]="o.id" [selected]="reassignTos()[c.id] === '' + o.id">{{ o.name }}</option>
+              }
+            </select>
+            <button
+              type="button"
+              data-testid="claim-reassign"
+              [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date"
+              (click)="reassign(c)"
+            >
+              Move
+            </button>
             <button
               type="button"
               data-testid="claim-edit"
@@ -161,6 +180,8 @@ export class Claims {
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
    *  or after it half to even; null until read. */
   readonly policyDate = input.required<string | null>();
+  /** The other people on the sheet, whom a claim can be moved to. */
+  readonly others = input.required<{ id: number; name: string }[]>();
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim was selected or unselected. */
@@ -180,6 +201,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The person chosen to move each claim to, by claim id: their id as text. */
+  protected readonly reassignTos = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
@@ -280,6 +303,42 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : `That claim cannot be ${PAST[action]} in its status.`,
+      }));
+    }
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTos.update((chosen) => ({ ...chosen, [id]: personId }));
+    this.clearRowError(id);
+  }
+
+  /** Move the claim to the person chosen on its row; only a steward can, and only a DRAFT, OPEN or
+   *  PENDING claim that is not a correction moves, so any other move is refused with an error. */
+  protected async reassign(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = Number(this.reassignTos()[claim.id] ?? '');
+    if (!to) {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Choose the person to move that claim to.' }));
+      return;
+    }
+    try {
+      const moved = await this.service.reassign(sheet, claim.id, to);
+      if (this.session.sheetId() !== sheet) return;
+      this.reassignTos.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(moved);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can move a claim.'
+          : e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? 'That claim is dated after that person retired.'
+          : 'Only a draft, open or pending claim that is not a correction can be moved to another person.',
       }));
     }
   }

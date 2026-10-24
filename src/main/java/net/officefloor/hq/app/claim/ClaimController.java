@@ -69,6 +69,10 @@ public class ClaimController {
     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
     }
 
+    /** The person a claim is moved to, by id. */
+    public record ReassignRequest(@NotNull Long personId) {
+    }
+
     /** The claims a bulk change is asked of, by id. */
     public record BulkRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
@@ -144,6 +148,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+    }
+
+    @PostMapping("/claims/{claimId}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReassignRequest request) {
+        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
     }
 
     @PostMapping("/claims/bulk-open")

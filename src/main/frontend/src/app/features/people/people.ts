@@ -183,6 +183,7 @@ import { Summary, SummaryPerson } from './summary';
                     [terms]="terms()"
                     [latePct]="latePct()"
                     [policyDate]="policyDateInForce()"
+                    [others]="othersOf(p.id)"
                     [selected]="selectedClaims()"
                     (selectToggled)="selectClaim($event.id, $event.selected)"
                     (saved)="claimSaved($event)"
@@ -734,12 +735,20 @@ export class People {
   }
 
   /** Put an added claim first, or a saved one in its place. */
+  /** Show the claim as saved; one new, or moved to another person, is listed first (newest). */
   protected claimSaved(claim: Claim): void {
     this.claims.update((list) =>
-      list.some((c) => c.id === claim.id)
+      list.some((c) => c.id === claim.id && c.personId === claim.personId)
         ? list.map((c) => (c.id === claim.id ? claim : c))
-        : [claim, ...list],
+        : [claim, ...list.filter((c) => c.id !== claim.id)],
     );
+  }
+
+  /** The other people on the sheet, by name, whom the person's claims can be moved to. */
+  protected othersOf(personId: number): { id: number; name: string }[] {
+    return this.people()
+      .filter((p) => p.id !== personId)
+      .map((p) => ({ id: p.id, name: p.name }));
   }
 
   protected edit(person: Person): void {
