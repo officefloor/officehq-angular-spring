@@ -1,0 +1,60 @@
+package net.officefloor.hq.app.period;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+/** The periods of a sheet. The signed-in user's name travels in the {@code X-User} header. */
+@RestController
+@RequestMapping("/api/sheets/{sheetId}/periods")
+@Validated
+public class PeriodController {
+
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+        static PeriodView of(Period period) {
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo());
+        }
+    }
+
+    /** A period's name (not blank, no spaces inside, kept without the spaces around it) and its from
+     * and to dates, both inclusive. */
+    public record PeriodRequest(
+            @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name,
+            @NotNull LocalDate from,
+            @NotNull LocalDate to) {
+    }
+
+    private final PeriodService service;
+
+    public PeriodController(PeriodService service) {
+        this.service = service;
+    }
+
+    @GetMapping
+    public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PeriodRequest request) {
+        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+    }
+}

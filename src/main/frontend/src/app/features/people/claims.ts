@@ -3,6 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, money } from './claims.service';
 import { Grade } from './people.service';
+import { Period, periodOn } from './periods.service';
 import { Rate, claimDueCents } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -55,6 +56,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span data-testid="claim-status">{{ c.status }}</span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+            <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -116,6 +118,8 @@ export class Claims {
   readonly grade = input.required<Grade>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's periods. */
+  readonly periods = input.required<Period[]>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -148,6 +152,11 @@ export class Claims {
   protected dueOf(claim: Claim): string {
     const due = claimDueCents(claim, this.rates(), this.grade());
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** The name of the period whose dates contain the claim's date; empty when none does. */
+  protected periodOf(claim: Claim): string {
+    return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
   protected edit(claim: Claim): void {

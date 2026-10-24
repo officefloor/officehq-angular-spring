@@ -4,6 +4,8 @@ import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
+import { Periods } from './periods';
+import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
 import { Statement, StatementsService } from './statements.service';
@@ -17,9 +19,10 @@ import { Statement, StatementsService } from './statements.service';
 // how many statements they have had and the last one's due-total and date.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Rates],
+  imports: [Claims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
 
@@ -87,6 +90,7 @@ import { Statement, StatementsService } from './statements.service';
                     [claims]="claimsOf(p.id)"
                     [grade]="p.grade"
                     [rates]="rates()"
+                    [periods]="periods()"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -161,6 +165,7 @@ export class People {
   private readonly claimsService = inject(ClaimsService);
   private readonly ratesService = inject(RatesService);
   private readonly statementsService = inject(StatementsService);
+  private readonly periodsService = inject(PeriodsService);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -185,6 +190,23 @@ export class People {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The sheet's rates, by grade. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The sheet's periods. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
+   *  each claim shows it (a claim with nothing due is skipped). */
+  protected readonly periodDueTotals = computed(() => {
+    const sums: Record<string, number> = {};
+    for (const p of this.periods()) sums[p.name] = 0;
+    for (const person of this.people()) {
+      for (const c of this.claimsOf(person.id)) {
+        if (!counts(c)) continue;
+        const period = periodOn(this.periods(), c.date);
+        if (period === null) continue;
+        sums[period.name] += claimDueCents(c, this.rates(), person.grade) ?? 0;
+      }
+    }
+    return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+  });
   protected readonly dueTotal = computed(() => {
     let sum = 0;
     for (const p of this.people()) sum += this.dueCentsOf(p) ?? 0;
@@ -209,6 +231,7 @@ export class People {
       this.claims.set([]);
       this.rates.set([]);
       this.statements.set([]);
+      this.periods.set([]);
       this.rowErrors.set({});
       this.reset();
       if (sheet) void this.read(sheet);
@@ -289,6 +312,10 @@ export class People {
       any = true;
     }
     return any || this.rateOf(person.grade) !== null ? sum : null;
+  }
+
+  protected periodAdded(period: Period): void {
+    this.periods.update((list) => [...list, period]);
   }
 
   /** Put a set rate in place of the grade's old one for the same from-date. */
@@ -384,14 +411,16 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements] = await Promise.all([
+      const [list, claims, rates, statements, periods] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
         this.statementsService.list(sheet),
+        this.periodsService.list(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.rates.set(rates);
+        this.periods.set(periods);
         this.statements.set(statements);
         this.claims.set(claims);
         this.people.set(list);
