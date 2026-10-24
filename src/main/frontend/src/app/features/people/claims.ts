@@ -1,8 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, cents, money } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, money } from './claims.service';
 import { Grade } from './people.service';
-import { Rate, dueCents, rateOn } from './rates.service';
+import { Rate, claimDueCents } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -141,8 +141,7 @@ export class Claims {
    *  their grade applies then. A claim settled
    *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
   protected dueOf(claim: Claim): string {
-    if (claim.status === 'SETTLED' && claim.settledDue !== null) return claim.settledDue;
-    const due = dueCents(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
+    const due = claimDueCents(claim, this.rates(), this.grade());
     return due === null ? 'n/a' : money(due);
   }
 

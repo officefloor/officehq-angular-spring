@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim, cents } from './claims.service';
 import { Grade } from './people.service';
 
 export interface Rate {
@@ -23,13 +24,26 @@ export function rateOn(rates: Rate[], grade: Grade, date: string): string | null
   return best?.pct ?? null;
 }
 
-/** What is due on an amount at a rate: amount times pct, divided by 100, rounded half up to two
- *  decimals; null when there is no rate. Worked in whole cents and hundredths of a percent, so it
- *  is exact. */
+/** What is due on an amount at a rate: amount times pct, divided by 100, rounded half to even to
+ *  two decimals; null when there is no rate. Worked in whole cents and hundredths of a percent, so
+ *  it is exact. */
 export function dueCents(amountCents: number, pct: string | null): number | null {
   if (pct === null) return null;
   const product = BigInt(amountCents) * BigInt(Math.round(Number(pct) * 100));
-  return Number((product + 5000n) / 10000n);
+  const negative = product < 0n;
+  const abs = negative ? -product : product;
+  let quotient = abs / 10000n;
+  const remainder = abs % 10000n;
+  if (remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n)) quotient += 1n;
+  return Number(negative ? -quotient : quotient);
+}
+
+/** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then;
+ *  otherwise what is due on its amount at its person's grade's rate in force on the claim's date,
+ *  null when none applies then. */
+export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade): number | null {
+  if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
+  return dueCents(cents(claim.amount), rateOn(rates, grade, claim.date));
 }
 
 // The rates of the grades on a sheet, read from and written to the server.

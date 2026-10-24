@@ -92,11 +92,11 @@ public class ClaimService {
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded half up to two decimals; null when no rate of their grade applies then. */
+     * divided by 100, rounded half to even to two decimals; null when no rate of their grade applies then. */
     private BigDecimal dueOf(Claim claim, Person person) {
         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null);
     }
 

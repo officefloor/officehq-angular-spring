@@ -5,12 +5,12 @@ import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Rates } from './rates';
-import { Rate, RatesService, dueCents, rateOn } from './rates.service';
+import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
-// and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it at their
-// grade's rate in force on the sheet's today; the sheet's
+// and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it: the sum of
+// those claims' due figures; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
@@ -206,15 +206,25 @@ export class People {
     return today === null ? null : rateOn(this.rates(), grade, today);
   }
 
-  /** The person's claimed times their grade's rate in force on the sheet's today, divided by 100 and
-   *  rounded half up; null when no rate of their grade applies then. */
+  /** The sum of what is due on each of the person's OPEN and SETTLED claims, as each claim shows
+   *  it (a claim with nothing due is skipped); n/a when no rate of their grade applies on the
+   *  sheet's today and none of their claims has a figure. */
   protected dueTotalOf(person: Person): string | null {
     const due = this.dueCentsOf(person);
     return due === null ? null : money(due);
   }
 
   private dueCentsOf(person: Person): number | null {
-    return dueCents(this.claimedCentsOf(person.id), this.rateOf(person.grade));
+    let sum = 0;
+    let any = false;
+    for (const c of this.claimsOf(person.id)) {
+      if (!counts(c)) continue;
+      const due = claimDueCents(c, this.rates(), person.grade);
+      if (due === null) continue;
+      sum += due;
+      any = true;
+    }
+    return any || this.rateOf(person.grade) !== null ? sum : null;
   }
 
   /** Put a set rate in place of the grade's old one for the same from-date. */
