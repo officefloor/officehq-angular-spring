@@ -11,6 +11,7 @@ import { Lateness, Rate, RatesService, claimShownCents, rateOn } from './rates.s
 import { Settings } from './settings';
 import { FLOOR_CENTS, LATE_PCT, SettingsService, TERMS_DAYS } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
+import { Summary, SummaryPerson } from './summary';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
@@ -31,7 +32,7 @@ import { Statement, StatementsService } from './statements.service';
 // (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates, Settings],
+  imports: [Claims, Periods, Rates, Settings, Summary],
   template: `
     <app-settings
       (floorSaved)="floor.set($event)"
@@ -40,6 +41,12 @@ import { Statement, StatementsService } from './statements.service';
     />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+    <app-summary
+      [people]="summaryPeople()"
+      [periods]="periods()"
+      [periodDueTotals]="periodDueTotals()"
+      [claims]="claims()"
+    />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
 
@@ -382,6 +389,10 @@ export class People {
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
   });
+  /** Everyone as the summary counts them: their grade today, whether retired, and their due-total. */
+  protected readonly summaryPeople = computed<SummaryPerson[]>(() =>
+    this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p) })),
+  );
   protected readonly dueTotal = computed(() => {
     let sum = 0;
     for (const p of this.people()) sum += this.dueCentsOf(p) ?? 0;
