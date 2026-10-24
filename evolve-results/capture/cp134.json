@@ -1,0 +1,64 @@
+{
+  "checkpoint": 134,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp134_sorting",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "24ae21c309498e948e41b1d5c73ee870323eee77",
+  "reset_sha": "",
+  "preagent_sha": "a674d164ec8b75c849049c295c07b3dc81170710",
+  "prev_sha": "a674d164ec8b75c849049c295c07b3dc81170710",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5687013999999999,
+    "input_tokens": 8,
+    "output_tokens": 571,
+    "cache_read_tokens": 156753,
+    "cache_creation_tokens": 2840,
+    "num_turns": 3,
+    "duration_ms": 12573,
+    "duration_api_ms": 77219,
+    "model": "claude-opus-5-5",
+    "session_id": "85410f2f-9721-4198-8d7d-4a8c753a30c0",
+    "stop_reason": "success",
+    "result_text": "The people list now has a sort select (`sort-by`), and all 4 tests in `bin/e2e` pass.\n\nAll the changes are in the front end, in `src/main/frontend/src/app/features/people/people.ts`:\n\n- **The select:** it offers added, name, grade and due-total, and sits next to \"Show retired\".\n- **Per user's screen:** each browser keeps its own choice. It starts at \"added\" and stays in place when the sheet is reloaded. Nothing goes to the server or the audit file, so another user still sees the list in added order.\n- **Sorting:**\n  - **name** compares names the way the app already does elsewhere, ignoring case and outer spaces, so \"ada\" comes before \"Ben\".\n  - **grade** uses the grade in force on the sheet's today.\n  - **due-total** uses the capped due-total, lowest first, with n/a last.\n  - People with equal keys keep their list order.\n- **What it doesn't touch:** only the displayed rows are reordered. The stored positions, move up/down, the rollup lines, the exports and the bulk actions all still use the list order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5687013999999999,
+        "num_turns": 3,
+        "duration_ms": 12573,
+        "duration_api_ms": 77219,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp134.agent.jsonl",
+  "agent_diff_file": "cp134.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
