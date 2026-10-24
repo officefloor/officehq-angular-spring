@@ -426,7 +426,8 @@ export class Claims {
    *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
    *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
    *  a claim whose due is above the clerk limit leaves it PENDING for a steward. A settle or approve of a
-   *  claim without proofs whose due is above the proof threshold in force on its date is refused. */
+   *  claim without proofs whose due is above the proof threshold in force on its date is refused, and so
+   *  is an open of a claim with an empty note whose due is above the note threshold in force then. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
@@ -459,6 +460,8 @@ export class Claims {
           ? 'A settled claim can only be voided within 7 days of its settlement.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
+          ? 'That claim is due above the note threshold, so it needs a note before it can be opened.'
           : e instanceof HttpErrorResponse && e.status === 422
           ? `That claim is due above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
           : action === 'settle' && this.isDeferred(claim)

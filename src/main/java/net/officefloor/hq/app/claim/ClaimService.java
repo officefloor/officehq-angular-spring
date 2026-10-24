@@ -169,14 +169,15 @@ public class ClaimService {
         if (reversing) refuseLateVoid(sheetId, user, claim);
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
             number = nextNumber(sheetId, claim.getDate());
             claim.setOpenedBy(user);
         }
-        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
-                .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
             BigDecimal due = rollup.liveDueOf(claim, figure);
@@ -501,6 +502,14 @@ public class ClaimService {
         if (due == null || claim.getProofs() > 0) return;
         BigDecimal threshold = settings.proofThresholdOn(claim.getSheetId(), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
+    }
+
+    /** Refuse an open of the claim, whose due is {@code due}, while its note is empty and that due is
+     * above the note threshold in force on its date (a due that is n/a is within any threshold). */
+    private void refuseNoteless(Claim claim, BigDecimal due) {
+        if (due == null || !noteOf(claim.getNote()).isEmpty()) return;
+        BigDecimal threshold = settings.noteThresholdOn(claim.getSheetId(), claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimNoteRequiredException();
     }
 
     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of

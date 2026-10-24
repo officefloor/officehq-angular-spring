@@ -126,6 +126,29 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-note-threshold">Note threshold</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThresholdInput()"
+          (input)="noteThresholdInput.set(value($event)); noteThresholdChanged = true; settingsError.set(null)"
+          (keydown)="noteThresholdChanged = true"
+        />
+        <label for="setting-note-threshold-from">Note threshold from</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          type="date"
+          [value]="noteThresholdFrom()"
+          (input)="noteThresholdFrom.set(value($event)); noteThresholdChanged = true; settingsError.set(null)"
+        />
+        <span>
+          In force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span>
+          @if (noteThreshold() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-terms">Terms (days)</label>
         <input
           id="setting-terms"
@@ -347,6 +370,8 @@ export class Settings {
   protected readonly given = signal<RoleGiven[]>([]);
   /** The proof threshold in force, with two decimals; null when there is none. */
   protected readonly proofThreshold = signal<string | null>(null);
+  /** The note threshold in force, with two decimals; null when there is none. */
+  protected readonly noteThreshold = signal<string | null>(null);
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
   protected readonly grades = GRADES;
@@ -379,6 +404,7 @@ export class Settings {
   protected readonly floorInput = signal('');
   protected readonly capInput = signal('');
   protected readonly proofThresholdInput = signal('');
+  protected readonly noteThresholdInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
@@ -390,6 +416,7 @@ export class Settings {
   protected readonly floorFrom = signal('');
   protected readonly capFrom = signal('');
   protected readonly proofThresholdFrom = signal('');
+  protected readonly noteThresholdFrom = signal('');
   protected readonly termsFrom = signal('');
   protected readonly latePctFrom = signal('');
   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
@@ -400,6 +427,7 @@ export class Settings {
   protected floorChanged = false;
   protected capChanged = false;
   protected proofThresholdChanged = false;
+  protected noteThresholdChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
   protected readonly gradeTermsChanged = new Set<Grade>();
@@ -432,6 +460,10 @@ export class Settings {
       this.proofThresholdInput.set('');
       this.proofThresholdChanged = false;
       this.proofThresholdFrom.set('');
+      this.noteThreshold.set(null);
+      this.noteThresholdInput.set('');
+      this.noteThresholdChanged = false;
+      this.noteThresholdFrom.set('');
       this.terms.set('');
       this.termsInput.set('');
       this.limitChanged = false;
@@ -516,6 +548,8 @@ export class Settings {
     const saveCap = this.capChanged || cap !== (this.cap() ?? '');
     const proofThreshold = this.proofThresholdInput().trim();
     const saveProofThreshold = this.proofThresholdChanged || proofThreshold !== (this.proofThreshold() ?? '');
+    const noteThreshold = this.noteThresholdInput().trim();
+    const saveNoteThreshold = this.noteThresholdChanged || noteThreshold !== (this.noteThreshold() ?? '');
     const terms = this.termsInput().trim();
     const saveTerms = this.termsChanged || terms !== this.terms();
     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
@@ -537,6 +571,7 @@ export class Settings {
     const floorFrom = this.floorFrom().trim();
     const capFrom = this.capFrom().trim();
     const proofThresholdFrom = this.proofThresholdFrom().trim();
+    const noteThresholdFrom = this.noteThresholdFrom().trim();
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom = { ...this.gradeTermsFrom() };
@@ -545,6 +580,7 @@ export class Settings {
       saveFloor ? floorFrom : '',
       saveCap ? capFrom : '',
       saveProofThreshold ? proofThresholdFrom : '',
+      saveNoteThreshold ? noteThresholdFrom : '',
       saveTerms ? termsFrom : '',
       saveLatePct ? latePctFrom : '',
       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
@@ -567,6 +603,10 @@ export class Settings {
     }
     if (saveProofThreshold && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (saveNoteThreshold && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
+      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (saveTerms && !TERMS.test(terms)) {
@@ -643,6 +683,15 @@ export class Settings {
         }
         this.show(settings);
       }
+      if (saveNoteThreshold) {
+        const settings = await this.service.setNoteThreshold(sheet, noteThreshold || null, noteThresholdFrom || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.noteThresholdInput().trim() === noteThreshold && this.noteThresholdFrom().trim() === noteThresholdFrom) {
+          this.noteThresholdChanged = false;
+          this.noteThresholdFrom.set('');
+        }
+        this.show(settings);
+      }
       if (saveTerms) {
         const settings = await this.service.setTerms(sheet, terms, termsFrom || null);
         if (this.session.sheetId() !== sheet) return;
@@ -702,6 +751,7 @@ export class Settings {
       if (!this.floorChanged) this.floorInput.set(this.floor());
       if (!this.capChanged) this.capInput.set(this.cap() ?? '');
       if (!this.proofThresholdChanged) this.proofThresholdInput.set(this.proofThreshold() ?? '');
+      if (!this.noteThresholdChanged) this.noteThresholdInput.set(this.noteThreshold() ?? '');
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
@@ -761,6 +811,7 @@ export class Settings {
         if (!this.floorChanged) this.floorInput.set(settings.floor);
         if (!this.capChanged) this.capInput.set(settings.cap ?? '');
         if (!this.proofThresholdChanged) this.proofThresholdInput.set(settings.proofThreshold ?? '');
+        if (!this.noteThresholdChanged) this.noteThresholdInput.set(settings.noteThreshold ?? '');
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
@@ -798,6 +849,7 @@ export class Settings {
     this.floor.set(settings.floor);
     this.cap.set(settings.cap);
     this.proofThreshold.set(settings.proofThreshold);
+    this.noteThreshold.set(settings.noteThreshold);
     this.terms.set(String(settings.terms));
     this.gradeTerms.set(settings.gradeTerms ?? {});
     this.latePct.set(settings.latePct);

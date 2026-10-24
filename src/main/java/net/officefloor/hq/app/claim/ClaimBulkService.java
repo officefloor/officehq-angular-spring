@@ -74,7 +74,7 @@ public class ClaimBulkService {
         for (Claim claim : found) {
             try {
                 changed.add(service.changeStatus(sheetId, user, claim.getId(), next));
-            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNotFoundException | ClaimNotStewardException
+            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNoteRequiredException | ClaimNotFoundException | ClaimNotStewardException
                     | PersonNotFoundException e) {
                 refused++;
             }

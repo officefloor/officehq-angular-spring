@@ -73,6 +73,9 @@ export interface SheetSettings {
   /** How many days after its to-date an open period is closed when the sheet's today is changed;
    *  null when off. */
   graceDays: number | null;
+  /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
+   *  there is none. */
+  noteThreshold: string | null;
 }
 
 /** The actions the permission matrix decides who may take. */
@@ -127,6 +130,17 @@ export class SettingsService {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/proof-threshold`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
+    );
+  }
+
+  /** A null value records no note threshold; a null from records it from the sheet's today. */
+  setNoteThreshold(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/note-threshold`,
         { value, from },
         { headers: this.session.headers() },
       ),
