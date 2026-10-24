@@ -99,6 +99,11 @@ public class Claim {
     @Column(name = "listed", nullable = false)
     private long listed;
 
+    /** When the claim was first added, as a claim id: the id of the claim it was cloned from (or that
+     * one's), so that a clone takes the rates the original took; null when it is its own id. */
+    @Column(name = "added")
+    private Long added;
+
     /** The date the claim is deferred until; null when it was never deferred. While it is OPEN and the
      * sheet's today is before this date it is deferred (see {@link #isDeferredOn}). */
     @Column(name = "deferred_until")
@@ -191,6 +196,7 @@ public class Claim {
     public Claim clonedTo(String sheetId, Long personId) {
         Claim copy = transferredTo(sheetId, personId);
         copy.setRef(ref);
+        copy.added = addedMark();
         return copy;
     }
 
@@ -216,6 +222,12 @@ public class Claim {
 
     public void setListed(long listed) {
         this.listed = listed;
+    }
+
+    /** When the claim was first added, as a claim id (see {@link net.officefloor.hq.app.rate.Rate#forClaim});
+     * the highest there is when it is not yet saved. */
+    public long addedMark() {
+        return added != null ? added : id != null ? id : Long.MAX_VALUE;
     }
 
     public BigDecimal getAmount() {

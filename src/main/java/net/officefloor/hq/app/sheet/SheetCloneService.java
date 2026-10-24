@@ -148,6 +148,7 @@ public class SheetCloneService {
         rates.findBySheetIdOrderByGradeAndFrom(sheetId).forEach(r -> {
             Rate copy = new Rate(toSheetId, r.getGrade(), r.getFrom(), r.getTo(), r.getPct());
             copy.setVersion(r.getVersion());
+            copy.setTerms(r.getTerms());
             Long copyId = rates.save(copy).getId();
             rateVersions.findByRateIdOrderByVersionAsc(r.getId()).forEach(v ->
                     rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo())));

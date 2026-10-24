@@ -15,6 +15,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
+    /** The highest claim id given so far, on any sheet; 0 when there is none. */
+    @Query("SELECT COALESCE(MAX(c.id), 0) FROM Claim c")
+    long highestId();
+
     /** The person's claim with the number. */
     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 

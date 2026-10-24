@@ -34,15 +34,26 @@ public class RateController {
      * through (null: with no end); the percent is
      * sent as text with two decimals so it is never rounded on the way; its level is 0 for the sheet's own
      * rate, 1 for its parent's, 2 for its parent's parent's, and so on (see {@link RateChain}); its version is
-     * the newest version's number, which is how many versions it has. */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level, int version) {
+     * the newest version's number, which is how many versions it has; its terms are the versions as they
+     * apply to claims, newest first (see {@link Rate.Term}). */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level, int version,
+            List<TermView> terms) {
         static RateView of(Rate rate) {
             return of(rate, 0);
         }
 
         static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    rate.getFrom(), rate.getTo(), level, rate.getVersion());
+                    rate.getFrom(), rate.getTo(), level, rate.getVersion(),
+                    rate.getTerms().stream().map(TermView::of).toList());
+        }
+    }
+
+    /** A version of a rate as it applies to claims: its percent as text with two decimals and its to-date,
+     * for the claims added after its mark (a claim id; null: every claim). */
+    public record TermView(String pct, LocalDate to, Long mark) {
+        static TermView of(Rate.Term term) {
+            return new TermView(term.pct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), term.to(), term.mark());
         }
     }
 

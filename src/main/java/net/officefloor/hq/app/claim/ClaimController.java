@@ -40,13 +40,14 @@ public class ClaimController {
      * (null when never), are sent as text with two
      * decimals so they are never rounded on the way. Its comments follow, oldest first, each as
      * {@code <user> on <date>: <text>}. Its lines follow, in the order they were added, each as
-     * {@code <label> <qty> x <unit>}. */
+     * {@code <label> <qty> x <unit>}. Its added mark is when it was first added, as a claim id (see
+     * {@link Claim#addedMark}), which decides the forward-only rates it takes. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
-            Integer settleBatch, List<String> lines) {
+            Integer settleBatch, List<String> lines, long added) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -70,7 +71,7 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList());
+                    claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark());
         }
 
         /** A line as shown: {@code <label> <qty> x <unit>}. */

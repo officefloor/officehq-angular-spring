@@ -61,6 +61,9 @@ export interface Claim {
   /** The claim's lines, in the order they were added, each as `<label> <qty> x <unit>`; a claim with
    *  lines has the amount they add up to. */
   lines: string[];
+  /** When the claim was first added, as a claim id: a rate saved forward-only applies to it only when
+   *  its mark is below this (see `Rate.terms`). */
+  added: number;
 }
 
 /** A line typed for a claim: its label, quantity and unit amount, as text. */

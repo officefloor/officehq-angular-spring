@@ -228,6 +228,11 @@ public class SheetAsOf implements RollupService.Basis {
     }
 
     @Override
+    public Optional<Rate> rateFor(Claim claim, String grade, LocalDate on) {
+        return RateChain.inForce(rateLevels(), grade, on, claim.addedMark());
+    }
+
+    @Override
     public BigDecimal floorOn(LocalDate on) {
         return valueOn(DatedSettings.FLOOR, on).map(BigDecimal::new).orElse(DatedSettings.FLOOR_START);
     }

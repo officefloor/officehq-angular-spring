@@ -63,4 +63,25 @@ public class RateChain {
         }
         return Optional.empty();
     }
+
+    /** The grade's rate in force on {@code date} for a claim added at {@code added}, on the sheet or else
+     * on the nearest parent that has one in force for it then (see {@link RateRepository#inForce(List,
+     * String, LocalDate, long)}). */
+    public Optional<Rate> inForce(String sheetId, String grade, LocalDate date, long added) {
+        for (String id : chain(sheetId)) {
+            Optional<Rate> rate = RateRepository.inForce(rates.findBySheetIdAndGrade(id, grade), grade, date, added);
+            if (rate.isPresent()) return rate;
+        }
+        return Optional.empty();
+    }
+
+    /** The grade's rate in force on {@code date} for a claim added at {@code added}, on the first of
+     * {@code levels} that has one in force for it then. */
+    public static Optional<Rate> inForce(List<List<Rate>> levels, String grade, LocalDate date, long added) {
+        for (List<Rate> level : levels) {
+            Optional<Rate> rate = RateRepository.inForce(level, grade, date, added);
+            if (rate.isPresent()) return rate;
+        }
+        return Optional.empty();
+    }
 }

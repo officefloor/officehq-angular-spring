@@ -18,6 +18,28 @@ export interface Rate {
   level: number;
   /** The newest version's number (the one in force), which is how many versions the rate has. */
   version: number;
+  /** The versions as they apply to claims, newest first: each for the claims added after its mark (a
+   *  claim id; null: every claim). A version saved forward-only (with a from-date on or after the
+   *  sheet's today) is marked with the highest claim id there was then. */
+  terms: RateTerm[];
+}
+
+/** A version of a rate as it applies to claims (see `Rate.terms`). */
+export interface RateTerm {
+  pct: string;
+  to: string | null;
+  mark: number | null;
+}
+
+/** The rates as they apply to a claim added at `added` (see `Claim.added`): each with its newest term
+ *  that applies to the claim; a rate none of whose terms does is left out. */
+export function ratesFor(rates: Rate[], added: number): Rate[] {
+  const out: Rate[] = [];
+  for (const r of rates) {
+    const term = r.terms.find((t) => t.mark === null || added > t.mark);
+    if (term !== undefined) out.push({ ...r, pct: term.pct, to: term.to });
+  }
+  return out;
 }
 
 /** How a rate import went: how many rates it set, and the rates, in the order of their lines. */
@@ -103,7 +125,8 @@ function isFrozen(claim: Claim): boolean {
  *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
  *  what is due on its amount at the rate in force on the claim's date of the grade in force
  *  for its person then, rounded as the claim rounds (see roundsHalfUp) — the rate figure alone,
- *  before any late charge or floor (see claimShownCents); null when no rate applies then. */
+ *  before any late charge or floor (see claimShownCents); null when no rate applies then. A rate saved
+ *  forward-only after the claim was added does not apply to it (see ratesFor). */
 export function claimDueCents(
   claim: Claim,
   rates: Rate[],
@@ -113,7 +136,7 @@ export function claimDueCents(
   if (isFrozen(claim) && claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
   const grade = gradeOn(grades, claim.date);
-  return grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
+  return grade === null ? null : dueCents(cents(claim.amount), rateOn(ratesFor(rates, claim.added), grade, claim.date), roundsHalfUp(claim, rounding));
 }
 
 /** Every grace recorded for each grade, each from its date, oldest first, as a whole number of days

@@ -195,6 +195,10 @@ public class RollupService {
          * nearest parent sheet's (see {@link RateChain}). */
         Optional<Rate> rateInForce(String grade, LocalDate date);
 
+        /** The grade's rate in force on the date for the claim (see {@link RateRepository#inForce(java.util.List,
+         * String, LocalDate, long)}): a rate saved forward-only after the claim was added does not apply to it. */
+        Optional<Rate> rateFor(Claim claim, String grade, LocalDate date);
+
         /** The floor in force on the date; 0.00 when there is no sheet. */
         BigDecimal floorOn(LocalDate date);
 
@@ -252,6 +256,11 @@ public class RollupService {
             }
 
             @Override
+            public Optional<Rate> rateFor(Claim claim, String grade, LocalDate date) {
+                return rates.inForce(sheetId, grade, date, claim.addedMark());
+            }
+
+            @Override
             public BigDecimal floorOn(LocalDate date) {
                 return sheet() == null ? zero() : dated.floorOn(sheetId, date);
             }
@@ -305,6 +314,11 @@ public class RollupService {
             @Override
             public Optional<Rate> rateInForce(String g, LocalDate date) {
                 return grade.equals(g) ? Optional.of(rate) : base.rateInForce(g, date);
+            }
+
+            @Override
+            public Optional<Rate> rateFor(Claim claim, String g, LocalDate date) {
+                return grade.equals(g) ? Optional.of(rate) : base.rateFor(claim, g, date);
             }
 
             @Override
@@ -467,7 +481,7 @@ public class RollupService {
 
     private BigDecimal dueOf(Claim claim, Person person, Basis basis) {
         RoundingMode rounding = roundingOf(claim, basis);
-        return basis.rateInForce(person.gradeOn(claim.getDate()), claim.getDate())
+        return basis.rateFor(claim, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);

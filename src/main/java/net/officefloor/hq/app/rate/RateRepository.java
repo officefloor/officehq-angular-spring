@@ -35,4 +35,12 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
                 .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.getTo() == null || !r.getTo().isBefore(date));
     }
+
+    /** The grade's rate in force on {@code date} among {@code rates} for a claim added at {@code added}
+     * (see {@link Rate#forClaim}): a rate saved forward-only after the claim was added is passed over for
+     * it, as are the newer versions of a rate saved so. */
+    static Optional<Rate> inForce(List<Rate> rates, String grade, LocalDate date, long added) {
+        return inForce(rates.stream().filter(r -> r.getGrade().equals(grade))
+                .flatMap(r -> r.forClaim(added).stream()).toList(), grade, date);
+    }
 }

@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -61,6 +62,9 @@ public class RateService {
         return chain.levels(sheetId);
     }
 
+    /** Sets the grade's rate from {@code from} through {@code to}. Saved with a from-date on or after the
+     * sheet's today it is forward-only: it applies only to the claims added after it is saved, the claims
+     * already added keeping the rates that applied to them (see {@link Rate#forClaim}). */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         if (!sheets.existsById(sheetId)) {
@@ -70,15 +74,23 @@ public class RateService {
             throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        boolean forwardOnly = from != null && today != null && !from.isBefore(today);
+        Rate.Term term = new Rate.Term(pct, to, forwardOnly ? claims.highestId() : null);
         Rate rate = (from == null ? rates.findUndated(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElse(null);
         if (rate == null) {
-            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, pct));
+            rate = new Rate(sheetId, grade, from, to, pct);
+            rate.setTerms(List.of(term));
+            rate = rates.saveAndFlush(rate);
         } else {
             versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
             rate.setVersion(rate.getVersion() + 1);
-            rate.setPct(pct);
-            rate.setTo(to);
+            List<Rate.Term> terms = new ArrayList<>();
+            terms.add(term);
+            // A forward-only version leaves the claims already added on the terms that applied to them.
+            if (forwardOnly) terms.addAll(rate.getTerms());
+            rate.setTerms(terms);
             rates.flush();
         }
         List<String> fields = new ArrayList<>(List.of("grade=" + grade,
