@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -196,6 +197,44 @@ public class ClaimService {
         record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), "until=" + until);
         rollup.recordSince(sheetId, user, before);
         return claim;
+    }
+
+    /** A steward's re-date of an OPEN or PENDING claim to {@code date}. Its due-by stays as it was fixed
+     * and a figure a statement bound it to stays bound; its period follows the new date, and when the sheet
+     * numbers by period and the new date lies in another period (or none) than the old, it is given the
+     * next number of that period's sequence, its old number never used again. Refused when the user is not
+     * a steward, unless the claim is OPEN or PENDING, when the claim or the new date is in a closed period,
+     * and when the new date is after its person's retirement date. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimStatusChangeException();
+        }
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, date);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        person.requireClaimable(date);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDate();
+        if (sheets.numbersByPeriod(sheetId) && !periodOf(sheetId, old).equals(periodOf(sheetId, date))) {
+            claim.setNumber(nextNumber(sheetId, date));
+        }
+        claim.setDate(date);
+        claims.flush();
+        record("CLAIM_REDATED", user, person, claim, claim.getNumber(), "old=" + old, "new=" + date);
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** The id of the sheet's period containing {@code date}; empty when none does. */
+    private Optional<Long> periodOf(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !date.isBefore(p.getFrom()) && !date.isAfter(p.getTo()))
+                .findFirst()
+                .map(p -> p.getId());
     }
 
     /** Split {@code amount} (more than 0.00 and less than the claim's amount) off an OPEN claim: the

@@ -141,6 +141,22 @@ const PAST: Record<ClaimAction, string> = {
             >
               Defer
             </button>
+            <label [for]="fieldId('redate-date-' + c.id)">Re-date to</label>
+            <input
+              [id]="fieldId('redate-date-' + c.id)"
+              type="date"
+              data-testid="claim-date-new"
+              [value]="redates()[c.id] ?? ''"
+              (input)="setRedate(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-redate"
+              [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date"
+              (click)="redate(c)"
+            >
+              Re-date
+            </button>
             <label [for]="fieldId('split-amount-' + c.id)">Split off</label>
             <input
               [id]="fieldId('split-amount-' + c.id)"
@@ -260,6 +276,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The date typed to re-date each claim to, by claim id. */
+  protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The person chosen to move each claim to, by claim id: their id as text. */
@@ -460,6 +478,44 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 422
           ? "A claim can only be deferred to a date after the sheet's today."
           : 'Only an open claim can be deferred.',
+      }));
+    }
+  }
+
+  protected setRedate(id: number, date: string): void {
+    this.redates.update((dates) => ({ ...dates, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /** Re-date the claim to the date typed on its row; only a steward can re-date an OPEN or PENDING
+   *  claim, neither it nor the new date in a closed period and the new date not after its person's
+   *  retirement, so anything else is refused with an error. */
+  protected async redate(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const date = (this.redates()[claim.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Choose the date to re-date that claim to.' }));
+      return;
+    }
+    try {
+      const changed = await this.service.redate(sheet, claim.id, date);
+      if (this.session.sheetId() !== sheet) return;
+      this.redates.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: status === 403
+          ? 'Only a steward can re-date a claim.'
+          : status === 423
+          ? 'Neither the claim nor its new date can be in a closed period.'
+          : status === 409
+          ? "A claim cannot be dated after its person's retirement."
+          : 'Only an open or pending claim can be re-dated.',
       }));
     }
   }

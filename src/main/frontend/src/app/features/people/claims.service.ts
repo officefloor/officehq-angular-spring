@@ -178,6 +178,17 @@ export class ClaimsService {
     );
   }
 
+  /** Re-date an OPEN or PENDING claim; refused (403) when the user is not a steward, (422) when it is
+   *  not OPEN or PENDING, (409) when the date is after its person's retirement and (423) when the claim
+   *  or the date is in a closed period. */
+  redate(sheet: string, id: number, date: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/redate`, { date }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Raise the claim's proofs count by one; refused (409) when it is SETTLED or VOID and (423) when it
    *  is dated in a closed period. */
   addProof(sheet: string, id: number): Promise<Claim> {

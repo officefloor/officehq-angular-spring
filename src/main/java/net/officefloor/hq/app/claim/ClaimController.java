@@ -102,6 +102,10 @@ public class ClaimController {
         }
     }
 
+    /** The date a claim is re-dated to. */
+    public record RedateRequest(@NotNull LocalDate date) {
+    }
+
     /** The person a claim is moved to, by id. */
     public record ReassignRequest(@NotNull Long personId) {
     }
@@ -216,6 +220,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid SplitRequest request) {
         return views(service.split(sheetId.trim(), user.trim(), claimId, request.amountValue()));
+    }
+
+    @PostMapping("/claims/{claimId}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RedateRequest request) {
+        return view(service.redate(sheetId.trim(), user.trim(), claimId, request.date()));
     }
 
     @PostMapping("/claims/{claimId}/reassign")
