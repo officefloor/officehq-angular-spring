@@ -12,6 +12,9 @@ export interface Period {
   to: string;
   /** Whether the period is closed: no claim dated in it can change. */
   closed: boolean;
+  /** Whether the closed period is only soft-closed: its figures are fixed, but claims dated in it can
+   *  still change. */
+  soft: boolean;
   /** The due-total fixed when the period was closed, with two decimals; null while it is open. */
   closedTotal: string | null;
   /** Each person's due-total for the period fixed when it was closed, with two decimals, by person
@@ -57,6 +60,13 @@ export class PeriodsService {
   close(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheet)}/${id}/close`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Soft-close the period, fixing its due-total now while claims dated in it can still change. */
+  softClose(sheet: string, id: number): Promise<Period> {
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheet)}/${id}/soft-close`, null, { headers: this.session.headers() }),
     );
   }
 

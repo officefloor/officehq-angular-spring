@@ -92,6 +92,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** Whether the claim was added while the period its date falls in was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** The user whose open editor locks the claim for everyone else; null while no one holds it. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -232,6 +236,14 @@ public class Claim {
     /** Whether the claim is a correction: one with a negative amount. */
     public boolean isCorrection() {
         return amount.signum() < 0;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void setLateEntry(boolean lateEntry) {
+        this.lateEntry = lateEntry;
     }
 
     public String getSplitFrom() {

@@ -40,6 +40,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim this one was split off; null when it was not split off another. */
   splitFrom: string | null;
+  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING

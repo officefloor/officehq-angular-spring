@@ -25,8 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's today. A claim's
  * due-by is fixed when it is added, from the terms of its person's grade in force on its date. Only a
- * DRAFT claim can be edited. No claim dated inside a closed period can be added, edited or change
- * status, and none can be added or edited to a date after its person's retirement date. A claim with a
+ * DRAFT claim can be edited. No claim dated inside a closed period (not only soft-closed) can be added,
+ * edited or change status; one added inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
  * person; a claim that is not a correction names none. */
 @Service
@@ -81,9 +81,11 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
         claim.setDueBy(dated.plusDays(termsOf(sheetId, person, dated)));
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
+        claim.setLateEntry(periods.softClosedOn(sheetId, dated));
         claim = claims.saveAndFlush(claim);
         log(user, person, claim);
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
+        if (claim.isLateEntry()) record("LATE_ENTRY", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
     }

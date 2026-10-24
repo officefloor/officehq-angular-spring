@@ -20,7 +20,8 @@ import java.util.Map;
 /** A sheet's period: a name, unique on the sheet without regard to case, and the dates it runs from
  * and to, both inclusive. A claim belongs to the period whose dates contain its date. Once closed, its
  * due-total, and each person's due-total for it, are the ones fixed when it was closed, until it is
- * reopened. */
+ * reopened. A soft-closed period is closed and its figures fixed the same way, but claims dated in it can
+ * still change. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -46,6 +47,10 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    /** Whether the period, while closed, is only soft-closed. */
+    @Column(name = "soft", nullable = false)
+    private boolean soft;
 
     /** The due-total fixed when the period was closed; null while it is open. */
     @Column(name = "closed_total", precision = 12, scale = 2)
@@ -99,6 +104,10 @@ public class Period {
         return closed;
     }
 
+    public boolean isSoft() {
+        return soft;
+    }
+
     public BigDecimal getClosedTotal() {
         return closedTotal;
     }
@@ -110,7 +119,13 @@ public class Period {
     /** Close the period, fixing each person's due-total for it at {@code personTotals}, by person id,
      * and its own due-total at their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
+        close(personTotals, false);
+    }
+
+    /** Close the period as {@link #close(Map)} does, soft-closed when {@code soft}. */
+    public void close(Map<Long, BigDecimal> personTotals, boolean soft) {
         this.closed = true;
+        this.soft = soft;
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -119,6 +134,7 @@ public class Period {
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.soft = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
     }

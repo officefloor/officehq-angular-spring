@@ -87,6 +87,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
             <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
             <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+            <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ line }}</li>

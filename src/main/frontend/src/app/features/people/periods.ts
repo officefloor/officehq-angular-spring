@@ -6,7 +6,8 @@ import { Period, PeriodsService } from './periods.service';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The periods of the sheet, by from-date, each with the due-total of the counting claims dated in
-// it (fixed once it is closed), whether it is closed, the buttons that close and reopen it, and the
+// it (fixed once it is closed or soft-closed), whether it is closed (soft for a soft close), the buttons
+// that close, soft-close and reopen it, and the
 // form that adds a period.
 @Component({
   selector: 'app-periods',
@@ -84,9 +85,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                 <td data-testid="period-from">{{ p.from }}</td>
                 <td data-testid="period-to">{{ p.to }}</td>
                 <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
-                <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+                <td data-testid="period-closed">{{ p.closed ? (p.soft ? 'soft' : 'yes') : 'no' }}</td>
                 <td>
-                  @if (!p.closed) {
+                  @if (!p.closed || p.soft) {
                     <button
                       type="button"
                       data-testid="period-close"
@@ -96,6 +97,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                       Close
                     </button>
                   }
+                  <button
+                    type="button"
+                    data-testid="period-soft-close"
+                    [attr.aria-label]="'Soft-close period ' + p.name"
+                    (click)="softClose(p)"
+                  >
+                    Soft-close
+                  </button>
                   <button
                     type="button"
                     data-testid="period-reopen"
@@ -199,6 +208,27 @@ export class Periods {
           e instanceof HttpErrorResponse && e.status === 403
             ? 'Your role may not close a period on this sheet.'
             : 'That period could not be closed.',
+      }));
+    }
+  }
+
+  /** Soft-close the period, fixing its due-total while claims dated in it can still change; one
+   * already closed or soft-closed, or a close the permission matrix does not allow, is refused. */
+  protected async softClose(period: Period): Promise<void> {
+    this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const closed = await this.service.softClose(sheet, period.id);
+      if (this.session.sheetId() === sheet) this.closed.emit(closed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [period.id]:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not close a period on this sheet.'
+            : 'That period could not be soft-closed.',
       }));
     }
   }
