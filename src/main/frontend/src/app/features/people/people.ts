@@ -182,6 +182,9 @@ import { Audit } from './audit';
         @if (importAdded() !== null) {
           Added <span data-testid="import-added">{{ importAdded() }}</span>
         }
+        @if (importUpdated() !== null) {
+          Updated <span data-testid="import-updated">{{ importUpdated() }}</span>
+        }
         @if (importError(); as message) {
           <p role="alert" class="error" data-testid="import-error">{{ message }}</p>
         }
@@ -872,6 +875,8 @@ export class People {
   protected readonly importText = signal('');
   /** How many people the last import added; null before one, and while one runs. */
   protected readonly importAdded = signal<number | null>(null);
+  /** How many people the last import updated; null before one, and while one runs. */
+  protected readonly importUpdated = signal<number | null>(null);
   protected readonly importError = signal<string | null>(null);
   /** An import is waiting for its answer; another meanwhile is ignored. */
   private importing = false;
@@ -952,6 +957,7 @@ export class People {
       this.pasteError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
+      this.importUpdated.set(null);
       this.importError.set(null);
       if (sheet) void this.read(sheet);
     });
@@ -1765,13 +1771,15 @@ export class People {
     }
   }
 
-  /** Add a person per pasted line, in order, as the person form adds them; when any line is refused
-   *  no one is added. Shows how many were added; the old count is gone while it runs. */
+  /** Add or update a person per pasted line, in order, as the person form does; a line naming a person
+   *  on the sheet updates them. When any line is refused no one is added or updated. Shows how many were
+   *  added and updated; the old counts are gone while it runs. */
   protected async importPeople(event: Event): Promise<void> {
     event.preventDefault();
     if (this.importing) return;
     this.importError.set(null);
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     const sheet = this.sheet();
     if (!sheet) return;
     if (!this.importText().trim()) {
@@ -1782,15 +1790,19 @@ export class People {
     try {
       const imported = await this.service.importPeople(sheet, this.importText());
       if (this.sheet() !== sheet) return;
-      this.people.update((list) => [...list, ...imported.people]);
+      this.people.update((list) => {
+        const fresh = imported.people.filter((p) => !list.some((q) => q.id === p.id));
+        return [...list.map((q) => imported.people.find((p) => p.id === q.id) ?? q), ...fresh];
+      });
       this.importText.set('');
       this.importAdded.set(imported.added);
+      this.importUpdated.set(imported.updated);
     } catch (e) {
       if (this.sheet() !== sheet) return;
       this.importError.set(
         e instanceof HttpErrorResponse && e.status === 403
           ? 'You may not add people to this sheet.'
-          : 'A line is not a person the form would add, or repeats a name or contact; no one was added.',
+          : 'A line is not a person the form would add, or repeats a name or contact; no one was added or updated.',
       );
     } finally {
       this.importing = false;

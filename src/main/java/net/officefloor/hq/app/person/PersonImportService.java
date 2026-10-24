@@ -8,11 +8,14 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Adds a person per pasted line of {@code name,grade,terms,contact}, in order, each through
- * {@link PersonService#add} exactly as the person form adds them; terms and contact may be blank or left
- * out. Every line is first held to the person form's rules, and a name or contact repeated within the
- * paste is refused too: it is one change, so when any line is refused no one is added and nothing is
- * recorded. Blank lines are skipped. */
+/** Takes a pasted line of {@code name,grade,terms,contact} per person, in order; terms and contact may
+ * be blank or left out. A line whose name matches a person on the sheet (by name or alias, as names are
+ * compared) updates that person through {@link PersonService#update} exactly as the person form saves
+ * them: their grade from the sheet's today, and their terms and contact when the line gives them. Any
+ * other line adds a person through {@link PersonService#add} exactly as the person form adds them. Every
+ * line is first held to the person form's rules, and a name, person or contact repeated within the
+ * paste is refused too: it is one change, so when any line is refused no one is added or updated and
+ * nothing is recorded. Blank lines are skipped. */
 @Service
 public class PersonImportService {
 
@@ -35,14 +38,19 @@ public class PersonImportService {
         this.tree = tree;
     }
 
-    private record Line(String name, String grade, Integer terms, String contact) {
+    /** A line to import: {@code match} is the person on the sheet it updates, null when it adds. */
+    private record Line(String name, String grade, Integer terms, String contact, Person match) {
     }
 
-    /** The people added, in the order of their lines. */
+    /** What an import did: the people it added and those it updated, each in the order of their lines. */
+    public record Result(List<Person> added, List<Person> updated) {
+    }
+
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
+        Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         for (String raw : text.split("\\r?\\n")) {
             if (raw.isBlank()) continue;
@@ -56,21 +64,32 @@ public class PersonImportService {
                     || !TERMS.matcher(terms).matches() || (contact != null && contact.length() > MAX)) {
                 throw new PersonImportException();
             }
-            String key = Person.keyOf(name);
-            if (!names.add(key) || people.findBySheetIdAndNameKey(sheetId, key).isPresent()
-                    || people.findBySheetIdAndAliasKey(sheetId, key).isPresent() || tree.taken(sheetId, name)) {
+            if (!names.add(Person.keyOf(name))) throw new PersonImportException();
+            Person match = people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
+            if (match == null) {
+                if (tree.taken(sheetId, name)) throw new PersonImportException();
+            } else if (!matched.add(match.getId()) || tree.clashes(match)) {
                 throw new PersonImportException();
             }
-            if (contact != null && (!contacts.add(contact) || people.findBySheetIdAndContact(sheetId, contact).isPresent())) {
+            if (contact != null && (!contacts.add(contact) || people.findBySheetIdAndContact(sheetId, contact)
+                    .filter(other -> match == null || !other.getId().equals(match.getId())).isPresent())) {
                 throw new PersonImportException();
             }
-            lines.add(new Line(name, grade, terms.isBlank() ? null : Integer.valueOf(terms.trim()), contact));
+            lines.add(new Line(name, grade, terms.isBlank() ? null : Integer.valueOf(terms.trim()), contact, match));
         }
         if (lines.isEmpty()) throw new PersonImportException();
         List<Person> added = new ArrayList<>();
+        List<Person> updated = new ArrayList<>();
         for (Line line : lines) {
-            added.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            Person match = line.match();
+            if (match == null) {
+                added.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            } else {
+                updated.add(service.update(sheetId, user, match.getId(), match.getVersion(), match.getName(),
+                        line.grade(), null, line.terms() != null ? line.terms() : match.getTerms(),
+                        line.contact() != null ? line.contact() : match.getContact()));
+            }
         }
-        return added;
+        return new Result(added, updated);
     }
 }

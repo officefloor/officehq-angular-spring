@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetHistory;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -128,8 +129,9 @@ public class PersonController {
     public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
     }
 
-    /** How an import went: how many people it added, and those people, in the order of their lines. */
-    public record ImportView(int added, List<PersonView> people) {
+    /** How an import went: how many people it added and how many it updated, and the people it added
+     * followed by those it updated, each in the order of their lines. */
+    public record ImportView(int added, int updated, List<PersonView> people) {
     }
 
     /** A save refused because the person was saved by someone else since the editor loaded them:
@@ -247,8 +249,10 @@ public class PersonController {
     public ImportView importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ImportRequest request) {
-        List<Person> added = imports.importPeople(sheetId.trim(), user.trim(), request.text());
-        return new ImportView(added.size(), added.stream().map(p -> view(sheetId, p)).toList());
+        PersonImportService.Result result = imports.importPeople(sheetId.trim(), user.trim(), request.text());
+        return new ImportView(result.added().size(), result.updated().size(),
+                Stream.concat(result.added().stream(), result.updated().stream())
+                        .map(p -> view(sheetId, p)).toList());
     }
 
     @PostMapping("/bulk-grade")

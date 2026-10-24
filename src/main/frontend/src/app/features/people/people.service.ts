@@ -15,9 +15,11 @@ export interface PersonGrade {
   from: string | null;
 }
 
-/** How an import of people went: how many it added, and those people, in the order of their lines. */
+/** How an import of people went: how many it added and how many it updated, and the people it added
+ *  followed by those it updated, each in the order of their lines. */
 export interface Imported {
   added: number;
+  updated: number;
   people: Person[];
 }
 
