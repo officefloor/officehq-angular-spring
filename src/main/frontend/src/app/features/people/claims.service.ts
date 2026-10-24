@@ -74,6 +74,12 @@ export interface BulkSettled {
   claims: Claim[];
 }
 
+/** How a paste of claims went: how many it added, and the claims, in the order of their lines. */
+export interface Pasted {
+  added: number;
+  claims: Claim[];
+}
+
 export interface ClaimFields {
   amount: string;
   /** null takes the sheet's today. */
@@ -174,6 +180,16 @@ export class ClaimsService {
   bulkSettle(sheet: string, claimIds: number[]): Promise<BulkSettled> {
     return firstValueFrom(
       this.http.post<BulkSettled>(`${this.url(sheet)}/claims/bulk-settle`, { claimIds }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Add a DRAFT claim per line of name,amount,date,note, in order, for the person named; refused
+   *  (400, 404, 422, 423) with nothing added when any line breaks the claim form's rules. */
+  paste(sheet: string, text: string): Promise<Pasted> {
+    return firstValueFrom(
+      this.http.post<Pasted>(`${this.url(sheet)}/claims/paste`, { text }, {
         headers: this.session.headers(),
       }),
     );

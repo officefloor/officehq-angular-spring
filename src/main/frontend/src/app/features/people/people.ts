@@ -122,6 +122,24 @@ import { Summary, SummaryPerson } from './summary';
         }
       </form>
 
+      <form (submit)="paste($event)" aria-label="Paste claims" data-testid="paste-form">
+        <label for="paste-claims">Claims to paste, one per line: name,amount,date,note</label>
+        <textarea
+          id="paste-claims"
+          data-testid="paste-claims"
+          rows="4"
+          [value]="pasteText()"
+          (input)="pasteText.set(value($event)); pasteError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="paste-submit">Paste claims</button>
+        @if (pasteAdded() !== null) {
+          Added <span data-testid="paste-added">{{ pasteAdded() }}</span>
+        }
+        @if (pasteError(); as message) {
+          <p role="alert" class="error" data-testid="paste-error">{{ message }}</p>
+        }
+      </form>
+
       <label>
         <input
           type="checkbox"
@@ -515,6 +533,13 @@ export class People {
   /** A quick-add is waiting for its answer; another meanwhile is ignored. */
   private quickAdding = false;
   private readonly sheet = computed(() => this.session.sheetId());
+  protected readonly pasteText = signal('');
+  /** How many claims the last paste added; null before one, and while one runs. */
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteError = signal<string | null>(null);
+  /** A paste is waiting for its answer; another meanwhile is ignored. */
+  private pasting = false;
+
   /** The ids of the claims selected for a bulk action. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How the last bulk open went; null before one, and while one runs. */
@@ -554,6 +579,9 @@ export class People {
       this.quickName.set('');
       this.quickAmount.set('');
       this.quickError.set(null);
+      this.pasteText.set('');
+      this.pasteAdded.set(null);
+      this.pasteError.set(null);
       if (sheet) void this.read(sheet);
     });
   }
@@ -991,6 +1019,42 @@ export class People {
       );
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /** Add a DRAFT claim per pasted line, in order; when any line is refused nothing is added. Shows
+   *  how many were added; the old count is gone while it runs. */
+  protected async paste(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.pasting) return;
+    this.pasteError.set(null);
+    this.pasteAdded.set(null);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    if (!this.pasteText().trim()) {
+      this.pasteError.set('Paste a line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    try {
+      const pasted = await this.claimsService.paste(sheet, this.pasteText());
+      if (this.sheet() !== sheet) return;
+      for (const c of pasted.claims) this.claimSaved(c);
+      this.pasteText.set('');
+      this.pasteAdded.set(pasted.added);
+    } catch (e) {
+      if (this.sheet() !== sheet) return;
+      this.pasteError.set(
+        e instanceof HttpErrorResponse && e.status === 404
+          ? 'A line names someone not on the sheet.'
+          : e instanceof HttpErrorResponse && e.status === 423
+            ? 'A line falls in a closed period.'
+            : e instanceof HttpErrorResponse && e.status === 422
+              ? 'A line is dated after the person retired.'
+              : 'Those claims could not be added.',
+      );
+    } finally {
+      this.pasting = false;
     }
   }
 
