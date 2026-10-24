@@ -102,6 +102,26 @@ export interface SummaryPerson {
           </tbody>
         </table>
       }
+      <table aria-label="Classic summary" data-testid="classic-summary">
+        <thead>
+          <tr>
+            <th scope="col">Classic</th>
+            <th scope="col">Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of classicByPeriod(); track p.name) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+          <tr>
+            <th scope="row">Sheet</th>
+            <td data-testid="classic-due-total">{{ classicDueTotal() }}</td>
+          </tr>
+        </tbody>
+      </table>
       <table>
         <thead>
           <tr>
@@ -161,6 +181,10 @@ export class Summary {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total, by name. */
   readonly periodDueTotals = input.required<Record<string, string>>();
+  /** Each period's classic due-total, by name: its claims counted by their status now. */
+  readonly classicPeriodDueTotals = input.required<Record<string, string>>();
+  /** The sheet's classic due-total: everyone's due-totals added up, not trimmed. */
+  readonly classicDueTotal = input.required<string>();
   /** The sheet's claims. */
   readonly claims = input.required<Claim[]>();
   /** Each tag ever used on the sheet, sorted, with its due-total. */
@@ -191,6 +215,13 @@ export class Summary {
       change: i === 0 ? '' : money(cents(p.dueTotal) - cents(totals[i - 1].dueTotal)),
     }));
   });
+
+  /** Each period's classic due-total, by start date. */
+  protected readonly classicByPeriod = computed(() =>
+    [...this.periods()]
+      .sort((a, b) => a.from.localeCompare(b.from))
+      .map((p) => ({ name: p.name, dueTotal: this.classicPeriodDueTotals()[p.name] ?? '0.00' })),
+  );
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({

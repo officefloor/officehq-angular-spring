@@ -98,6 +98,8 @@ import { Audit } from './audit';
       [people]="summaryPeople()"
       [periods]="periods()"
       [periodDueTotals]="periodDueTotals()"
+      [classicPeriodDueTotals]="classicPeriodDueTotals()"
+      [classicDueTotal]="classicDueTotal()"
       [claims]="claims()"
       [tagDueTotals]="tagDueTotals()"
       [monthDueTotals]="monthDueTotals()"
@@ -936,6 +938,27 @@ export class People {
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
   });
+  /** Each period's classic due-total, by name: while it is open, what is due on the claims whose
+   *  due-by falls in it that count by their status now (OPEN, SETTLED and PENDING), as each claim
+   *  shows it; once it is closed, the figure fixed then. */
+  protected readonly classicPeriodDueTotals = computed(() => {
+    const sums: Record<string, number> = {};
+    for (const p of this.periods()) {
+      sums[p.name] = p.closed ? cents(p.closedTotal ?? '0.00') : 0;
+    }
+    for (const person of this.people()) {
+      for (const c of this.claimsOf(person.id)) {
+        const period = periodOn(this.periods(), c.dueBy);
+        if (period === null || period.closed || !this.countsLive(c, person)) continue;
+        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+      }
+    }
+    return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+  });
+  /** The sheet's classic due-total: everyone's due-totals added up (n/a ones skipped), not trimmed. */
+  protected readonly classicDueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueCentsOf(p) ?? 0), 0)),
+  );
   /** Every tag ever used on the sheet: those the store keeps, and those on its claims now. */
   protected readonly sheetTags = signal<string[]>([]);
   /** Each tag ever used on the sheet, sorted, with its due-total: what is due on the claims that count
