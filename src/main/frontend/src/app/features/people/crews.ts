@@ -3,13 +3,15 @@ import { Session } from '../../core/session';
 import { Person } from './people.service';
 import { money } from './claims.service';
 import { Crew, CrewsService, crewDueCents } from './crews.service';
+import { PoolsService } from './pools.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
 // The sheet's crews, one row each in the order they were added, with the form by which one is added with
-// its lead chosen from the people (a blank name, or one already on the sheet, is refused). Each row shows
+// its lead chosen from the people (a blank name, or one already on the sheet as a crew or a pool, is refused). Each row shows
 // its lead, its members and its due-total: the lead's and the members' due-totals, as the people's rows show
 // them, added up (n/a skipped); and has the entry by which a person is added to it (the lead, or a person
-// already in the crew, is refused).
+// already in the crew, is refused). A crew is also one of the pools (see the pools), so the pools are re-read
+// whenever a crew or a crew's member is added.
 @Component({
   selector: 'app-crews',
   imports: [FigurePipe],
@@ -83,6 +85,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 export class Crews {
   private readonly session = inject(Session);
   protected readonly service = inject(CrewsService);
+  private readonly pools = inject(PoolsService);
 
   /** The sheet's people, any of whom can lead or join a crew. */
   readonly people = input<Person[]>([]);
@@ -140,6 +143,10 @@ export class Crews {
       this.error.set('There is already a crew by that name.');
       return;
     }
+    if (this.pools.pools().some((p) => p.name === name)) {
+      this.error.set('There is already a pool by that name.');
+      return;
+    }
     if (!leadId) {
       this.error.set('Choose a lead.');
       return;
@@ -147,12 +154,13 @@ export class Crews {
     this.saving = true;
     try {
       await this.service.add(sheet, name, leadId);
+      await this.pools.refresh(sheet);
       if (this.session.sheetId() === sheet) {
         this.name.set('');
         this.lead.set('');
       }
     } catch {
-      if (this.session.sheetId() === sheet) this.error.set('There is already a crew by that name, or it could not be added.');
+      if (this.session.sheetId() === sheet) this.error.set('There is already a crew or a pool by that name, or it could not be added.');
     } finally {
       this.saving = false;
     }
@@ -180,6 +188,7 @@ export class Crews {
     this.saving = true;
     try {
       await this.service.addMember(sheet, crew.id, personId);
+      await this.pools.refresh(sheet);
       if (this.session.sheetId() === sheet) this.picked.update((all) => ({ ...all, [crew.id]: '' }));
     } catch {
       if (this.session.sheetId() === sheet) this.setMemberError(crew.id, 'That person leads the crew, is already in it, or could not be added.');

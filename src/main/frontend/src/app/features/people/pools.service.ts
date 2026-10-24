@@ -16,9 +16,11 @@ export interface PoolMember {
 }
 
 /** A pool on the sheet: its members, their total share (a retired member's counting as 0.00) and
- *  whether that total is exactly 100.00. */
+ *  whether that total is exactly 100.00. A crew is also a pool: then the id is the crew's (crewId too),
+ *  and its members are the crew's lead and members at equal shares. */
 export interface Pool {
   id: number;
+  crewId: number | null;
   name: string;
   members: PoolMember[];
   totalShare: string;
@@ -44,7 +46,7 @@ export class PoolsService {
     });
   }
 
-  /** Add a pool. Refused (409) when the sheet has one by that name and (400) when it is blank. */
+  /** Add a pool. Refused (409) when the sheet has a pool or a crew by that name and (400) when it is blank. */
   async add(sheet: string, name: string): Promise<void> {
     const all = await firstValueFrom(
       this.http.post<Pool[]>(this.url(sheet), { name }, { headers: this.session.headers() }),

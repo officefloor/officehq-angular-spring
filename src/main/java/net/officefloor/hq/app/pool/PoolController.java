@@ -33,10 +33,12 @@ public class PoolController {
         }
     }
 
-    /** A pool: its id, name, members, total share (two decimals) and whether it is balanced. */
-    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
+    /** A pool: its id (a crew's id, and the crew id, for a crew; the crew id null for a pool), name, members,
+     * total share (two decimals) and whether it is balanced. */
+    public record PoolView(long id, Long crewId, String name, List<MemberView> members, String totalShare,
+            boolean balanced) {
         static PoolView of(PoolService.Pooled p) {
-            return new PoolView(p.pool().getId(), p.pool().getName(), p.members().stream().map(MemberView::of).toList(),
+            return new PoolView(p.id(), p.crewId(), p.name(), p.members().stream().map(MemberView::of).toList(),
                     p.totalShare().toPlainString(), p.balanced());
         }
     }

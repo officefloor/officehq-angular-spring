@@ -16,6 +16,10 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // is refused. A pool that is a member of none has the sheet's pot; one that is a member of another has its cut there.
 // A member may be added with a from-date and a to-date (each optional; a to-date before the from-date is refused);
 // a member whose dates leave out the sheet's today counts for nothing in the pool and has no cut.
+// A crew is also a pool, listed after the pools in the order the crews were added, under the crew's name: its
+// lead and its members are its members at equal shares (100.00 split equally, each rounded half to even, the
+// remainder to the lead), worked out like any pool's; its members come from the crew, so it has no entry to add
+// one, and it is not offered as a member of another pool. A pool's name may not be a crew's.
 // A button downloads the pools, re-read from the store, as a CSV file: one line per member.
 @Component({
   selector: 'app-pools',
@@ -32,7 +36,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
         }
       </form>
       <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools (CSV)</button>
-      @for (pool of service.pools(); track pool.id) {
+      @for (pool of service.pools(); track pool.name) {
         <div class="pool" [attr.data-testid]="'pool-row-' + pool.name">
           <h3>{{ (pool.name) | figure }}</h3>
           <p>
@@ -49,51 +53,53 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
               }
             </ul>
           }
-          <form (submit)="addMember($event, pool)" [attr.aria-label]="'Member of ' + pool.name">
-            <label [for]="'pool-member-select-' + pool.id">Member</label>
-            <select
-              [id]="'pool-member-select-' + pool.id"
-              data-testid="pool-member-select"
-              (change)="pick(pool.id, value($event))"
-            >
-              <option value="" [selected]="!picked()[pool.id]">Choose a person or pool</option>
-              @for (p of people(); track p.id) {
-                <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ (p.name) | figure }}</option>
-              }
-              @for (other of service.pools(); track other.id) {
-                @if (other.id !== pool.id) {
-                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ (other.name) | figure }}</option>
+          @if (pool.crewId === null) {
+            <form (submit)="addMember($event, pool)" [attr.aria-label]="'Member of ' + pool.name">
+              <label [for]="'pool-member-select-' + pool.id">Member</label>
+              <select
+                [id]="'pool-member-select-' + pool.id"
+                data-testid="pool-member-select"
+                (change)="pick(pool.id, value($event))"
+              >
+                <option value="" [selected]="!picked()[pool.id]">Choose a person or pool</option>
+                @for (p of people(); track p.id) {
+                  <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ (p.name) | figure }}</option>
                 }
+                @for (other of service.pools(); track other.name) {
+                  @if (other.crewId === null && other.id !== pool.id) {
+                    <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ (other.name) | figure }}</option>
+                  }
+                }
+              </select>
+              <label [for]="'pool-member-share-' + pool.id">Share</label>
+              <input
+                [id]="'pool-member-share-' + pool.id"
+                data-testid="pool-member-share"
+                [value]="shares()[pool.id] ?? ''"
+                (input)="setShare(pool.id, value($event))"
+              />
+              <label [for]="'pool-member-from-' + pool.id">From</label>
+              <input
+                type="date"
+                [id]="'pool-member-from-' + pool.id"
+                data-testid="pool-member-from"
+                [value]="froms()[pool.id] ?? ''"
+                (input)="setFrom(pool.id, value($event))"
+              />
+              <label [for]="'pool-member-to-' + pool.id">To</label>
+              <input
+                type="date"
+                [id]="'pool-member-to-' + pool.id"
+                data-testid="pool-member-to"
+                [value]="tos()[pool.id] ?? ''"
+                (input)="setTo(pool.id, value($event))"
+              />
+              <button type="submit" data-testid="pool-member-add">Add member</button>
+              @if (memberErrors()[pool.id]; as message) {
+                <p role="alert" class="error" data-testid="pool-error">{{ (message) | figure }}</p>
               }
-            </select>
-            <label [for]="'pool-member-share-' + pool.id">Share</label>
-            <input
-              [id]="'pool-member-share-' + pool.id"
-              data-testid="pool-member-share"
-              [value]="shares()[pool.id] ?? ''"
-              (input)="setShare(pool.id, value($event))"
-            />
-            <label [for]="'pool-member-from-' + pool.id">From</label>
-            <input
-              type="date"
-              [id]="'pool-member-from-' + pool.id"
-              data-testid="pool-member-from"
-              [value]="froms()[pool.id] ?? ''"
-              (input)="setFrom(pool.id, value($event))"
-            />
-            <label [for]="'pool-member-to-' + pool.id">To</label>
-            <input
-              type="date"
-              [id]="'pool-member-to-' + pool.id"
-              data-testid="pool-member-to"
-              [value]="tos()[pool.id] ?? ''"
-              (input)="setTo(pool.id, value($event))"
-            />
-            <button type="submit" data-testid="pool-member-add">Add member</button>
-            @if (memberErrors()[pool.id]; as message) {
-              <p role="alert" class="error" data-testid="pool-error">{{ (message) | figure }}</p>
-            }
-          </form>
+            </form>
+          }
         </div>
       }
     </section>
@@ -190,7 +196,7 @@ export class Pools {
       return;
     }
     if (this.service.pools().some((p) => p.name === name)) {
-      this.error.set('There is already a pool by that name.');
+      this.error.set('There is already a pool or a crew by that name.');
       return;
     }
     this.saving = true;
@@ -198,7 +204,7 @@ export class Pools {
       await this.service.add(sheet, name);
       if (this.session.sheetId() === sheet) this.name.set('');
     } catch {
-      if (this.session.sheetId() === sheet) this.error.set('There is already a pool by that name, or it could not be added.');
+      if (this.session.sheetId() === sheet) this.error.set('There is already a pool or a crew by that name, or it could not be added.');
     } finally {
       this.saving = false;
     }

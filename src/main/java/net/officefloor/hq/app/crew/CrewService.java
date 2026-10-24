@@ -11,6 +11,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.SheetPoolRepository;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The crews on a sheet: each a name, unique on the sheet, a lead chosen from the sheet's people, and the
  * members added to it (never the lead, each at most once). A crew's due-total adds up the lead's and the
- * members' due-totals as the sheet shows them, so it is worked out where those are: on the screen. */
+ * members' due-totals as the sheet shows them, so it is worked out where those are: on the screen. A crew is
+ * also one of the sheet's pools (see the pools), so its name is never a pool's. */
 @Service
 public class CrewService {
 
@@ -33,14 +35,16 @@ public class CrewService {
     private final SheetRepository sheets;
     private final SheetCrewRepository crews;
     private final SheetCrewMemberRepository members;
+    private final SheetPoolRepository pools;
     private final PersonRepository people;
     private final Audit audit;
 
     public CrewService(SheetRepository sheets, SheetCrewRepository crews, SheetCrewMemberRepository members,
-            PersonRepository people, Audit audit) {
+            SheetPoolRepository pools, PersonRepository people, Audit audit) {
         this.sheets = sheets;
         this.crews = crews;
         this.members = members;
+        this.pools = pools;
         this.people = people;
         this.audit = audit;
     }
@@ -70,13 +74,15 @@ public class CrewService {
     }
 
     /** Add a crew named {@code name} (trimmed, not blank) led by the person; refused when the sheet has one by
-     * that name. */
+     * that name or a pool by that name. */
     @Transactional
     public SheetCrew add(String sheetId, String by, String name, long leadId) {
         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (name.isEmpty()) throw new CrewBlankException();
         Person lead = people.findByIdAndSheetId(leadId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (crews.existsBySheetIdAndName(sheetId, name)) throw new CrewTakenException();
+        if (crews.existsBySheetIdAndName(sheetId, name) || pools.existsBySheetIdAndName(sheetId, name)) {
+            throw new CrewTakenException();
+        }
         SheetCrew added = crews.saveAndFlush(new SheetCrew(sheetId, name, lead.getId()));
         audit.change("CREW_ADDED", sheetId, by, "name=" + name, "lead=" + lead.getName());
         return added;

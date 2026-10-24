@@ -42,7 +42,7 @@ export class CrewsService {
     });
   }
 
-  /** Add a crew led by a person. Refused (409) when the sheet has one by that name and (400) when it is blank. */
+  /** Add a crew led by a person. Refused (409) when the sheet has a crew or a pool by that name and (400) when it is blank. */
   async add(sheet: string, name: string, leadId: number): Promise<void> {
     const all = await firstValueFrom(
       this.http.post<Crew[]>(this.url(sheet), { name, leadId }, { headers: this.session.headers() }),
