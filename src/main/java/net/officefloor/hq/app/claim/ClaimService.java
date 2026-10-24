@@ -88,16 +88,20 @@ public class ClaimService {
         return claim;
     }
 
-    /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
-     * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
-     * its person's rate then) together with its late charge then (none on a correction); the user who opened it cannot settle it, and a clerk cannot settle it when
-     * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
-     * if it had one. */
+    /** Move the claim to {@code next}; refused when its current status does not allow it (a PENDING
+     * claim can only be voided here: it is approved or rejected instead). Settling it fixes what is due
+     * on it then (the figure it is bound to, when a statement bound it, otherwise its person's rate then)
+     * together with its late charge then (none on a correction); the user who opened it cannot settle it,
+     * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
+     * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
+     * it. A voided claim keeps its number, if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDate());
-        if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
+        if (!claim.getStatus().canBecome(next) || (claim.getStatus() == ClaimStatus.PENDING && next != ClaimStatus.VOID)) {
+            throw new ClaimStatusChangeException();
+        }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String number = claim.getNumber();
@@ -110,26 +114,75 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
             BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
-            refuseOverLimit(sheetId, user, due);
-            claim.setSettledDue(due);
+            if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
+            else claim.setSettledDue(due);
         }
         claim.setStatus(next);
         claim.setNumber(number);
         claims.flush();
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
+            case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = claim.getSettledDue();
-            record(event, user, person, claim, number, "due=" + (due == null ? "n/a" : due.toPlainString()));
+            record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
         } else {
             record(event, user, person, claim, number);
         }
         rollup.recordSince(sheetId, user, before);
         return claim;
+    }
+
+    /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
+     * live figure, which no statement binds while it is PENDING, together with its late charge then).
+     * Refused unless the claim is PENDING, and when the user is not a steward or opened the claim. */
+    @Transactional
+    public Claim approve(String sheetId, String user, long claimId) {
+        Claim claim = lockPending(sheetId, user, claimId);
+        if (user.equals(claim.getOpenedBy())) throw new ClaimNotStewardException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal figure = rollup.dueOf(claim, person);
+        BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+        claim.setSettledDue(due);
+        claim.setStatus(ClaimStatus.SETTLED);
+        claims.flush();
+        record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), "due=" + dueText(due));
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** A steward's rejection of a PENDING claim, for {@code reason}: it goes back to OPEN, bound again
+     * by its person's last statement if that statement included it. Refused unless the claim is
+     * PENDING, and when the user is not a steward. */
+    @Transactional
+    public Claim reject(String sheetId, String user, long claimId, String reason) {
+        Claim claim = lockPending(sheetId, user, claimId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        claims.flush();
+        record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), "reason=" + reason);
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** The PENDING claim, locked, for a steward to approve or reject. */
+    private Claim lockPending(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.PENDING) throw new ClaimStatusChangeException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        return claim;
+    }
+
+    private static String dueText(BigDecimal due) {
+        return due == null ? "n/a" : due.toPlainString();
     }
 
     /** The figure the claim shows and totals now, without its late charge; null when it has no figure
@@ -167,11 +220,12 @@ public class ClaimService {
                 .orElseGet(() -> "X-" + sheets.nextInSequence(sheetId, "none"));
     }
 
-    /** Refuse a clerk's settle of a claim whose due is above the sheet's clerk limit. */
-    private void refuseOverLimit(String sheetId, String user, BigDecimal due) {
-        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
+    /** Whether a settle by {@code user} of a claim whose due is {@code due} needs a steward's approval:
+     * the user is a clerk and the due is above the sheet's clerk limit. */
+    private boolean overLimit(String sheetId, String user, BigDecimal due) {
+        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
         BigDecimal limit = settings.clerkLimit(sheetId);
-        if (limit != null && due.compareTo(limit) > 0) throw new ClaimOverLimitException();
+        return limit != null && due.compareTo(limit) > 0;
     }
 
     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of

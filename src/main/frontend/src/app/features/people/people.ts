@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
-import { Claim, ClaimsService, cents, counts, money, overdue } from './claims.service';
+import { Claim, ClaimsService, cents, counts, isOpen, money, overdue } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
@@ -15,15 +15,15 @@ import { Summary, SummaryPerson } from './summary';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
-// and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it: the sum of
+// and shows what they have claimed (their OPEN, PENDING and SETTLED claims) and what is due on it: the sum of
 // those claims' due figures; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped). A statement
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
 // how many statements they have had and the last one's due-total and date. A person can be retired
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
 // keep counting in every total. A person can be put on hold and taken off it again: while held,
-// their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
-// A claim is due by its date plus the sheet's terms; an OPEN one due by a date before the sheet's
+// their OPEN and PENDING claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
+// A claim is due by its date plus the sheet's terms; an OPEN or PENDING one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
 // full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
@@ -604,10 +604,10 @@ export class People {
     }
   }
 
-  /** Whether the claim counts in the live totals: OPEN or SETTLED, but not OPEN while its person is
-   *  on hold. */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
+   *  while its person is on hold. */
   private countsLive(claim: Claim, person: Person): boolean {
-    return counts(claim) && !(person.held && claim.status === 'OPEN');
+    return counts(claim) && !(person.held && isOpen(claim));
   }
 
   protected claimedOf(person: Person): string {

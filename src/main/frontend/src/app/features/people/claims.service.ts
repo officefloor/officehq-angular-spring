@@ -30,15 +30,23 @@ export interface Claim {
   corrects: string | null;
 }
 
-/** Added as DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
+ *  until a steward approves it (SETTLED) or rejects it (back to OPEN). A DRAFT, OPEN or PENDING claim
+ *  can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change asked of a claim. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
 
 /** Whether a claim in this status counts toward what is claimed and due. */
 export function counts(claim: Claim): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+  return isOpen(claim) || claim.status === 'SETTLED';
+}
+
+/** Whether a claim is still open: OPEN, or PENDING, which is handled like OPEN (it goes overdue,
+ *  bears the late charge and leaves the totals while its person is on hold). */
+export function isOpen(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
 /** The date (YYYY-MM-DD) a claim is due by: its date plus the sheet's terms, in days. */
@@ -47,9 +55,9 @@ export function dueByOf(claim: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
+/** Whether a claim is overdue: OPEN or PENDING, and due by a date before the sheet's today. */
 export function overdue(claim: Claim, terms: number, today: string | null): boolean {
-  return claim.status === 'OPEN' && today !== null && dueByOf(claim, terms) < today;
+  return isOpen(claim) && today !== null && dueByOf(claim, terms) < today;
 }
 
 /** How a bulk open went: how many claims it opened and refused, and the claims it opened. */
@@ -111,11 +119,12 @@ export class ClaimsService {
     );
   }
 
-  /** Change the claim's status; refused (409) when its status does not allow the change, and (403)
-   *  when the user who opened it asks to settle it. */
-  act(sheet: string, id: number, action: ClaimAction): Promise<Claim> {
+  /** Change the claim's status; refused (409) when its status does not allow the change, (403) when
+   *  the user who opened it asks to settle or approve it or one who is not a steward asks to approve or
+   *  reject it, and (400) when a reject gives no one-word reason. */
+  act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<Claim> {
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, null, {
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, action === 'reject' ? { reason } : null, {
         headers: this.session.headers(),
       }),
     );

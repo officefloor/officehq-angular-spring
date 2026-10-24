@@ -48,7 +48,7 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN claims count in no live total while held. */
+    /** Whether the person is on hold: their OPEN and PENDING claims count in no live total while held. */
     @Column(name = "held", nullable = false)
     private boolean held;
 

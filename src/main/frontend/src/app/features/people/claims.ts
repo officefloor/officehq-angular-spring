@@ -8,6 +8,13 @@ import { Rate, claimShownCents } from './rates.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\S.{0,119}$/;
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened',
+  settle: 'settled',
+  approve: 'approved',
+  reject: 'rejected',
+  void: 'voided',
+};
 
 // A person's claims, newest first, each with its status and the buttons that change it, and the form that adds a claim to them or, once a claim's
 // editor is opened, saves changes to it.
@@ -75,6 +82,13 @@ const NUMBER = /^\S.{0,119}$/;
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+            <label [for]="fieldId('reject-reason-' + c.id)">Reject reason</label>
+            <input
+              [id]="fieldId('reject-reason-' + c.id)"
+              data-testid="claim-reject-reason"
+              [value]="rejectReasons()[c.id] ?? ''"
+              (input)="setRejectReason(c.id, value($event))"
+            />
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -164,9 +178,13 @@ export class Claims {
   private submitting = false;
   /** The error of the last refused action on each claim, by claim id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The reason typed for rejecting each PENDING claim, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
   ];
 
@@ -226,26 +244,42 @@ export class Claims {
     this.error.set(null);
   }
 
+  protected setRejectReason(id: number, reason: string): void {
+    this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    this.clearRowError(id);
+  }
+
   /** Change the claim's status; a change its status does not allow, a settle by the user who opened
-   *  the claim, or a clerk's settle of a claim whose due is above the clerk limit, is refused with an error. */
+   *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
+   *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
+   *  a claim whose due is above the clerk limit leaves it PENDING for a steward. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const reason = (this.rejectReasons()[claim.id] ?? '').trim();
+    if (action === 'reject' && !/^\S{1,200}$/.test(reason)) {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Type a one-word reason to reject that claim.' }));
+      return;
+    }
     try {
-      const changed = await this.service.act(sheet, claim.id, action);
-      if (this.session.sheetId() === sheet) this.saved.emit(changed);
+      const changed = await this.service.act(sheet, claim.id, action, action === 'reject' ? reason : undefined);
+      if (this.session.sheetId() !== sheet) return;
+      if (action === 'reject') this.rejectReasons.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.rowErrors.update((errors) => ({
         ...errors,
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
-          ? 'You opened that claim, so another user must settle it.'
-          : e instanceof HttpErrorResponse && e.status === 422
-          ? 'What is due on that claim is above the clerk limit, so a steward must settle it.'
+          ? action === 'settle'
+            ? 'You opened that claim, so another user must settle it.'
+            : `Only a steward${action === 'approve' ? ' who did not open that claim' : ''} can ${action} it.`
+          : e instanceof HttpErrorResponse && e.status === 400
+          ? 'Type a one-word reason to reject that claim.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
-          : `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
+          : `That claim cannot be ${PAST[action]} in its status.`,
       }));
     }
   }

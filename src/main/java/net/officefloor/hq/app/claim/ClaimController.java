@@ -65,6 +65,10 @@ public class ClaimController {
         }
     }
 
+    /** Why a steward rejects a PENDING claim: one word, as it is written into the audit. */
+    public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
+    }
+
     /** The claims a bulk change is asked of, by id. */
     public record BulkRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
@@ -118,6 +122,21 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RejectRequest request) {
+        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, request.reason().trim()));
     }
 
     @PostMapping("/claims/{claimId}/void")

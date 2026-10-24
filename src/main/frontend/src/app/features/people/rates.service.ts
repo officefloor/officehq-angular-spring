@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents, dueByOf, isCorrection } from './claims.service';
+import { Claim, cents, dueByOf, isCorrection, isOpen } from './claims.service';
 import { Grade, PersonGrade, gradeOn } from './people.service';
 
 export interface Rate {
@@ -57,7 +57,7 @@ export function dueCents(amountCents: number, pct: string | null, halfUp = false
 }
 
 /** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then; a
- *  claim a statement bound keeps the figure it was bound to (null when that was none); otherwise
+ *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
  *  what is due on its amount at the rate in force on the claim's date of the grade in force
  *  for its person then, rounded as the claim rounds (see roundsHalfUp), raised to
  *  the sheet's floor (in cents) when below it (a correction has no floor), null when no rate applies
@@ -70,7 +70,7 @@ export function claimDueCents(
   rounding: Rounding,
 ): number | null {
   if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
-  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+  if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
   const grade = gradeOn(grades, claim.date);
   const due = grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
   return due === null ? null : isCorrection(claim) ? due : Math.max(due, floorCents);
@@ -85,10 +85,10 @@ export interface Lateness {
 }
 
 /** The late charge on a claim whose figure is figureCents, in cents: the late percent of that figure
- *  for every full 30 days the claim is overdue (OPEN, and past its due-by on the sheet's today),
+ *  for every full 30 days the claim is overdue (OPEN or PENDING, and past its due-by on the sheet's today),
  *  rounded like the claim's due; 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
 export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness, rounding: Rounding): number {
-  if (claim.status !== 'OPEN' || late.today === null || isCorrection(claim)) return 0;
+  if (!isOpen(claim) || late.today === null || isCorrection(claim)) return 0;
   const days = (Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000;
   const periods = Math.max(0, Math.floor(days / 30));
   return dueCents(figureCents * periods, late.latePct, roundsHalfUp(claim, rounding)) ?? 0;

@@ -23,8 +23,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The figures each person on a sheet shows — what they have claimed (their OPEN and SETTLED claims,
- * leaving out the OPEN ones while they are on hold)
+ * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
+ * claims, leaving out the OPEN and PENDING ones while they are on hold)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
@@ -105,18 +105,19 @@ public class RollupService {
         }
     }
 
-    /** Whether the claim counts in the live totals: OPEN or SETTLED, but not OPEN while its person
-     * is on hold. */
+    /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
+     * while its person is on hold. */
     public static boolean countsLive(Claim claim, Person person) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
     }
 
     /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;
-     * otherwise the figure a statement bound it to; otherwise what is due on it at its person's rate.
+     * otherwise, unless it is PENDING (which no statement binds while it is), the figure a statement
+     * bound it to; otherwise what is due on it at its person's rate.
      * Null when it has no figure. */
     public BigDecimal figureOf(Claim claim, Person person) {
         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return claim.getSettledDue();
-        if (claim.isStated()) return claim.getStatedDue();
+        if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) return claim.getStatedDue();
         return dueOf(claim, person);
     }
 
@@ -127,12 +128,12 @@ public class RollupService {
         return figure == null ? null : figure.add(lateChargeOf(claim, figure));
     }
 
-    /** The late charge on an OPEN claim whose figure is {@code figure}: the sheet's late percent of that
+    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: the sheet's late percent of that
      * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
      * terms, on the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
-     * not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
+     * PENDING, or not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
-        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) return zero();
+        if (!claim.getStatus().isOpen() || claim.isCorrection()) return zero();
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null) return zero();
         LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());

@@ -3,8 +3,7 @@ import { Claim, money } from './claims.service';
 import { GRADES, Grade } from './people.service';
 import { Period } from './periods.service';
 
-/** The statuses the summary counts claims by. PENDING is not a status a claim can reach, so its
- *  count is always 0. */
+/** The statuses the summary counts claims by. */
 const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /** A person as the summary counts them: their grade on the sheet's today, whether they are retired,
