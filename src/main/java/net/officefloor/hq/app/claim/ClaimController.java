@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,12 +34,13 @@ public class ClaimController {
      * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue,
-            String openedBy, boolean stated, String statedDue) {
+            String openedBy, boolean stated, String statedDue, Integer corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()));
+                    text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
+                    claim.getCorrects());
         }
 
         private static String text(BigDecimal figure) {
@@ -46,12 +48,13 @@ public class ClaimController {
         }
     }
 
-    /** A claim's amount (0.00 or more, with up to two decimals), date (the sheet's today when
-     * left out) and note (may be empty). */
+    /** A claim's amount (with up to two decimals; negative on a correction), date (the sheet's today
+     * when left out), note (may be empty) and, on a correction, the number of the claim it corrects. */
     public record ClaimRequest(
-            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
+            @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
-            @Size(max = 500) String note) {
+            @Size(max = 500) String note,
+            @Positive Integer corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
@@ -77,7 +80,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
-                request.note()));
+                request.note(), request.corrects()));
     }
 
     @PutMapping("/claims/{claimId}")
@@ -86,7 +89,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amountValue(), request.date(),
-                request.note()));
+                request.note(), request.corrects()));
     }
 
     @PostMapping("/claims/{claimId}/open")

@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's today. Only a
  * DRAFT claim can be edited. No claim dated inside a closed period can be added, edited or change
- * status, and none can be added or edited to a date after its person's retirement date. */
+ * status, and none can be added or edited to a date after its person's retirement date. A claim with a
+ * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
+ * person; a claim that is not a correction names none. */
 @Service
 public class ClaimService {
 
@@ -49,20 +51,23 @@ public class ClaimService {
     }
 
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, dated);
         person.requireClaimable(dated);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
+        refuseBadCorrection(sheetId, personId, amount, corrects);
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrects));
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
     }
 
     @Transactional
-    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
@@ -71,8 +76,10 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         person.requireClaimable(dated);
+        refuseBadCorrection(sheetId, person.getId(), amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
+        claim.setCorrects(corrects);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
         claims.flush();
@@ -83,7 +90,7 @@ public class ClaimService {
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
-     * its person's rate then) together with its late charge then; the user who opened it cannot settle it, and a clerk cannot settle it when
+     * its person's rate then) together with its late charge then (none on a correction); the user who opened it cannot settle it, and a clerk cannot settle it when
      * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
      * if it had one. */
     @Transactional
@@ -153,6 +160,19 @@ public class ClaimService {
         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
         BigDecimal limit = settings.clerkLimit(sheetId);
         if (limit != null && due.compareTo(limit) > 0) throw new ClaimOverLimitException();
+    }
+
+    /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
+     * the person, and a claim that names one without being a correction. */
+    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) throw new ClaimCorrectionException();
+            return;
+        }
+        if (corrects == null) throw new ClaimCorrectionException();
+        claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
+                .orElseThrow(ClaimCorrectionException::new);
     }
 
     /** Refuse a change that touches {@code date} when a closed period of the sheet contains it. */

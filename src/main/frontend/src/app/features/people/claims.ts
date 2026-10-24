@@ -6,7 +6,8 @@ import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
 
-const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+const NUMBER = /^\d{1,9}$/;
 
 // A person's claims, newest first, each with its status and the buttons that change it, and the form that adds a claim to them or, once a claim's
 // editor is opened, saves changes to it.
@@ -37,6 +38,14 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
         [value]="note()"
         (input)="note.set(value($event)); error.set(null)"
       />
+      <label [for]="fieldId('corrects')">Corrects claim no.</label>
+      <input
+        [id]="fieldId('corrects')"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -59,6 +68,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+            <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -134,6 +144,7 @@ export class Claims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  protected readonly corrects = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
@@ -193,6 +204,7 @@ export class Claims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
+    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
     this.error.set(null);
   }
 
@@ -229,6 +241,7 @@ export class Claims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -240,10 +253,20 @@ export class Claims {
     if (!sheet) return;
     const amount = this.amount().trim();
     if (!AMOUNT.test(amount)) {
-      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+      this.error.set('Type an amount with up to two decimals.');
       return;
     }
-    const fields = { amount, date: this.date().trim() || null, note: this.note() };
+    const corrects = this.corrects().trim();
+    if (corrects !== '' && !NUMBER.test(corrects)) {
+      this.error.set('Type the number of the claim it corrects.');
+      return;
+    }
+    const fields = {
+      amount,
+      date: this.date().trim() || null,
+      note: this.note(),
+      corrects: corrects === '' ? null : Number(corrects),
+    };
     const id = this.editingId();
     this.submitting = true;
     try {
@@ -260,6 +283,8 @@ export class Claims {
           ? 'A claim dated in a closed period cannot be changed.'
           : e instanceof HttpErrorResponse && e.status === 422
             ? 'A claim cannot be dated after the person retired.'
+          : e instanceof HttpErrorResponse && e.status === 400
+            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects (and only a correction names one).'
           : id !== null && e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a draft claim can be edited; void it and add a new one instead.'
           : id === null

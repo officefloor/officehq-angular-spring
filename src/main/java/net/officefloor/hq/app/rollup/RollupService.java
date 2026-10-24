@@ -130,9 +130,9 @@ public class RollupService {
     /** The late charge on an OPEN claim whose figure is {@code figure}: the sheet's late percent of that
      * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
      * terms, on the sheet's today), rounded half to even to two decimals; 0.00 on a claim not OPEN or
-     * not overdue. A statement never binds it: it follows the sheet's today until the claim is settled. */
+     * not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
-        if (claim.getStatus() != ClaimStatus.OPEN) return zero();
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) return zero();
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null) return zero();
         LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
@@ -142,14 +142,15 @@ public class RollupService {
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when no
+     * divided by 100, rounded half to even to two decimals, and at least the sheet's floor (a correction,
+     * whose due is negative, has no floor); null when no
      * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
         BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(zero());
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor))
+                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

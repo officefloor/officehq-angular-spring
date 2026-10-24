@@ -24,6 +24,9 @@ export interface Claim {
   /** The figure it is bound to, with two decimals; null while unbound, and when it had no figure
    *  (no rate) then. */
   statedDue: string | null;
+  /** On a correction (a claim with a negative amount), the number of the SETTLED claim of the same
+   *  person it corrects; null on any other claim. */
+  corrects: number | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
@@ -53,6 +56,13 @@ export interface ClaimFields {
   /** null takes the sheet's today. */
   date: string | null;
   note: string;
+  /** The number of the claim a correction corrects; null on a claim that is not a correction. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: one with a negative amount. */
+export function isCorrection(claim: Claim): boolean {
+  return cents(claim.amount) < 0;
 }
 
 /** Amounts in whole cents, so sums of two-decimal amounts are exact. */
