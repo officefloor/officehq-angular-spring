@@ -8,12 +8,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 
 /** A statement taken of a person: the sheet's today when it was taken, the person's due-total then
- * (two decimals; null when it was n/a) and how many of their claims counted toward it. */
+ * (two decimals; null when it was n/a) and how many of their claims counted toward it. A person's
+ * statements are ordered by their position, their last being the one placed last. */
 @Entity
 @Table(name = "statement")
 public class Statement {
+
+    /** Statements as they stand among their person's statements, oldest first. */
+    public static final Comparator<Statement> ORDER = Comparator.comparingLong(Statement::getPosition)
+            .thenComparing(Statement::getId);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,6 +39,10 @@ public class Statement {
 
     @Column(name = "claim_count", nullable = false)
     private int claimCount;
+
+    /** Where it stands among its person's statements; its id unless it moved with a merge or transfer. */
+    @Column(name = "list_position")
+    private Long position;
 
     protected Statement() {
     }
@@ -67,5 +77,18 @@ public class Statement {
 
     public int getClaimCount() {
         return claimCount;
+    }
+
+    /** Where it stands among its person's statements: its id until placed elsewhere. */
+    public long getPosition() {
+        return position != null ? position : id;
+    }
+
+    /** Move the statement to the person {@code personId} on the sheet {@code sheetId}, placed at
+     * {@code position} among their statements. */
+    public void movedTo(String sheetId, Long personId, long position) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.position = position;
     }
 }

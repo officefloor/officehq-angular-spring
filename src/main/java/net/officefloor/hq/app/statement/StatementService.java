@@ -65,10 +65,10 @@ public class StatementService {
     public record Taken(Statement statement, List<Claim> claims) {
     }
 
-    /** The sheet's statements in the order they were taken. */
+    /** The sheet's statements, each person's as they stand among theirs, oldest first. */
     @Transactional(readOnly = true)
     public List<Statement> list(String sheetId) {
-        return statements.findBySheetIdOrderByIdAsc(sheetId);
+        return statements.findBySheetIdOrderByIdAsc(sheetId).stream().sorted(Statement.ORDER).toList();
     }
 
     /** Take the person's statement now (see {@link #take(String, String, long, LocalDate)}). */
@@ -134,7 +134,7 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new StatementNotStewardException();
         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
-        Statement last = statements.findFirstBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)
+        Statement last = statements.last(sheetId, personId)
                 .orElseThrow(StatementNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         for (Claim claim : theirs) {

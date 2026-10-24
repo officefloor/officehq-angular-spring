@@ -32,9 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
  * they were given (and its from-date), their terms, contact and aliases, and their claims with their
  * status, dates, notes, tags, frozen figures, logs and comments; each claim that had a number is given the
  * next number of the other sheet, in the order the claims were opened (by the sheet's today when each was
- * opened, then by the order they were added). Figures a statement bound are lost, and references are not
- * carried. The person leaves this sheet entirely: their statements, holds, patron links, pool memberships
- * and watches are dropped.
+ * opened, then by the order they were added). Figures a statement bound are kept, and their statements go
+ * with them (as a merge carries them, when they are merged into one already there); references are not
+ * carried. The person leaves this sheet entirely: their holds, patron links, pool memberships and watches
+ * are dropped.
  */
 @Service
 public class PersonTransferService {
@@ -128,6 +129,7 @@ public class PersonTransferService {
         Map<Claim, Claim> copies = new HashMap<>();
         for (Claim claim : moving) {
             Claim copy = claim.transferredTo(toSheetId, arrived.getId());
+            if (claim.isStated()) copy.bind(claim.getStatedDue(), claim.getStatedBy());
             copy.setListed(sheets.nextInSequence(toSheetId, "listed"));
             copies.put(claim, copy);
         }
@@ -160,7 +162,7 @@ public class PersonTransferService {
         patrons.deleteAll(patrons.findByPatronIdOrderByIdAsc(from.getId()));
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(from.getId()));
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+        PersonMergeService.carryStatements(statements, sheetId, from.getId(), toSheetId, arrived.getId());
         periods.findBySheetIdOrderByFromAsc(sheetId).forEach(period -> period.dropPersonTotal(from.getId()));
         patrons.flush();
         poolMembers.flush();

@@ -13,6 +13,7 @@ import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A steward's merge of one person into another on the same sheet. The merged person's claims move to the
  * other (numbers and dates kept, listed after the other's claims in the order they were added, each
- * losing any figure a statement bound); their name and aliases become aliases of the other; their
+ * keeping any figure a statement bound), and so do their statements (see {@link #carryStatements}); their name and aliases become aliases of the other; their
  * patrons are added to the other's (not the other themselves, no repeats), and anyone naming them as
  * patron names the other instead (no repeats); their pool memberships move to the other (shares added
  * where the other is already a member), and any due-total a closed period fixed for them is added to
- * the other's. Their statements, holds, watchers and contact are dropped, and they leave the sheet.
+ * the other's. Their holds, watchers and contact are dropped, and they leave the sheet.
  */
 @Service
 public class PersonMergeService {
@@ -74,7 +75,6 @@ public class PersonMergeService {
         Collections.reverse(moved);
         for (Claim claim : moved) {
             claim.setPersonId(into.getId());
-            claim.unbind();
             claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         }
         claims.flush();
@@ -116,7 +116,7 @@ public class PersonMergeService {
         periods.findBySheetIdOrderByFromAsc(sheetId).forEach(period -> period.mergePersonTotal(from.getId(), into.getId()));
         periods.flush();
 
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+        carryStatements(statements, sheetId, from.getId(), sheetId, into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         statements.flush();
         watches.flush();
@@ -129,5 +129,24 @@ public class PersonMergeService {
         audit.change("PERSON_MERGED", sheetId, user, "from=" + from.getName(), "into=" + into.getName());
         rollup.recordSince(sheetId, user, before);
         return into;
+    }
+
+    /**
+     * Moves the statements of the person {@code fromId} on {@code fromSheetId} to the person {@code intoId}
+     * on {@code intoSheetId}, keeping their order and their ids (so the claims they bound stay bound by
+     * them). They are placed before the receiving person's own statements, whose last stays their last;
+     * when the receiving person has none, the moved ones keep their places and their last becomes theirs.
+     */
+    static void carryStatements(StatementRepository statements, String fromSheetId, Long fromId,
+            String intoSheetId, Long intoId) {
+        List<Statement> moving = statements.inOrder(fromSheetId, fromId);
+        List<Statement> own = statements.inOrder(intoSheetId, intoId);
+        long first = own.isEmpty() ? 0 : own.get(0).getPosition();
+        for (int i = 0; i < moving.size(); i++) {
+            Statement statement = moving.get(i);
+            long position = own.isEmpty() ? statement.getPosition() : first - moving.size() + i;
+            statement.movedTo(intoSheetId, intoId, position);
+        }
+        statements.flush();
     }
 }

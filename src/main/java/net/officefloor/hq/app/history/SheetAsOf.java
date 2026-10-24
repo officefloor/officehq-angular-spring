@@ -63,7 +63,7 @@ public class SheetAsOf implements RollupService.Basis {
         this.settings = rowsOf(rows, SheetSetting.class).stream()
                 .sorted(Comparator.comparing(SheetSetting::getFrom)).toList();
         this.periods = rowsOf(rows, Period.class).stream().sorted(Comparator.comparing(Period::getFrom)).toList();
-        this.statements = rowsOf(rows, Statement.class).stream().sorted(Comparator.comparing(Statement::getId))
+        this.statements = rowsOf(rows, Statement.class).stream().sorted(Statement.ORDER)
                 .toList();
         this.patrons = rowsOf(rows, PersonPatron.class).stream().sorted(Comparator.comparing(PersonPatron::getId))
                 .toList();

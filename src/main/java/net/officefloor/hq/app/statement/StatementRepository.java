@@ -12,6 +12,13 @@ public interface StatementRepository extends JpaRepository<Statement, Long> {
     /** The person's statements in the order they were taken. */
     List<Statement> findBySheetIdAndPersonIdOrderByIdAsc(String sheetId, Long personId);
 
-    /** The person's last statement. */
-    Optional<Statement> findFirstBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+    /** The person's statements as they stand, oldest first. */
+    default List<Statement> inOrder(String sheetId, Long personId) {
+        return findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream().sorted(Statement.ORDER).toList();
+    }
+
+    /** The person's last statement: the one placed last among theirs. */
+    default Optional<Statement> last(String sheetId, Long personId) {
+        return findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream().max(Statement.ORDER);
+    }
 }
