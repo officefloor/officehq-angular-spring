@@ -9,5 +9,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /** The sheet's people in the order they were added. */
     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
 
+    Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 }

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
@@ -169,7 +170,11 @@ export class People {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       if (this.sheet() === sheet) this.reset();
-    } catch {
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('Another person on the sheet already has that name.');
+        return;
+      }
       this.error.set(id === null ? 'That person could not be added.' : 'That person could not be saved.');
     }
   }

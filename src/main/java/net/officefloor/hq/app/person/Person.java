@@ -6,8 +6,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Locale;
 
-/** A person on a sheet: a name and a grade (A, B or C). */
+/**
+ * A person on a sheet: a name and a grade (A, B or C). The name is kept without the spaces around
+ * it and is unique on the sheet without regard to case, compared through its {@link #keyOf key}.
+ */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -22,6 +26,9 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "name_key", nullable = false)
+    private String nameKey;
+
     @Column(name = "grade", nullable = false)
     private String grade;
 
@@ -30,8 +37,13 @@ public class Person {
 
     public Person(String sheetId, String name, String grade) {
         this.sheetId = sheetId;
-        this.name = name;
+        setName(name);
         this.grade = grade;
+    }
+
+    /** The form of a name that is unique on a sheet: without surrounding spaces, in lower case. */
+    public static String keyOf(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
     }
 
     public Long getId() {
@@ -47,7 +59,8 @@ public class Person {
     }
 
     public void setName(String name) {
-        this.name = name;
+        this.name = name.trim();
+        this.nameKey = keyOf(name);
     }
 
     public String getGrade() {

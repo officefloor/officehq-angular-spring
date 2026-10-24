@@ -30,7 +30,8 @@ public class PersonController {
         }
     }
 
-    /** A person's name (kept as typed, but not blank) and grade, one of A, B or C. */
+    /** A person's name (not blank; kept without the spaces around it and unique on the sheet
+     * without regard to case) and grade, one of A, B or C. */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {

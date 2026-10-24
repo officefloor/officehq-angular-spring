@@ -29,14 +29,25 @@ public class PersonService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
+        requireFree(sheetId, name, null);
         return people.save(new Person(sheetId, name, grade));
     }
 
     @Transactional
     public Person update(String sheetId, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        requireFree(sheetId, name, person.getId());
         person.setName(name);
         person.setGrade(grade);
         return person;
+    }
+
+    /** Refuses a name another person on the sheet (other than {@code self}) already has. */
+    private void requireFree(String sheetId, String name, Long self) {
+        people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+                .filter(other -> !other.getId().equals(self))
+                .ifPresent(other -> {
+                    throw new PersonNameTakenException();
+                });
     }
 }
