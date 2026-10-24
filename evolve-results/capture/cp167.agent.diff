@@ -1,0 +1,128 @@
+diff --git a/src/main/frontend/src/app/features/people/crews.service.ts b/src/main/frontend/src/app/features/people/crews.service.ts
+index 7e449e37..229a91c2 100644
+--- a/src/main/frontend/src/app/features/people/crews.service.ts
++++ b/src/main/frontend/src/app/features/people/crews.service.ts
+@@ -17,6 +17,12 @@ export interface Crew {
+   members: CrewPerson[];
+ }
+ 
++/** A crew's due-total in cents: its lead's and its members' due-totals (in cents, by person id; null
++ *  when n/a) added up, n/a ones skipped. */
++export function crewDueCents(crew: Crew, due: Map<number, number | null>): number {
++  return [crew.lead, ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0);
++}
++
+ // The crews on a sheet, read from and written to the server, and kept for the sheet loaded: re-read
+ // from the store every time a sheet is loaded.
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/people/crews.ts b/src/main/frontend/src/app/features/people/crews.ts
+index 6e914d32..7ad3ef9c 100644
+--- a/src/main/frontend/src/app/features/people/crews.ts
++++ b/src/main/frontend/src/app/features/people/crews.ts
+@@ -2,7 +2,7 @@ import { Component, effect, inject, input, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Person } from './people.service';
+ import { money } from './claims.service';
+-import { Crew, CrewsService } from './crews.service';
++import { Crew, CrewsService, crewDueCents } from './crews.service';
+ import { FigurePipe } from '../../core/figure.pipe';
+ 
+ // The sheet's crews, one row each in the order they were added, with the form by which one is added with
+@@ -112,8 +112,7 @@ export class Crews {
+ 
+   /** The crew's due-total: the lead's and the members' due-totals added up, n/a ones skipped. */
+   protected dueTotalOf(crew: Crew): string {
+-    const due = this.dueCents();
+-    return money([crew.lead, ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0));
++    return money(crewDueCents(crew, this.dueCents()));
+   }
+ 
+   protected value(event: Event): string {
+diff --git a/src/main/frontend/src/app/features/people/header.ts b/src/main/frontend/src/app/features/people/header.ts
+index 9f161a3a..65995ebc 100644
+--- a/src/main/frontend/src/app/features/people/header.ts
++++ b/src/main/frontend/src/app/features/people/header.ts
+@@ -6,7 +6,8 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // The sheet's header, shown at all times: how many people are on the sheet (retired ones
+ // included), how many claims are in each status (as the summary counts them), and the sheet's
+ // due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
+-// overdue-total when a person on the sheet has their name or alias.
++// overdue-total when a person on the sheet has their name or alias, and their crew total (the due-totals
++// of the crews that person leads, added up) when they lead one.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -39,6 +40,10 @@ import { FigurePipe } from '../../core/figure.pipe';
+           <dt>My overdue</dt>
+           <dd data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</dd>
+         </div>
++        <div>
++          <dt>My crew due</dt>
++          <dd data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</dd>
++        </div>
+       </dl>
+     </header>
+   `,
+@@ -70,6 +75,8 @@ export class Header {
+   readonly myDueTotal = input.required<string>();
+   /** The signed-in user's own overdue-total; blank when there is no such person. */
+   readonly myOverdueTotal = input.required<string>();
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  readonly myCrewDueTotal = input.required<string>();
+ 
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1bbc849d..4907778d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -20,7 +20,7 @@ import { TreeSearch } from './tree-search';
+ import { VoidReasons } from './void-reasons';
+ import { Pools } from './pools';
+ import { Crews } from './crews';
+-import { CrewsService } from './crews.service';
++import { CrewsService, crewDueCents } from './crews.service';
+ import { Plans } from './plans';
+ import { Plan, PlansService } from './plans.service';
+ import { PoolsService } from './pools.service';
+@@ -72,6 +72,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+       [overdueTotal]="money(overdueTotal().cents)"
+       [myDueTotal]="myFigures()?.dueTotal ?? ''"
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
++      [myCrewDueTotal]="myCrewDueTotal()"
+     />
+     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
+       <span>Over this sheet and the sheets below it:</span>
+@@ -1170,14 +1171,28 @@ export class People {
+   /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet who
+    *  has the user's name, or else has it as an alias (as names are compared); null when there is none. */
+   protected readonly myFigures = computed(() => {
++    const me = this.me();
++    if (!me) return null;
++    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
++  });
++  /** The signed-in user's crew total: the due-totals of the crews led by the person who is the user (as
++   *  their own figures find them), added up; blank when there is no such person or they lead no crew. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    if (!me) return '';
++    const led = this.crewsService.crews().filter((c) => c.lead.personId === me.id);
++    if (led.length === 0) return '';
++    const due = this.dueCentsById();
++    return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));
++  });
++  /** The person on the sheet who has the signed-in user's name, or else has it as an alias (as names are
++   *  compared); null when there is none. */
++  private readonly me = computed(() => {
+     const user = this.session.user();
+     if (user === null) return null;
+     const key = nameKey(user);
+     const people = this.people();
+-    const me =
+-      people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key));
+-    if (!me) return null;
+-    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
++    return people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key)) ?? null;
+   });
+   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
+   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
