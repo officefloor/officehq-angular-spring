@@ -1,0 +1,64 @@
+{
+  "checkpoint": 31,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp31_summary",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "55324548477a507f7e0c19307543b001c9496089",
+  "reset_sha": "",
+  "preagent_sha": "4d811d7e4caeeab68572180bed5674f5bee11b7b",
+  "prev_sha": "4d811d7e4caeeab68572180bed5674f5bee11b7b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.836494,
+    "input_tokens": 34,
+    "output_tokens": 6471,
+    "cache_read_tokens": 834170,
+    "cache_creation_tokens": 67513,
+    "num_turns": 18,
+    "duration_ms": 826879,
+    "duration_api_ms": 103973,
+    "model": "claude-opus-5-5",
+    "session_id": "35e73ef3-482b-4261-9ba8-bf7d145b1c12",
+    "stop_reason": "success",
+    "result_text": "I added the summary panel and all 4 acceptance tests pass under `bin/e2e`.\n\nIt's a new component, `src/main/frontend/src/app/features/people/summary.ts`, shown above the People section. It works only from figures the screen already loads, so it can't drift from the list, and no server or database changes were needed. It always shows grades A, B and C:\n\n- **Per grade:** the number of people on that grade today who aren't retired, and their due-totals added up. A due-total of \"n/a\" counts as nothing, the same way the sheet's own totals already treat it.\n- **Per period:** the same due-total as that period's row: the fixed total once it is closed, the live one while it is open.\n- **Per status:** how many of the sheet's claims have each status.\n\nThere are two choices you should know about:\n\n1. **There is a PENDING count, but this app has no PENDING status.** The test expects a `summary-status-PENDING-count`, but a claim can only be DRAFT, OPEN, SETTLED or VOID. I added PENDING to the summary's list so the count is shown, and it will always be 0. If PENDING is meant to become a real status, that's a separate change.\n2. **Retired people's claims still count in the status counts.** Retired people are left out of the grade figures, but their claims are counted by status. The tests expect this: in the first scenario, Cam's settled and voided claims are counted even though Cam is retired and not on the list. It matches the existing rule that a retired person's claims keep counting in every total.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.836494,
+        "num_turns": 18,
+        "duration_ms": 826879,
+        "duration_api_ms": 103973,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp31.agent.jsonl",
+  "agent_diff_file": "cp31.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
