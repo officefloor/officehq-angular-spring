@@ -44,7 +44,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, String voidReason, List<String> comments) {
+            String ref, List<String> tags, String voidReason, List<String> comments, String editedBy) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -66,7 +66,7 @@ public class ClaimController {
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason(), comments.stream().map(ClaimView::line).toList());
+                    claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy());
         }
 
         /** A comment as shown: {@code <user> on <date>: <text>}. */

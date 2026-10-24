@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.history.HistoryListener;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
@@ -70,12 +71,14 @@ public class SheetService {
     }
 
     /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
-     * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change.
+     * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
+     * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
      * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
+        LocalDate left = sheet.getToday();
         if (!today.equals(sheet.getToday())) {
             before.people().values().forEach(figures -> audit.change("SNAPSHOT", id, user,
                     "name=" + figures.name(), "due-total=" + figures.dueTotal()));
@@ -83,7 +86,7 @@ public class SheetService {
         }
         sheet.setToday(today);
         sheets.flush();
-        periods.closeOverdue(id, user);
+        HistoryListener.madeOn(left, () -> periods.closeOverdue(id, user));
         rollup.recordSince(id, user, before);
         return sheet;
     }

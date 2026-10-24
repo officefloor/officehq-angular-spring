@@ -175,6 +175,7 @@ public class ClaimService {
         claim.setNote(noteOf(note));
         claim.setRef(ref);
         claim.setTags(tags);
+        claim.setEditedBy(user);
         keepTags(claim);
         claim.unlock();
         claims.flush();
@@ -211,7 +212,8 @@ public class ClaimService {
      * {@link SettingsService#allowed}), and when its current status does not allow it (a PENDING
      * claim can only be voided here: it is approved or rejected instead). Settling it fixes what is due
      * on it then (the figure it is bound to, when a statement bound it, otherwise its person's rate then)
-     * together with its late charge then (none on a correction); the user who opened it cannot settle it,
+     * together with its late charge then (none on a correction); the user who opened it or last edited it
+     * cannot settle it,
      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
      * it. A claim deferred on the sheet's today cannot be settled, nor one without proofs whose due is
@@ -245,7 +247,7 @@ public class ClaimService {
         if (reversing) refuseLateVoid(sheetId, user, claim);
         String reason = next == ClaimStatus.VOID ? voidReasons.refuseUnlisted(sheetId, voidReason) : null;
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
+        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
@@ -393,12 +395,12 @@ public class ClaimService {
 
     /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
      * live figure, which no statement binds while it is PENDING, together with its late charge then).
-     * Refused unless the claim is PENDING, when the user is not a steward or opened the claim, and when it
+     * Refused unless the claim is PENDING, when the user is not a steward or opened or last edited the claim, and when it
      * has no proofs and that due is above the proof threshold in force on its date. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = lockPending(sheetId, user, claimId);
-        if (user.equals(claim.getOpenedBy())) throw new ClaimNotStewardException();
+        if (claim.isOpenedOrEditedBy(user)) throw new ClaimNotStewardException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);

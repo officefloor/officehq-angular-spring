@@ -23,6 +23,8 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim; null until it is opened. */
   openedBy: string | null;
+  /** The user who last edited the claim; null when it was never edited. */
+  editedBy: string | null;
   /** Whether the claim is bound to the figure it had at its person's last statement. */
   stated: boolean;
   /** The figure it is bound to, with two decimals; null while unbound, and when it had no figure

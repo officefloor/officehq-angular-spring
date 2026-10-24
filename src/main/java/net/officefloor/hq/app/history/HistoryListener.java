@@ -56,6 +56,23 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
             Map.entry(PersonWatch.class, "watch"), Map.entry(SheetRole.class, "role"),
             Map.entry(SheetPermission.class, "permission"), Map.entry(SheetDelegation.class, "delegation"));
 
+    /** The sheet's today the lines written on this thread are made on instead of its today now; null when
+     * they are made on its today now (see {@link #madeOn}). */
+    private static final ThreadLocal<LocalDate> MADE_ON = new ThreadLocal<>();
+
+    /** Run {@code change} with every line it writes made on {@code date}: the changes a move of the sheet's
+     * today brings about (its automatic period closes) are made while its today is still the day being left. */
+    public static void madeOn(LocalDate date, Runnable change) {
+        LocalDate was = MADE_ON.get();
+        MADE_ON.set(date);
+        try {
+            change.run();
+        } finally {
+            if (was == null) MADE_ON.remove();
+            else MADE_ON.set(was);
+        }
+    }
+
     public HistoryListener(EntityManagerFactory entityManagerFactory) {
         EventListenerRegistry registry = entityManagerFactory.unwrap(SessionFactoryImplementor.class)
                 .getServiceRegistry().getService(EventListenerRegistry.class);
@@ -116,7 +133,8 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
         if (sheetId == null) return;
         Connection connection = session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection();
         try {
-            LocalDate madeOn = entity instanceof Sheet sheet ? sheet.getToday() : todayOf(connection, sheetId);
+            LocalDate madeOn = MADE_ON.get() != null ? MADE_ON.get()
+                    : entity instanceof Sheet sheet ? sheet.getToday() : todayOf(connection, sheetId);
             if (madeOn == null) return;
             try (PreparedStatement insert = connection.prepareStatement(
                     "INSERT INTO sheet_history (sheet_id, made_on, entity, entity_id, state) VALUES (?, ?, ?, ?, ?)")) {
