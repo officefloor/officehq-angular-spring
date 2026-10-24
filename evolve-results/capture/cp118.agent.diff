@@ -1,0 +1,255 @@
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index f0f3e529..3e04d13c 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -18,6 +18,12 @@ export interface Rate {
+   level: number;
+ }
+ 
++/** How a rate import went: how many rates it set, and the rates, in the order of their lines. */
++export interface RatesImported {
++  set: number;
++  rates: Rate[];
++}
++
+ /** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
+ export interface RatePreview {
+   count: number;
+@@ -185,6 +191,13 @@ export class RatesService {
+     );
+   }
+ 
++  /** Set a rate per pasted line of grade,rate,from,to, in order; when any line is refused none is set. */
++  importRates(sheet: string, text: string): Promise<RatesImported> {
++    return firstValueFrom(
++      this.http.post<RatesImported>(`${this.url(sheet)}/import`, { text }, { headers: this.session.headers() }),
++    );
++  }
++
+   /** How many OPEN and PENDING claims of people on the grade would show a different due, and the sum
+    *  of the differences, were pct the grade's rate on every date. Saves nothing. */
+   preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
+diff --git a/src/main/frontend/src/app/features/people/rates.ts b/src/main/frontend/src/app/features/people/rates.ts
+index 5b6e24fa..3e8fbea9 100644
+--- a/src/main/frontend/src/app/features/people/rates.ts
++++ b/src/main/frontend/src/app/features/people/rates.ts
+@@ -53,6 +53,23 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
+         }
+       </form>
++      <form (submit)="importRates($event)" aria-label="Import rates" data-testid="import-rates-form">
++        <label for="import-rates">Rates to import, one per line: grade,rate,from,to (the dates may be left out)</label>
++        <textarea
++          id="import-rates"
++          data-testid="import-rates"
++          rows="4"
++          [value]="importText()"
++          (input)="importText.set(value($event)); importError.set(null)"
++        ></textarea>
++        <button type="submit" data-testid="import-rates-submit">Import rates</button>
++        @if (imported() !== null) {
++          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ imported() }}</span></span>
++        }
++        @if (importError(); as message) {
++          <p role="alert" class="error" data-testid="import-rates-error">{{ message }}</p>
++        }
++      </form>
+       <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
+         <label for="rate-preview-grade">Grade</label>
+         <select
+@@ -180,6 +197,12 @@ export class Rates {
+   protected readonly previewPct = signal('');
+   protected readonly previewed = signal<RatePreview | null>(null);
+   protected readonly previewError = signal<string | null>(null);
++  protected readonly importText = signal('');
++  /** How many rates the last import set; null before one, and while one runs. */
++  protected readonly imported = signal<number | null>(null);
++  protected readonly importError = signal<string | null>(null);
++  /** An import is waiting for its answer; another meanwhile is ignored. */
++  private importing = false;
+   /** Counts previews, so only the answer to the latest one shows. */
+   private previewSeq = 0;
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+@@ -239,6 +262,34 @@ export class Rates {
+     }
+   }
+ 
++  /** Set a rate per pasted line, in order; when any line is refused none is set. Shows how many were
++   *  set; the old count is gone while it runs. */
++  protected async importRates(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.importing) return;
++    this.importError.set(null);
++    this.imported.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    if (!this.importText().trim()) {
++      this.importError.set('Paste a line of grade,rate,from,to.');
++      return;
++    }
++    this.importing = true;
++    try {
++      const result = await this.service.importRates(sheet, this.importText());
++      if (this.session.sheetId() !== sheet) return;
++      for (const r of result.rates) this.saved.emit(r);
++      this.importText.set('');
++      this.imported.set(result.set);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.importError.set('Those rates could not be set: each line needs a grade, a rate of 0.00 or more with up to two decimals, and dates as YYYY-MM-DD with the to-date not before the from-date.');
++    } finally {
++      this.importing = false;
++    }
++  }
++
+   protected clearPreview(): void {
+     this.previewSeq++;
+     this.previewed.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 5d13ca82..a7a916cc 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -16,6 +16,7 @@ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+@@ -54,12 +55,23 @@ public class RateController {
+         }
+     }
+ 
++    /** The pasted lines of {@code grade,rate,from,to}. */
++    public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** How many rates were set, and the rates, in the order of their lines. */
++    public record ImportView(int set, List<RateView> rates) {
++    }
++
+     private final RateService service;
+ 
++    private final RateImportService importer;
++
+     private final SheetHistory history;
+ 
+-    public RateController(RateService service, SheetHistory history) {
++    public RateController(RateService service, RateImportService importer, SheetHistory history) {
+         this.service = service;
++        this.importer = importer;
+         this.history = history;
+     }
+ 
+@@ -84,6 +96,15 @@ public class RateController {
+         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+     }
+ 
++    @PostMapping("/import")
++    public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ImportRequest request) {
++        List<RateView> rates = importer.importRates(sheetId.trim(), user.trim(), request.text()).stream()
++                .map(RateView::of).toList();
++        return new ImportView(rates.size(), rates);
++    }
++
+     /** A rate preview: how many claims would show a different due, and the sum of the differences as
+      * text with two decimals. */
+     public record PreviewView(int count, String diff) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportException.java b/src/main/java/net/officefloor/hq/app/rate/RateImportException.java
+new file mode 100644
+index 00000000..68b69885
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportException.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A rate import with no lines, or with a line that is not {@code grade,rate,from,to} as the rate form
++ * takes them. */
++@ResponseStatus(HttpStatus.BAD_REQUEST)
++public class RateImportException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+new file mode 100644
+index 00000000..e0f09ec4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Sets a rate per pasted line of {@code grade,rate,from,to}, in order, exactly as the rate form sets it;
++ * the from- and to-dates may be blank or left out. Every line is held to the rate form's rules before any
++ * is set: when any line is refused no rate is set, and nothing is recorded. Blank lines are skipped. */
++@Service
++public class RateImportService {
++
++    /** A grade as the rate form takes it. */
++    private static final Pattern GRADE = Pattern.compile("\\s*[ABC]\\s*");
++
++    /** A percent as the rate form takes it. */
++    private static final Pattern PCT = Pattern.compile("\\s*\\d{1,5}(\\.\\d{1,2})?\\s*");
++
++    private final RateService rates;
++    private final SheetRepository sheets;
++
++    public RateImportService(RateService rates, SheetRepository sheets) {
++        this.rates = rates;
++        this.sheets = sheets;
++    }
++
++    private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
++    }
++
++    /** The rates set, in the order of their lines. */
++    @Transactional
++    public List<Rate> importRates(String sheetId, String user, String text) {
++        if (!sheets.existsById(sheetId)) {
++            throw new SheetNotFoundException();
++        }
++        List<Line> lines = new ArrayList<>();
++        for (String line : text.split("\\r?\\n")) {
++            if (line.isBlank()) continue;
++            String[] fields = line.split(",", -1);
++            if (fields.length < 2 || fields.length > 4 || !GRADE.matcher(fields[0]).matches()
++                    || !PCT.matcher(fields[1]).matches()) {
++                throw new RateImportException();
++            }
++            LocalDate from = dateOf(fields, 2);
++            LocalDate to = dateOf(fields, 3);
++            if (from != null && to != null && to.isBefore(from)) throw new RateImportException();
++            lines.add(new Line(fields[0].trim(), new BigDecimal(fields[1].trim()).setScale(2), from, to));
++        }
++        if (lines.isEmpty()) throw new RateImportException();
++        List<Rate> set = new ArrayList<>();
++        for (Line line : lines) {
++            set.add(rates.set(sheetId, user, line.grade(), line.from(), line.to(), line.pct()));
++        }
++        return set;
++    }
++
++    /** The line's date in the given field; null when it is blank or left out. */
++    private static LocalDate dateOf(String[] fields, int index) {
++        if (fields.length <= index || fields[index].isBlank()) return null;
++        try {
++            return LocalDate.parse(fields[index].trim());
++        } catch (DateTimeParseException e) {
++            throw new RateImportException();
++        }
++    }
++}

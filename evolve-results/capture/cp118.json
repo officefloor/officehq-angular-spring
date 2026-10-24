@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "764ec5a0af30c00eb2cd3ed201066eb92aeffc33",
+  "reset_sha": "",
+  "preagent_sha": "4055b49257f8f612ae9836cdfbcabb444811c412",
+  "prev_sha": "4055b49257f8f612ae9836cdfbcabb444811c412",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6472899999999999,
+    "input_tokens": 24,
+    "output_tokens": 6555,
+    "cache_read_tokens": 489790,
+    "cache_creation_tokens": 52267,
+    "num_turns": 13,
+    "duration_ms": 217167,
+    "duration_api_ms": 78975,
+    "model": "claude-opus-5-5",
+    "session_id": "be967bed-63a7-49ae-89d6-41af5a26cdd4",
+    "stop_reason": "success",
+    "result_text": "The rate import box is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**Server**\n- **New endpoint:** `POST /api/sheets/{sheetId}/rates/import` takes `{text}` and returns how many rates were set plus the rates themselves.\n- **Checking first:** the new `RateImportService` checks every line before setting anything, using the rate form's rules:\n  - the grade must be A, B or C;\n  - the rate must be 0.00 or more, with at most two decimals;\n  - each date must be blank, missing or YYYY-MM-DD;\n  - the to-date can't be before the from-date.\n- **Refusals:** a bad line, a line with more than four fields, or a paste with no lines at all refuses the whole import. Nothing is written to the store or the audit file. Blank lines are skipped.\n- **Setting:** if every line passes, each one goes through the existing `RateService.set` in order, all in one transaction. So each line replaces any rate with the same grade and from-date and writes its own `RATE_SET`, followed by any `ROLLUP`/`TOTALS` records, the same as the form does.\n- **Permissions:** the existing viewer and archived-sheet checks already cover the new endpoint, because they apply to every non-GET request under a sheet.\n\n**Front end** (`rates.ts`, `rates.service.ts`)\n- A textarea (`import-rates`) and a submit button (`import-rates-submit`), with the count in `import-rates-set` and the error in `import-rates-error`.\n- The count disappears while an import runs. The error clears when you edit the text or submit again.\n- Rates that are set update the rate table straight away, through the component's existing `saved` output.\n\nThe new or changed server files are `RateImportService.java`, `RateImportException.java` and `RateController.java`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6472899999999999,
+        "num_turns": 13,
+        "duration_ms": 217167,
+        "duration_api_ms": 78975,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
