@@ -401,6 +401,7 @@ import { FigurePipe } from '../../core/figure.pipe';
               <th scope="col">Open due</th>
               @for (pd of periods(); track pd.id) {
                 <th scope="col">Due in {{ (pd.name) | figure }}</th>
+                <th scope="col">Carried into {{ (pd.name) | figure }}</th>
               }
               @if (shows('excess')) {
                 <th scope="col">Excess</th>
@@ -482,6 +483,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
                 @for (pd of periods(); track pd.id) {
                   <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (money(personPeriodCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
+                  <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ (money(personCarriedCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
                 }
                 @if (shows('excess')) {
                   <td data-testid="person-excess">{{ (excessOf(p)) | figure }}</td>
@@ -1018,6 +1020,29 @@ export class People {
         const period = periodOn(this.periods(), c.dueBy);
         if (period === null || period.closed || !this.countsAtEnd(c, person, period.to)) continue;
         sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+      }
+      by.set(person.id, sums);
+    }
+    return by;
+  });
+  /** Each person's carried figure for each period, in cents, by person id and period name: what is due
+   *  on their claims that count whose due-by falls in a period ending before this one starts and that
+   *  were still OPEN or PENDING at the end of this one's last day, by the status log, as each claim
+   *  shows it now. */
+  protected readonly personCarriedCents = computed(() => {
+    const by = new Map<number, Record<string, number>>();
+    for (const person of this.people()) {
+      const sums: Record<string, number> = {};
+      for (const p of this.periods()) sums[p.name] = 0;
+      for (const c of this.claimsOf(person.id)) {
+        const own = periodOn(this.periods(), c.dueBy);
+        if (own === null) continue;
+        for (const p of this.periods()) {
+          if (own.to >= p.from) continue;
+          const status = statusOn(c, p.to);
+          if ((status !== 'OPEN' && status !== 'PENDING') || !this.countsAtEnd(c, person, p.to)) continue;
+          sums[p.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+        }
       }
       by.set(person.id, sums);
     }
