@@ -4,9 +4,11 @@ import { Session } from '../../core/session';
 import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+const TERMS = /^\d{1,4}$/;
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
-// limit), its floor (the least a claim's live due can be) and the role each user name has been given (any other name is a clerk). Read from the
+// limit), its floor (the least a claim's live due can be), its terms (how many days after its date
+// a claim is due by) and the role each user name has been given (any other name is a clerk). Read from the
 // store every time a sheet is loaded. Saving the settings saves only the fields changed since
 // they were last saved.
 @Component({
@@ -38,6 +40,15 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
           (input)="floorInput.set(value($event)); floorChanged = true; settingsError.set(null)"
         />
         <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
+        <label for="setting-terms">Terms (days)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="termsInput()"
+          (input)="termsInput.set(value($event)); termsChanged = true; settingsError.set(null)"
+        />
+        <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
@@ -128,15 +139,21 @@ export class Settings {
   /** The floor in force, with two decimals; empty until read. */
   protected readonly floor = signal('');
   protected readonly given = signal<RoleGiven[]>([]);
+  /** The terms in force, in days, as text; empty until read. */
+  protected readonly terms = signal('');
   /** The floor saved, in cents. */
   readonly floorSaved = output<number>();
+  /** The terms saved, in days. */
+  readonly termsSaved = output<number>();
 
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
+  protected readonly termsInput = signal('');
   /** Whether each field was typed in since the settings were last loaded or saved; a field is saved
    *  when it was, or when it differs from the value in force. */
   protected limitChanged = false;
   protected floorChanged = false;
+  protected termsChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
@@ -154,8 +171,11 @@ export class Settings {
       this.given.set([]);
       this.limit.set('');
       this.floorInput.set('');
+      this.terms.set('');
+      this.termsInput.set('');
       this.limitChanged = false;
       this.floorChanged = false;
+      this.termsChanged = false;
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
@@ -178,12 +198,18 @@ export class Settings {
     const floor = this.floorInput().trim();
     const saveLimit = this.limitChanged || limit !== (this.clerkLimit() ?? '');
     const saveFloor = this.floorChanged || floor !== this.floor();
+    const terms = this.termsInput().trim();
+    const saveTerms = this.termsChanged || terms !== this.terms();
     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (saveFloor && !LIMIT.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (saveTerms && !TERMS.test(terms)) {
+      this.settingsError.set('Type terms as a whole number of days, 0 or more.');
       return;
     }
     this.savingSettings = true;
@@ -201,8 +227,16 @@ export class Settings {
         this.show(settings);
         this.floorSaved.emit(cents(settings.floor));
       }
+      if (saveTerms) {
+        const settings = await this.service.setTerms(sheet, terms);
+        if (this.session.sheetId() !== sheet) return;
+        this.termsChanged = false;
+        this.show(settings);
+        this.termsSaved.emit(settings.terms);
+      }
       this.limit.set(this.clerkLimit() ?? '');
       this.floorInput.set(this.floor());
+      this.termsInput.set(this.terms());
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
@@ -249,6 +283,7 @@ export class Settings {
         this.show(settings);
         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
         if (!this.floorChanged) this.floorInput.set(settings.floor);
+        if (!this.termsChanged) this.termsInput.set(String(settings.terms));
       }
     } catch {
       // The settings could not be read; they show as none.
@@ -258,6 +293,7 @@ export class Settings {
   private show(settings: SheetSettings): void {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
+    this.terms.set(String(settings.terms));
     this.given.set(settings.roles);
   }
 }

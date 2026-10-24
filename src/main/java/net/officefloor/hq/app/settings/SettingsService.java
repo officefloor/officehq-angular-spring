@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
- * live due can be. */
+ * live due can be, and its terms, how many days after its date a claim is due by. */
 @Service
 public class SettingsService {
 
@@ -86,6 +86,22 @@ public class SettingsService {
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=floor", "value=" + floor.toPlainString());
         rollup.recordSince(sheetId, by, before);
+        return sheet;
+    }
+
+    /** The sheet's terms, in days. */
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getTerms).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** Set the sheet's terms; the claims' due-by dates follow them. */
+    @Transactional
+    public Sheet setTerms(String sheetId, String by, int terms) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setTerms(terms);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=terms", "value=" + terms);
         return sheet;
     }
 }

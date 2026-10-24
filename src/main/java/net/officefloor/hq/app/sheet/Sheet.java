@@ -34,6 +34,10 @@ public class Sheet {
     @Column(name = "due_floor", nullable = false, precision = 12, scale = 2)
     private BigDecimal floor = new BigDecimal("1.00");
 
+    /** How many days after its date a claim is due by. */
+    @Column(name = "terms", nullable = false)
+    private int terms = 14;
+
     protected Sheet() {
     }
 
@@ -78,5 +82,13 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 }

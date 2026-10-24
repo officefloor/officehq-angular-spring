@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, money } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, dueByOf, money, overdue } from './claims.service';
 import { Grade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimDueCents } from './rates.service';
@@ -53,6 +53,8 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+            <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
+            <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
             <span data-testid="claim-status">{{ c.status }}</span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
@@ -122,6 +124,8 @@ export class Claims {
   readonly floor = input.required<number>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
+  /** The sheet's terms, in days: how long after its date a claim is due by. */
+  readonly terms = input.required<number>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -154,6 +158,14 @@ export class Claims {
   protected dueOf(claim: Claim): string {
     const due = claimDueCents(claim, this.rates(), this.grade(), this.floor());
     return due === null ? 'n/a' : money(due);
+  }
+
+  protected dueBy(claim: Claim): string {
+    return dueByOf(claim, this.terms());
+  }
+
+  protected isOverdue(claim: Claim): boolean {
+    return overdue(claim, this.terms(), this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; empty when none does. */

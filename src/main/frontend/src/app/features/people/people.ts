@@ -2,14 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
-import { Claim, ClaimsService, cents, counts, money } from './claims.service';
+import { Claim, ClaimsService, cents, counts, money, overdue } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { FLOOR_CENTS, SettingsService } from './settings.service';
+import { FLOOR_CENTS, SettingsService, TERMS_DAYS } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
@@ -22,11 +22,14 @@ import { Statement, StatementsService } from './statements.service';
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
 // keep counting in every total. A person can be put on hold and taken off it again: while held,
 // their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
+// A claim is due by its date plus the sheet's terms; an OPEN one due by a date before the sheet's
+// today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
+// what is due on them.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates, Settings],
   template: `
-    <app-settings (floorSaved)="floor.set($event)" />
+    <app-settings (floorSaved)="floor.set($event)" (termsSaved)="terms.set($event)" />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
     <section aria-labelledby="people-heading">
@@ -104,6 +107,8 @@ import { Statement, StatementsService } from './statements.service';
               <th scope="col">Grade</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
+              <th scope="col">Overdue</th>
+              <th scope="col">Overdue due</th>
               <th scope="col">Statements</th>
               <th scope="col">Last stated</th>
               <th scope="col">Stated on</th>
@@ -121,6 +126,8 @@ import { Statement, StatementsService } from './statements.service';
                 <td data-testid="person-grade">{{ p.grade }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
+                <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
                 <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
                 <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
@@ -136,6 +143,7 @@ import { Statement, StatementsService } from './statements.service';
                     [rates]="rates()"
                     [floor]="floor()"
                     [periods]="periods()"
+                    [terms]="terms()"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -193,6 +201,10 @@ import { Statement, StatementsService } from './statements.service';
         <p>
           Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
         </p>
+        <p>
+          Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
+          due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
+        </p>
       }
     </section>
   `,
@@ -237,6 +249,7 @@ export class People {
   private readonly periodsService = inject(PeriodsService);
 
   protected readonly grades = GRADES;
+  protected readonly money = money;
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen is first opened, kept across sheet loads. */
   protected readonly showRetired = signal(false);
@@ -269,6 +282,8 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor, in cents: the least a claim's live due can be. */
   protected readonly floor = signal(FLOOR_CENTS);
+  /** The sheet's terms, in days: how long after its date a claim is due by. */
+  protected readonly terms = signal(TERMS_DAYS);
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
@@ -291,6 +306,16 @@ export class People {
     for (const p of this.people()) sum += this.dueCentsOf(p) ?? 0;
     return money(sum);
   });
+  /** How many of everyone's counting claims are overdue, and what is due on them, in cents. */
+  protected readonly overdueTotal = computed(() =>
+    this.people().reduce(
+      (sum, p) => {
+        const o = this.overdueOf(p);
+        return { count: sum.count + o.count, cents: sum.cents + o.cents };
+      },
+      { count: 0, cents: 0 },
+    ),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
@@ -315,6 +340,7 @@ export class People {
       this.claims.set([]);
       this.rates.set([]);
       this.floor.set(FLOOR_CENTS);
+      this.terms.set(TERMS_DAYS);
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
@@ -456,6 +482,20 @@ export class People {
       any = true;
     }
     return any || this.rateOf(person.grade) !== null ? sum : null;
+  }
+
+  /** How many of the person's counting claims are overdue, and the sum of what is due on them, in
+   *  cents, as each claim shows it (a claim with nothing due adds nothing). */
+  protected overdueOf(person: Person): { count: number; cents: number } {
+    let count = 0;
+    let sum = 0;
+    const today = this.session.today();
+    for (const c of this.claimsOf(person.id)) {
+      if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
+      count++;
+      sum += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
+    }
+    return { count, cents: sum };
   }
 
   protected periodAdded(period: Period): void {
@@ -605,6 +645,7 @@ export class People {
       ]);
       if (this.sheet() === sheet) {
         this.floor.set(cents(settings.floor));
+        this.terms.set(settings.terms);
         this.rates.set(rates);
         this.periods.set(periods);
         this.statements.set(statements);

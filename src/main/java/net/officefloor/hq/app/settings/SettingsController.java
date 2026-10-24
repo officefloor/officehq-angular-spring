@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A sheet's settings: its roles, its clerk limit and its floor. The signed-in user's name travels in the
+/** A sheet's settings: its roles, its clerk limit, its floor and its terms. The signed-in user's name travels in the
  * {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -31,8 +31,8 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none. */
-    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {
+    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days. */
+    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {
     }
 
     /** A role: clerk or steward. */
@@ -56,6 +56,13 @@ public class SettingsController {
         }
     }
 
+    /** Terms: a whole number of days, 0 or more. */
+    public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+        int termsValue() {
+            return Integer.parseInt(value.trim());
+        }
+    }
+
     private final SettingsService service;
 
     public SettingsController(SettingsService service) {
@@ -66,7 +73,7 @@ public class SettingsController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
-        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
+        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
                 service.roles(sheet).stream().map(RoleView::of).toList());
     }
 
@@ -85,6 +92,15 @@ public class SettingsController {
             @RequestBody @Valid FloorRequest request) {
         String sheet = sheetId.trim();
         service.setFloor(sheet, user.trim(), request.floorValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/terms")
+    public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TermsRequest request) {
+        String sheet = sheetId.trim();
+        service.setTerms(sheet, user.trim(), request.termsValue());
         return get(sheet, user);
     }
 
