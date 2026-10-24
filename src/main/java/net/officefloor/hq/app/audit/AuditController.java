@@ -22,8 +22,9 @@ public class AuditController {
         this.audit = audit;
     }
 
-    /** Every line of the sheet, or (with a name) only those about that person, then those about them
-     * from the sheet they were transferred from. */
+    /** Every line of the sheet, or (with a name) only those about that person,
+     * then those about them on its descendants (sheets by id), then those about them from the sheet they
+     * were transferred from. */
     @GetMapping
     public List<String> lines(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
