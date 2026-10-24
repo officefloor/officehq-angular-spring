@@ -167,9 +167,9 @@ public class RollupService {
         return figure == null ? null : figure.add(lateChargeOf(claim, figure));
     }
 
-    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: the sheet's late percent in force on the claim's date of that
-     * figure for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
-     * the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
+    /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
+     * the sheet's today), the sheet's late percent in force on that boundary date (the due-by plus 30, 60,
+     * 90 ... days) of that figure, rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue (a deferred claim is not), and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         if (!claim.getStatus().isOpen()) return zero();
@@ -190,8 +190,14 @@ public class RollupService {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null || claim.isDeferredOn(sheet.getToday())) return zero();
         long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday())) / 30;
-        return figure.multiply(dated.latePctOn(sheet.getId(), claim.getDate())).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
-                .setScale(2, roundingOf(claim, sheet));
+        RoundingMode rounding = roundingOf(claim, sheet);
+        BigDecimal charge = zero();
+        for (long k = 1; k <= periods; k++) {
+            BigDecimal pct = dated.latePctOn(sheet.getId(), claim.getDueBy().plusDays(30 * k));
+            if (pct.signum() == 0) continue;
+            charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+        }
+        return charge;
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,

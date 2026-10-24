@@ -88,16 +88,23 @@ export interface Lateness {
   latePcts: readonly Dated[];
 }
 
-/** The late charge on a claim whose figure is figureCents, in cents: the late percent in force on the
- *  claim's date of that figure
- *  for every full 30 days the claim is overdue (OPEN or PENDING, not deferred, and past its due-by on the sheet's today),
- *  rounded like the claim's due; 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
+/** The late charge on a claim whose figure is figureCents, in cents: for every full 30 days the claim
+ *  is overdue (OPEN or PENDING, not deferred, and past its due-by on the sheet's today), the late
+ *  percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of that figure, rounded
+ *  like the claim's due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
 export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness, rounding: Rounding): number {
   if (!isOpen(claim) || late.today === null || isCorrection(claim) || deferred(claim, late.today)) return 0;
   const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
   const periods = Math.max(0, Math.floor(days / 30));
-  const latePct = inForce(late.latePcts, claim.date, LATE_PCT);
-  return dueCents(figureCents * periods, latePct, roundsHalfUp(claim, rounding)) ?? 0;
+  const dueBy = Date.parse(claim.dueBy);
+  let charge = 0;
+  for (let k = 1; k <= periods; k++) {
+    const boundary = new Date(dueBy + k * 30 * 86_400_000).toISOString().slice(0, 10);
+    const latePct = inForce(late.latePcts, boundary, LATE_PCT);
+    if (Number(latePct) === 0) continue;
+    charge += dueCents(figureCents, latePct, roundsHalfUp(claim, rounding)) ?? 0;
+  }
+  return charge;
 }
 
 /** What is due on a claim as it shows and totals, in cents: its figure (see claimDueCents) plus its

@@ -28,8 +28,8 @@ import { Summary, SummaryPerson } from './summary';
 // SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
 // A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
-// what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
-// full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
+// what is due on them. An overdue claim's due gains, for every full 30 days it is overdue, the sheet's
+// late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in.
 // A person can name other people on the sheet as their patrons, one at a time from their row; the
 // row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
 // (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
