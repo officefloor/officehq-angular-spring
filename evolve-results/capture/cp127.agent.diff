@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/people/header.ts b/src/main/frontend/src/app/features/people/header.ts
+index 9ffeb0ac..b90151ee 100644
+--- a/src/main/frontend/src/app/features/people/header.ts
++++ b/src/main/frontend/src/app/features/people/header.ts
+@@ -4,7 +4,8 @@ import { STATUSES } from './summary';
+ 
+ // The sheet's header, shown at all times: how many people are on the sheet (retired ones
+ // included), how many claims are in each status (as the summary counts them), and the sheet's
+-// due-total and overdue-total (as its totals show them).
++// due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
++// overdue-total when a person on the sheet has their name or alias.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -28,6 +29,14 @@ import { STATUSES } from './summary';
+           <dt>Overdue</dt>
+           <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+         </div>
++        <div>
++          <dt>My due</dt>
++          <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        </div>
++        <div>
++          <dt>My overdue</dt>
++          <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++        </div>
+       </dl>
+     </header>
+   `,
+@@ -55,6 +64,10 @@ export class Header {
+   readonly dueTotal = input.required<string>();
+   /** The sheet's overdue-total, with two decimals. */
+   readonly overdueTotal = input.required<string>();
++  /** The signed-in user's own due-total (of the person with their name or alias); blank when none. */
++  readonly myDueTotal = input.required<string>();
++  /** The signed-in user's own overdue-total; blank when there is no such person. */
++  readonly myOverdueTotal = input.required<string>();
+ 
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 55fdf705..ea94b835 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -64,6 +64,8 @@ import { Audit } from './audit';
+       [claims]="claims()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="money(overdueTotal().cents)"
++      [myDueTotal]="myFigures()?.dueTotal ?? ''"
++      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+     />
+     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
+       <span>Over this sheet and the sheets below it:</span>
+@@ -903,6 +905,18 @@ export class People {
+       cents: trimmedSum(each.map((o) => o.cents)),
+     };
+   });
++  /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet who
++   *  has the user's name, or else has it as an alias (as names are compared); null when there is none. */
++  protected readonly myFigures = computed(() => {
++    const user = this.session.user();
++    if (user === null) return null;
++    const key = nameKey(user);
++    const people = this.people();
++    const me =
++      people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key));
++    if (!me) return null;
++    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
++  });
+   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
+   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+   /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up.
+@@ -2060,3 +2074,8 @@ function daysBefore(date: string, days: number): string {
+ function daysBetween(from: string, to: string): number {
+   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+ }
++
++/** A name as names are compared: trimmed, ignoring case. */
++function nameKey(name: string): string {
++  return name.trim().toLowerCase();
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3d3b68bb..56d419e2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -480,12 +480,11 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID, and when it is
+-     * dated in a closed period. */
++    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID; a proof leaves
++     * the claim's figures alone, so it may be added while the claim is dated in a closed period. */
+     @Transactional
+     public Claim addProof(String sheetId, String user, long claimId) {
+         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                 || claim.getStatus() == ClaimStatus.DELETED) {
+             throw new ClaimStatusChangeException();
