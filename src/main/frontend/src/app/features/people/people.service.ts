@@ -161,6 +161,16 @@ export class PeopleService {
     );
   }
 
+  /** Merge the person into `intoId`, answering the person merged into; refused (409) unless the
+   *  signed-in user is a steward, for the person themselves, and when either is retired. */
+  merge(sheet: string, id: number, intoId: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/merge`, { intoId }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** The sheet's patrons, in the order they were named. */
   patrons(sheet: string): Promise<Patron[]> {
     return firstValueFrom(

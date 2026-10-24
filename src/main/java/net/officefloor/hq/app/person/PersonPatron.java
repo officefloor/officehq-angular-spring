@@ -47,6 +47,14 @@ public class PersonPatron {
         return personId;
     }
 
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public void setPatronId(Long patronId) {
+        this.patronId = patronId;
+    }
+
     public Long getPatronId() {
         return patronId;
     }

@@ -18,6 +18,7 @@ import { Summary, SummaryPerson } from './summary';
 import { Templates } from './templates';
 import { VoidReasons } from './void-reasons';
 import { Pools } from './pools';
+import { PoolsService } from './pools.service';
 import { Audit } from './audit';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
@@ -480,6 +481,26 @@ import { Audit } from './audit';
                   @if (patronErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-patron-error">{{ message }}</p>
                   }
+                  <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                  <select
+                    [id]="'person-merge-into-' + p.id"
+                    data-testid="person-merge-into"
+                    [value]="mergeChoices()[p.id] ?? ''"
+                    (change)="setMergeChoice(p.id, value($event))"
+                  >
+                    <option value="" [selected]="!mergeChoices()[p.id]">Choose a person</option>
+                    @for (o of people(); track o.id) {
+                      <option [value]="o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="person-merge"
+                    [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'"
+                    (click)="merge(p)"
+                  >
+                    Merge
+                  </button>
                 </td>
               </tr>
             }
@@ -541,6 +562,7 @@ export class People {
   private readonly settingsService = inject(SettingsService);
   private readonly statementsService = inject(StatementsService);
   private readonly periodsService = inject(PeriodsService);
+  private readonly poolsService = inject(PoolsService);
   private readonly document = inject(DOCUMENT);
 
   protected readonly grades = GRADES;
@@ -584,6 +606,8 @@ export class People {
   protected readonly patrons = signal<Patron[]>([]);
   /** The patron chosen on each person's row (a person id), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
+  /** The person chosen on each person's row to merge them into (a person id), by person id. */
+  protected readonly mergeChoices = signal<Record<number, string>>({});
   /** The error of the last refused patron added on each person's row, by person id. */
   protected readonly patronErrors = signal<Record<number, string>>({});
   /** Each person's patrons' names, sorted and comma separated, by person id. */
@@ -820,6 +844,7 @@ export class People {
       this.patrons.set([]);
       this.watched.set(new Set());
       this.patronChoices.set({});
+      this.mergeChoices.set({});
       this.patronErrors.set({});
       this.reset();
       this.quickName.set('');
@@ -1019,6 +1044,36 @@ export class People {
       this.patronErrors.update((errors) => ({
         ...errors,
         [person.id]: 'That person cannot be added as a patron.',
+      }));
+    }
+  }
+
+  protected setMergeChoice(id: number, intoId: string): void {
+    this.mergeChoices.update((choices) => ({ ...choices, [id]: intoId }));
+    this.clearRowError(id);
+  }
+
+  /** Merge the person into the one chosen on their row, then re-read the sheet: the merge moved their
+   *  claims, aliases, patrons and pool memberships to that person, and they leave the list. */
+  protected async merge(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const choice = this.mergeChoices()[person.id] ?? '';
+    if (choice === '') {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Choose a person to merge into.' }));
+      return;
+    }
+    try {
+      await this.service.merge(sheet, person.id, Number(choice));
+      if (this.sheet() !== sheet) return;
+      this.mergeChoices.update(({ [person.id]: _, ...rest }) => rest);
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet)]);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That person cannot be merged into the one chosen.',
       }));
     }
   }

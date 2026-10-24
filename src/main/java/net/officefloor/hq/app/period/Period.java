@@ -131,6 +131,13 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /** Fold the due-total fixed for the person {@code from} into the one fixed for {@code into}: the
+     * person {@code from} is merged into {@code into}. The period's own due-total is unchanged. */
+    public void mergePersonTotal(Long from, Long into) {
+        BigDecimal moved = closedPersonTotals.remove(from);
+        if (moved != null) closedPersonTotals.merge(into, moved, BigDecimal::add);
+    }
+
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;

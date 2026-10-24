@@ -57,6 +57,11 @@ export class PoolsService {
     if (this.session.sheetId() === sheet) this.pools.set(all);
   }
 
+  /** Re-read the sheet's pools from the store: a change elsewhere (a merge of people) moved them. */
+  refresh(sheet: string): Promise<void> {
+    return this.read(sheet);
+  }
+
   private async read(sheet: string): Promise<void> {
     try {
       const all = await firstValueFrom(this.http.get<Pool[]>(this.url(sheet), { headers: this.session.headers() }));

@@ -73,6 +73,10 @@ public class PersonController {
     public record PatronRequest(@NotNull Long patronId) {
     }
 
+    /** The person another is merged into. */
+    public record MergeRequest(@NotNull Long intoId) {
+    }
+
     /** The date a person is retired from (the sheet's today when left out). */
     public record RetireRequest(LocalDate from) {
     }
@@ -130,9 +134,13 @@ public class PersonController {
 
     private final SheetHistory history;
 
-    public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history) {
+    private final PersonMergeService merges;
+
+    public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history,
+            PersonMergeService merges) {
         this.service = service;
         this.bulk = bulk;
+        this.merges = merges;
         this.history = history;
     }
 
@@ -231,6 +239,15 @@ public class PersonController {
             @RequestBody(required = false) RetireRequest request) {
         return view(sheetId, service.retire(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from()));
+    }
+
+    /** Merges the person into another; answers the person merged into. */
+    @PostMapping("/{personId}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MergeRequest request) {
+        return view(sheetId, merges.merge(sheetId.trim(), user.trim(), personId, request.intoId()));
     }
 
     @PostMapping("/{personId}/aliases")
