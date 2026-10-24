@@ -22,6 +22,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The person's claim with the number. */
     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
+    /** The person's corrections of the claim with the number. */
+    List<Claim> findBySheetIdAndPersonIdAndCorrects(String sheetId, Long personId, String corrects);
+
     /** The sheet's claim with the reference (as compared). */
     Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
 

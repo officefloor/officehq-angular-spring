@@ -1004,7 +1004,7 @@ export class Claims {
           : status === 409
           ? 'Only a draft claim can be edited; void it and add a new one instead.'
           : status === 400
-          ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
+          ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects, for no more than what remains of it.'
           : status === 422
           ? 'A claim cannot be dated after the person retired.'
           : status === 417
@@ -1187,7 +1187,7 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 422
             ? 'A claim cannot be dated after the person retired.'
           : e instanceof HttpErrorResponse && e.status === 400
-            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects (and only a correction names one).'
+            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects, for no more than what remains of it (and only a correction names one).'
           : fields.ref !== null && e instanceof HttpErrorResponse && e.status === 409
             ? id === null
               ? 'That reference is already used on this sheet.'

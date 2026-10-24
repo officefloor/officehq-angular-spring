@@ -33,7 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
  * change status, nor be edited to a date whose due-by, with its terms, would; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
- * person; a claim that is not a correction names none. A DRAFT claim may have lines (see {@link ClaimLine}):
+ * person, and for no more than what remains of it (its amount less the corrections already made against
+ * it, VOID and DELETED ones left out); a claim that is not a correction names none. A DRAFT claim may have lines (see {@link ClaimLine}):
  * then its amount is what they add up to, and an edit to any other amount is refused. */
 @Service
 public class ClaimService {
@@ -194,7 +195,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
-        refuseBadCorrection(sheetId, personId, amount, corrects);
+        refuseBadCorrection(sheetId, personId, null, amount, corrects);
         refuseRefTaken(sheetId, null, ref);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
         claim.setRef(ref);
@@ -227,7 +228,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         person.requireClaimable(dated);
-        refuseBadCorrection(sheetId, person.getId(), amount, corrects);
+        refuseBadCorrection(sheetId, person.getId(), claim.getId(), amount, corrects);
         refuseRefTaken(sheetId, claim.getId(), ref);
         List<ClaimLine> lined = lines.findByClaimIdInOrderByIdAsc(List.of(claim.getId()));
         if (!lined.isEmpty() && ClaimLine.totalOf(lined).compareTo(amount) != 0) throw new ClaimLinedAmountException();
@@ -774,16 +775,26 @@ public class ClaimService {
     }
 
     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
-     * the person, and a claim that names one without being a correction. */
-    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
+     * the person, or that exceeds what remains of it: its amount less the corrections already made
+     * against it (other than {@code claimId}, the one being edited; VOID and DELETED ones left out); and
+     * a claim that names one without being a correction. */
+    private void refuseBadCorrection(String sheetId, Long personId, Long claimId, BigDecimal amount,
+            String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) throw new ClaimCorrectionException();
             return;
         }
         if (corrects == null) throw new ClaimCorrectionException();
-        claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
-                .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
+        Claim corrected = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(target -> target.getStatus() == ClaimStatus.SETTLED)
                 .orElseThrow(ClaimCorrectionException::new);
+        BigDecimal remains = corrected.getAmount();
+        for (Claim made : claims.findBySheetIdAndPersonIdAndCorrects(sheetId, personId, corrects)) {
+            if (made.getId().equals(claimId) || made.getStatus() == ClaimStatus.VOID
+                    || made.getStatus() == ClaimStatus.DELETED) continue;
+            remains = remains.add(made.getAmount());
+        }
+        if (amount.negate().compareTo(remains) > 0) throw new ClaimCorrectionException();
     }
 
     /** Refuse the external reference {@code ref} when a claim on the sheet other than {@code claimId} has
