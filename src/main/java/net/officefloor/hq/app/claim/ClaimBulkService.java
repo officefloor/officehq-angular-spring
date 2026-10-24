@@ -52,9 +52,12 @@ public class ClaimBulkService {
 
     /** Settle each of the claims that can be settled, in list order, by exactly the rules of settling
      * one claim (one that goes to PENDING instead counts as settled); any that cannot be settled (or
-     * is not on the sheet) is left as it is and counted as refused. */
+     * is not on the sheet) is left as it is and counted as refused. One that settles at least one claim is
+     * the sheet's next settle batch: each claim it settled carries the batch's number. */
     public Outcome settle(String sheetId, String user, Collection<Long> claimIds) {
-        return change(sheetId, user, claimIds, ClaimStatus.SETTLED);
+        Outcome outcome = change(sheetId, user, claimIds, ClaimStatus.SETTLED);
+        if (outcome.changed().isEmpty()) return outcome;
+        return new Outcome(service.settleBatch(sheetId, outcome.changed()), outcome.refused());
     }
 
     /** Move each of the claims that can be moved to the person, in list order, by exactly the rules of

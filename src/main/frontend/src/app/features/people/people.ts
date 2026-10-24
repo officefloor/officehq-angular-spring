@@ -186,6 +186,7 @@ import { VoidReasons } from './void-reasons';
 
       <p>
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+        Last batch <span data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</span>
         @if (bulkSettled(); as result) {
           Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
           refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span>
@@ -501,7 +502,7 @@ import { VoidReasons } from './void-reasons';
   `,
 })
 export class People {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly service = inject(PeopleService);
   private readonly claimsService = inject(ClaimsService);
   private readonly ratesService = inject(RatesService);
@@ -1246,6 +1247,7 @@ export class People {
       const result = await this.claimsService.bulkSettle(sheet, [...this.selectedClaims()]);
       if (this.session.sheetId() !== sheet) return;
       for (const c of result.claims) this.claimSaved(c);
+      if (result.batch !== null) this.session.lastSettleBatch.set(result.batch);
       this.selectedClaims.set(new Set());
       this.bulkSettled.set({ settled: result.settled, refused: result.refused });
     } catch {

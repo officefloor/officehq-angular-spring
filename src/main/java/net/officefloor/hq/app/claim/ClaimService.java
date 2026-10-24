@@ -91,6 +91,18 @@ public class ClaimService {
                 .collect(Collectors.groupingBy(ClaimComment::getClaimId));
     }
 
+    /** Make the claims, settled (or left PENDING) by one bulk settle, the sheet's next settle batch,
+     * returning them with its number, in the order given. */
+    @Transactional
+    public List<Claim> settleBatch(String sheetId, List<Claim> settled) {
+        int batch = sheets.nextSettleBatch(sheetId);
+        return settled.stream().map(c -> {
+            Claim claim = claims.lockByIdAndSheetId(c.getId(), sheetId).orElseThrow(ClaimNotFoundException::new);
+            claim.setSettleBatch(batch);
+            return claims.save(claim);
+        }).toList();
+    }
+
     /** Comment on the claim, whatever its status: {@code text} (not blank) is kept with the user and the
      * sheet's today. */
     @Transactional

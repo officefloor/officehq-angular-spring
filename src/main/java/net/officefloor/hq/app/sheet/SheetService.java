@@ -58,6 +58,13 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
+    /** Start the sheet's next settle batch, one at a time, returning its number. */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        sheets.lockSheet(id);
+        return sheets.findById(id).orElseThrow(SheetNotFoundException::new).nextSettleBatch();
+    }
+
     /** The date a claim left without a date is dated (see {@link Sheet#entryDateInForce()}). */
     @Transactional(readOnly = true)
     public LocalDate entryDate(String id) {

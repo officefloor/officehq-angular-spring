@@ -24,9 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** A sheet, with the number of its last settle batch (null while it has had none). */
+    public record SheetView(String id, LocalDate today, boolean archived, Integer lastSettleBatch) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastSettleBatch());
         }
     }
 
@@ -51,7 +52,7 @@ public class SheetController {
         Sheet sheet = service.load(id.trim(), user.trim());
         if (asOf == null) return SheetView.of(sheet);
         SheetAsOf then = history.read(sheet.getId(), asOf);
-        return new SheetView(sheet.getId(), asOf, then.archived());
+        return new SheetView(sheet.getId(), asOf, then.archived(), then.lastSettleBatch());
     }
 
     /** Change the sheet's today. */

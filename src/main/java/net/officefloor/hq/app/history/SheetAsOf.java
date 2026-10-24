@@ -80,6 +80,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet != null && sheet.isArchived();
     }
 
+    /** The number of the sheet's last settle batch then; null when it had had none. */
+    public Integer lastSettleBatch() {
+        return sheet == null ? null : sheet.getLastSettleBatch();
+    }
+
     /** The policy date as it was set then; null when it was the sheet's today. */
     public LocalDate policyDate() {
         return sheet == null ? null : sheet.getPolicyDate();

@@ -25,6 +25,9 @@ export interface Claim {
   openedBy: string | null;
   /** The user who last edited the claim; null when it was never edited. */
   editedBy: string | null;
+  /** The number of the settle batch (bulk settle) that settled the claim; null when it was settled one
+   *  at a time, or not settled. */
+  settleBatch: number | null;
   /** Whether the claim is bound to the figure it had at its person's last statement. */
   stated: boolean;
   /** The figure it is bound to, with two decimals; null while unbound, and when it had no figure
@@ -113,6 +116,8 @@ export interface BulkSettled {
   settled: number;
   refused: number;
   claims: Claim[];
+  /** The number of the settle batch it made; null when it settled none. */
+  batch: number | null;
 }
 
 /** How a bulk move went: how many claims it moved and refused, and the claims it moved. */

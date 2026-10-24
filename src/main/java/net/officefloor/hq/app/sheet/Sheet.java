@@ -46,6 +46,11 @@ public class Sheet {
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
+    /** The number of the sheet's last bulk settle that settled a claim (its batches are numbered 1, 2, ...);
+     * null while it has had none. */
+    @Column(name = "last_settle_batch")
+    private Integer lastSettleBatch;
+
     protected Sheet() {
     }
 
@@ -130,5 +135,15 @@ public class Sheet {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public Integer getLastSettleBatch() {
+        return lastSettleBatch;
+    }
+
+    /** Start the sheet's next settle batch, returning its number. */
+    public int nextSettleBatch() {
+        lastSettleBatch = lastSettleBatch == null ? 1 : lastSettleBatch + 1;
+        return lastSettleBatch;
     }
 }

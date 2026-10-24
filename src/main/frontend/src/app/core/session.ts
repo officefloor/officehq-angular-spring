@@ -8,6 +8,9 @@ interface SheetView {
   today: string;
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   archived: boolean;
+  /** The number of the sheet's last settle batch (a bulk settle that settled a claim); null while it
+   *  has had none. */
+  lastSettleBatch: number | null;
 }
 
 // Who is signed in and which sheet is active. Every request to the server carries the signed-in
@@ -26,6 +29,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
+  /** The number of the active sheet's last settle batch; null while it has had none. */
+  readonly lastSettleBatch = signal<number | null>(null);
   /** The date (YYYY-MM-DD) the sheets are shown as of; null when they are shown as they stand. */
   readonly asOf = signal<string | null>(null);
   /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
@@ -39,6 +44,7 @@ export class Session {
     this.sheetId.set(null);
     this.today.set(null);
     this.archived.set(false);
+    this.lastSettleBatch.set(null);
     this.asOf.set(null);
     return true;
   }
@@ -124,5 +130,6 @@ export class Session {
     this.sheetId.set(view.id);
     this.today.set(view.today);
     this.archived.set(view.archived);
+    this.lastSettleBatch.set(view.lastSettleBatch);
   }
 }

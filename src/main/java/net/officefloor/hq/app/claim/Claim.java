@@ -146,6 +146,11 @@ public class Claim {
     @Column(name = "void_reason")
     private String voidReason;
 
+    /** The number of the bulk settle (batch) on its sheet that settled the claim (or left it PENDING); null
+     * when it was settled one at a time, or not settled. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     protected Claim() {
     }
 
@@ -422,5 +427,13 @@ public class Claim {
 
     public String getLockedBy() {
         return lockedBy;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 }

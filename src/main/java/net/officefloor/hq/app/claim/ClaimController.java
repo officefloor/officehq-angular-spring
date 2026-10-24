@@ -44,7 +44,8 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, String voidReason, List<String> comments, String editedBy) {
+            String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
+            Integer settleBatch) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -66,7 +67,8 @@ public class ClaimController {
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy());
+                    claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
+                    claim.getSettleBatch());
         }
 
         /** A comment as shown: {@code <user> on <date>: <text>}. */
@@ -156,8 +158,9 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
-    /** How a bulk settle went: how many claims it settled (or left PENDING) and refused, and those claims. */
-    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    /** How a bulk settle went: how many claims it settled (or left PENDING) and refused, and those claims,
+     * and the number of the batch it made (null when it settled none). */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims, Integer batch) {
     }
 
     /** The claims a bulk move is asked of, by id, and the person they are moved to. */
@@ -352,10 +355,11 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
             @RequestBody @Valid BulkRequest request) {
-        if (asOf != null) return new BulkSettleView(0, Set.copyOf(request.claimIds()).size(), List.of());
+        if (asOf != null) return new BulkSettleView(0, Set.copyOf(request.claimIds()).size(), List.of(), null);
         ClaimBulkService.Outcome outcome = bulk.settle(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkSettleView(outcome.changed().size(), outcome.refused(),
-                views(outcome.changed()));
+                views(outcome.changed()),
+                outcome.changed().isEmpty() ? null : outcome.changed().get(0).getSettleBatch());
     }
 
     @PostMapping("/claims/bulk-reassign")

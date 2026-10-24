@@ -96,6 +96,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
             <span data-testid="claim-status">{{ c.status }}</span>
+            <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
