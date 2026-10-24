@@ -161,12 +161,20 @@ public class RollupService {
         return bound || !person.isHeldOn(claim.getDate());
     }
 
-    /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;
+    /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was
+     * voided once settled, and has one. */
+    private static boolean frozen(Claim claim) {
+        return claim.getSettledDue() != null
+                && (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID);
+    }
+
+    /** The figure the claim shows and totals now: what was fixed when it was settled at a rate (kept
+     * once it is voided);
      * otherwise, unless it is PENDING (which no statement binds while it is), the figure a statement
      * bound it to; otherwise what is due on it at its person's rate.
      * Null when it has no figure. */
     public BigDecimal figureOf(Claim claim, Person person) {
-        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return claim.getSettledDue();
+        if (frozen(claim)) return claim.getSettledDue();
         if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) return claim.getStatedDue();
         return dueOf(claim, person);
     }
@@ -175,7 +183,7 @@ public class RollupService {
      * rate; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
     public BigDecimal shownOf(Claim claim, Person person) {
         BigDecimal figure = figureOf(claim, person);
-        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return figure;
+        if (frozen(claim)) return figure;
         return liveDueOf(claim, figure);
     }
 

@@ -364,11 +364,15 @@ export class Claims {
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
           ? action === 'settle' && claim.openedBy === this.session.user()
             ? 'You opened that claim, so another user must settle it.'
+            : action === 'void' && claim.status === 'SETTLED'
+            ? 'Only a steward can void a settled claim.'
             : action === 'approve' || action === 'reject'
             ? `Only a steward${action === 'approve' ? ' who did not open that claim' : ''} can ${action} it.`
             : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 400
           ? 'Type a one-word reason to reject that claim.'
+          : e instanceof HttpErrorResponse && e.status === 410
+          ? 'A settled claim can only be voided within 7 days of its settlement.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : e instanceof HttpErrorResponse && e.status === 422

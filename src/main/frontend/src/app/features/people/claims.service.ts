@@ -44,7 +44,8 @@ export interface Claim {
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
  *  until a steward approves it (SETTLED) or rejects it (back to OPEN). A DRAFT, OPEN or PENDING claim
- *  can be VOID. */
+ *  can be VOID, and a SETTLED one by a steward within 7 days of its settlement (it keeps its settled
+ *  figure, which leaves every total). */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change asked of a claim. */

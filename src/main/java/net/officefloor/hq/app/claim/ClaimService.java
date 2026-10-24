@@ -118,7 +118,10 @@ public class ClaimService {
      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
      * it. A claim deferred on the sheet's today cannot be settled, nor one without proofs whose due is
-     * above the proof threshold in force on its date (refused before the clerk limit is considered). A voided claim keeps its number, if it had one. */
+     * above the proof threshold in force on its date (refused before the clerk limit is considered). A
+     * SETTLED claim can only be voided by a steward, and only while the sheet's today is at most 7 days
+     * after its settlement (its status log's SETTLED date); its frozen figure then leaves every total and
+     * is recorded as reversed. A voided claim keeps its number, if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -133,6 +136,8 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next) || (claim.getStatus() == ClaimStatus.PENDING && next != ClaimStatus.VOID)) {
             throw new ClaimStatusChangeException();
         }
+        boolean reversing = claim.getStatus() == ClaimStatus.SETTLED;
+        if (reversing) refuseLateVoid(sheetId, user, claim);
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -164,6 +169,8 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
             notifyWatchers(user, person, claim);
+        } else if (reversing) {
+            record(event, user, person, claim, number, "reversed=" + dueText(claim.getSettledDue()));
         } else {
             record(event, user, person, claim, number);
         }
@@ -335,6 +342,18 @@ public class ClaimService {
         notifyWatchers(user, person, claim);
         rollup.recordSince(sheetId, user, before);
         return claim;
+    }
+
+    /** Refuse a void of the SETTLED claim unless the user is a steward and the sheet's today is at most
+     * 7 days after the date its status log first shows it SETTLED. */
+    private void refuseLateVoid(String sheetId, String user, Claim claim) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        LocalDate settled = logs.findByClaimIdInOrderByIdAsc(List.of(claim.getId())).stream()
+                .filter(entry -> entry.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLog::getDate)
+                .findFirst()
+                .orElseThrow(ClaimStatusChangeException::new);
+        if (sheets.today(sheetId).isAfter(settled.plusDays(7))) throw new ClaimVoidLateException();
     }
 
     /** The PENDING claim, locked, for a steward to approve or reject. */

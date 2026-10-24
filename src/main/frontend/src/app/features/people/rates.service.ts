@@ -61,7 +61,13 @@ export function dueCents(amountCents: number, pct: string | null, halfUp = false
   return Number(negative ? -quotient : quotient);
 }
 
-/** The figure of a claim, in cents: a claim settled at a rate keeps what was due on it then; a
+/** Whether a claim keeps the figure fixed when it was settled at a rate: it is SETTLED, or was voided
+ *  once settled, and has one. */
+function isFrozen(claim: Claim): boolean {
+  return claim.settledDue !== null && (claim.status === 'SETTLED' || claim.status === 'VOID');
+}
+
+/** The figure of a claim, in cents: a claim settled at a rate keeps what was due on it then (and once voided); a
  *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
  *  what is due on its amount at the rate in force on the claim's date of the grade in force
  *  for its person then, rounded as the claim rounds (see roundsHalfUp) — the rate figure alone,
@@ -72,7 +78,7 @@ export function claimDueCents(
   grades: PersonGrade[],
   rounding: Rounding,
 ): number | null {
-  if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
+  if (isFrozen(claim) && claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
   const grade = gradeOn(grades, claim.date);
   return grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
@@ -118,7 +124,7 @@ export function claimShownCents(
 ): number | null {
   const figure = claimDueCents(claim, rates, grades, rounding);
   if (figure === null || isCorrection(claim)) return figure;
-  if (claim.status === 'SETTLED' && claim.settledDue !== null) return figure;
+  if (isFrozen(claim)) return figure;
   return Math.max(figure + lateChargeCents(claim, figure, late, rounding), cents(inForce(floors, claim.date, FLOOR)));
 }
 
