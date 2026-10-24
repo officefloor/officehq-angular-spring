@@ -1,0 +1,510 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 7e4e1c9d..f30e6950 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -1,7 +1,8 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Claim, ClaimAction, ClaimsService, cents, money } from './claims.service';
+-import { dueCents } from './rates.service';
++import { Grade } from './people.service';
++import { Rate, dueCents, rateOn } from './rates.service';
+ 
+ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+ 
+@@ -108,8 +109,10 @@ export class Claims {
+   readonly personName = input.required<string>();
+   /** The person's claims, newest first. */
+   readonly claims = input.required<Claim[]>();
+-  /** The rate of the person's grade, or null when the grade has no rate. */
+-  readonly rate = input.required<string | null>();
++  /** The person's grade. */
++  readonly grade = input.required<Grade>();
++  /** The sheet's rates. */
++  readonly rates = input.required<Rate[]>();
+   /** A claim was added or saved. */
+   readonly saved = output<Claim>();
+ 
+@@ -134,11 +137,12 @@ export class Claims {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
+-  /** What is due on the claim at the person's rate; n/a when the grade has no rate. A claim settled
++  /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
++   *  their grade applies then. A claim settled
+    *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
+   protected dueOf(claim: Claim): string {
+     if (claim.status === 'SETTLED' && claim.settledDue !== null) return claim.settledDue;
+-    const due = dueCents(cents(claim.amount), this.rate());
++    const due = dueCents(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
+     return due === null ? 'n/a' : money(due);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e80c3e07..78403b88 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,12 +5,12 @@ import { Claims } from './claims';
+ import { Claim, ClaimsService, cents, counts, money } from './claims.service';
+ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ import { Rates } from './rates';
+-import { Rate, RatesService, dueCents } from './rates.service';
++import { Rate, RatesService, dueCents, rateOn } from './rates.service';
+ 
+ // The people on the active sheet, in the order they were added, and the form that adds a person
+ // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
+ // and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it at their
+-// grade's rate; the sheet's
++// grade's rate in force on the sheet's today; the sheet's
+ // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
+ @Component({
+   selector: 'app-people',
+@@ -76,7 +76,8 @@ import { Rate, RatesService, dueCents } from './rates.service';
+                     [personId]="p.id"
+                     [personName]="p.name"
+                     [claims]="claimsOf(p.id)"
+-                    [rate]="rateOf(p.grade)"
++                    [grade]="p.grade"
++                    [rates]="rates()"
+                     (saved)="claimSaved($event)"
+                   />
+                 </td>
+@@ -199,12 +200,14 @@ export class People {
+     return this.claimsOf(personId).reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0);
+   }
+ 
+-  protected rateOf(grade: Grade): string | null {
+-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
++  /** The grade's rate in force on the sheet's today. */
++  private rateOf(grade: Grade): string | null {
++    const today = this.session.today();
++    return today === null ? null : rateOn(this.rates(), grade, today);
+   }
+ 
+-  /** The person's claimed times their grade's rate, divided by 100 and rounded half up; null when
+-   *  their grade has no rate. */
++  /** The person's claimed times their grade's rate in force on the sheet's today, divided by 100 and
++   *  rounded half up; null when no rate of their grade applies then. */
+   protected dueTotalOf(person: Person): string | null {
+     const due = this.dueCentsOf(person);
+     return due === null ? null : money(due);
+@@ -214,9 +217,12 @@ export class People {
+     return dueCents(this.claimedCentsOf(person.id), this.rateOf(person.grade));
+   }
+ 
+-  /** Put a set rate in place of the grade's old one. */
++  /** Put a set rate in place of the grade's old one for the same from-date. */
+   protected rateSaved(rate: Rate): void {
+-    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
++    this.rates.update((list) => [
++      ...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from),
++      rate,
++    ]);
+   }
+ 
+   /** Put an added claim first, or a saved one in its place. */
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index 940aef4e..d059242c 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -8,6 +8,19 @@ export interface Rate {
+   grade: Grade;
+   /** The percent with two decimals, as text (e.g. "12.50"). */
+   pct: string;
++  /** The date the rate applies from (YYYY-MM-DD); null when it applies from the beginning of time. */
++  from: string | null;
++}
++
++/** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
++ *  one with no from-date when none has; null when no rate applies yet. */
++export function rateOn(rates: Rate[], grade: Grade, date: string): string | null {
++  let best: Rate | null = null;
++  for (const r of rates) {
++    if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
++    if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
++  }
++  return best?.pct ?? null;
+ }
+ 
+ /** What is due on an amount at a rate: amount times pct, divided by 100, rounded half up to two
+@@ -29,9 +42,10 @@ export class RatesService {
+     return firstValueFrom(this.http.get<Rate[]>(this.url(sheet), { headers: this.session.headers() }));
+   }
+ 
+-  set(sheet: string, grade: Grade, pct: string): Promise<Rate> {
++  /** A null from sets the rate that applies from the beginning of time. */
++  set(sheet: string, grade: Grade, pct: string, from: string | null): Promise<Rate> {
+     return firstValueFrom(
+-      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct }, { headers: this.session.headers() }),
++      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from }, { headers: this.session.headers() }),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/rates.ts b/src/main/frontend/src/app/features/people/rates.ts
+index 91291cd6..672d7f14 100644
+--- a/src/main/frontend/src/app/features/people/rates.ts
++++ b/src/main/frontend/src/app/features/people/rates.ts
+@@ -1,11 +1,12 @@
+-import { Component, inject, input, output, signal } from '@angular/core';
++import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { GRADES, Grade } from './people.service';
+-import { Rate, RatesService } from './rates.service';
++import { Rate, RatesService, rateOn } from './rates.service';
+ 
+ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+-// The rate of each grade on the sheet, and the form that sets a grade's rate.
++// The rates of each grade on the sheet, each from its from-date, with the one in force on the
++// sheet's today, and the form that sets a grade's rate from a date.
+ @Component({
+   selector: 'app-rates',
+   template: `
+@@ -31,12 +32,21 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+           [value]="pct()"
+           (input)="pct.set(value($event)); error.set(null)"
+         />
++        <label for="rate-form-from">From</label>
++        <input
++          id="rate-form-from"
++          type="date"
++          data-testid="rate-form-from"
++          [value]="from()"
++          (input)="from.set(value($event)); error.set(null)"
++        />
+         <button type="submit" data-testid="rate-form-submit">Set rate</button>
+         @if (error(); as message) {
+           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
+         }
+       </form>
+       <table data-testid="rate-list">
++        <caption>Rate in force on {{ session.today() }}</caption>
+         <thead>
+           <tr>
+             <th scope="col">Grade</th>
+@@ -45,15 +55,36 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+         </thead>
+         <tbody>
+           @for (g of grades; track g) {
+-            <tr [attr.data-testid]="rateOf(g) === null ? null : 'rate-row-' + g + '-start'">
++            <tr>
+               <td>{{ g }}</td>
+               <td [attr.data-testid]="'rate-current-' + g">
+-                <span [attr.data-testid]="rateOf(g) === null ? null : 'rate-pct'">{{ rateOf(g) ?? 'n/a' }}</span>
++                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ currentOf(g) ?? 'n/a' }}</span>
+               </td>
+             </tr>
+           }
+         </tbody>
+       </table>
++      @if (sorted().length > 0) {
++        <table data-testid="rate-history">
++          <caption>All rates</caption>
++          <thead>
++            <tr>
++              <th scope="col">Grade</th>
++              <th scope="col">From</th>
++              <th scope="col">Rate (%)</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
++              <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
++                <td>{{ r.grade }}</td>
++                <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
++                <td data-testid="rate-pct">{{ r.pct }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+     </section>
+   `,
+   styles: `
+@@ -72,6 +103,10 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+       border-collapse: collapse;
+       margin-bottom: 1rem;
+     }
++    caption {
++      text-align: left;
++      font-weight: bold;
++    }
+     th,
+     td {
+       text-align: left;
+@@ -80,17 +115,24 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+   `,
+ })
+ export class Rates {
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
+   private readonly service = inject(RatesService);
+ 
+-  /** The sheet's rates, by grade. */
++  /** The sheet's rates. */
+   readonly rates = input.required<Rate[]>();
++  /** The rates by grade, then by from-date (one with none first). */
++  protected readonly sorted = computed(() =>
++    [...this.rates()].sort(
++      (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
++    ),
++  );
+   /** A grade's rate was set. */
+   readonly saved = output<Rate>();
+ 
+   protected readonly grades = GRADES;
+   protected readonly grade = signal<Grade>('A');
+   protected readonly pct = signal('');
++  protected readonly from = signal('');
+   protected readonly error = signal<string | null>(null);
+ 
+   protected value(event: Event): string {
+@@ -101,8 +143,10 @@ export class Rates {
+     return (event.target as HTMLSelectElement).value as Grade;
+   }
+ 
+-  protected rateOf(grade: Grade): string | null {
+-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
++  /** The grade's rate in force on the sheet's today. */
++  protected currentOf(grade: Grade): string | null {
++    const today = this.session.today();
++    return today === null ? null : rateOn(this.rates(), grade, today);
+   }
+ 
+   protected async submit(event: Event): Promise<void> {
+@@ -115,11 +159,17 @@ export class Rates {
+       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    const from = this.from().trim();
++    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
++      this.error.set('Type a from-date as YYYY-MM-DD, or leave it blank.');
++      return;
++    }
+     try {
+-      const rate = await this.service.set(sheet, this.grade(), pct);
++      const rate = await this.service.set(sheet, this.grade(), pct, from || null);
+       if (this.session.sheetId() !== sheet) return;
+       this.saved.emit(rate);
+       this.pct.set('');
++      this.from.set('');
+     } catch {
+       this.error.set('That rate could not be set.');
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2772aa46..254d07e9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -91,10 +91,10 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** What is due on the claim at its person's rate now: amount times pct, divided by 100, rounded half
+-     * up to two decimals; null when their grade has no rate. */
++    /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
++     * divided by 100, rounded half up to two decimals; null when no rate of their grade applies then. */
+     private BigDecimal dueOf(Claim claim, Person person) {
+-        return rates.findBySheetIdAndGrade(claim.getSheetId(), person.getGrade())
++        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                 .orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 163e5afe..e97ad9c7 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -7,8 +7,10 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+-/** A sheet's rate for a grade: a percent (0.00 or more, two decimals). */
++/** A sheet's rate for a grade: a percent (0.00 or more, two decimals), in force from its from-date on
++ * (from the beginning of time when it has none). */
+ @Entity
+ @Table(name = "rate")
+ public class Rate {
+@@ -26,12 +28,16 @@ public class Rate {
+     @Column(name = "pct", nullable = false, precision = 7, scale = 2)
+     private BigDecimal pct;
+ 
++    @Column(name = "from_date")
++    private LocalDate from;
++
+     protected Rate() {
+     }
+ 
+-    public Rate(String sheetId, String grade, BigDecimal pct) {
++    public Rate(String sheetId, String grade, LocalDate from, BigDecimal pct) {
+         this.sheetId = sheetId;
+         this.grade = grade;
++        this.from = from;
+         this.pct = pct;
+     }
+ 
+@@ -47,6 +53,11 @@ public class Rate {
+         return grade;
+     }
+ 
++    /** The date the rate applies from; null when it applies from the beginning of time. */
++    public LocalDate getFrom() {
++        return from;
++    }
++
+     public BigDecimal getPct() {
+         return pct;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 23f72f0b..b7d658f0 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -23,15 +24,19 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class RateController {
+ 
+-    /** A grade's rate; the percent is sent as text with two decimals so it is never rounded on the way. */
+-    public record RateView(String grade, String pct) {
++    /** A grade's rate and the date it applies from (null: from the beginning of time); the percent is
++     * sent as text with two decimals so it is never rounded on the way. */
++    public record RateView(String grade, String pct, LocalDate from) {
+         static RateView of(Rate rate) {
+-            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
++                    rate.getFrom());
+         }
+     }
+ 
+-    /** A rate: a percent of 0.00 or more, with up to two decimals. */
+-    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
++    /** A rate: a percent of 0.00 or more, with up to two decimals, and the date it applies from (null: from
++     * the beginning of time). */
++    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
++            LocalDate from) {
+ 
+         BigDecimal pctValue() {
+             return new BigDecimal(pct.trim()).setScale(2);
+@@ -55,6 +60,6 @@ public class RateController {
+             @PathVariable @Pattern(regexp = "[ABC]") String grade,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid RateRequest request) {
+-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.pctValue()));
++        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.pctValue()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+index 8d713524..55db7f41 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+@@ -1,12 +1,30 @@
+ package net.officefloor.hq.app.rate;
+ 
++import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface RateRepository extends JpaRepository<Rate, Long> {
+ 
+-    List<Rate> findBySheetIdOrderByGradeAsc(String sheetId);
++    /** The sheet's rates, by grade, then by from-date (one with none first). */
++    @Query("SELECT r FROM Rate r WHERE r.sheetId = :sheetId ORDER BY r.grade ASC, r.from ASC NULLS FIRST")
++    List<Rate> findBySheetIdOrderByGradeAndFrom(String sheetId);
+ 
+-    Optional<Rate> findBySheetIdAndGrade(String sheetId, String grade);
++    List<Rate> findBySheetIdAndGrade(String sheetId, String grade);
++
++    @Query("SELECT r FROM Rate r WHERE r.sheetId = :sheetId AND r.grade = :grade AND r.from IS NULL")
++    Optional<Rate> findUndated(String sheetId, String grade);
++
++    Optional<Rate> findBySheetIdAndGradeAndFrom(String sheetId, String grade, LocalDate from);
++
++    /** The grade's rate in force on {@code date}: the one with the latest from-date on or before it, or
++     * the one with no from-date when none has; empty when no rate applies yet. */
++    default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
++        return findBySheetIdAndGrade(sheetId, grade).stream()
++                .filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
++                .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 64645cc5..1a8d6b4e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.rate;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+@@ -9,7 +11,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** The rate each grade has on each sheet. Setting a grade's rate replaces the one it had. */
++/** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time).
++ * Setting a grade's rate for a from-date it already has a rate for replaces that rate. */
+ @Service
+ public class RateService {
+ 
+@@ -23,26 +26,29 @@ public class RateService {
+         this.audit = audit;
+     }
+ 
+-    /** The sheet's rates, by grade. */
++    /** The sheet's rates, by grade, then by from-date. */
+     @Transactional(readOnly = true)
+     public List<Rate> list(String sheetId) {
+-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
++        return rates.findBySheetIdOrderByGradeAndFrom(sheetId);
+     }
+ 
+     @Transactional
+-    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
++    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+         if (!sheets.existsById(sheetId)) {
+             throw new SheetNotFoundException();
+         }
+-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
++        Rate rate = (from == null ? rates.findUndated(sheetId, grade)
++                : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElse(null);
+         if (rate == null) {
+-            rate = rates.saveAndFlush(new Rate(sheetId, grade, pct));
++            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, pct));
+         } else {
+             rate.setPct(pct);
+             rates.flush();
+         }
+-        audit.change("RATE_SET", sheetId, user, "grade=" + grade,
+-                "rate=" + rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        List<String> fields = new ArrayList<>(List.of("grade=" + grade,
++                "rate=" + rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
++        if (from != null) fields.add("from=" + from);
++        audit.change("RATE_SET", sheetId, user, fields.toArray(String[]::new));
+         return rate;
+     }
+ }
+diff --git a/src/main/resources/db/migration/V10__rate_from.sql b/src/main/resources/db/migration/V10__rate_from.sql
+new file mode 100644
+index 00000000..08f8ba48
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__rate_from.sql
+@@ -0,0 +1,5 @@
++-- A rate applies from its from-date on; a rate with no from-date applies from the beginning of
++-- time. A grade may have several rates, one per from-date (one with none).
++ALTER TABLE rate ADD COLUMN from_date DATE;
++DROP INDEX rate_sheet_grade;
++CREATE UNIQUE NULLS NOT DISTINCT INDEX rate_sheet_grade_from ON rate (sheet_id, grade, from_date);
