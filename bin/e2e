@@ -8,16 +8,30 @@ export BASE_URL="http://localhost:${PORT}"
 # Known audit file, shared by the app (bin/start) and the specs (support/audit.ts). Absolute.
 export AUDIT_FILE="${AUDIT_FILE:-$PWD/.run/audit.log}"
 
+# Refuse to run against a server that is not ours: an app left running on $PORT (an earlier
+# bin/start that was never stopped, another sandbox) would take the tests and fail them all.
+if curl -fsS "${BASE_URL}/actuator/health" >/dev/null 2>&1; then
+  echo "bin/e2e: something is already serving on port ${PORT}; stop it (bin/stop) or set PORT to a free port" >&2
+  exit 2
+fi
+
 bin/build
 bin/start
 cleanup() { bin/stop || true; }
 trap cleanup EXIT
 
-# Wait for readiness (Actuator health), then run the Playwright specs against BASE_URL.
-for i in $(seq 1 60); do
-  if curl -fsS "${BASE_URL}/actuator/health" >/dev/null 2>&1; then break; fi
+# Wait for readiness (Actuator health), then run the Playwright specs against BASE_URL. A loaded
+# machine can take minutes to bring the JVM up; running the specs before it is ready fails every
+# one of them for no reason, so wait long and fail loudly rather than run against nothing.
+ready=0
+for i in $(seq 1 300); do
+  if curl -fsS "${BASE_URL}/actuator/health" >/dev/null 2>&1; then ready=1; break; fi
   sleep 1
 done
+if [ "$ready" != 1 ]; then
+  echo "bin/e2e: the app did not become healthy on port ${PORT} within 300s; see .run/app.log" >&2
+  exit 2
+fi
 
 # Install deps + the Chromium browser (both cached after first run), then run the specs.
 ( cd e2e && npm ci --silent && npx --yes playwright install chromium && npx playwright test )
