@@ -1,0 +1,64 @@
+{
+  "checkpoint": 130,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp130_period-comparison",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "93043be8ce4345706ae0402e208f2665d729d140",
+  "reset_sha": "",
+  "preagent_sha": "2e73949e983e3d26de5341faf7844874cb8a8bf7",
+  "prev_sha": "2e73949e983e3d26de5341faf7844874cb8a8bf7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.28647799999999995,
+    "input_tokens": 20,
+    "output_tokens": 2791,
+    "cache_read_tokens": 247570,
+    "cache_creation_tokens": 22633,
+    "num_turns": 10,
+    "duration_ms": 200859,
+    "duration_api_ms": 28300,
+    "model": "claude-opus-5-5",
+    "session_id": "4b2fc81a-62fe-44ee-b1b6-d4dadf44279f",
+    "stop_reason": "success",
+    "result_text": "The summary's period table now has a **Change** column, and all 4 tests in `bin/e2e` pass.\n\nEach period shows its due-total minus the due-total of the period before it by start date, with two decimals and a minus sign when it's lower. The earliest period shows nothing. Each value is in `summary-period-<name>-change`.\n\nThe whole change is in `src/main/frontend/src/app/features/people/summary.ts`. It works from the per-period due-totals the summary already gets, so nothing changed on the server or in the stored data, and nothing new goes to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.28647799999999995,
+        "num_turns": 10,
+        "duration_ms": 200859,
+        "duration_api_ms": 28300,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp130.agent.jsonl",
+  "agent_diff_file": "cp130.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
