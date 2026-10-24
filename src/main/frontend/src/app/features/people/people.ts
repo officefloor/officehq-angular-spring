@@ -443,6 +443,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 <th scope="col">Retired</th>
               }
               <th scope="col">Retired from</th>
+              <th scope="col">Flag</th>
               @if (shows('hold')) {
                 <th scope="col">On hold</th>
               }
@@ -527,6 +528,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                   <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
                 }
                 <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
+                <td data-testid="person-flag-shown">{{ (p.flag ?? '') | figure }}</td>
                 @if (shows('hold')) {
                   <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
                 }
@@ -692,6 +694,29 @@ import { FigurePipe } from '../../core/figure.pipe';
                     (click)="hold(p)"
                   >
                     Hold
+                  </button>
+                  <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
+                  <input
+                    [id]="'person-flag-reason-' + p.id"
+                    data-testid="person-flag-reason"
+                    [value]="flagReasons()[p.id] ?? ''"
+                    (input)="setHoldDate(flagReasons, p.id, value($event))"
+                  />
+                  <label [for]="'person-flag-until-' + p.id">Flag until</label>
+                  <input
+                    [id]="'person-flag-until-' + p.id"
+                    data-testid="person-flag-until"
+                    placeholder="YYYY-MM-DD"
+                    [value]="flagUntils()[p.id] ?? ''"
+                    (input)="setHoldDate(flagUntils, p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-flag"
+                    [attr.aria-label]="'Flag ' + p.name"
+                    (click)="flag(p)"
+                  >
+                    Flag
                   </button>
                   <label [for]="'person-alias-input-' + p.id">Alias</label>
                   <input
@@ -910,6 +935,8 @@ export class People {
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdFroms = signal<Record<number, string>>({});
   protected readonly holdTos = signal<Record<number, string>>({});
+  protected readonly flagReasons = signal<Record<number, string>>({});
+  protected readonly flagUntils = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
@@ -1363,6 +1390,8 @@ export class People {
       this.statementAsOfs.set({});
       this.holdFroms.set({});
       this.holdTos.set({});
+      this.flagReasons.set({});
+      this.flagUntils.set({});
       this.aliasInputs.set({});
       this.patrons.set([]);
       this.snapshots.set([]);
@@ -1795,6 +1824,34 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That person could not be held.' }));
+    }
+  }
+
+  /** Flag the person with the reason typed on their row until the date typed; refused for anyone but
+   *  a steward, and when the reason is blank. */
+  protected async flag(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const reason = (this.flagReasons()[person.id] ?? '').trim();
+    const until = (this.flagUntils()[person.id] ?? '').trim();
+    if (reason === '') {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a reason for the flag.' }));
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
+      return;
+    }
+    try {
+      const saved = await this.service.flag(sheet, person.id, reason, until);
+      if (this.sheet() !== sheet) return;
+      this.put(saved);
+      this.flagReasons.update(({ [person.id]: _, ...rest }) => rest);
+      this.flagUntils.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Only a steward can flag a person.' }));
     }
   }
 

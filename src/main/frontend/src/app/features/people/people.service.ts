@@ -58,6 +58,8 @@ export interface Person {
   retirements: PersonRetirement[];
   /** The person's tags, trimmed, lower-cased, without repeats and sorted; empty when they have none. */
   tags: string[];
+  /** The reason of the person's flag in force on the sheet's today; null when none is. */
+  flag: string | null;
 }
 
 /** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
@@ -253,6 +255,16 @@ export class PeopleService {
   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { from, to }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Flag the person with `reason` until `until` (YYYY-MM-DD); refused (409) for anyone but a
+   *  steward, and when the reason is blank. */
+  flag(sheet: string, id: number, reason: string, until: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/flag`, { reason, until }, {
         headers: this.session.headers(),
       }),
     );

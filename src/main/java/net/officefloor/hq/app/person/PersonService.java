@@ -9,6 +9,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -30,11 +32,13 @@ public class PersonService {
     private final PersonTree tree;
     private final SheetTagRepository tagRepository;
     private final PersonSnapshotRepository snapshots;
+    private final SettingsService settings;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
             SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
-            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots) {
+            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots, SettingsService settings) {
         this.people = people;
+        this.settings = settings;
         this.snapshots = snapshots;
         this.tagRepository = tagRepository;
         this.tree = tree;
@@ -147,14 +151,12 @@ public class PersonService {
         if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
-        boolean termsChanged;
+        // The terms are recorded when those saved differ from the terms shown, those in force today.
+        boolean termsChanged = !Objects.equals(person.termsOn(today), terms);
         if (termsFrom == null) {
-            termsChanged = !Objects.equals(person.getTerms(), terms);
             person.setTerms(terms);
         } else {
-            List<PersonTerms> was = person.getDatedTerms();
             person.setTerms(terms, termsFrom);
-            termsChanged = !sameTerms(was, person.getDatedTerms());
         }
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setContact(contact);
@@ -168,17 +170,6 @@ public class PersonService {
         audit.change("PERSON_EDITED", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return person;
-    }
-
-    /** Whether two lists of dated terms, by from-date, give the same terms from the same dates. */
-    private static boolean sameTerms(List<PersonTerms> a, List<PersonTerms> b) {
-        if (a.size() != b.size()) return false;
-        for (int i = 0; i < a.size(); i++) {
-            if (!a.get(i).getFrom().equals(b.get(i).getFrom()) || !Objects.equals(a.get(i).getTerms(), b.get(i).getTerms())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the
@@ -240,6 +231,23 @@ public class PersonService {
         people.flush();
         audit.change("PERSON_UNRETIRED", sheetId, user, "name=" + person.getName(), "on=" + today);
         rollup.recordSince(sheetId, user, before);
+        return person;
+    }
+
+    /** Flags the person with {@code reason} (kept without the spaces around it) until {@code until},
+     * in place of any flag they had: while the sheet's today is on or before it, only a steward may open
+     * a claim of theirs. Refused unless the user is a steward, and when the reason is blank or the until
+     * date is left out. */
+    @Transactional
+    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || reason == null || reason.isBlank() || until == null) {
+            throw new PersonFlagException();
+        }
+        person.flag(reason.trim(), until);
+        people.flush();
+        audit.change("PERSON_FLAGGED", sheetId, user, "name=" + person.getName(), "reason=" + reason.trim(),
+                "until=" + until);
         return person;
     }
 

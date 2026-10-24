@@ -102,6 +102,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason a steward flagged the person for; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the person's flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** The person's place in the sheet's list: people are listed by it, lowest first. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -176,6 +184,8 @@ public class Person {
         datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom())));
         copy.contact = contact;
         copy.tags = tags;
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         copy.position = position;
         return copy;
     }
@@ -345,6 +355,30 @@ public class Person {
      * transfer. */
     public LocalDate getArrivedOn() {
         return arrivedOn;
+    }
+
+    /** Flags the person with {@code reason} until {@code until}, in place of any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    public LocalDate getFlagUntil() {
+        return flagUntil;
+    }
+
+    /** Whether the person's flag is in force on {@code today}: on or before its until date. */
+    public boolean isFlaggedOn(LocalDate today) {
+        return flagReason != null && flagUntil != null && today != null && !today.isAfter(flagUntil);
+    }
+
+    /** The reason of the person's flag in force on {@code today}; null when none is. */
+    public String flagOn(LocalDate today) {
+        return isFlaggedOn(today) ? flagReason : null;
     }
 
     public Long getPosition() {

@@ -65,7 +65,7 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<RetirementView> retirements, List<String> tags, Integer undatedTerms) {
+            List<RetirementView> retirements, List<String> tags, Integer undatedTerms, String flag) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
@@ -73,7 +73,7 @@ public class PersonController {
                     person.getHolds().stream().map(HoldView::of).toList(), person.termsOn(today),
                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
                     person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags(),
-                    person.getTerms());
+                    person.getTerms(), person.flagOn(today));
         }
     }
 
@@ -105,6 +105,10 @@ public class PersonController {
 
     /** The date a person is retired from (the sheet's today when left out). */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** A flag to put on a person: a reason (not blank) and the last day it is in force. */
+    public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** A hold to put a person on: from {@code from} (the sheet's today when left out) to {@code to}
@@ -413,6 +417,14 @@ public class PersonController {
             @RequestBody(required = false) HoldRequest request) {
         return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from(), request == null ? null : request.to()));
+    }
+
+    @PostMapping("/{personId}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FlagRequest request) {
+        return view(sheetId, service.flag(sheetId.trim(), user.trim(), personId, request.reason(), request.until()));
     }
 
     @ExceptionHandler(PersonContactTakenException.class)

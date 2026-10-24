@@ -38,10 +38,17 @@ public class SheetHistory {
      * {@code chain} holds the sheet and the sheets below it whose parents are being read. */
     private SheetAsOf asOf(String sheetId, LocalDate date, Set<String> chain) {
         Map<String, String> latest = new LinkedHashMap<>();
+        LocalDate upTo = date;
+        if (chain.size() > 1) {
+            // A parent started on a later date than the day read stood then as at the end of its first day.
+            LocalDate first = jdbc.query("SELECT MIN(made_on) FROM sheet_history WHERE sheet_id = ?",
+                    rs -> rs.next() && rs.getDate(1) != null ? rs.getDate(1).toLocalDate() : null, sheetId);
+            if (first != null && first.isAfter(date)) upTo = first;
+        }
         jdbc.query("SELECT entity, entity_id, state FROM sheet_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
                 rs -> {
                     latest.put(rs.getString(1) + ":" + rs.getString(2), rs.getString(3));
-                }, sheetId, Date.valueOf(date));
+                }, sheetId, Date.valueOf(upTo));
         Map<String, Class<?>> types = new HashMap<>();
         HistoryListener.KEPT.forEach((type, name) -> types.put(name, type));
         Sheet sheet = null;

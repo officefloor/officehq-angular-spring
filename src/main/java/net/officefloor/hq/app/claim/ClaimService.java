@@ -296,7 +296,7 @@ public class ClaimService {
      * is recorded as reversed. A voided claim keeps its number, if it had one. An open of a claim whose due
  * is above the review threshold in force on its date leaves it in REVIEW instead, opened by the user but
  * with no number yet, until a steward reviews it (see {@link #review}); a REVIEW claim can only be voided
- * here. */
+ * here. While the claim's person is flagged on the sheet's today, only a steward may open it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         return changeStatus(sheetId, user, claimId, next, null);
@@ -327,6 +327,10 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
+        if (next == ClaimStatus.OPEN && person.isFlaggedOn(sheets.today(sheetId))
+                && settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimNotStewardException();
+        }
         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
         if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
