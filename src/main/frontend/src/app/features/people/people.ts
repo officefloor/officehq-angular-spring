@@ -5,7 +5,7 @@ import { Claims } from './claims';
 import { Delegations } from './delegations';
 import { Holidays } from './holidays';
 import { Header } from './header';
-import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
+import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
 import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
@@ -26,7 +26,7 @@ import { Audit } from './audit';
 // The people on the active sheet, in list order (each has a position; new people go to the end, and
 // the up and down buttons on a row swap the person with their neighbour), and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
-// and shows what they have claimed (their OPEN, PENDING and SETTLED claims) and what is due on it: the sum of
+// and shows what they have claimed (their OPEN, PENDING and SETTLED claims, corrections left out) and what is due on it: the sum of
 // those claims' due figures; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped). A statement
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
@@ -1601,9 +1601,12 @@ export class People {
   }
 
   /** What the person's OPEN and SETTLED claims add up to (unbound OPEN ones dated within a hold left
-   *  out); drafts and voided claims do not count. */
+   *  out); drafts, voided claims and corrections do not count. */
   private claimedCentsOf(person: Person): number {
-    return this.claimsOf(person.id).reduce((sum, c) => sum + (this.countsLive(c, person) ? cents(c.amount) : 0), 0);
+    return this.claimsOf(person.id).reduce(
+      (sum, c) => sum + (this.countsLive(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
+      0,
+    );
   }
 
   /** The grade's rate in force on the sheet's today. */

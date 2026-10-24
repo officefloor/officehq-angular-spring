@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
- * claims, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
+ * claims that are not corrections, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
  * retirement date is reached on the sheet's today, that no statement binds)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
@@ -92,7 +92,7 @@ public class RollupService {
             Basis basis = live(sheetId);
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
-                claimed = claimed.add(claim.getAmount());
+                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 BigDecimal figure = shownOf(claim, person);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
