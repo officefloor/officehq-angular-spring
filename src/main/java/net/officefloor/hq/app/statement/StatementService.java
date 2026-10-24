@@ -27,8 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
  * counts (OPEN, PENDING or SETTLED, but not an OPEN one deferred on the sheet's today, nor an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
  * each that does not count unbound;
  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
- * charges included (a claim with no figure is skipped), at most the sheet's cap. A late charge is never bound: it keeps following
- * the sheet's today.
+ * charges included (a claim with no figure is skipped), at most the sheet's cap. A bound claim shows and
+ * totals what was due on it as it showed then, late charge included: its late charge no longer follows the
+ * sheet's today, and the next statement binds it to that figure again.
  * <p>
  * A steward can cancel a person's last statement: the claims it bound become live again (a figure a
  * statement before it bound is not restored), and the person's statement before it is their last again.
@@ -105,8 +106,11 @@ public class StatementService {
         }
         LocalDate date = basis.today();
         Map<Long, BigDecimal> figures = new HashMap<>();
+        Map<Long, BigDecimal> shown = new HashMap<>();
         for (Claim claim : stood) {
-            if (RollupService.countsLive(claim, then, date)) figures.put(claim.getId(), rollup.figureOf(claim, then, basis));
+            if (!RollupService.countsLive(claim, then, date)) continue;
+            figures.put(claim.getId(), rollup.figureOf(claim, then, basis));
+            shown.put(claim.getId(), rollup.shownOf(claim, then, basis));
         }
         int counted = figures.size();
         // The person's due-total as shown (the sum of those claims' figures, at most the sheet's cap): n/a
@@ -115,7 +119,7 @@ public class StatementService {
         BigDecimal dueTotal = total == null ? null : total.setScale(2, RoundingMode.HALF_EVEN);
         Statement statement = statements.saveAndFlush(new Statement(sheetId, personId, date, dueTotal, counted));
         for (Claim claim : theirs) {
-            if (figures.containsKey(claim.getId())) claim.bind(figures.get(claim.getId()), statement.getId());
+            if (figures.containsKey(claim.getId())) claim.bind(figures.get(claim.getId()), shown.get(claim.getId()), statement.getId());
             else claim.unbind();
         }
         claims.flush();

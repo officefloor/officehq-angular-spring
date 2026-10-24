@@ -37,7 +37,8 @@ public class ClaimController {
     /** A claim, with who opened it (null until opened), whether it is bound to the figure it had at its
      * person's last statement, its status log and the date it was last deferred until (null when never
      * deferred; it is deferred while OPEN and the sheet's today is before that date), its proofs count, whether it was added while its period was soft-closed (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
-     * the figure it is bound to (null when unbound or bound to no figure), and the date it was last reminded
+     * the figure it is bound to (null when unbound or bound to no figure), what was due on it as it showed when
+     * bound, late charge included (null when unbound, bound to no figure, or bound before that was kept), and the date it was last reminded
      * (null when never), are sent as text with two
      * decimals so they are never rounded on the way. Its comments follow, oldest first, each as
      * {@code <user> on <date>: <text>}. Its lines follow, in the order they were added, each as
@@ -45,7 +46,7 @@ public class ClaimController {
      * {@link Claim#addedMark}), which decides the forward-only rates it takes. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
-            String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
+            String openedBy, boolean stated, String statedDue, String statedShown, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived) {
@@ -72,7 +73,7 @@ public class ClaimController {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
+                    text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()), text(claim.getStatedShown()),
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),

@@ -164,7 +164,7 @@ export interface Lateness {
  *  is overdue (OPEN or PENDING, not deferred, and past its due-by plus any grace of its grade on the
  *  sheet's today, see overdueFrom), the late percent in force on that boundary date (that date plus
  *  30, 60, 90 ... days) of that figure plus the charges of the boundaries before it (compounding), rounded
- *  like the claim's due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
+ *  like the claim's due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0 on any other claim, and on a correction. A statement binds it (see claimShownCents); settling fixes it in. */
 export function lateChargeCents(
   claim: Claim,
   figureCents: number,
@@ -187,7 +187,8 @@ export function lateChargeCents(
 }
 
 /** What is due on a claim as it shows and totals, in cents: a claim settled at a rate keeps what was
- *  due on it then; otherwise the greater of the sheet's floor in force on the claim's date and its
+ *  due on it then; a claim a statement bound shows what was due on it as it showed then, late charge
+ *  included; otherwise the greater of the sheet's floor in force on the claim's date and its
  *  figure (see claimDueCents) plus its late charge (a correction has neither); null when it has no
  *  figure. `floors` is every floor recorded, oldest first. */
 export function claimShownCents(
@@ -201,6 +202,7 @@ export function claimShownCents(
   const figure = claimDueCents(claim, rates, grades, rounding);
   if (figure === null || isCorrection(claim)) return figure;
   if (isFrozen(claim)) return figure;
+  if (claim.stated && claim.statedShown !== null) return cents(claim.statedShown);
   return Math.max(figure + lateChargeCents(claim, figure, late, rounding, grades), cents(inForce(floors, claim.date, FLOOR)));
 }
 

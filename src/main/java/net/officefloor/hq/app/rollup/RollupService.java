@@ -403,7 +403,8 @@ public class RollupService {
     }
 
     /** What is due on the claim as it shows and totals now: what was fixed when it was settled at a
-     * rate; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
+     * rate; otherwise, while a statement binds it, what was due on it as it showed then, late charge
+     * included; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
     public BigDecimal shownOf(Claim claim, Person person) {
         return shownOf(claim, person, live(claim.getSheetId()));
     }
@@ -412,6 +413,7 @@ public class RollupService {
     public BigDecimal shownOf(Claim claim, Person person, Basis basis) {
         BigDecimal figure = figureOf(claim, person, basis);
         if (frozen(claim)) return figure;
+        if (claim.isStated() && claim.getStatedShown() != null) return claim.getStatedShown();
         return liveDueOf(claim, figure, basis);
     }
 
@@ -437,7 +439,7 @@ public class RollupService {
     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, plus
      * any grace of its grade (see {@link Basis#overdueFrom}), on the sheet's today), the sheet's late percent
      * in force on that boundary date (that date plus 30, 60, 90 ... days) of that figure plus the charges of the boundaries before it (compounding), rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
-     * PENDING, or not overdue (a deferred claim is not), on a correction and on a waived claim. A statement never binds it: it follows the sheet's today until the claim is settled. */
+     * PENDING, or not overdue (a deferred claim is not), on a correction and on a waived claim. A claim a statement binds shows the charge it had then instead (see {@link #shownOf}). */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         return lateChargeOf(claim, figure, live(claim.getSheetId()));
     }

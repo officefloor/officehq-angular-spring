@@ -283,8 +283,8 @@ public class ClaimService {
     /** Move the claim to {@code next}; refused when the user's role may not open, settle or void it (see
      * {@link SettingsService#allowed}), and when its current status does not allow it (a PENDING
      * claim can only be voided here: it is approved or rejected instead). Settling it fixes what is due
-     * on it then (the figure it is bound to, when a statement bound it, otherwise its person's rate then)
-     * together with its late charge then (none on a correction); the user who opened it or last edited it
+     * on it as it shows then (what a statement bound it to, late charge included, when one did, otherwise its
+     * person's rate then together with its late charge then, none on a correction); the user who opened it or last edited it
      * cannot settle it,
      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
@@ -338,8 +338,7 @@ public class ClaimService {
             claim.setOpenedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
-            BigDecimal due = rollup.liveDueOf(claim, figure);
+            BigDecimal due = rollup.shownOf(claim, person);
             refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
@@ -566,8 +565,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
-     * figure: the one a statement bound it to, when one did, otherwise its person's rate then, together with its late charge then).
+    /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
+     * shows then: what a statement bound it to, late charge included, when one did, otherwise its person's rate then together with its late charge then).
      * Refused unless the claim is PENDING, when the user is not a steward or opened or last edited the claim, and when it
      * has no proofs and that due is above the proof threshold in force on its date. */
     @Transactional
@@ -577,8 +576,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
-        BigDecimal due = rollup.liveDueOf(claim, figure);
+        BigDecimal due = rollup.shownOf(claim, person);
         refuseUnproved(claim, person, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);

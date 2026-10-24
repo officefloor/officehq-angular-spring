@@ -85,6 +85,11 @@ public class Claim {
     @Column(name = "stated_due", precision = 12, scale = 2)
     private BigDecimal statedDue;
 
+    /** What was due on the claim as it showed when its last statement bound it, late charge and floor
+     * included; null while unbound, when it had no figure then, and when it was bound before this was kept. */
+    @Column(name = "stated_shown", precision = 12, scale = 2)
+    private BigDecimal statedShown;
+
     /** The id of the statement that bound the claim; null while unbound. */
     @Column(name = "stated_by")
     private Long statedBy;
@@ -318,14 +323,20 @@ public class Claim {
         return statedDue;
     }
 
+    public BigDecimal getStatedShown() {
+        return statedShown;
+    }
+
     public Long getStatedBy() {
         return statedBy;
     }
 
-    /** Bind the claim to {@code due}, the figure it has now, by the statement {@code statementId}. */
-    public void bind(BigDecimal due, Long statementId) {
+    /** Bind the claim to {@code due}, the figure it has now, and {@code shown}, what is due on it as it
+     * shows now (late charge and floor included), by the statement {@code statementId}. */
+    public void bind(BigDecimal due, BigDecimal shown, Long statementId) {
         this.stated = true;
         this.statedDue = due;
+        this.statedShown = shown;
         this.statedBy = statementId;
     }
 
@@ -333,6 +344,7 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+        this.statedShown = null;
         this.statedBy = null;
     }
 

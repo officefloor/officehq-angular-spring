@@ -135,7 +135,7 @@ public class PersonTransferService {
         Map<Claim, Claim> copies = new HashMap<>();
         for (Claim claim : moving) {
             Claim copy = claim.transferredTo(toSheetId, arrived.getId());
-            if (claim.isStated()) copy.bind(claim.getStatedDue(), claim.getStatedBy());
+            if (claim.isStated()) copy.bind(claim.getStatedDue(), claim.getStatedShown(), claim.getStatedBy());
             copy.setListed(sheets.nextInSequence(toSheetId, "listed"));
             copies.put(claim, copy);
         }
