@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp172_pending-bound",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    36
+  ],
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "request": {
+    "spec": "A PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "16fb215af9f23c0fe6263cafead8be91e88e8c70",
+  "reset_sha": "",
+  "preagent_sha": "93335fab713021494547dc78cbf372416b2c81dc",
+  "prev_sha": "93335fab713021494547dc78cbf372416b2c81dc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8952104000000001,
+    "input_tokens": 48,
+    "output_tokens": 8700,
+    "cache_read_tokens": 1156092,
+    "cache_creation_tokens": 61225,
+    "num_turns": 24,
+    "duration_ms": 502699,
+    "duration_api_ms": 118977,
+    "model": "claude-opus-5-5",
+    "session_id": "31f5f735-1cb8-49c2-89b3-bc13c4af532c",
+    "stop_reason": "success",
+    "result_text": "I've made the change: a PENDING claim that a statement has bound now shows and totals the bound figure. With the real clock, 3 of the 4 tests pass. Scenario 1 fails on a check that has nothing to do with PENDING claims, and depends on today's real date.\n\n**What changed** (the stored data needed nothing new, since PENDING claims already kept their bound figure):\n- **Server, `RollupService`:**\n  - `figureOf` now uses the bound figure for any claim a statement has bound, PENDING ones included.\n  - `countsAs` treats a bound PENDING claim as bound, so it stays in the totals even when a hold or retirement would otherwise leave it out.\n- **Server, `ClaimService.approve`:** approving a bound PENDING claim now fixes its due from the bound figure, matching what a plain settle already did. Before, it used the person's current rate.\n- **Front end:** the same two rules in `rates.service.ts` (`claimDueCents`) and `people.ts` (`countsAs`), so the screen agrees with the server.\n- I updated the doc comments that said a PENDING claim is never bound.\n\n**The scenario 1 failure:** at `acceptance.spec.ts:322`, `rate-current-C` reads `n/a` but the test expects `5.00`.\n- The test creates a parent sheet (`${sheet}-p`) and never sets its today, so the app gives it the real date, 2026-10-25.\n- That sheet's rates are recorded in its history under that date. The view as of 2026-04-02 therefore can't see them, and the C rate falls through to `n/a`.\n- That is how the app is built (a new sheet starts on the real date), so the test only passes when it is run on or before 2026-04-02.\n\n**How I checked it:** I temporarily fixed the start date for new sheets at 2026-01-01 and ran `bin/e2e`, and all 4 tests passed. I then put the original line back and rebuilt. The code you have now is unchanged apart from the PENDING change.\n\n**Decision for you:** I didn't change how a sheet's start date or its as-of history work just to get past this one check. Scenario 1 will keep failing until that's decided. If you want it passing, say so and I'll look at changing how the as-of view reads a parent sheet's rates.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8952104000000001,
+        "num_turns": 24,
+        "duration_ms": 502699,
+        "duration_api_ms": 118977,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp172.agent.jsonl",
+  "agent_diff_file": "cp172.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
