@@ -546,7 +546,7 @@ public class ClaimService {
     }
 
     /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
-     * live figure, which no statement binds while it is PENDING, together with its late charge then).
+     * figure: the one a statement bound it to, when one did, otherwise its person's rate then, together with its late charge then).
      * Refused unless the claim is PENDING, when the user is not a steward or opened or last edited the claim, and when it
      * has no proofs and that due is above the proof threshold in force on its date. */
     @Transactional
@@ -556,7 +556,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal figure = rollup.dueOf(claim, person);
+        BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
         BigDecimal due = rollup.liveDueOf(claim, figure);
         refuseUnproved(claim, person, due);
         claim.setSettledDue(due);

@@ -169,7 +169,7 @@ public class RollupService {
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
      * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when it is dated
      * within one of its person's holds, or its person's retirement date is reached on {@code today}, and
-     * no statement binds it (a PENDING claim is bound by none while it is). */
+     * no statement binds it. */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return countsAs(claim, claim.getStatus(), person, today);
     }
@@ -180,7 +180,7 @@ public class RollupService {
         if (!status.counts()) return false;
         if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
-        boolean bound = claim.isStated() && status != ClaimStatus.PENDING;
+        boolean bound = claim.isStated();
         return bound || !(person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
@@ -389,8 +389,7 @@ public class RollupService {
 
     /** The figure the claim shows and totals now: what was fixed when it was settled at a rate (kept
      * once it is voided);
-     * otherwise, unless it is PENDING (which no statement binds while it is), the figure a statement
-     * bound it to; otherwise what is due on it at its person's rate.
+     * otherwise the figure a statement bound it to (PENDING or not); otherwise what is due on it at its person's rate.
      * Null when it has no figure. */
     public BigDecimal figureOf(Claim claim, Person person) {
         return figureOf(claim, person, live(claim.getSheetId()));
@@ -399,7 +398,7 @@ public class RollupService {
     /** The figure the claim shows on {@code basis} (see {@link #figureOf(Claim, Person)}). */
     public BigDecimal figureOf(Claim claim, Person person, Basis basis) {
         if (frozen(claim)) return claim.getSettledDue();
-        if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) return claim.getStatedDue();
+        if (claim.isStated()) return claim.getStatedDue();
         return dueOf(claim, person, basis);
     }
 

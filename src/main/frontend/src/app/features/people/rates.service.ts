@@ -122,7 +122,7 @@ function isFrozen(claim: Claim): boolean {
 }
 
 /** The figure of a claim, in cents: a claim settled at a rate keeps what was due on it then (and once voided); a
- *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
+ *  claim a statement bound keeps (PENDING or not) the figure it was bound to (null when that was none); otherwise
  *  what is due on its amount at the rate in force on the claim's date of the grade in force
  *  for its person then, rounded as the claim rounds (see roundsHalfUp) — the rate figure alone,
  *  before any late charge or floor (see claimShownCents); null when no rate applies then. A rate saved
@@ -134,7 +134,7 @@ export function claimDueCents(
   rounding: Rounding,
 ): number | null {
   if (isFrozen(claim) && claim.settledDue !== null) return cents(claim.settledDue);
-  if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const grade = gradeOn(grades, claim.date);
   return grade === null ? null : dueCents(cents(claim.amount), rateOn(ratesFor(rates, claim.added), grade, claim.date), roundsHalfUp(claim, rounding));
 }
