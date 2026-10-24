@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -50,24 +51,34 @@ public class PersonService {
         requireFree(sheetId, name, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, name, grade));
-        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
         rollup.recordSince(sheetId, user, before);
         return person;
     }
 
-    /** Saves the person as edited from {@code version}; refused when they have been saved since. */
+    /** The sheet's today; null when the sheet has never been loaded. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+    }
+
+    /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
+     * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
+     * have been saved since. */
     @Transactional
-    public Person update(String sheetId, String user, long personId, long version, String name, String grade) {
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
         }
         requireFree(sheetId, name, person.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate today = sheetService.today(sheetId);
         person.setName(name);
-        person.setGrade(grade);
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         people.flush();
-        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.gradeOn(today));
         rollup.recordSince(sheetId, user, before);
         return person;
     }

@@ -181,6 +181,8 @@ export class Settings {
   protected readonly roleError = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit of the same form meanwhile is ignored. */
   private savingSettings = false;
+  /** A settings submit came while one was waiting; it is made once that one is answered. */
+  private settingsResubmit = false;
   private savingRole = false;
 
   constructor() {
@@ -214,7 +216,10 @@ export class Settings {
 
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
-    if (this.savingSettings) return;
+    if (this.savingSettings) {
+      this.settingsResubmit = true;
+      return;
+    }
     this.settingsError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -247,38 +252,43 @@ export class Settings {
       if (saveLimit) {
         const settings = await this.service.setClerkLimit(sheet, limit || null);
         if (this.session.sheetId() !== sheet) return;
-        this.limitChanged = false;
+        if (this.limit().trim() === limit) this.limitChanged = false;
         this.show(settings);
       }
       if (saveFloor) {
         const settings = await this.service.setFloor(sheet, floor);
         if (this.session.sheetId() !== sheet) return;
-        this.floorChanged = false;
+        if (this.floorInput().trim() === floor) this.floorChanged = false;
         this.show(settings);
         this.floorSaved.emit(cents(settings.floor));
       }
       if (saveTerms) {
         const settings = await this.service.setTerms(sheet, terms);
         if (this.session.sheetId() !== sheet) return;
-        this.termsChanged = false;
+        if (this.termsInput().trim() === terms) this.termsChanged = false;
         this.show(settings);
         this.termsSaved.emit(settings.terms);
       }
       if (saveLatePct) {
         const settings = await this.service.setLatePct(sheet, latePct);
         if (this.session.sheetId() !== sheet) return;
-        this.latePctChanged = false;
+        if (this.latePctInput().trim() === latePct) this.latePctChanged = false;
         this.show(settings);
         this.latePctSaved.emit(settings.latePct);
       }
-      this.limit.set(this.clerkLimit() ?? '');
-      this.floorInput.set(this.floor());
-      this.termsInput.set(this.terms());
-      this.latePctInput.set(this.latePct());
+      // Show what is in force in each field, but keep what was typed in one while the save was waiting.
+      if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
+      if (!this.floorChanged) this.floorInput.set(this.floor());
+      if (!this.termsChanged) this.termsInput.set(this.terms());
+      if (!this.latePctChanged) this.latePctInput.set(this.latePct());
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
       this.savingSettings = false;
+      if (this.settingsResubmit) {
+        this.settingsResubmit = false;
+        void this.saveSettings(event);
+      }
     }
   }
 

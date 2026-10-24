@@ -80,7 +80,7 @@ public class RollupService {
                 due = due.add(figure);
                 any = true;
             }
-            boolean rated = today != null && rates.findInForce(sheetId, person.getGrade(), today).isPresent();
+            boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             if (any || rated) dueTotal = dueTotal.add(due);
             figures.put(person.getId(), new Figures(person.getName(), text(claimed), any || rated ? text(due) : NONE));
@@ -143,10 +143,10 @@ public class RollupService {
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
      * divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when no
-     * rate of their grade applies then. */
+     * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
         BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(zero());
-        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))

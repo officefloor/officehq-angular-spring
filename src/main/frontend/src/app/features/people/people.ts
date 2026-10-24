@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money, overdue } from './claims.service';
-import { GRADES, Grade, Patron, PeopleService, Person } from './people.service';
+import { GRADES, Grade, Patron, PeopleService, Person, gradeOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -62,6 +62,14 @@ import { Statement, StatementsService } from './statements.service';
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input
+          id="person-form-grade-from"
+          type="date"
+          data-testid="person-form-grade-from"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -133,7 +141,7 @@ import { Statement, StatementsService } from './statements.service';
             @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
-                <td data-testid="person-grade">{{ p.grade }}</td>
+                <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
@@ -151,7 +159,7 @@ import { Statement, StatementsService } from './statements.service';
                     [personId]="p.id"
                     [personName]="p.name"
                     [claims]="claimsOf(p.id)"
-                    [grade]="p.grade"
+                    [grades]="p.grades"
                     [rates]="rates()"
                     [floor]="floor()"
                     [periods]="periods()"
@@ -369,7 +377,7 @@ export class People {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        sums[period.name] += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
+        sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness()) ?? 0;
       }
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
@@ -391,6 +399,8 @@ export class People {
   );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
+  /** The date a save gives the grade from; blank for the sheet's today. */
+  protected readonly gradeFrom = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
@@ -573,9 +583,14 @@ export class People {
   }
 
   /** The grade's rate in force on the sheet's today. */
-  private rateOf(grade: Grade): string | null {
+  private rateOf(grade: Grade | null): string | null {
     const today = this.session.today();
-    return today === null ? null : rateOn(this.rates(), grade, today);
+    return today === null || grade === null ? null : rateOn(this.rates(), grade, today);
+  }
+
+  /** The person's grade in force on the sheet's today. */
+  protected gradeNow(person: Person): Grade {
+    return gradeOn(person.grades, this.session.today()) ?? person.grade;
   }
 
   /** The sum of what is due on each of the person's OPEN and SETTLED claims, as each claim shows
@@ -591,12 +606,12 @@ export class People {
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
-      const due = claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness());
+      const due = claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness());
       if (due === null) continue;
       sum += due;
       any = true;
     }
-    return any || this.rateOf(person.grade) !== null ? sum : null;
+    return any || this.rateOf(this.gradeNow(person)) !== null ? sum : null;
   }
 
   /** How many of the person's counting claims are overdue, and the sum of what is due on them, in
@@ -608,7 +623,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
       count++;
-      sum += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
+      sum += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness()) ?? 0;
     }
     return { count, cents: sum };
   }
@@ -643,7 +658,8 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);
-    this.grade.set(person.grade);
+    this.grade.set(this.gradeNow(person));
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -651,6 +667,7 @@ export class People {
     this.editingId.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -672,7 +689,10 @@ export class People {
         const added = await this.service.add(sheet, fields);
         if (this.sheet() === sheet) this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.service.update(sheet, id, this.editingVersion, fields);
+        const saved = await this.service.update(sheet, id, this.editingVersion, {
+          ...fields,
+          gradeFrom: this.gradeFrom() || null,
+        });
         if (this.sheet() === sheet) this.put(saved);
       }
       if (this.sheet() === sheet) this.reset();
@@ -685,7 +705,7 @@ export class People {
         if (this.editingId() === current.id) {
           this.editingVersion = current.version;
           this.name.set(current.name);
-          this.grade.set(current.grade);
+          this.grade.set(this.gradeNow(current));
         }
         this.error.set('Someone else saved this person since you opened it; their changes are shown.');
         return;

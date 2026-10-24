@@ -1,17 +1,25 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * A person on a sheet: a name and a grade (A, B or C). The name is kept without the spaces around
+ * A person on a sheet: a name and a dated grade (A, B or C): each grade they are given is in force
+ * from its from-date, the first from the beginning of time (see {@link #gradeOn}). The name is kept without the spaces around
  * it and is unique on the sheet without regard to case, compared through its {@link #keyOf key}.
  */
 @Entity
@@ -31,8 +39,10 @@ public class Person {
     @Column(name = "name_key", nullable = false)
     private String nameKey;
 
-    @Column(name = "grade", nullable = false)
-    private String grade;
+    /** The grades the person has been given, at most one per from-date. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonGrade> grades = new ArrayList<>();
 
     /** The date the person is retired from; null while they are not retired. */
     @Column(name = "retired_from")
@@ -53,7 +63,7 @@ public class Person {
     public Person(String sheetId, String name, String grade) {
         this.sheetId = sheetId;
         setName(name);
-        this.grade = grade;
+        this.grades.add(new PersonGrade(grade, null));
     }
 
     /** The form of a name that is unique on a sheet: without surrounding spaces, in lower case. */
@@ -78,12 +88,28 @@ public class Person {
         this.nameKey = keyOf(name);
     }
 
-    public String getGrade() {
-        return grade;
+    /** The grades the person has been given, by from-date (the one with none first). */
+    public List<PersonGrade> getGrades() {
+        return grades.stream()
+                .sorted(Comparator.comparing(PersonGrade::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
     }
 
-    public void setGrade(String grade) {
-        this.grade = grade;
+    /** Gives the person {@code grade} from {@code from}, in place of one given from the same date. */
+    public void setGrade(String grade, LocalDate from) {
+        grades.removeIf(g -> from.equals(g.getFrom()));
+        grades.add(new PersonGrade(grade, from));
+    }
+
+    /** The grade in force on {@code date}: the one with the latest from-date on or before it, or the
+     * first one given when none has; the latest given when {@code date} is null. */
+    public String gradeOn(LocalDate date) {
+        PersonGrade best = null;
+        for (PersonGrade g : getGrades()) {
+            if (date != null && g.getFrom() != null && g.getFrom().isAfter(date)) continue;
+            best = g;
+        }
+        return best == null ? null : best.getGrade();
     }
 
     public LocalDate getRetiredFrom() {

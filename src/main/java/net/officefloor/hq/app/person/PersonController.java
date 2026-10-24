@@ -29,11 +29,20 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PersonController {
 
-    /** A person; {@code retiredFrom} is null while they are not retired. */
-    public record PersonView(long id, String name, String grade, long version, boolean retired,
-            LocalDate retiredFrom, boolean held) {
-        public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+    /** A grade a person was given and the date it is in force from (null: the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+        public static GradeView of(PersonGrade grade) {
+            return new GradeView(grade.getGrade(), grade.getFrom());
+        }
+    }
+
+    /** A person: the grade in force on the sheet's {@code today}, and every grade they were given by
+     * from-date; {@code retiredFrom} is null while they are not retired. */
+    public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+            boolean retired, LocalDate retiredFrom, boolean held) {
+        public static PersonView of(Person person, LocalDate today) {
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                    person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
@@ -58,10 +67,12 @@ public class PersonController {
     }
 
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
-     * without regard to case) and grade, one of A, B or C. */
+     * without regard to case) and grade, one of A, B or C, given from {@code gradeFrom} on a save (the
+     * sheet's today when left out; a person's first grade applies from the beginning of time). */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             Long version) {
     }
 
@@ -79,7 +90,8 @@ public class PersonController {
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+        LocalDate today = service.today(sheetId.trim());
+        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today)).toList();
     }
 
     @GetMapping("/patrons")
@@ -102,7 +114,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
+        return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
     }
 
     @PutMapping("/{personId}")
@@ -114,8 +126,8 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "version is required");
         }
         try {
-            return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade()));
+            return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                    request.name(), request.grade(), request.gradeFrom()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));
@@ -127,7 +139,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody(required = false) RetireRequest request) {
-        return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId,
+        return view(sheetId, service.retire(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from()));
     }
 
@@ -136,11 +148,18 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid HoldRequest request) {
-        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, request.held()));
+        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, request.held()));
     }
 
     @ExceptionHandler(PersonStaleException.class)
     public ResponseEntity<StaleView> stale(PersonStaleException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new StaleView("stale", PersonView.of(e.getCurrent())));
+        Person current = e.getCurrent();
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new StaleView("stale", PersonView.of(current, service.today(current.getSheetId()))));
+    }
+
+    /** The person as the sheet shows them on its today. */
+    private PersonView view(String sheetId, Person person) {
+        return PersonView.of(person, service.today(sheetId.trim()));
     }
 }

@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, dueByOf, money, overdue } from './claims.service';
-import { Grade } from './people.service';
+import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
 
@@ -116,8 +116,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The person's grade. */
-  readonly grade = input.required<Grade>();
+  /** The grades the person was given, each from its date. */
+  readonly grades = input.required<PersonGrade[]>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor, in cents: the least a claim's live due can be. */
@@ -154,13 +154,13 @@ export class Claims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
-   *  their grade applies then; never below the sheet's floor; with its late charge added while it is
+  /** What is due on the claim at the rate in force on the claim's date of the person's grade in force
+   *  then; n/a when no rate of that grade applies then; never below the sheet's floor; with its late charge added while it is
    *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
     const late = { terms: this.terms(), today: this.session.today(), latePct: this.latePct() };
-    const due = claimShownCents(claim, this.rates(), this.grade(), this.floor(), late);
+    const due = claimShownCents(claim, this.rates(), this.grades(), this.floor(), late);
     return due === null ? 'n/a' : money(due);
   }
 

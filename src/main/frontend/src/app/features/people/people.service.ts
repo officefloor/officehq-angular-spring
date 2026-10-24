@@ -8,10 +8,20 @@ export type Grade = 'A' | 'B' | 'C';
 
 export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
 
+/** A grade a person was given and the date it is in force from (YYYY-MM-DD); null when it applies
+ *  from the beginning of time (the first grade they were given). */
+export interface PersonGrade {
+  grade: Grade;
+  from: string | null;
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: Grade;
+  /** Every grade the person was given, by from-date (the one with none first). */
+  grades: PersonGrade[];
   /** Raised each time the person is saved. */
   version: number;
   /** Retired as soon as a retirement date is set, whatever the date. */
@@ -39,6 +49,19 @@ export interface QuickAdded {
 export interface PersonFields {
   name: string;
   grade: Grade;
+  /** On a save, the date the grade is given from (YYYY-MM-DD); null for the sheet's today. */
+  gradeFrom?: string | null;
+}
+
+/** The grade in force on a date: the one with the latest from-date on or before it, or the first
+ *  one given when none has; the latest given when there is no date. */
+export function gradeOn(grades: PersonGrade[], date: string | null): Grade | null {
+  let best: PersonGrade | null = null;
+  for (const g of grades) {
+    if (date !== null && g.from !== null && g.from > date) continue;
+    if (best === null || (best.from ?? '') <= (g.from ?? '')) best = g;
+  }
+  return best?.grade ?? null;
 }
 
 // The people kept on a sheet, read from and written to the server.
