@@ -18,6 +18,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. */
   readonly today = signal<string | null>(null);
+  /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
+  readonly loads = signal(0);
   readonly signedIn = computed(() => this.user() !== null);
 
   signIn(name: string): boolean {
@@ -44,6 +46,7 @@ export class Session {
         }),
       );
       this.show(view);
+      this.loads.update((n) => n + 1);
       return true;
     } catch {
       return false;
