@@ -51,6 +51,8 @@ export interface Claim {
   tags: string[];
   /** The reason from the sheet's list the claim was voided with; null unless it was voided with one. */
   voidReason: string | null;
+  /** The claim's comments, oldest first, each as `<user> on <date>: <text>`. */
+  comments: string[];
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -253,6 +255,16 @@ export class ClaimsService {
   addProof(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Comment on a claim with `text` (not blank), kept with the user and the sheet's today; refused
+   *  (400) when blank and (403) for a viewer. */
+  comment(sheet: string, id: number, text: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/comments`, { text }, {
         headers: this.session.headers(),
       }),
     );

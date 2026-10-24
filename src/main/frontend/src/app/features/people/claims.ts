@@ -111,6 +111,26 @@ const PAST: Record<ClaimAction, string> = {
                 <li data-testid="claim-log-line">{{ line }}</li>
               }
             </ol>
+            <ol class="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+              @for (line of c.comments; track $index) {
+                <li data-testid="claim-comments-line">{{ line }}</li>
+              }
+            </ol>
+            <label [for]="fieldId('comment-' + c.id)">Comment</label>
+            <input
+              [id]="fieldId('comment-' + c.id)"
+              data-testid="claim-comment-text"
+              [value]="commentTexts()[c.id] ?? ''"
+              (input)="setCommentText(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-comment-add"
+              [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date"
+              (click)="comment(c)"
+            >
+              Comment
+            </button>
             <label [for]="fieldId('reject-reason-' + c.id)">Reject reason</label>
             <input
               [id]="fieldId('reject-reason-' + c.id)"
@@ -338,6 +358,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The reason chosen from the sheet's list for voiding each claim, by claim id. */
   protected readonly voidReasons = signal<Record<number, string>>({});
+  /** The comment typed on each claim, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The date typed to re-date each claim to, by claim id. */
@@ -625,6 +647,38 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : 'Only a settled claim can be re-settled.',
+      }));
+    }
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((texts) => ({ ...texts, [id]: text }));
+    this.clearRowError(id);
+  }
+
+  /** Comment on the claim with the text typed on its row; an empty comment, and a viewer's or one on an
+   *  archived sheet or its as-of view, is refused with an error. */
+  protected async comment(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = (this.commentTexts()[claim.id] ?? '').trim();
+    if (text === '') {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Type a comment to add to that claim.' }));
+      return;
+    }
+    try {
+      const changed = await this.service.comment(sheet, claim.id, text);
+      if (this.session.sheetId() !== sheet) return;
+      this.commentTexts.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 403
+          ? 'You may not comment on that claim.'
+          : 'That comment could not be added.',
       }));
     }
   }

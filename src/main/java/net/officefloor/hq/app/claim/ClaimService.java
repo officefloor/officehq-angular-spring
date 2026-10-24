@@ -38,6 +38,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
+    private final ClaimCommentRepository comments;
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
@@ -51,7 +52,9 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
-            Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons) {
+            Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons,
+            ClaimCommentRepository comments) {
+        this.comments = comments;
         this.voidReasons = voidReasons;
         this.tagRepository = tagRepository;
         this.holidays = holidays;
@@ -78,6 +81,26 @@ public class ClaimService {
         if (of.isEmpty()) return Map.of();
         return logs.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
                 .collect(Collectors.groupingBy(ClaimLog::getClaimId));
+    }
+
+    /** The comments on the claims, by claim id, each oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimComment>> commentsOf(List<Claim> of) {
+        if (of.isEmpty()) return Map.of();
+        return comments.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
+                .collect(Collectors.groupingBy(ClaimComment::getClaimId));
+    }
+
+    /** Comment on the claim, whatever its status: {@code text} (not blank) is kept with the user and the
+     * sheet's today. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long claimId, String text) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        comments.save(new ClaimComment(claim.getId(), user, sheets.today(sheetId), text));
+        record("COMMENT_ADDED", user, person, claim, claim.getNumber(), "text=" + text);
+        return claim;
     }
 
     @Transactional

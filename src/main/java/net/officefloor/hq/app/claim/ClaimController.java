@@ -38,16 +38,19 @@ public class ClaimController {
      * deferred; it is deferred while OPEN and the sheet's today is before that date), its proofs count, whether it was added while its period was soft-closed (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
      * the figure it is bound to (null when unbound or bound to no figure), and the date it was last reminded
      * (null when never), are sent as text with two
-     * decimals so they are never rounded on the way. */
+     * decimals so they are never rounded on the way. Its comments follow, oldest first, each as
+     * {@code <user> on <date>: <text>}. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, String voidReason) {
-        /** The claims as views, each with its status log, in the order given. */
+            String ref, List<String> tags, String voidReason, List<String> comments) {
+        /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
-            return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
+            Map<Long, List<ClaimComment>> comments = service.commentsOf(claims);
+            return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()),
+                    comments.getOrDefault(c.getId(), List.of()))).toList();
         }
 
         /** The claim as a view, with its status log. */
@@ -55,7 +58,7 @@ public class ClaimController {
             return allOf(List.of(claim), service).get(0);
         }
 
-        static ClaimView of(Claim claim, List<ClaimLog> log) {
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -63,7 +66,12 @@ public class ClaimController {
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason());
+                    claim.getVoidReason(), comments.stream().map(ClaimView::line).toList());
+        }
+
+        /** A comment as shown: {@code <user> on <date>: <text>}. */
+        private static String line(ClaimComment comment) {
+            return comment.getBy() + " on " + comment.getDate() + ": " + comment.getText();
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -116,6 +124,10 @@ public class ClaimController {
     public record VoidRequest(@Size(max = 200) String reason) {
     }
 
+    /** A comment on a claim: its text, which may not be blank. */
+    public record CommentRequest(@NotBlank @Size(max = 1000) String text) {
+    }
+
     /** The date a claim is deferred until. */
     public record DeferRequest(@NotNull LocalDate until) {
     }
@@ -166,8 +178,12 @@ public class ClaimController {
         if (asOf != null) {
             SheetAsOf then = history.read(sheetId.trim(), asOf);
             Map<Long, List<ClaimLog>> logs = service.logsOf(then.claims());
+            Map<Long, List<ClaimComment>> comments = service.commentsOf(then.claims());
             return then.claims().stream()
-                    .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())))).toList();
+                    .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())),
+                            comments.getOrDefault(c.getId(), List.of()).stream()
+                                    .filter(k -> !k.getDate().isAfter(asOf)).toList()))
+                    .toList();
         }
         return views(service.list(sheetId.trim()));
     }
@@ -255,6 +271,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.addProof(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/comments")
+    public ClaimView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CommentRequest request) {
+        return view(service.comment(sheetId.trim(), user.trim(), claimId, request.text().trim()));
     }
 
     @PostMapping("/claims/{claimId}/remind")
