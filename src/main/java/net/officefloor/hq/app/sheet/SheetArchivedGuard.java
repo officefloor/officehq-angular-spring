@@ -26,7 +26,7 @@ public class SheetArchivedGuard implements WebMvcConfigurer, HandlerInterceptor 
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this)
                 .addPathPatterns("/api/sheets/*/**")
-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/claims/bulk-*",
+                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*",
                         "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
     }
 

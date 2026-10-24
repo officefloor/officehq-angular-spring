@@ -46,6 +46,8 @@ export class Session {
   readonly loads = signal(0);
   /** The signed-in user's locale on the active sheet: how figures are shown to them ('en' or 'de'). */
   readonly locale = signal<Locale>('en');
+  /** The people-list columns the signed-in user has switched off on the active sheet. */
+  readonly hiddenColumns = signal<readonly string[]>([]);
   readonly signedIn = computed(() => this.user() !== null);
 
   signIn(name: string): boolean {
@@ -59,6 +61,7 @@ export class Session {
     this.parent.set(null);
     this.asOf.set(null);
     this.locale.set('en');
+    this.hiddenColumns.set([]);
     return true;
   }
 
@@ -99,8 +102,14 @@ export class Session {
           headers: this.headers(),
         }),
       );
+      const { hidden } = await firstValueFrom(
+        this.http.get<{ hidden: string[] }>(`/api/sheets/${encodeURIComponent(view.id)}/columns`, {
+          headers: this.headers(),
+        }),
+      );
       this.show(view);
       this.locale.set(locale);
+      this.hiddenColumns.set(hidden);
       this.loads.update((n) => n + 1);
       return true;
     } catch {
@@ -179,6 +188,29 @@ export class Session {
       if (this.sheetId() === sheet) this.locale.set(view.locale);
       return true;
     } catch {
+      return false;
+    }
+  }
+
+  /** Switch off exactly these people-list columns for the signed-in user on the active sheet; resolves
+   *  false when refused. */
+  async setHiddenColumns(hidden: readonly string[]): Promise<boolean> {
+    const sheet = this.sheetId();
+    if (!sheet) return false;
+    const was = this.hiddenColumns();
+    this.hiddenColumns.set(hidden);
+    try {
+      const view = await firstValueFrom(
+        this.http.put<{ hidden: string[] }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/columns`,
+          { hidden },
+          { headers: this.headers() },
+        ),
+      );
+      if (this.sheetId() === sheet) this.hiddenColumns.set(view.hidden);
+      return true;
+    } catch {
+      if (this.sheetId() === sheet) this.hiddenColumns.set(was);
       return false;
     }
   }

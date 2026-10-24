@@ -248,6 +248,20 @@ import { FigurePipe } from '../../core/figure.pipe';
         />
         Show retired
       </label>
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of columns; track c.key) {
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'column-' + c.key"
+              [checked]="shows(c.key)"
+              (change)="showColumn(c.key, checked($event))"
+            />
+            {{ (c.label) | figure }}
+          </label>
+        }
+      </fieldset>
       <label for="sort-by">Sort people by</label>
       <select id="sort-by" data-testid="sort-by" (change)="sortKey.set(sortKeyOf($event))">
         @for (k of sortKeys; track k) {
@@ -365,37 +379,67 @@ import { FigurePipe } from '../../core/figure.pipe';
               <th scope="col"><span class="visually-hidden">Select</span></th>
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
-              <th scope="col">Terms</th>
-              <th scope="col">Contact</th>
+              @if (shows('terms')) {
+                <th scope="col">Terms</th>
+              }
+              @if (shows('contact')) {
+                <th scope="col">Contact</th>
+              }
               <th scope="col">Tags</th>
-              <th scope="col">Aliases</th>
+              @if (shows('aliases')) {
+                <th scope="col">Aliases</th>
+              }
               <th scope="col">Clashing</th>
               <th scope="col">Came from</th>
-              <th scope="col">Claimed</th>
-              <th scope="col">Due</th>
+              @if (shows('claimed')) {
+                <th scope="col">Claimed</th>
+              }
+              @if (shows('due-total')) {
+                <th scope="col">Due</th>
+              }
               <th scope="col">Settled due</th>
               <th scope="col">Open due</th>
               @for (pd of periods(); track pd.id) {
                 <th scope="col">Due in {{ (pd.name) | figure }}</th>
               }
-              <th scope="col">Excess</th>
+              @if (shows('excess')) {
+                <th scope="col">Excess</th>
+              }
               <th scope="col">Cut total</th>
-              <th scope="col">Overdue</th>
-              <th scope="col">Overdue due</th>
+              @if (shows('overdue-count')) {
+                <th scope="col">Overdue</th>
+              }
+              @if (shows('overdue-total')) {
+                <th scope="col">Overdue due</th>
+              }
               <th scope="col">Due aged 0–30 days</th>
               <th scope="col">Due aged 31–60 days</th>
               <th scope="col">Due aged 61+ days</th>
-              <th scope="col">Statements</th>
-              <th scope="col">Last stated</th>
-              <th scope="col">Stated on</th>
-              <th scope="col">Retired</th>
+              @if (shows('statement-count')) {
+                <th scope="col">Statements</th>
+              }
+              @if (shows('stated-total')) {
+                <th scope="col">Last stated</th>
+              }
+              @if (shows('statement-date')) {
+                <th scope="col">Stated on</th>
+              }
+              @if (shows('retired')) {
+                <th scope="col">Retired</th>
+              }
               <th scope="col">Retired from</th>
-              <th scope="col">On hold</th>
+              @if (shows('hold')) {
+                <th scope="col">On hold</th>
+              }
               <th scope="col">Active</th>
               <th scope="col">Watched</th>
-              <th scope="col">Patrons</th>
+              @if (shows('patrons')) {
+                <th scope="col">Patrons</th>
+              }
               <th scope="col">Snapshots</th>
-              <th scope="col">Backing</th>
+              @if (shows('backing')) {
+                <th scope="col">Backing</th>
+              }
               <th scope="col">Claims</th>
               <th scope="col">Plans</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -415,43 +459,73 @@ import { FigurePipe } from '../../core/figure.pipe';
                 </td>
                 <td data-testid="person-name">{{ (p.name) | figure }}</td>
                 <td data-testid="person-grade">{{ (gradeNow(p)) | figure }}</td>
-                <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
-                <td data-testid="person-contact">{{ (p.contact ?? '') | figure }}</td>
+                @if (shows('terms')) {
+                  <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
+                }
+                @if (shows('contact')) {
+                  <td data-testid="person-contact">{{ (p.contact ?? '') | figure }}</td>
+                }
                 <td data-testid="person-tags">{{ (p.tags.join(', ')) | figure }}</td>
-                <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | figure }}</td>
+                @if (shows('aliases')) {
+                  <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | figure }}</td>
+                }
                 <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | figure }}</td>
                 <td data-testid="person-origin">{{ (p.origin ?? '') | figure }}</td>
-                <td data-testid="person-claimed">{{ (claimedOf(p)) | figure }}</td>
-                <td data-testid="person-due-total">{{ (dueTotalOf(p) ?? 'n/a') | figure }}</td>
+                @if (shows('claimed')) {
+                  <td data-testid="person-claimed">{{ (claimedOf(p)) | figure }}</td>
+                }
+                @if (shows('due-total')) {
+                  <td data-testid="person-due-total">{{ (dueTotalOf(p) ?? 'n/a') | figure }}</td>
+                }
                 @let split = splitOf(p);
                 <td data-testid="person-settled-total">{{ (money(split.settled)) | figure }}</td>
                 <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
                 @for (pd of periods(); track pd.id) {
                   <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (money(personPeriodCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
                 }
-                <td data-testid="person-excess">{{ (excessOf(p)) | figure }}</td>
+                @if (shows('excess')) {
+                  <td data-testid="person-excess">{{ (excessOf(p)) | figure }}</td>
+                }
                 <td data-testid="person-cut-total">{{ (money(cutCents().get(p.id) ?? 0)) | figure }}</td>
-                <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
-                <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
+                @if (shows('overdue-count')) {
+                  <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
+                }
+                @if (shows('overdue-total')) {
+                  <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
+                }
                 @let aged = agedOf(p);
                 <td data-testid="person-aged-0-30">{{ (money(aged[0])) | figure }}</td>
                 <td data-testid="person-aged-31-60">{{ (money(aged[1])) | figure }}</td>
                 <td data-testid="person-aged-61">{{ (money(aged[2])) | figure }}</td>
-                <td data-testid="person-statement-count">{{ (statementsOf(p.id).length) | figure }}</td>
-                <td data-testid="person-stated-total">{{ (lastStatementOf(p.id)?.dueTotal ?? '') | figure }}</td>
-                <td data-testid="person-statement-date">{{ (lastStatementOf(p.id)?.date ?? '') | figure }}</td>
-                <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
+                @if (shows('statement-count')) {
+                  <td data-testid="person-statement-count">{{ (statementsOf(p.id).length) | figure }}</td>
+                }
+                @if (shows('stated-total')) {
+                  <td data-testid="person-stated-total">{{ (lastStatementOf(p.id)?.dueTotal ?? '') | figure }}</td>
+                }
+                @if (shows('statement-date')) {
+                  <td data-testid="person-statement-date">{{ (lastStatementOf(p.id)?.date ?? '') | figure }}</td>
+                }
+                @if (shows('retired')) {
+                  <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
+                }
                 <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
-                <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
+                @if (shows('hold')) {
+                  <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
+                }
                 <td data-testid="person-active">{{ (isActive(p) ? 'yes' : 'no') | figure }}</td>
                 <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | figure }}</td>
-                <td data-testid="person-patrons">{{ (patronNamesOf(p.id)) | figure }}</td>
+                @if (shows('patrons')) {
+                  <td data-testid="person-patrons">{{ (patronNamesOf(p.id)) | figure }}</td>
+                }
                 <td>
                   @for (line of snapshotLinesOf(p.id); track $index) {
                     <div data-testid="person-snapshot-line">{{ (line) | figure }}</div>
                   }
                 </td>
-                <td data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</td>
+                @if (shows('backing')) {
+                  <td data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</td>
+                }
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -763,6 +837,25 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen is first opened, kept across sheet loads. */
   protected readonly showRetired = signal(false);
+  /** The people-list columns each user may switch off for their own screen. */
+  protected readonly columns: readonly { key: string; label: string }[] = [
+    { key: 'claimed', label: 'Claimed' },
+    { key: 'due-total', label: 'Due' },
+    { key: 'statement-count', label: 'Statements' },
+    { key: 'stated-total', label: 'Last stated' },
+    { key: 'statement-date', label: 'Stated on' },
+    { key: 'overdue-count', label: 'Overdue' },
+    { key: 'overdue-total', label: 'Overdue due' },
+    { key: 'patrons', label: 'Patrons' },
+    { key: 'backing', label: 'Backing' },
+    { key: 'hold', label: 'On hold' },
+    { key: 'retired', label: 'Retired' },
+    { key: 'terms', label: 'Terms' },
+    { key: 'contact', label: 'Contact' },
+    { key: 'aliases', label: 'Aliases' },
+    { key: 'excess', label: 'Excess' },
+  ];
+  private readonly hiddenColumns = computed(() => new Set(this.session.hiddenColumns()));
   protected readonly sortKeys = SORT_KEYS;
   /** How this screen orders the people it lists; added (list order) when the screen is first
    *  opened, kept across sheet loads. Only what the screen shows is reordered. */
@@ -1232,6 +1325,16 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Whether the signed-in user's screen shows this people-list column. */
+  protected shows(column: string): boolean {
+    return !this.hiddenColumns().has(column);
+  }
+
+  protected showColumn(column: string, on: boolean): void {
+    const hidden = this.session.hiddenColumns().filter((c) => c !== column);
+    void this.session.setHiddenColumns(on ? hidden : [...hidden, column]);
   }
 
   protected checked(event: Event): boolean {

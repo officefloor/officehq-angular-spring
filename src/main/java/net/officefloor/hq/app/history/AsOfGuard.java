@@ -21,7 +21,7 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this)
                 .addPathPatterns("/api/sheets/*/**")
-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/claims/bulk-*");
+                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*");
     }
 
     @Override
