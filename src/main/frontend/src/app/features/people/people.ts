@@ -839,7 +839,8 @@ export class People {
 
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not an OPEN claim
    *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
-   *  holds and no statement binds it (a PENDING claim is bound by none while it is). */
+   *  holds, or its person's retirement date is reached on the sheet's today, and no statement binds it
+   *  (a PENDING claim is bound by none while it is). */
   private countsLive(claim: Claim, person: Person): boolean {
     return this.countsAs(claim, claim.status, person);
   }
@@ -851,7 +852,9 @@ export class People {
     if (!isOpen(as)) return true;
     if (deferred(claim, this.session.today())) return false;
     const bound = claim.stated && status !== 'PENDING';
-    return bound || !heldOn(person.holds, claim.date);
+    const today = this.session.today();
+    const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
+    return bound || !(heldOn(person.holds, claim.date) || retired);
   }
 
   /** Whether the claim counts in a period ending on `end`: by the status it had at the end of

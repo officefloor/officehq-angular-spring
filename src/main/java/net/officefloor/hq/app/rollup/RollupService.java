@@ -27,7 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
- * claims, leaving out the OPEN and PENDING ones dated within one of their holds that no statement binds)
+ * claims, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
+ * retirement date is reached on the sheet's today, that no statement binds)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
@@ -145,8 +146,8 @@ public class RollupService {
 
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
      * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when it is dated
-     * within one of its person's holds and no statement binds it (a PENDING claim is bound by none while
-     * it is). */
+     * within one of its person's holds, or its person's retirement date is reached on {@code today}, and
+     * no statement binds it (a PENDING claim is bound by none while it is). */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return countsAs(claim, claim.getStatus(), person, today);
     }
@@ -158,7 +159,7 @@ public class RollupService {
         if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
         boolean bound = claim.isStated() && status != ClaimStatus.PENDING;
-        return bound || !person.isHeldOn(claim.getDate());
+        return bound || !(person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
     /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was

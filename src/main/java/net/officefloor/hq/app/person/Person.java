@@ -143,6 +143,11 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** Whether the person's retirement date is reached on {@code today}: on or after it. */
+    public boolean isRetiredOn(LocalDate today) {
+        return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
+    }
+
     /** The holds the person has been put on, by from-date. */
     public List<PersonHold> getHolds() {
         return holds.stream()

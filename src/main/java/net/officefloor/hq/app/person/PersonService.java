@@ -100,14 +100,17 @@ public class PersonService {
         return person;
     }
 
-    /** Retires the person from {@code from} (the sheet's today when left out). */
+    /** Retires the person from {@code from} (the sheet's today when left out); the figures it moves are
+     * recorded as {@code user}'s change. */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate dated = from != null ? from : sheetService.today(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         person.setRetiredFrom(dated);
         people.flush();
         audit.change("PERSON_RETIRED", sheetId, user, "name=" + person.getName(), "from=" + dated);
+        rollup.recordSince(sheetId, user, before);
         return person;
     }
 
