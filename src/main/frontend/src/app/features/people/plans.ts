@@ -8,7 +8,7 @@ const EVERY = /^\d{1,5}$/;
 const DAY = /^\d{1,2}$/;
 
 // A person's plans, one line each in the order they were added with how many claims each has made so
-// far, and the form on the row that adds one: an amount, a start date, either every N days (a whole
+// far and its next dates, and the form on the row that adds one: an amount, a start date, either every N days (a whole
 // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
 @Component({
   selector: 'app-plans',
@@ -21,7 +21,8 @@ const DAY = /^\d{1,2}$/;
             from {{ pl.start }}
             @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
             to {{ pl.end }}, made
-            <span data-testid="plan-generated">{{ pl.generated }}</span>
+            <span data-testid="plan-generated">{{ pl.generated }}</span>, next
+            <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
           </li>
         }
       </ul>

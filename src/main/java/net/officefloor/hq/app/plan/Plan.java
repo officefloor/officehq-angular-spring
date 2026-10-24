@@ -120,6 +120,11 @@ public class Plan {
         return due;
     }
 
+    /** The first {@code count} plan dates after {@code today} and on or before the end, earliest first. */
+    public List<LocalDate> nextDates(LocalDate today, int count) {
+        return dates(end).stream().filter(on -> on.isAfter(today)).limit(count).toList();
+    }
+
     /** The plan dates up to {@code last}, earliest first. */
     private List<LocalDate> dates(LocalDate last) {
         List<LocalDate> dates = new ArrayList<>();

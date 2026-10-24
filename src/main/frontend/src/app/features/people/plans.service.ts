@@ -6,7 +6,8 @@ import { Claim } from './claims.service';
 
 /** A person's plan: a claim of `amount` on every plan date (the start, then every `every` days; or,
  *  monthly, `day` of every month from the start's month, the month's last day when it is shorter, those
- *  before the start left out) up to the end, and how many claims it has made so far. */
+ *  before the start left out) up to the end, how many claims it has made so far, and its next dates (the
+ *  first five plan dates after the sheet's today and on or before the end, comma and space separated). */
 export interface Plan {
   id: number;
   personId: number;
@@ -16,6 +17,7 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  nextDates: string;
 }
 
 /** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of

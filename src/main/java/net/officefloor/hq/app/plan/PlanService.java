@@ -53,6 +53,12 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today, which a plan's next dates are after. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     /** Add a plan for the person, every {@code every} days or monthly on {@code day} (exactly one given);
      * refused when the end is before the start, the interval is under 1 day, the day is not 1 to 31, both
      * or neither are given, or the amount is not above zero. Records PLAN_ADDED. */

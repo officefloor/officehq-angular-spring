@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.http.HttpStatus;
@@ -32,13 +33,15 @@ public class PlanController {
 
     /** A plan: its id, its person, its amount (as text with two decimals), start, interval in days (null
      * for a monthly plan), day of the month (null for one every N days), end, and how many claims it has
-     * made so far. */
+     * made so far, and its next dates: the first five plan dates after the sheet's today and on or before
+     * the end, comma and space separated (empty when there are none). */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated) {
-        static PlanView of(Plan p) {
+            LocalDate end, int generated, String nextDates) {
+        static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(),
                     p.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), p.getStart(), p.getEvery(),
-                    p.getDay(), p.getEnd(), p.getGenerated());
+                    p.getDay(), p.getEnd(), p.getGenerated(),
+                    p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")));
         }
     }
 
@@ -83,7 +86,11 @@ public class PlanController {
 
     @GetMapping
     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.plans(sheetId.trim()).stream().map(PlanView::of).toList();
+        String sheet = sheetId.trim();
+        List<Plan> plans = service.plans(sheet);
+        if (plans.isEmpty()) return List.of();
+        LocalDate today = service.today(sheet);
+        return plans.stream().map(p -> PlanView.of(p, today)).toList();
     }
 
     @PostMapping
@@ -91,8 +98,10 @@ public class PlanController {
     public PlanView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
-        return PlanView.of(service.add(sheetId.trim(), user.trim(), request.personId(), request.amountValue(),
-                date(request.start()), request.everyValue(), request.dayValue(), date(request.end())));
+        String sheet = sheetId.trim();
+        return PlanView.of(service.add(sheet, user.trim(), request.personId(), request.amountValue(),
+                date(request.start()), request.everyValue(), request.dayValue(), date(request.end())),
+                service.today(sheet));
     }
 
     @PostMapping("/generate")
