@@ -1,0 +1,101 @@
+{
+  "checkpoint": 28,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp28_grade-dated",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    7,
+    8,
+    10,
+    11,
+    12,
+    13,
+    14,
+    16,
+    17,
+    20,
+    22,
+    23,
+    26,
+    27
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp08_workflow.spec.ts::workflow scenario 3",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+    "cp12_half-even.spec.ts::half even scenario 3",
+    "cp13_four-eyes.spec.ts::four eyes scenario 2",
+    "cp13_four-eyes.spec.ts::four eyes scenario 3",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+    "cp17_periods.spec.ts::periods scenario 1",
+    "cp17_periods.spec.ts::periods scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp22_hold.spec.ts::hold scenario 1",
+    "cp22_hold.spec.ts::hold scenario 3",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+    "cp26_late-charge.spec.ts::late charge scenario 2",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "request": {
+    "spec": "A person's grade is now dated. The person form gains a from-date (default the sheet's today), and\neach save with a grade records that grade from that date, keeping the ones already recorded; the first\ngrade a person was given applies from the beginning of time. A claim uses the grade in force on\nthe claim's date to find its rate; the list shows the grade in force on the sheet's today, and\nPERSON_EDITED carries that same grade, the one in force on the sheet's today after the save (so a\ngrade dated from another day may leave both unchanged). An import line gives its grade from the\nsheet's today.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's grade is now dated. The person form gains a from-date (default the sheet's today), and\neach save with a grade records that grade from that date, keeping the ones already recorded; the first\ngrade a person was given applies from the beginning of time. A claim uses the grade in force on\nthe claim's date to find its rate; the list shows the grade in force on the sheet's today, and\nPERSON_EDITED carries that same grade, the one in force on the sheet's today after the save (so a\ngrade dated from another day may leave both unchanged). An import line gives its grade from the\nsheet's today.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "91bf57c16d8e79f8859a068402cde718bf1d433f",
+  "reset_sha": "",
+  "preagent_sha": "6348f7c4e714261b4ef22cef23e43928e579f4be",
+  "prev_sha": "6348f7c4e714261b4ef22cef23e43928e579f4be",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4134798,
+    "input_tokens": 56,
+    "output_tokens": 17766,
+    "cache_read_tokens": 1795239,
+    "cache_creation_tokens": 87361,
+    "num_turns": 29,
+    "duration_ms": 350739,
+    "duration_api_ms": 225692,
+    "model": "claude-opus-5-5",
+    "session_id": "e7dabbbc-4546-483d-b601-f2f22d445b5c",
+    "stop_reason": "success",
+    "result_text": "A person's grade is now dated, and `bin/e2e` passes all 4 tests.\n\n**How it works**\n- **Stored data:** a new migration, `V25__person_grade_dated.sql`, adds a `person_grade` table holding each grade and the date it applies from. Each person's existing grade is copied in as applying from the beginning of time, and the old `person.grade` column is dropped.\n- **Server:**\n  - Adding a person records their grade from the beginning of time.\n  - Saving an edit records the grade from the form's from-date, or the sheet's today if that is left blank. It replaces only an earlier entry for the same date and keeps the rest.\n  - A claim's due uses the grade in force on the claim's date. The grade the list shows uses the sheet's today.\n  - `PERSON_EDITED` writes the grade in force on the sheet's today after the save. So a grade dated from another day can leave both the list and that audit line unchanged.\n- **Front end:** the person form has a new \"Grade from\" date field (`person-form-grade-from`). The row's grade and every claim, period and overdue figure are worked out from the grade history and the sheet's today, so they stay right when today changes without a reload.\n\n**One fix outside the request.** Scenario 3 failed in the settings form, not in grades. The late percent starts at 0.00, so the test's \"set it to 0.00\" step returned at once while that save was still going on. The next save (5.00) arrived during it and was dropped, and the first save then wrote over the 5.00 that had just been typed. This bug was already in `settings.ts`. I fixed it there: a save made while another is running now goes through once that one finishes, and anything typed during a save is kept.\n\n**The import part of the request doesn't apply yet.** The app has no import feature, so there was nothing to change for \"an import line gives its grade from the sheet's today.\" Quick-add, which creates a new person with grade A, works like adding a person: the grade applies from the beginning of time.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4134798,
+        "num_turns": 29,
+        "duration_ms": 350739,
+        "duration_api_ms": 225692,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp28.agent.jsonl",
+  "agent_diff_file": "cp28.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
