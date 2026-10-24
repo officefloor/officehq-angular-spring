@@ -1,0 +1,64 @@
+{
+  "checkpoint": 42,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp42_rate-end-dates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "94ed4b3495b6e50fb77266f98602198c6309ca1b",
+  "reset_sha": "",
+  "preagent_sha": "6005bc64ff80022f714e9652a0313091e89d2b22",
+  "prev_sha": "6005bc64ff80022f714e9652a0313091e89d2b22",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6257464,
+    "input_tokens": 26,
+    "output_tokens": 7369,
+    "cache_read_tokens": 503312,
+    "cache_creation_tokens": 47200,
+    "num_turns": 14,
+    "duration_ms": 216425,
+    "duration_api_ms": 81146,
+    "model": "claude-opus-5-5",
+    "session_id": "b438ec58-acda-41c4-a381-1b462fc9fb8a",
+    "stop_reason": "success",
+    "result_text": "Rates can now have a to-date, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- The rate form has a new **To** field. Each row in the \"All rates\" table shows its to-date as `rate-to`.\n- `RATE_SET` adds ` to=<date>` at the end of the line when a to-date was given.\n- A to-date before the from-date is refused, both in the form and on the server (it returns 409). The form shows `rate-form-error` and nothing is written to the store or the audit file.\n- If you set a rate again for the same grade and from-date, its to-date is replaced too. Leaving To blank clears an old to-date.\n- A rate applies through its to-date. The rate that would apply to a claim is still the one with the latest from-date on or before the claim's date. If that rate has already ended, due is **n/a**. It does not fall back to an earlier rate: in the test, a claim dated after a short 20% rate ended shows n/a, not the base 10%.\n\n**What follows from n/a**\nThe one rate lookup now treats an ended rate as not in force, on the server and in the browser. So everything that reads due follows:\n- The current rate shown for a grade becomes n/a once its rate has ended.\n- Person and sheet totals leave the claim out.\n- A statement binds the claim at n/a, and it stays n/a even if a later rate is added afterwards.\n- The late charge has nothing to add to.\n\n**Changes**\n- New migration `V34__rate_to.sql` adds a nullable `to_date` column to `rate`.\n- Server: `Rate`, `RateRepository.findInForce`, `RateController`, `RateService`, and a new `RateRefusedException`.\n- Front end: `rates.service.ts` and `rates.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6257464,
+        "num_turns": 14,
+        "duration_ms": 216425,
+        "duration_api_ms": 81146,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp42.agent.jsonl",
+  "agent_diff_file": "cp42.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
