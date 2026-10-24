@@ -377,6 +377,21 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-review-sla">Review SLA (days)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSlaInput()"
+          (input)="reviewSlaInput.set(value($event)); reviewSlaChanged = true; settingsError.set(null)"
+          (keydown)="reviewSlaChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-review-sla-current">{{ (reviewSla() ?? '') | figure }}</span>
+          @if (reviewSla() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-entry-date">Entry date</label>
         <input
           id="setting-entry-date"
@@ -607,6 +622,8 @@ export class Settings {
   protected readonly graceDays = signal<string | null>(null);
   /** The escalation gap as set, as text; null when it is off. */
   protected readonly escalateAfter = signal<string | null>(null);
+  /** The review SLA as set, as text; null when there is none. */
+  protected readonly reviewSla = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when it is off. */
   protected readonly alertThreshold = signal<string | null>(null);
@@ -635,6 +652,7 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfterInput = signal('');
+  protected readonly reviewSlaInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThresholdInput = signal('');
   protected readonly fiscalStartMonthInput = signal('');
@@ -672,6 +690,7 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
   protected escalateAfterChanged = false;
+  protected reviewSlaChanged = false;
   protected potChanged = false;
   protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
@@ -744,8 +763,11 @@ export class Settings {
       this.graceDaysInput.set('');
       this.graceDaysChanged = false;
       this.escalateAfter.set(null);
+      this.reviewSla.set(null);
       this.escalateAfterInput.set('');
+      this.reviewSlaInput.set('');
       this.escalateAfterChanged = false;
+      this.reviewSlaChanged = false;
       this.pot.set(null);
       this.potInput.set('');
       this.potChanged = false;
@@ -879,7 +901,9 @@ export class Settings {
     const graceDays = this.graceDaysInput().trim();
     const saveGraceDays = this.graceDaysChanged || graceDays !== (this.graceDays() ?? '');
     const escalateAfter = this.escalateAfterInput().trim();
+    const reviewSla = this.reviewSlaInput().trim();
     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
+    const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthChanged || fiscalStartMonth !== this.fiscalStartMonth();
     const pot = this.potInput().trim();
@@ -994,6 +1018,10 @@ export class Settings {
     }
     if (saveEscalateAfter && escalateAfter !== '' && !TERMS.test(escalateAfter)) {
       this.settingsError.set('Type the escalation gap as a whole number of days, 0 or more, or leave it blank to turn it off.');
+      return;
+    }
+    if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
+      this.settingsError.set('Type the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
@@ -1162,6 +1190,12 @@ export class Settings {
         if (this.escalateAfterInput().trim() === escalateAfter) this.escalateAfterChanged = false;
         this.show(settings);
       }
+      if (saveReviewSla) {
+        const settings = await this.service.setReviewSla(sheet, reviewSla || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.reviewSlaInput().trim() === reviewSla) this.reviewSlaChanged = false;
+        this.show(settings);
+      }
       if (saveFiscalStartMonth) {
         const settings = await this.service.setFiscalStartMonth(sheet, fiscalStartMonth);
         if (this.session.sheetId() !== sheet) return;
@@ -1218,6 +1252,7 @@ export class Settings {
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
       if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+      if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
       if (!this.alertThresholdChanged) this.alertThresholdInput.set(this.alertThreshold() ?? '');
@@ -1288,6 +1323,7 @@ export class Settings {
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
         if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+        if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
         if (!this.alertThresholdChanged) this.alertThresholdInput.set(settings.alertThreshold ?? '');
@@ -1355,6 +1391,7 @@ export class Settings {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter == null ? null : String(settings.escalateAfter));
+    this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
     this.entryDate.set(settings.entryDate ?? null);
     this.pot.set(settings.pot ?? null);
     this.alertThreshold.set(settings.alertThreshold ?? null);

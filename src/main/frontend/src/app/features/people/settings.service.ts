@@ -83,6 +83,8 @@ export interface SheetSettings {
   graceDays: number | null;
   /** How many days after a claim's previous reminder reminding it escalates it; null when off. */
   escalateAfter: number | null;
+  /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
+  reviewSla: number | null;
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
@@ -277,6 +279,13 @@ export class SettingsService {
   setEscalateAfter(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/escalate-after`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value means no review SLA. */
+  setReviewSla(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/review-sla`, { value }, { headers: this.session.headers() }),
     );
   }
 

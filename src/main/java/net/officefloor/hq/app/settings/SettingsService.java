@@ -433,6 +433,22 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The sheet's review SLA in days; null when there is none. */
+    @Transactional(readOnly = true)
+    public Integer reviewSla(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getReviewSla();
+    }
+
+    /** Set the sheet's review SLA; null means none. */
+    @Transactional
+    public Sheet setReviewSla(String sheetId, String by, Integer days) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setReviewSla(days);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=review-sla", "value=" + (days == null ? "" : days));
+        return sheet;
+    }
+
     /** The sheet's grace days; null when they are off. */
     @Transactional(readOnly = true)
     public Integer graceDays(String sheetId) {

@@ -141,6 +141,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getEscalateAfter();
     }
 
+    /** The review SLA then; null when there was none. */
+    public Integer reviewSla() {
+        return sheet == null ? null : sheet.getReviewSla();
+    }
+
     /** The grace days then; null when they were off. */
     public Integer graceDays() {
         return sheet == null ? null : sheet.getGraceDays();

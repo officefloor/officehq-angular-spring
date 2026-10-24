@@ -64,6 +64,9 @@ export interface Claim {
   /** When the claim was first added, as a claim id: a rate saved forward-only applies to it only when
    *  its mark is below this (see `Rate.terms`). */
   added: number;
+  /** Whether the claim is in REVIEW past the sheet's review SLA: its review day plus the SLA days is
+   *  before the sheet's today. */
+  reviewLate: boolean;
 }
 
 /** A line typed for a claim: its label, quantity and unit amount, as text. */

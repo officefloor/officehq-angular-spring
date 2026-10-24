@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,14 +48,16 @@ public class ClaimController {
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
-            Integer settleBatch, List<String> lines, long added) {
+            Integer settleBatch, List<String> lines, long added, boolean reviewLate) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
             Map<Long, List<ClaimComment>> comments = service.commentsOf(claims);
             Map<Long, List<ClaimLine>> lines = service.linesOf(claims);
+            Map<String, LocalDate> lateBefore = new HashMap<>();
             return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()),
-                    comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()))).toList();
+                    comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()),
+                    lateBefore.computeIfAbsent(c.getSheetId(), service::reviewLateBefore))).toList();
         }
 
         /** The claim as a view, with its status log. */
@@ -62,7 +65,10 @@ public class ClaimController {
             return allOf(List.of(claim), service).get(0);
         }
 
-        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+        /** The claim as a view, with its status log; a claim in REVIEW whose review day (its last REVIEW
+         * entry in the log) is before {@code lateBefore} is late (none is when that is null). */
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines,
+                LocalDate lateBefore) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -71,7 +77,18 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark());
+                    claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
+                    reviewLate(claim, log, lateBefore));
+        }
+
+        /** Whether the claim is in REVIEW and its review day is before {@code lateBefore}. */
+        private static boolean reviewLate(Claim claim, List<ClaimLog> log, LocalDate lateBefore) {
+            if (lateBefore == null || claim.getStatus() != ClaimStatus.REVIEW) return false;
+            LocalDate reviewDay = null;
+            for (ClaimLog entry : log) {
+                if (entry.getStatus() == ClaimStatus.REVIEW) reviewDay = entry.getDate();
+            }
+            return reviewDay != null && reviewDay.isBefore(lateBefore);
         }
 
         /** A line as shown: {@code <label> <qty> x <unit>}. */
@@ -227,7 +244,8 @@ public class ClaimController {
                     .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())),
                             comments.getOrDefault(c.getId(), List.of()).stream()
                                     .filter(k -> !k.getDate().isAfter(asOf)).toList(),
-                            lines.getOrDefault(c.getId(), List.of())))
+                            lines.getOrDefault(c.getId(), List.of()),
+                            then.reviewSla() == null ? null : then.today().minusDays(then.reviewSla())))
                     .toList();
         }
         return views(service.list(sheetId.trim()));

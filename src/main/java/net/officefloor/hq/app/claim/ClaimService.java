@@ -88,6 +88,14 @@ public class ClaimService {
                 .collect(Collectors.groupingBy(ClaimLog::getClaimId));
     }
 
+    /** The day a REVIEW claim's review day must be before for it to be late: the sheet's today less its
+     * review SLA; null when the sheet has no review SLA. */
+    @Transactional(readOnly = true)
+    public LocalDate reviewLateBefore(String sheetId) {
+        Integer sla = settings.reviewSla(sheetId);
+        return sla == null ? null : sheets.today(sheetId).minusDays(sla);
+    }
+
     /** The comments on the claims, by claim id, each oldest first. */
     @Transactional(readOnly = true)
     public Map<Long, List<ClaimComment>> commentsOf(List<Claim> of) {

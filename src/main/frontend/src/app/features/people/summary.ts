@@ -138,6 +138,10 @@ export interface SummaryPerson {
               <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ (s.count) | figure }}</td>
             </tr>
           }
+          <tr>
+            <th scope="row">Review late</th>
+            <td data-testid="summary-review-late-count">{{ (reviewLateCount()) | figure }}</td>
+          </tr>
         </tbody>
       </table>
       @if (byVoidReason().length > 0) {
@@ -231,6 +235,8 @@ export class Summary {
       count: this.claims().filter((c) => c.status === status).length,
     })),
   );
+
+  protected readonly reviewLateCount = computed(() => this.claims().filter((c) => c.reviewLate).length);
 
   protected readonly byVoidReason = computed(() =>
     this.voidReasons.reasons().map(({ reason }) => ({
