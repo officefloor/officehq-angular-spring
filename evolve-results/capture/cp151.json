@@ -1,0 +1,64 @@
+{
+  "checkpoint": 151,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp151_rounding-mode",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "27f30b38e7c6866321f780405e473402291968b7",
+  "reset_sha": "",
+  "preagent_sha": "5c50d9e6305933109648066323d61ea60c713660",
+  "prev_sha": "5c50d9e6305933109648066323d61ea60c713660",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0335407999999995,
+    "input_tokens": 34,
+    "output_tokens": 4824,
+    "cache_read_tokens": 1865115,
+    "cache_creation_tokens": 15178,
+    "num_turns": 16,
+    "duration_ms": 240195,
+    "duration_api_ms": 228720,
+    "model": "claude-opus-5-5",
+    "session_id": "b04ccc76-17c9-46aa-89a1-eb6858c4e70c",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a dated rounding mode, and all 4 tests in `bin/e2e` pass. To get there I also had to change one thing outside the request: snapshots in the as-of view.\n\n**How rounding works now**\n- **Setting it:** a new rounding field with a from-date sits in the settings form. It accepts `half-up`, `half-even` or blank (meaning none). Anything else shows the settings error and saves nothing.\n- **Storage:** it's kept like the floor, as a dated setting under the key `rounding`, so no database migration was needed. Each save writes `SETTING_CHANGED key=rounding value=\u2026 from=\u2026`, then ROLLUP/TOTALS lines when figures change.\n- **Server:** a claim takes the rounding mode in force on its date. A correction uses the date of the claim it corrects. If no mode is in force on that date, the claim rounds by the policy date as before. This applies to every live figure, including late charges, and also in the as-of view of the sheet.\n- **Front end:** the screen works out the figures itself as well, so it gets the full list of rounding modes from the settings response and applies the same rule (`rates.service.ts`). Without this, the screen and the server would disagree.\n\n**The extra change: snapshots as of a date**\nScenario 1 failed because the as-of view for 2026-03-20 didn't show the snapshot dated 2026-03-20. The query only returned snapshots from days *before* the as-of date, and the code comment said so on purpose. The test expects that day's snapshot to be included, which matches how the rest of the history works (\"the sheet as it stood at the end of the date\"). I changed the query to include snapshots on or before the date (`PersonSnapshotRepository`, `PersonService.snapshots`). The old behaviour looked deliberate, so check this change is acceptable.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0335407999999995,
+        "num_turns": 16,
+        "duration_ms": 240195,
+        "duration_api_ms": 228720,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp151.agent.jsonl",
+  "agent_diff_file": "cp151.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
