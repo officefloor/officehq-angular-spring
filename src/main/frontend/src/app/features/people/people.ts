@@ -33,10 +33,11 @@ import { Summary, SummaryPerson } from './summary';
 // late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in. The floor is
 // applied last: the live due is the greater of the floor in force on the claim's date and its figure plus that charge.
 // A person can name other people on the sheet as their patrons, one at a time from their row; the
-// row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
-// (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
+// row shows their patrons' names, sorted, and their backing: the figures of their patrons' SETTLED
+// claims dated within the 90 days up to and including the sheet's today, each at its frozen figure,
+// added up (0.00 with none). A person's due-total is at most the sheet's cap: when the
 // sum of their figures is above it, the row shows the cap and the difference as their excess; every
-// total of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
+// total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (a due-total of n/a is no figure).
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
@@ -457,14 +458,17 @@ export class People {
     }
     return new Map([...by].map(([id, names]) => [id, names.sort().join(', ')]));
   });
-  /** Each person's backing, by person id: their patrons' due-totals added up (n/a ones skipped). */
+  /** Each person's backing, by person id: the figures of their patrons' SETTLED claims dated within
+   *  the 90 days up to and including the sheet's today, each as it shows (its frozen figure), added
+   *  up (n/a ones skipped); 0 with none. */
   private readonly backings = computed(() => {
+    const today = this.session.today();
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const by = new Map<number, number>();
     for (const pt of this.patrons()) {
       const patron = byId.get(pt.patronId);
-      const due = patron === undefined ? null : this.dueCentsOf(patron);
-      by.set(pt.personId, (by.get(pt.personId) ?? 0) + (due ?? 0));
+      const settled = patron === undefined || today === null ? 0 : this.recentSettledCentsOf(patron, today);
+      by.set(pt.personId, (by.get(pt.personId) ?? 0) + settled);
     }
     return by;
   });
@@ -644,6 +648,19 @@ export class People {
 
   protected gradeOf(event: Event): Grade {
     return (event.target as HTMLSelectElement).value as Grade;
+  }
+
+  /** The figures of the person's SETTLED claims dated within the 90 days up to and including
+   *  `today`, each as it shows, added up (n/a ones skipped). */
+  private recentSettledCentsOf(person: Person, today: string): number {
+    const from = daysBefore(today, 89);
+    return this.claimsOf(person.id)
+      .filter((c) => c.status === 'SETTLED' && c.date >= from && c.date <= today)
+      .reduce(
+        (sum, c) =>
+          sum + (claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0),
+        0,
+      );
   }
 
   protected claimsOf(personId: number): Claim[] {
