@@ -74,6 +74,7 @@ import { VoidReasons } from './void-reasons';
       [periodDueTotals]="periodDueTotals()"
       [claims]="claims()"
       [tagDueTotals]="tagDueTotals()"
+      [monthDueTotals]="monthDueTotals()"
     />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -651,6 +652,21 @@ export class People {
       }
     }
     return [...sums.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, sum]) => ({ tag, dueTotal: money(sum) }));
+  });
+  /** Each calendar month (yyyy-mm) any of the sheet's claims is dated in, sorted, with its due-total:
+   *  what is due on the claims dated in it that count, as each claim shows it. */
+  protected readonly monthDueTotals = computed(() => {
+    const sums = new Map<string, number>();
+    for (const c of this.claims()) sums.set(c.date.slice(0, 7), 0);
+    for (const person of this.people()) {
+      for (const c of this.claimsOf(person.id)) {
+        if (!this.countsLive(c, person)) continue;
+        const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+        const month = c.date.slice(0, 7);
+        sums.set(month, (sums.get(month) ?? 0) + due);
+      }
+    }
+    return [...sums.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, sum]) => ({ month, dueTotal: money(sum) }));
   });
   /** Everyone as the summary counts them: their grade today, whether retired, their due-total, and
    *  whether they are active. */
