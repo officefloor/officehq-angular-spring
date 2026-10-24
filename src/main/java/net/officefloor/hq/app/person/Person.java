@@ -74,6 +74,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The sheet the person was transferred from; null when they were not transferred. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     /** The person's place in the sheet's list: people are listed by it, lowest first. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -115,10 +119,12 @@ public class Person {
     }
 
     /** A copy of the person on the sheet {@code sheetId}: the same name, every grade they were given
-     * (with its from-date), their terms, contact and aliases; nothing else of theirs comes with it. */
+     * (with its from-date), their terms, contact and aliases, noting this sheet as the one they came
+     * from; nothing else of theirs comes with it. */
     public Person transferredTo(String sheetId) {
         Person copy = new Person();
         copy.sheetId = sheetId;
+        copy.originSheetId = this.sheetId;
         copy.setName(name);
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
         copy.terms = terms;
@@ -233,6 +239,11 @@ public class Person {
         if (retiredFrom != null && date.isAfter(retiredFrom)) {
             throw new PersonRetiredException();
         }
+    }
+
+    /** The sheet the person was transferred from; null when they were not transferred. */
+    public String getOriginSheetId() {
+        return originSheetId;
     }
 
     public Long getPosition() {

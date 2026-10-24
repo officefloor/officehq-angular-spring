@@ -3,7 +3,6 @@ package net.officefloor.hq.app.audit;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
-import net.officefloor.hq.app.Audit;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,13 +16,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class AuditController {
 
-    private final Audit audit;
+    private final AuditService audit;
 
-    public AuditController(Audit audit) {
+    public AuditController(AuditService audit) {
         this.audit = audit;
     }
 
-    /** Every line of the sheet, or (with a name) only those about that person. */
+    /** Every line of the sheet, or (with a name) only those about that person, then those about them
+     * from the sheet they were transferred from. */
     @GetMapping
     public List<String> lines(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestParam(defaultValue = "") @Size(max = 200) String name) {

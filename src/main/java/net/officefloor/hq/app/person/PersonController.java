@@ -54,13 +54,13 @@ public class PersonController {
      * alias of theirs is used on another sheet of the sheet's tree. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
-            String contact, List<String> aliases, boolean clashing) {
+            String contact, List<String> aliases, boolean clashing, String origin) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
-                    person.getContact(), person.getAliases(), clashing);
+                    person.getContact(), person.getAliases(), clashing, person.getOriginSheetId());
         }
     }
 

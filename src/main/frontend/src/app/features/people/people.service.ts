@@ -49,6 +49,8 @@ export interface Person {
   aliases: string[];
   /** Whether the person's name or an alias of theirs is used on another sheet of the sheet's tree. */
   clashing: boolean;
+  /** The sheet the person was transferred from; null when they were not transferred. */
+  origin: string | null;
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
