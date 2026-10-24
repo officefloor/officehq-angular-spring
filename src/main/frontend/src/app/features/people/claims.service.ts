@@ -137,6 +137,17 @@ export class ClaimsService {
     );
   }
 
+  /** Fix a SETTLED claim again at what would be due on it now were it OPEN and bound by no statement;
+   *  refused (403) when the user is not a steward, (409) when it is not SETTLED and (423) when it is
+   *  dated in a closed period. */
+  resettle(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/resettle`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Move the claim to another person on the sheet; refused (403) when the user is not a steward,
    *  (409) when it is SETTLED or VOID, a correction or already theirs, (423) when it is dated in a
    *  closed period and (422) when it is dated after the person retired. */

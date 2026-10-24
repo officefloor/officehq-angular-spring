@@ -104,6 +104,14 @@ const PAST: Record<ClaimAction, string> = {
                 {{ a.label }}
               </button>
             }
+            <button
+              type="button"
+              data-testid="claim-resettle"
+              [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date"
+              (click)="resettle(c)"
+            >
+              Re-settle
+            </button>
             <label [for]="fieldId('reassign-to-' + c.id)">Move to</label>
             <select
               [id]="fieldId('reassign-to-' + c.id)"
@@ -306,6 +314,30 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : `That claim cannot be ${PAST[action]} in its status.`,
+      }));
+    }
+  }
+
+  /** Settle the SETTLED claim again at what would be due on it today were it open and bound by no
+   *  statement; only a steward can, and not on a claim dated in a closed period, so anything else is
+   *  refused with an error. */
+  protected async resettle(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.resettle(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can re-settle a claim.'
+          : e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
+          : 'Only a settled claim can be re-settled.',
       }));
     }
   }

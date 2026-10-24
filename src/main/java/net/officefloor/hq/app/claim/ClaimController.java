@@ -172,7 +172,14 @@ public class ClaimController {
         return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 
-    @PostMapping("/claims/{claimId}/reassign")
+    @PostMapping("/claims/{claimId}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.resettle(sheetId.trim(), user.trim(), claimId));
+    }
+
+        @PostMapping("/claims/{claimId}/reassign")
     public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,

@@ -160,7 +160,21 @@ public class RollupService {
      * the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
-        if (!claim.getStatus().isOpen() || claim.isCorrection()) return zero();
+        if (!claim.getStatus().isOpen()) return zero();
+        return overdueChargeOf(claim, figure);
+    }
+
+    /** What would be due on the claim now were it an OPEN claim bound by no statement: its due at its
+     * person's rate (see {@link #dueOf}) plus the late charge it would have then; null when it would
+     * have no figure. */
+    public BigDecimal openShownOf(Claim claim, Person person) {
+        BigDecimal figure = dueOf(claim, person);
+        return figure == null ? null : figure.add(overdueChargeOf(claim, figure));
+    }
+
+    /** The late charge on a claim whose figure is {@code figure}, whatever its status (see {@link #lateChargeOf}). */
+    private BigDecimal overdueChargeOf(Claim claim, BigDecimal figure) {
+        if (claim.isCorrection()) return zero();
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null) return zero();
         long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday())) / 30;

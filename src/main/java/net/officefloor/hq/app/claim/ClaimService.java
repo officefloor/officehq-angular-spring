@@ -222,6 +222,29 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward's re-settle of a SETTLED claim: it is fixed again at what would be due on it now were
+     * it OPEN and bound by no statement (its person's rate and grade, the sheet's floor and its late
+     * charge, all as they are now). Refused unless the claim is SETTLED, when the user is not a
+     * steward, and when it is dated in a closed period. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.SETTLED) throw new ClaimStatusChangeException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal due = rollup.openShownOf(claim, person);
+        claim.setSettledDue(due);
+        claims.flush();
+        log(user, person, claim);
+        record("CLAIM_RESETTLED", user, person, claim, claim.getNumber(), "old=" + dueText(old), "new=" + dueText(due));
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
     /** The PENDING claim, locked, for a steward to approve or reject. */
     private Claim lockPending(String sheetId, String user, long claimId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
