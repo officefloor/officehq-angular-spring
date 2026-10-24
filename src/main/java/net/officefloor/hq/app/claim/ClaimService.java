@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's today. Only a
  * DRAFT claim can be edited. No claim dated inside a closed period can be added, edited or change
- * status. */
+ * status, and none can be added or edited to a date after its person's retirement date. */
 @Service
 public class ClaimService {
 
@@ -50,6 +50,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, dated);
+        person.requireClaimable(dated);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
@@ -63,13 +64,14 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, dated);
         if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        person.requireClaimable(dated);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
         claims.flush();
-        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
-                .orElseThrow(PersonNotFoundException::new);
         record("CLAIM_EDITED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;

@@ -238,6 +238,8 @@ export class Claims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'A claim dated in a closed period cannot be changed.'
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'A claim cannot be dated after the person retired.'
           : id !== null && e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a draft claim can be edited; void it and add a new one instead.'
           : id === null

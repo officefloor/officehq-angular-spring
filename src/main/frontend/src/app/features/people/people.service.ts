@@ -14,6 +14,10 @@ export interface Person {
   grade: Grade;
   /** Raised each time the person is saved. */
   version: number;
+  /** Retired as soon as a retirement date is set, whatever the date. */
+  retired: boolean;
+  /** The date the person is retired from (YYYY-MM-DD); null while they are not retired. */
+  retiredFrom: string | null;
 }
 
 /** What a quick-add made: the person the claim is for (added just now when the name was new) and
@@ -51,6 +55,15 @@ export class PeopleService {
   update(sheet: string, id: number, version: number, fields: PersonFields): Promise<Person> {
     return firstValueFrom(
       this.http.put<Person>(`${this.url(sheet)}/${id}`, { ...fields, version }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Retire the person from `from` (the sheet's today when null). */
+  retire(sheet: string, id: number, from: string | null): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/retire`, { from }, {
         headers: this.session.headers(),
       }),
     );

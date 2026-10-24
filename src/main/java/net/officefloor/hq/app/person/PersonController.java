@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -28,10 +29,17 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version) {
+    /** A person; {@code retiredFrom} is null while they are not retired. */
+    public record PersonView(long id, String name, String grade, long version, boolean retired,
+            LocalDate retiredFrom) {
         public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    person.isRetired(), person.getRetiredFrom());
         }
+    }
+
+    /** The date a person is retired from (the sheet's today when left out). */
+    public record RetireRequest(LocalDate from) {
     }
 
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
@@ -82,6 +90,15 @@ public class PersonController {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));
         }
+    }
+
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) RetireRequest request) {
+        return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId,
+                request == null ? null : request.from()));
     }
 
     @ExceptionHandler(PersonStaleException.class)

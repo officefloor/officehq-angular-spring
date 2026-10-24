@@ -1,10 +1,12 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,12 +18,15 @@ public class PersonService {
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final SheetService sheetService;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup) {
+    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
+            SheetService sheetService) {
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
+        this.sheetService = sheetService;
     }
 
     /** The sheet's people in the order they were added. */
@@ -62,6 +67,17 @@ public class PersonService {
         people.flush();
         audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
         rollup.recordSince(sheetId, user, before);
+        return person;
+    }
+
+    /** Retires the person from {@code from} (the sheet's today when left out). */
+    @Transactional
+    public Person retire(String sheetId, String user, long personId, LocalDate from) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate dated = from != null ? from : sheetService.today(sheetId);
+        person.setRetiredFrom(dated);
+        people.flush();
+        audit.change("PERSON_RETIRED", sheetId, user, "name=" + person.getName(), "from=" + dated);
         return person;
     }
 

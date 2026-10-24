@@ -16,7 +16,9 @@ import { Statement, StatementsService } from './statements.service';
 // those claims' due figures; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped). A statement
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
-// how many statements they have had and the last one's due-total and date.
+// how many statements they have had and the last one's due-total and date. A person can be retired
+// from a date; retired people are left out of the list unless "show retired" is on, but their claims
+// keep counting in every total.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates],
@@ -78,6 +80,16 @@ import { Statement, StatementsService } from './statements.service';
         }
       </form>
 
+      <label>
+        <input
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="showRetired()"
+          (change)="showRetired.set(checked($event))"
+        />
+        Show retired
+      </label>
+
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
       } @else {
@@ -91,12 +103,14 @@ import { Statement, StatementsService } from './statements.service';
               <th scope="col">Statements</th>
               <th scope="col">Last stated</th>
               <th scope="col">Stated on</th>
+              <th scope="col">Retired</th>
+              <th scope="col">Retired from</th>
               <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
-            @for (p of people(); track p.id) {
+            @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ p.grade }}</td>
@@ -105,6 +119,8 @@ import { Statement, StatementsService } from './statements.service';
                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
                 <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
                 <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
+                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+                <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -132,6 +148,21 @@ import { Statement, StatementsService } from './statements.service';
                     (click)="takeStatement(p)"
                   >
                     Statement
+                  </button>
+                  <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                  <input
+                    [id]="'person-retire-date-' + p.id"
+                    data-testid="person-retire-date"
+                    [value]="retireDates()[p.id] ?? ''"
+                    (input)="setRetireDate(p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-retire"
+                    [attr.aria-label]="'Retire ' + p.name"
+                    (click)="retire(p)"
+                  >
+                    Retire
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
@@ -191,6 +222,14 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** Whether retired people are listed; off when the screen is first opened, kept across sheet loads. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+  protected readonly shownPeople = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
+  /** The retire-from date typed on each person's row, by person id. */
+  protected readonly retireDates = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -260,6 +299,7 @@ export class People {
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
+      this.retireDates.set({});
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -270,6 +310,10 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   protected gradeOf(event: Event): Grade {
@@ -301,6 +345,32 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'A statement could not be taken.' }));
+    }
+  }
+
+  protected setRetireDate(id: number, date: string): void {
+    this.retireDates.update((dates) => ({ ...dates, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /** Retire the person from the date typed on their row (the sheet's today when blank). */
+  protected async retire(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const from = (this.retireDates()[person.id] ?? '').trim();
+    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
+      return;
+    }
+    try {
+      const retired = await this.service.retire(sheet, person.id, from || null);
+      if (this.sheet() !== sheet) return;
+      this.put(retired);
+      this.retireDates.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That person could not be retired.' }));
     }
   }
 
@@ -458,7 +528,9 @@ export class People {
       this.quickError.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim falls in a closed period.'
-          : 'That claim could not be added.',
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'That claim is dated after the person retired.'
+            : 'That claim could not be added.',
       );
     } finally {
       this.quickAdding = false;
