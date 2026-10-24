@@ -275,6 +275,7 @@ import { Audit } from './audit';
               <th scope="col">Terms</th>
               <th scope="col">Contact</th>
               <th scope="col">Aliases</th>
+              <th scope="col">Clashing</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
               <th scope="col">Settled due</th>
@@ -319,6 +320,7 @@ import { Audit } from './audit';
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+                <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 @let split = splitOf(p);

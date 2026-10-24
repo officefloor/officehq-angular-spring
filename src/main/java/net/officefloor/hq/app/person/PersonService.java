@@ -24,10 +24,12 @@ public class PersonService {
     private final SheetService sheetService;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
+    private final PersonTree tree;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
-            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches) {
+            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree) {
         this.people = people;
+        this.tree = tree;
         this.patrons = patrons;
         this.watches = watches;
         this.sheets = sheets;
@@ -53,13 +55,14 @@ public class PersonService {
     }
 
     /** Adds a person with their own terms (none when null) and contact (none when blank); refused when
-     * another person on the sheet has the name or the contact. */
+     * another person on the sheet has the name or the contact, or another sheet of its tree uses the name. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
         requireFree(sheetId, name, null);
+        tree.requireFree(sheetId, name);
         requireContactFree(sheetId, contact, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person created = new Person(sheetId, name, grade);
@@ -83,7 +86,8 @@ public class PersonService {
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
      * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
      * have been saved since. The person's own terms become {@code terms} (none when null), and their
-     * contact {@code contact} (none when blank), refused when another person on the sheet has it. */
+     * contact {@code contact} (none when blank), refused when another person on the sheet has it. Refused
+     * too while the new name, or any alias of theirs, is used on another sheet of the sheet's tree. */
     @Transactional
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
@@ -92,6 +96,8 @@ public class PersonService {
             throw new PersonStaleException(person);
         }
         requireFree(sheetId, name, person.getId());
+        tree.requireFree(sheetId, name);
+        person.getAliases().forEach(alias -> tree.requireFree(sheetId, alias));
         requireContactFree(sheetId, contact, person.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheetService.today(sheetId);
@@ -186,20 +192,26 @@ public class PersonService {
     }
 
     /** Gives the person the alias {@code alias}; refused when it is blank, or equals (as names are
-     * compared) any name or alias on the sheet. */
+     * compared) any name or alias on the sheet or on another sheet of its tree. */
     @Transactional
     public Person addAlias(String sheetId, String user, long personId, String alias) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (alias == null || alias.isBlank()) throw new PersonAliasException();
         String key = Person.keyOf(alias);
         if (people.findBySheetIdAndNameKey(sheetId, key).isPresent()
-                || people.findBySheetIdAndAliasKey(sheetId, key).isPresent()) {
+                || people.findBySheetIdAndAliasKey(sheetId, key).isPresent() || tree.taken(sheetId, alias)) {
             throw new PersonAliasException();
         }
         person.addAlias(alias);
         people.flush();
         audit.change("PERSON_ALIAS_ADDED", sheetId, user, "name=" + person.getName(), "alias=" + alias.trim());
         return person;
+    }
+
+    /** Whether the person's name or an alias of theirs is used on another sheet of their tree. */
+    @Transactional(readOnly = true)
+    public boolean clashes(Person person) {
+        return tree.clashes(person);
     }
 
     /** Refuses a name another person on the sheet (other than {@code self}) already has, and a name

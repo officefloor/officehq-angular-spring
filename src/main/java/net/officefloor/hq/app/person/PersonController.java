@@ -49,16 +49,17 @@ public class PersonController {
 
     /** A person: the grade in force on the sheet's {@code today}, and every grade they were given by
      * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
-     * have any hold, listed in {@code holds} by from-date. */
+     * have any hold, listed in {@code holds} by from-date; {@code clashing} is whether their name or an
+     * alias of theirs is used on another sheet of the sheet's tree. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
-            String contact, List<String> aliases) {
-        public static PersonView of(Person person, LocalDate today) {
+            String contact, List<String> aliases, boolean clashing) {
+        public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
-                    person.getContact(), person.getAliases());
+                    person.getContact(), person.getAliases(), clashing);
         }
     }
 
@@ -156,11 +157,11 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         if (asOf != null) {
-            return history.read(sheetId.trim(), asOf).people().stream().map(person -> PersonView.of(person, asOf))
+            return history.read(sheetId.trim(), asOf).people().stream().map(person -> PersonView.of(person, asOf, service.clashes(person)))
                     .toList();
         }
         LocalDate today = service.today(sheetId.trim());
-        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today)).toList();
+        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today, service.clashes(person))).toList();
     }
 
     @GetMapping("/patrons")
@@ -293,11 +294,12 @@ public class PersonController {
     public ResponseEntity<StaleView> stale(PersonStaleException e) {
         Person current = e.getCurrent();
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new StaleView("stale", PersonView.of(current, service.today(current.getSheetId()))));
+                .body(new StaleView("stale", PersonView.of(current, service.today(current.getSheetId()),
+                        service.clashes(current))));
     }
 
     /** The person as the sheet shows them on its today. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, service.today(sheetId.trim()));
+        return PersonView.of(person, service.today(sheetId.trim()), service.clashes(person));
     }
 }

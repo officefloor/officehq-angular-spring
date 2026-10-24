@@ -39,6 +39,8 @@ export interface Person {
   contact: string | null;
   /** The other names the person goes by, sorted as names are compared. */
   aliases: string[];
+  /** Whether the person's name or an alias of theirs is used on another sheet of the sheet's tree. */
+  clashing: boolean;
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
