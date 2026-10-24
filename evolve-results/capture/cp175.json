@@ -1,0 +1,64 @@
+{
+  "checkpoint": 175,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp175_transfer-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "On the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOn the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4c1dde72cba1cc98ad211083e8d07863292884f7",
+  "reset_sha": "",
+  "preagent_sha": "7a05153e63578bea3647cd9b5a03f621d053871f",
+  "prev_sha": "7a05153e63578bea3647cd9b5a03f621d053871f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5759425999999999,
+    "input_tokens": 88,
+    "output_tokens": 16951,
+    "cache_read_tokens": 2841813,
+    "cache_creation_tokens": 83526,
+    "num_turns": 45,
+    "duration_ms": 510285,
+    "duration_api_ms": 241164,
+    "model": "claude-opus-5-5",
+    "session_id": "f9440b69-3fa2-42f1-93b6-0babd6e4b05a",
+    "stop_reason": "success",
+    "result_text": "Transfer undo is built, but `bin/e2e` doesn't fully pass: 2 of the 4 tests pass and 2 fail. Both failures happen at steps before any transfer or undo, in features this change doesn't touch.\n\n**What passes:** the main \"transfer undo\" test, which covers the undo itself, both refusals, the transfer back and every audit line on both sheets. \"Transfer undo scenario 1\" also passes.\n\n**What I changed:**\n- **Stored data:** a new migration `V97__person_arrived_on.sql` adds `person.arrived_on`, the destination sheet's today when a transfer brings someone in. `Person.transferredTo` now records it.\n- **Server:** a new `PersonTransferService.undo` refuses the undo unless:\n  - the user is a steward of this sheet,\n  - the person arrived by transfer (they have both an origin and an arrival date),\n  - the sheet's today is still the day they arrived.\n\n  If those hold, it calls the existing `transfer()` back to the origin sheet, so the rules and audit lines are exactly the transfer's. Then it writes `PERSON_TRANSFER_UNDONE name=<name> to=<origin>` and the totals line the test expects after it. The endpoint is `POST /api/sheets/{sheetId}/people/{id}/transfer-undo`.\n- **Front end:** an \"Undo transfer\" button (`person-transfer-undo`) on each person row. It reloads the sheet when the undo goes through and shows the row's `person-error` when it's refused.\n\nSomeone who was merged into an existing person by a transfer doesn't count as arriving by transfer, so their undo is refused.\n\n**The two failing tests:**\n- **Scenario 2, line 680:** the test expects steward vic's inline edit of a claim to be refused, but the server accepts it. The app fixes a claim's due-by date when the claim is added and doesn't recalculate it when the date is edited. That due-by doesn't fall in the closed period P2, so nothing blocks the edit.\n- **Scenario 3, line 1138:** the test expects a viewer pressing \"Generate plan claims\" to get a count of 0. Instead the app's `ViewerGuard` refuses every change a viewer makes before it reaches the server code, as its own documentation says it should, so an error shows.\n\nBoth failures happen the same way on every run. Fixing them would mean changing how claim due dates and viewer permissions work, which is outside this request and goes against how those features are currently written, so I left them alone. Because those tests stop early, their later transfer-undo steps never ran, so I haven't verified them. If you want those scenarios to pass, I can take on either behaviour change separately.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5759425999999999,
+        "num_turns": 45,
+        "duration_ms": 510285,
+        "duration_api_ms": 241164,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp175.agent.jsonl",
+  "agent_diff_file": "cp175.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
