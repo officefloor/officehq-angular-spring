@@ -6,6 +6,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,9 +40,11 @@ public class StatementController {
     }
 
     private final StatementService service;
+    private final ClaimService claimService;
 
-    public StatementController(StatementService service) {
+    public StatementController(StatementService service, ClaimService claimService) {
         this.service = service;
+        this.claimService = claimService;
     }
 
     @GetMapping("/statements")
@@ -56,6 +59,6 @@ public class StatementController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
-        return new TakenView(StatementView.of(taken.statement()), taken.claims().stream().map(ClaimView::of).toList());
+        return new TakenView(StatementView.of(taken.statement()), ClaimView.allOf(taken.claims(), claimService));
     }
 }

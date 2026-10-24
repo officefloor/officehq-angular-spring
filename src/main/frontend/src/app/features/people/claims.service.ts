@@ -31,6 +31,9 @@ export interface Claim {
   /** On a correction (a claim with a negative amount), the number of the SETTLED claim of the same
    *  person it corrects; null on any other claim. */
   corrects: string | null;
+  /** The claim's status log, oldest first: one line per status it has had, as
+   *  "<STATUS> by <user> on <date> due=<due>", with the sheet's today and what was due on it then. */
+  log: string[];
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING

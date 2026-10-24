@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,19 +28,36 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** A claim, with who opened it (null until opened) and whether it is bound to the figure it had
-     * at its person's last statement; its amount, what was due on it when settled (null otherwise) and
+    /** A claim, with who opened it (null until opened), whether it is bound to the figure it had at its
+     * person's last statement and its status log (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
      * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
      * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
-            String openedBy, boolean stated, String statedDue, String corrects) {
-        public static ClaimView of(Claim claim) {
+            String openedBy, boolean stated, String statedDue, String corrects, List<String> log) {
+        /** The claims as views, each with its status log, in the order given. */
+        public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
+            Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
+            return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
+        }
+
+        /** The claim as a view, with its status log. */
+        public static ClaimView of(Claim claim, ClaimService service) {
+            return allOf(List.of(claim), service).get(0);
+        }
+
+        static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
-                    claim.getCorrects());
+                    claim.getCorrects(), log.stream().map(ClaimView::line).toList());
+        }
+
+        /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
+        private static String line(ClaimLog entry) {
+            return entry.getStatus() + " by " + entry.getBy() + " on " + entry.getDate() + " due="
+                    + (entry.getDue() == null ? "n/a" : text(entry.getDue()));
         }
 
         private static String text(BigDecimal figure) {
@@ -92,7 +110,7 @@ public class ClaimController {
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+        return views(service.list(sheetId.trim()));
     }
 
     @PostMapping("/people/{personId}/claims")
@@ -101,7 +119,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
+        return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
     }
 
@@ -110,7 +128,7 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amountValue(), request.date(),
+        return view(service.update(sheetId.trim(), user.trim(), claimId, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
     }
 
@@ -118,21 +136,21 @@ public class ClaimController {
     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
     }
 
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
     }
 
     @PostMapping("/claims/{claimId}/approve")
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+        return view(service.approve(sheetId.trim(), user.trim(), claimId));
     }
 
     @PostMapping("/claims/{claimId}/reject")
@@ -140,14 +158,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RejectRequest request) {
-        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, request.reason().trim()));
+        return view(service.reject(sheetId.trim(), user.trim(), claimId, request.reason().trim()));
     }
 
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 
     @PostMapping("/claims/{claimId}/reassign")
@@ -155,7 +173,7 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReassignRequest request) {
-        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
+        return view(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
     }
 
     @PostMapping("/claims/bulk-open")
@@ -164,6 +182,14 @@ public class ClaimController {
             @RequestBody @Valid BulkRequest request) {
         ClaimBulkService.Outcome outcome = bulk.open(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkOpenView(outcome.changed().size(), outcome.refused(),
-                outcome.changed().stream().map(ClaimView::of).toList());
+                views(outcome.changed()));
+    }
+
+    private ClaimView view(Claim claim) {
+        return ClaimView.of(claim, service);
+    }
+
+    private List<ClaimView> views(List<Claim> claims) {
+        return ClaimView.allOf(claims, service);
     }
 }

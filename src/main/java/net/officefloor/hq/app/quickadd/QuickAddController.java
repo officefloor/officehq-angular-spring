@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import org.springframework.http.HttpStatus;
@@ -41,10 +42,12 @@ public class QuickAddController {
 
     private final QuickAddService service;
     private final PersonService personService;
+    private final ClaimService claimService;
 
-    public QuickAddController(QuickAddService service, PersonService personService) {
+    public QuickAddController(QuickAddService service, PersonService personService, ClaimService claimService) {
         this.service = service;
         this.personService = personService;
+        this.claimService = claimService;
     }
 
     @PostMapping
@@ -54,6 +57,6 @@ public class QuickAddController {
             @RequestBody @Valid QuickAddRequest request) {
         QuickAddService.Added added = service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue());
         PersonView person = PersonView.of(added.person(), personService.today(sheetId.trim()));
-        return new QuickAddView(person, ClaimView.of(added.claim()));
+        return new QuickAddView(person, ClaimView.of(added.claim(), claimService));
     }
 }

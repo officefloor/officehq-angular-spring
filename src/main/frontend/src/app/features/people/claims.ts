@@ -82,6 +82,11 @@ const PAST: Record<ClaimAction, string> = {
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+            <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+              @for (line of c.log; track $index) {
+                <li data-testid="claim-log-line">{{ line }}</li>
+              }
+            </ol>
             <label [for]="fieldId('reject-reason-' + c.id)">Reject reason</label>
             <input
               [id]="fieldId('reject-reason-' + c.id)"

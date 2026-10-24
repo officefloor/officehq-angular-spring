@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ClaimService {
 
     private final ClaimRepository claims;
+    private final ClaimLogRepository logs;
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
@@ -34,9 +37,10 @@ public class ClaimService {
     private final SettingsService settings;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, Audit audit) {
         this.claims = claims;
+        this.logs = logs;
         this.people = people;
         this.rollup = rollup;
         this.sheets = sheets;
@@ -49,6 +53,14 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /** The status logs of the claims, by claim id, each oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimLog>> logsOf(List<Claim> of) {
+        if (of.isEmpty()) return Map.of();
+        return logs.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
+                .collect(Collectors.groupingBy(ClaimLog::getClaimId));
     }
 
     @Transactional
@@ -64,6 +76,7 @@ public class ClaimService {
         claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim = claims.saveAndFlush(claim);
+        log(user, person, claim);
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -124,6 +137,7 @@ public class ClaimService {
         claim.setStatus(next);
         claim.setNumber(number);
         claims.flush();
+        log(user, person, claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
@@ -155,6 +169,7 @@ public class ClaimService {
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         claims.flush();
+        log(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), "due=" + dueText(due));
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -171,6 +186,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
         claims.flush();
+        log(user, person, claim);
         record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), "reason=" + reason);
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -229,6 +245,13 @@ public class ClaimService {
      * no figure (see {@link RollupService#shownOf}). */
     public BigDecimal shownOf(Claim claim, Person person) {
         return rollup.shownOf(claim, person);
+    }
+
+    /** Write the status the claim has now to its log, with the sheet's today and what is due on it as
+     * it shows now. */
+    private void log(String user, Person person, Claim claim) {
+        logs.save(new ClaimLog(claim.getId(), claim.getStatus(), user, sheets.today(claim.getSheetId()),
+                rollup.shownOf(claim, person)));
     }
 
     /** Record a change to the claim; {@code number}, the number it has (or had), follows when there is one,
