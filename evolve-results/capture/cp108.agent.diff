@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2c8cbb35..08d1e116 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -39,9 +39,11 @@ import { Audit } from './audit';
+ // late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in. The floor is
+ // applied last: the live due is the greater of the floor in force on the claim's date and its figure plus that charge.
+ // A person can name other people on the sheet as their patrons, one at a time from their row; the
+-// row shows their patrons' names, sorted, and their backing: the figures of their patrons' SETTLED
+-// claims dated within the 90 days up to and including the sheet's today, each at its frozen figure,
+-// added up (0.00 with none). A person's due-total is at most the sheet's cap: when the
++// patrons carry shares: 100.00 split equally in the order they were named, each rounded half to even,
++// the remainder to the first named. The row shows each patron as "<name> <share>", sorted by name, and
++// their backing: over their patrons, the figures of the patron's SETTLED claims dated within the 90 days
++// up to and including the sheet's today, each at its frozen figure, added up, times the patron's share
++// divided by 100; the sum rounded half to even (0.00 with none). A person's due-total is at most the sheet's cap: when the
+ // sum of their figures is above it, the row shows the cap and the difference as their excess; every
+ // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+ // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+@@ -610,27 +612,51 @@ export class People {
+   protected readonly mergeChoices = signal<Record<number, string>>({});
+   /** The error of the last refused patron added on each person's row, by person id. */
+   protected readonly patronErrors = signal<Record<number, string>>({});
+-  /** Each person's patrons' names, sorted and comma separated, by person id. */
++  /** Each person's patrons with their shares in hundredths, in the order they were named, by person id:
++   *  100.00 split equally, each share rounded half to even, the first-named patron also taking the
++   *  remainder. */
++  private readonly patronShares = computed(() => {
++    const by = new Map<number, number[]>();
++    for (const pt of this.patrons()) by.set(pt.personId, [...(by.get(pt.personId) ?? []), pt.patronId]);
++    return new Map(
++      [...by].map(([id, patronIds]) => {
++        const share = halfEven(10000n, BigInt(patronIds.length));
++        const shares = patronIds.map((patronId) => ({ patronId, share }));
++        shares[0].share += 10000 - share * patronIds.length;
++        return [id, shares];
++      }),
++    );
++  });
++  /** Each person's patrons as "<name> <share>", sorted by name and comma separated, by person id. */
+   private readonly patronNames = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p.name]));
+-    const by = new Map<number, string[]>();
+-    for (const pt of this.patrons()) {
+-      const name = byId.get(pt.patronId);
+-      if (name !== undefined) by.set(pt.personId, [...(by.get(pt.personId) ?? []), name]);
++    const by = new Map<number, string>();
++    for (const [id, shares] of this.patronShares()) {
++      const named = shares.flatMap(({ patronId, share }) => {
++        const name = byId.get(patronId);
++        return name === undefined ? [] : [{ name, share }];
++      });
++      named.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
++      by.set(id, named.map(({ name, share }) => `${name} ${money(share)}`).join(', '));
+     }
+-    return new Map([...by].map(([id, names]) => [id, names.sort().join(', ')]));
++    return by;
+   });
+-  /** Each person's backing, by person id: the figures of their patrons' SETTLED claims dated within
+-   *  the 90 days up to and including the sheet's today, each as it shows (its frozen figure), added
+-   *  up (n/a ones skipped); 0 with none. */
++  /** Each person's backing, by person id: over their patrons, the figures of the patron's SETTLED
++   *  claims dated within the 90 days up to and including the sheet's today, each as it shows (its
++   *  frozen figure), added up (n/a ones skipped), times the patron's share divided by 100; the sum
++   *  rounded half to even; 0 with none. */
+   private readonly backings = computed(() => {
+     const today = this.session.today();
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     const by = new Map<number, number>();
+-    for (const pt of this.patrons()) {
+-      const patron = byId.get(pt.patronId);
+-      const settled = patron === undefined || today === null ? 0 : this.recentSettledCentsOf(patron, today);
+-      by.set(pt.personId, (by.get(pt.personId) ?? 0) + settled);
++    for (const [id, shares] of this.patronShares()) {
++      let sum = 0n;
++      for (const { patronId, share } of shares) {
++        const patron = byId.get(patronId);
++        const settled = patron === undefined || today === null ? 0 : this.recentSettledCentsOf(patron, today);
++        sum += BigInt(settled) * BigInt(share);
++      }
++      by.set(id, halfEven(sum, 10000n));
+     }
+     return by;
+   });
+@@ -1714,6 +1740,16 @@ function trimmedSum(figures: number[]): number {
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+ }
+ 
++/** `numerator` divided by the positive `denominator`, rounded half to even to a whole number. */
++function halfEven(numerator: bigint, denominator: bigint): number {
++  const negative = numerator < 0n;
++  const abs = negative ? -numerator : numerator;
++  let quotient = abs / denominator;
++  const twice = (abs % denominator) * 2n;
++  if (twice > denominator || (twice === denominator && quotient % 2n === 1n)) quotient += 1n;
++  return Number(negative ? -quotient : quotient);
++}
++
+ /** The date (YYYY-MM-DD) `days` days before `date`. */
+ function daysBefore(date: string, days: number): string {
+   const d = new Date(`${date}T00:00:00Z`);
