@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1515d4a349121f220445a28371d8f11709661cb5",
+  "reset_sha": "",
+  "preagent_sha": "9fad6b260a212d3ca3f68323549530618e5f8576",
+  "prev_sha": "9fad6b260a212d3ca3f68323549530618e5f8576",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0324872000000003,
+    "input_tokens": 88,
+    "output_tokens": 20630,
+    "cache_read_tokens": 3607596,
+    "cache_creation_tokens": 112252,
+    "num_turns": 45,
+    "duration_ms": 1391156,
+    "duration_api_ms": 318861,
+    "model": "claude-opus-5-5",
+    "session_id": "a979f49c-74ae-4008-9435-8eed3cefedb2",
+    "stop_reason": "success",
+    "result_text": "I've added the steward dashboard. **3 of the 4 tests pass with the code as it stands.** Scenario 3 fails at line 1171 on `rate-current-A`, a check on rates rather than the dashboard, and it fails because of the machine's real date. When I temporarily changed two unrelated pieces of the app, all 4 passed, including every dashboard check. I then undid both changes.\n\n**What I built**\n- **Server:** a new read-only endpoint, `GET /api/sheets/{id}/dashboard` (`rollup/DashboardService.java`, `rollup/DashboardController.java`).\n  - **Who sees counts:** a steward, which includes someone the steward role is currently delegated to. Anyone else gets empty cells.\n  - **What it counts:** PENDING claims, REVIEW claims, and overdue claims that count toward the totals, using the same rules as the existing rollups. Claims dated within a person's hold are left out, so they don't count as overdue.\n  - **Under an as-of date:** it reads the sheet as it stood then, and decides steward-or-not from the roles and delegations that existed then.\n- **Front end:** a small `features/people/dashboard.ts` with `dash-pending-count`, `dash-review-count` and `dash-overdue-count`. It is loaded with the rest of the sheet, so it follows reloads and the as-of date.\n- No schema change or audit records were needed, since this only reads data.\n\n**Why scenario 3 fails (neither cause is in the dashboard code)**\n1. **The real date.** A newly loaded sheet starts with today's real date (2026-10-25 here). So the parent sheet's rates are recorded on that date, and when viewing as of 2026-03-20 they don't exist yet. The spec expects them to show (`12.50`), which only works if the real date is before 2026-03-20. I confirmed this by temporarily shifting the app clock back 300 days. That got the test past this point and through its as-of dashboard check.\n2. **Statement-line order (line 1336).** The spec expects statement lines in the order they were taken. The existing `statementLinesOf` (`people.ts:1618`) sorts them by date, so the as-of-04-02 statement shows before the 05-04 one. With that sort also turned off, scenario 3 passed in full.\n\nI put both back because the first was only a test aid, and the second would change an existing feature outside this request. If you want the spec's order for statement lines, the fix is to drop the `.sort(...)` on that line. Say if you'd like me to make it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0324872000000003,
+        "num_turns": 45,
+        "duration_ms": 1391156,
+        "duration_api_ms": 318861,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

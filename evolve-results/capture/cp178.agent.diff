@@ -1,0 +1,288 @@
+diff --git a/src/main/frontend/src/app/features/people/dashboard.ts b/src/main/frontend/src/app/features/people/dashboard.ts
+new file mode 100644
+index 00000000..6509ea42
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/dashboard.ts
+@@ -0,0 +1,51 @@
++import { Component, input } from '@angular/core';
++import { FigurePipe } from '../../core/figure.pipe';
++
++/** A steward's dashboard over the sheet: its PENDING claims, its REVIEW claims and its overdue claims
++ *  that count; each null for a user who is not a steward. */
++export interface DashboardCounts {
++  pending: number | null;
++  review: number | null;
++  overdue: number | null;
++}
++
++export const NO_DASHBOARD: DashboardCounts = { pending: null, review: null, overdue: null };
++
++// The signed-in user's steward dashboard, as the server works it out (as of the as-of date, for the
++// role they had then, while one is set). A user who is not a steward sees the cells empty.
++@Component({
++  selector: 'app-dashboard',
++  imports: [FigurePipe],
++  template: `
++    <section aria-labelledby="dashboard-heading" data-testid="dashboard">
++      <h2 id="dashboard-heading">Steward dashboard</h2>
++      <table>
++        <tbody>
++          <tr>
++            <th scope="row">Pending</th>
++            <td data-testid="dash-pending-count">{{ (counts().pending ?? '') | figure }}</td>
++          </tr>
++          <tr>
++            <th scope="row">Review</th>
++            <td data-testid="dash-review-count">{{ (counts().review ?? '') | figure }}</td>
++          </tr>
++          <tr>
++            <th scope="row">Overdue</th>
++            <td data-testid="dash-overdue-count">{{ (counts().overdue ?? '') | figure }}</td>
++          </tr>
++        </tbody>
++      </table>
++    </section>
++  `,
++  styles: `
++    th,
++    td {
++      text-align: left;
++      padding: 0.25rem 0.75rem 0.25rem 0;
++    }
++  `,
++})
++export class Dashboard {
++  /** The counts to show. */
++  readonly counts = input.required<DashboardCounts>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index e150815d..db157009 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim } from './claims.service';
++import { DashboardCounts } from './dashboard';
+ 
+ export type Grade = 'A' | 'B' | 'C';
+ 
+@@ -323,6 +324,15 @@ export class PeopleService {
+     );
+   }
+ 
++  /** The signed-in user's steward dashboard over the sheet (empty counts unless they are a steward). */
++  dashboard(sheet: string): Promise<DashboardCounts> {
++    return firstValueFrom(
++      this.http.get<DashboardCounts>(`/api/sheets/${encodeURIComponent(sheet)}/dashboard`, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** The ids of the people the signed-in user watches. */
+   watched(sheet: string): Promise<number[]> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a2fefa59..72aa3f15 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -15,6 +15,7 @@ import { Settings } from './settings';
+ import { Dated, SettingsService, inForce } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+ import { Summary, SummaryPerson } from './summary';
++import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
+ import { Templates } from './templates';
+ import { TreeSearch } from './tree-search';
+ import { VoidReasons } from './void-reasons';
+@@ -63,7 +64,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
++  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -99,6 +100,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+     <app-audit />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (reloaded)="periods.set($event)" />
++    <app-dashboard [counts]="dashboard()" />
+     <app-summary
+       [people]="summaryPeople()"
+       [periods]="periods()"
+@@ -929,6 +931,8 @@ export class People {
+   });
+   /** The ids of the people the signed-in user watches. */
+   protected readonly watched = signal<ReadonlySet<number>>(new Set());
++  /** The signed-in user's steward dashboard over the sheet. */
++  protected readonly dashboard = signal<DashboardCounts>(NO_DASHBOARD);
+   /** The sheet's patrons, in the order they were named. */
+   protected readonly patrons = signal<Patron[]>([]);
+   /** The sheet's snapshots, in the order they were written. */
+@@ -1363,6 +1367,7 @@ export class People {
+       this.patrons.set([]);
+       this.snapshots.set([]);
+       this.watched.set(new Set());
++      this.dashboard.set(NO_DASHBOARD);
+       this.patronChoices.set({});
+       this.mergeChoices.set({});
+       this.transferInputs.set({});
+@@ -2518,7 +2523,7 @@ export class People {
+ 
+   private async read(sheet: string): Promise<void> {
+     try {
+-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots] = await Promise.all([
++      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots, dashboard] = await Promise.all([
+         this.service.list(sheet),
+         this.claimsService.list(sheet),
+         this.ratesService.list(sheet),
+@@ -2532,6 +2537,7 @@ export class People {
+         this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
+         this.plansService.list(sheet),
+         this.service.snapshots(sheet),
++        this.service.dashboard(sheet).catch(() => NO_DASHBOARD),
+       ]);
+       if (this.sheet() === sheet) {
+         this.floors.set(settings.floors);
+@@ -2549,6 +2555,7 @@ export class People {
+         this.patrons.set(patrons);
+         this.snapshots.set(snapshots);
+         this.watched.set(new Set(watched));
++        this.dashboard.set(dashboard);
+         this.descendants.set(descendants);
+         this.plans.set(plans);
+         this.people.set(list);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+new file mode 100644
+index 00000000..f45c700c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import net.officefloor.hq.app.history.AsOfGuard;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The signed-in user's steward dashboard over a sheet (see {@link DashboardService}). The signed-in
++ * user's name travels in the {@code X-User} header. */
++@RestController
++@Validated
++public class DashboardController {
++
++    private final DashboardService service;
++
++    public DashboardController(DashboardService service) {
++        this.service = service;
++    }
++
++    /** The dashboard as the sheet stands, or as it stood at the end of the as-of date when one is given. */
++    @GetMapping("/api/sheets/{sheetId}/dashboard")
++    public DashboardService.Counts dashboard(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return asOf == null ? service.live(sheetId.trim(), user.trim())
++                : service.asOf(sheetId.trim(), user.trim(), asOf);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+new file mode 100644
+index 00000000..f736a2f8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+@@ -0,0 +1,86 @@
++package net.officefloor.hq.app.rollup;
++
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Map;
++import java.util.function.Function;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.history.SheetAsOf;
++import net.officefloor.hq.app.history.SheetHistory;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.settings.SheetRole;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** A steward's dashboard over a sheet: how many of its claims are PENDING, how many are in REVIEW, and
++ * how many are overdue among those that count in the live totals (see {@link RollupService#countsLive}
++ * and {@link RollupService#isOverdue}). Only a steward sees it; anyone else sees no counts. */
++@Service
++public class DashboardService {
++
++    /** The counts; each null when the user is not a steward. */
++    public record Counts(Integer pending, Integer review, Integer overdue) {
++        static final Counts NONE = new Counts(null, null, null);
++    }
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++    private final RollupService rollup;
++    private final SettingsService settings;
++    private final SheetHistory history;
++
++    public DashboardService(PersonRepository people, ClaimRepository claims, RollupService rollup,
++            SettingsService settings, SheetHistory history) {
++        this.people = people;
++        this.claims = claims;
++        this.rollup = rollup;
++        this.settings = settings;
++        this.history = history;
++    }
++
++    /** The user's dashboard over the sheet as it stands. */
++    @Transactional(readOnly = true)
++    public Counts live(String sheetId, String user) {
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) return Counts.NONE;
++        return countsOf(people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
++                claims.findBySheetIdOrderByListedDescIdDesc(sheetId), rollup.live(sheetId));
++    }
++
++    /** The user's dashboard over the sheet as it stood at the end of {@code date}, for the role they had
++     * then: the role given by then, or a steward by a delegation made by then whose range covers the date. */
++    @Transactional(readOnly = true)
++    public Counts asOf(String sheetId, String user, LocalDate date) {
++        SheetAsOf then = history.asOf(sheetId, date);
++        if (roleThen(then, user, date) != Role.STEWARD) return Counts.NONE;
++        return countsOf(then.people(), then.claims(), then);
++    }
++
++    private static Role roleThen(SheetAsOf then, String user, LocalDate date) {
++        Role given = then.roles().stream().filter(r -> r.getUser().equals(user)).map(SheetRole::getRole)
++                .findFirst().orElse(Role.CLERK);
++        if (given == Role.STEWARD) return given;
++        boolean delegated = then.delegations().stream().anyMatch(d -> d.getUser().equals(user) && d.covers(date));
++        return delegated ? Role.STEWARD : given;
++    }
++
++    private static Counts countsOf(List<Person> everyone, List<Claim> all, RollupService.Basis basis) {
++        Map<Long, Person> byId = everyone.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
++        int pending = 0;
++        int review = 0;
++        int overdue = 0;
++        for (Claim claim : all) {
++            if (claim.getStatus() == ClaimStatus.PENDING) pending++;
++            if (claim.getStatus() == ClaimStatus.REVIEW) review++;
++            Person person = byId.get(claim.getPersonId());
++            if (person != null && RollupService.countsLive(claim, person, basis.today())
++                    && RollupService.isOverdue(claim, basis)) overdue++;
++        }
++        return new Counts(pending, review, overdue);
++    }
++}
