@@ -52,6 +52,10 @@ public class Period {
     @Column(name = "soft", nullable = false)
     private boolean soft;
 
+    /** Whether a steward has locked the period: a locked period cannot be reopened. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     /** The most OPEN or PENDING claims each person may have in the period; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -135,6 +139,14 @@ public class Period {
 
     public boolean isSoft() {
         return soft;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     public BigDecimal getClosedTotal() {

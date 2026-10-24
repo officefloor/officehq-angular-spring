@@ -575,9 +575,9 @@ export class Claims {
   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
    *  sheet's today changes. Only a DRAFT not dated in a closed period can be edited, and not by a
    *  viewer, so any other edit is refused with an error on the claim, taking no lock (an open claim is
-   *  changed by voiding it and adding a new one). A claim another user holds the lock of, or one a
-   *  viewer opens, is refused with an error too, though its editor shows it: saving it is refused while
-   *  that lock holds, and always for a viewer. */
+   *  changed by voiding it and adding a new one). A claim another user holds the lock of, one a
+   *  viewer opens, or a draft dated in a closed period is refused with an error too, though its editor
+   *  shows it: saving it is refused while that lock holds or its period is closed, and always for a viewer. */
   protected async edit(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);
     const refuse = (message: string) => {
@@ -593,12 +593,12 @@ export class Claims {
       return;
     }
     const period = periodOn(this.periods(), claim.dueBy);
-    if (period?.closed && !period.soft) {
-      refuse('That claim is dated in a closed period.');
-      return;
-    }
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    if (period?.closed && !period.soft) {
+      this.refuseClosed(sheet, claim);
+      return;
+    }
     const was = this.editingId();
     // The form shows the claim once the lock is answered, so it never shows as open before a refusal.
     this.release(sheet, was, claim.id);
@@ -620,13 +620,18 @@ export class Claims {
         this.fill(claim);
         return;
       }
-      refuse(
-        status === 423
-          ? 'That claim is dated in a closed period.'
-          : 'Only a draft claim can be edited; void it and add a new one instead.',
-      );
+      if (status === 423) this.refuseClosed(sheet, claim);
+      else refuse('Only a draft claim can be edited; void it and add a new one instead.');
       return;
     }
+  }
+
+  /** Refuse to edit the draft dated in a closed period with an error on the claim, its editor showing it
+   *  without a lock: saving it is refused while its period is closed. */
+  private refuseClosed(sheet: string, claim: Claim): void {
+    this.release(sheet, this.editingId(), claim.id);
+    this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'That claim is dated in a closed period.' }));
+    this.fill(claim);
   }
 
   /** Release the lock of the editor that was open before another claim's editor replaced it. */

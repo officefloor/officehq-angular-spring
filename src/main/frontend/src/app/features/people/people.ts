@@ -101,7 +101,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-tree-search />
     <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (reloaded)="periods.set($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-dashboard [counts]="dashboard()" />
     <app-summary
       [people]="summaryPeople()"
@@ -2076,7 +2076,7 @@ export class People {
     this.periods.update((list) => [...list, period]);
   }
 
-  /** Put a closed or reopened period in its place. */
+  /** Put a closed, reopened, locked or unlocked period in its place. */
   protected periodClosed(period: Period): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }

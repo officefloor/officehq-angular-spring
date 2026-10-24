@@ -10,7 +10,8 @@ const YEAR = /^\d{4}$/;
 
 // The periods of the sheet, by from-date, each with the fiscal year its from-date falls in, the due-total of the counting claims dated in
 // it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
-// that close, soft-close and reopen it, and the
+// that close, soft-close and reopen it, whether a steward has locked it (a locked period cannot be reopened) and the buttons that
+// lock and unlock it, and the
 // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
 @Component({
   selector: 'app-periods',
@@ -117,6 +118,7 @@ const YEAR = /^\d{4}$/;
               <th scope="col">Open claims cap</th>
               <th scope="col">Due</th>
               <th scope="col">Closed</th>
+              <th scope="col">Locked</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -130,6 +132,7 @@ const YEAR = /^\d{4}$/;
                 <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
                 <td data-testid="period-due-total">{{ (dueTotals()[p.name] ?? '0.00') | figure }}</td>
                 <td data-testid="period-closed">{{ (p.closed ? (p.soft ? 'soft' : 'yes') : 'no') | figure }}</td>
+                <td data-testid="period-locked">{{ (p.locked ? 'yes' : 'no') | figure }}</td>
                 <td>
                   @if (!p.closed || p.soft) {
                     <button
@@ -156,6 +159,22 @@ const YEAR = /^\d{4}$/;
                     (click)="reopen(p)"
                   >
                     Reopen
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="period-lock"
+                    [attr.aria-label]="'Lock period ' + p.name"
+                    (click)="lock(p)"
+                  >
+                    Lock
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="period-unlock"
+                    [attr.aria-label]="'Unlock period ' + p.name"
+                    (click)="unlock(p)"
+                  >
+                    Unlock
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="period-error">{{ (message) | figure }}</p>
@@ -215,6 +234,8 @@ export class Periods {
   readonly closed = output<Period>();
   /** A period was reopened. */
   readonly reopened = output<Period>();
+  /** A period was locked or unlocked. */
+  readonly locked = output<Period>();
   /** The sheet's periods were re-read: opening balances were pasted. */
   readonly reloaded = output<Period[]>();
 
@@ -311,6 +332,47 @@ export class Periods {
           e instanceof HttpErrorResponse && e.status === 403
             ? 'Your role may not reopen a period on this sheet.'
             : 'That period could not be reopened.',
+      }));
+    }
+  }
+
+  /** Lock the period, so it cannot be reopened; refused with an error unless the user is a steward
+   * and the period is not locked already. */
+  protected async lock(period: Period): Promise<void> {
+    this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const locked = await this.service.lock(sheet, period.id);
+      if (this.session.sheetId() === sheet) this.locked.emit(locked);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [period.id]:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward may lock a period.'
+            : 'That period could not be locked.',
+      }));
+    }
+  }
+
+  /** Unlock the period; refused with an error unless the user is a steward and the period is locked. */
+  protected async unlock(period: Period): Promise<void> {
+    this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const unlocked = await this.service.unlock(sheet, period.id);
+      if (this.session.sheetId() === sheet) this.locked.emit(unlocked);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [period.id]:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward may unlock a period.'
+            : 'That period could not be unlocked.',
       }));
     }
   }

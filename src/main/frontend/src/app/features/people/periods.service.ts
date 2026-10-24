@@ -28,6 +28,8 @@ export interface Period {
   /** Each person's opening balance for the period, pasted in, with two decimals, by person id: added
    *  to their carried figure into it (into the fixed one when it is closed). */
   personOpenings: Record<string, string>;
+  /** Whether a steward has locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 export interface PeriodFields {
@@ -92,6 +94,20 @@ export class PeriodsService {
   reopen(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheet)}/${id}/reopen`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Lock the period, so it cannot be reopened. */
+  lock(sheet: string, id: number): Promise<Period> {
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheet)}/${id}/lock`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Unlock the locked period. */
+  unlock(sheet: string, id: number): Promise<Period> {
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheet)}/${id}/unlock`, null, { headers: this.session.headers() }),
     );
   }
 

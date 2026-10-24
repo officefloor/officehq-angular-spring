@@ -20,6 +20,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Action;
+import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -193,7 +194,7 @@ public class PeriodService {
 
     /** Reopen the period, making its due-total and the carried figures into it live again; refused when the user's role may not
      * reopen (a steward's by default, see {@link SettingsService#allowed}) or the period is not closed
-     * or soft-closed. */
+     * or soft-closed, or it is locked. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
         Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
@@ -203,9 +204,44 @@ public class PeriodService {
         if (!period.isClosed()) {
             throw new PeriodRefusedException("not closed");
         }
+        if (period.isLocked()) {
+            throw new PeriodRefusedException("locked");
+        }
         period.reopen();
         periods.flush();
         audit.change("PERIOD_REOPENED", sheetId, user, "period=" + period.getName());
+        return period;
+    }
+
+    /** Lock the period, so it cannot be reopened; refused when the user is not a steward or it is already locked. */
+    @Transactional
+    public Period lock(String sheetId, String user, long periodId) {
+        Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodNotStewardException();
+        }
+        if (period.isLocked()) {
+            throw new PeriodRefusedException("already locked");
+        }
+        period.setLocked(true);
+        periods.flush();
+        audit.change("PERIOD_LOCKED", sheetId, user, "period=" + period.getName());
+        return period;
+    }
+
+    /** Unlock the period; refused when the user is not a steward or it is not locked. */
+    @Transactional
+    public Period unlock(String sheetId, String user, long periodId) {
+        Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodNotStewardException();
+        }
+        if (!period.isLocked()) {
+            throw new PeriodRefusedException("not locked");
+        }
+        period.setLocked(false);
+        periods.flush();
+        audit.change("PERIOD_UNLOCKED", sheetId, user, "period=" + period.getName());
         return period;
     }
 

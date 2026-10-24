@@ -36,7 +36,7 @@ public class PeriodController {
      * and each person's opening balance for it, by person id, sent as text with two decimals so they are never rounded on the way. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
             boolean soft, String closedTotal, Map<Long, String> closedPersonTotals,
-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, text(total)));
@@ -46,7 +46,7 @@ public class PeriodController {
             period.getPersonOpenings().forEach((id, opening) -> openings.put(id, text(opening)));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(), period.getCap(),
                     period.isClosed(), period.isSoft(), period.getClosedTotal() == null ? null : text(period.getClosedTotal()),
-                    personTotals, personCarried, openings);
+                    personTotals, personCarried, openings, period.isLocked());
         }
 
         private static String text(BigDecimal amount) {
@@ -153,6 +153,20 @@ public class PeriodController {
             @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/lock")
+    public PeriodView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.lock(sheetId.trim(), user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/unlock")
+    public PeriodView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.unlock(sheetId.trim(), user.trim(), periodId));
     }
 
     /** Paste opening balances: how many lines went through. */
