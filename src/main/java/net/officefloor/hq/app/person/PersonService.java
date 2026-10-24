@@ -145,6 +145,15 @@ public class PersonService {
         return person;
     }
 
+    /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the
+     * person form saves it, keeping their name, terms, contact and tags. */
+    @Transactional
+    public Person grade(String sheetId, String user, long personId, long version, String grade) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        return update(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
+                person.getContact());
+    }
+
     /** Swaps the person with the one above them in the list ({@code up}) or below; refused for the
      * top person moving up and the bottom one moving down. */
     @Transactional

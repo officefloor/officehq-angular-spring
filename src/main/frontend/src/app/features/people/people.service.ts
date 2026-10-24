@@ -178,6 +178,16 @@ export class PeopleService {
     );
   }
 
+  /** Give the person `grade` from the sheet's today, saved from `version` as the person form saves it;
+   *  refused (409) when they have been saved since. */
+  grade(sheet: string, id: number, version: number, grade: Grade): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/grade`, { grade, version }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Give each of the people `grade` from `from` (the sheet's today when null), in list order, each
    *  as the person form would save them. */
   bulkGrade(sheet: string, personIds: number[], grade: Grade, from: string | null): Promise<BulkGraded> {

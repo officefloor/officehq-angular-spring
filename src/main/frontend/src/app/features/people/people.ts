@@ -493,6 +493,25 @@ import { Audit } from './audit';
                   >
                     Cancel statement
                   </button>
+                  <label [for]="'person-inline-grade-' + p.id">Grade from today</label>
+                  <select
+                    [id]="'person-inline-grade-' + p.id"
+                    data-testid="person-inline-grade"
+                    [value]="inlineGrades()[p.id] ?? gradeNow(p)"
+                    (change)="setInlineGrade(p.id, value($event))"
+                  >
+                    @for (g of grades; track g) {
+                      <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ g }}</option>
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="person-inline-grade-save"
+                    [attr.aria-label]="'Save the grade of ' + p.name"
+                    (click)="saveInlineGrade(p)"
+                  >
+                    Save grade
+                  </button>
                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
                   <input
                     [id]="'person-retire-date-' + p.id"
@@ -730,6 +749,8 @@ export class People {
   });
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The grade chosen in each person's row select, by person id; their grade in force until chosen. */
+  protected readonly inlineGrades = signal<Record<number, Grade>>({});
   /** The statement as-of date typed on each person's row, by person id. */
   protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The hold from- and to-dates typed on each person's row, by person id. */
@@ -1089,6 +1110,7 @@ export class People {
       this.bulkRetired.set(null);
       this.bulkRetireError.set(null);
       this.retireDates.set({});
+      this.inlineGrades.set({});
       this.statementAsOfs.set({});
       this.holdFroms.set({});
       this.holdTos.set({});
@@ -1259,6 +1281,30 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That person could not be retired.' }));
+    }
+  }
+
+  protected setInlineGrade(id: number, grade: string): void {
+    this.clearRowError(id);
+    if ((this.grades as readonly string[]).includes(grade)) {
+      this.inlineGrades.update((grades) => ({ ...grades, [id]: grade as Grade }));
+    }
+  }
+
+  /** Give the person the grade chosen on their row from the sheet's today, as the person form would. */
+  protected async saveInlineGrade(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const grade = this.inlineGrades()[person.id] ?? this.gradeNow(person);
+    try {
+      const saved = await this.service.grade(sheet, person.id, person.version, grade);
+      if (this.sheet() !== sheet) return;
+      this.put(saved);
+      this.inlineGrades.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That grade could not be saved.' }));
     }
   }
 

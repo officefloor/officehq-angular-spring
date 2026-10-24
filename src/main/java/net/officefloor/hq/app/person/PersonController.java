@@ -127,6 +127,10 @@ public class PersonController {
         }
     }
 
+    /** A grade to give a person from the sheet's today, from the {@code version} their row shows. */
+    public record GradeRequest(@NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+    }
+
     /** An alias to give a person (blank is refused). */
     public record AliasRequest(@Size(max = 200) String alias) {
     }
@@ -267,6 +271,21 @@ public class PersonController {
                     request.tagsValue()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another save of the person committed while this one was under way.
+            throw new PersonStaleException(service.get(sheetId.trim(), personId));
+        }
+    }
+
+    /** Gives the person a grade from the sheet's today, as the person form saves it; refused (409) when
+     * they have been saved since the version given. */
+    @PostMapping("/{personId}/grade")
+    public PersonView grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeRequest request) {
+        try {
+            return view(sheetId, service.grade(sheetId.trim(), user.trim(), personId, request.version(),
+                    request.grade()));
+        } catch (ObjectOptimisticLockingFailureException e) {
             throw new PersonStaleException(service.get(sheetId.trim(), personId));
         }
     }
