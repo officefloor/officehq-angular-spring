@@ -5,21 +5,31 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 /** A grade given to several people at once. Each person is saved in their own transaction, through
  * {@link PersonService#update}, exactly as the person form saves them (keeping their name and terms),
- * so each records its own PERSON_EDITED and rollup lines. */
+ * so each records its own PERSON_EDITED and rollup lines. A viewer's bulk grade, or one on an archived
+ * sheet, goes through with nothing done: no one is changed. */
 @Service
 public class PersonBulkService {
 
     private final PersonService service;
     private final PersonRepository people;
+    private final SettingsService settings;
+    private final SheetRepository sheets;
 
-    public PersonBulkService(PersonService service, PersonRepository people) {
+    public PersonBulkService(PersonService service, PersonRepository people, SettingsService settings,
+            SheetRepository sheets) {
         this.service = service;
         this.people = people;
+        this.settings = settings;
+        this.sheets = sheets;
     }
 
     /** Gives each of the people {@code grade} from {@code from} (the sheet's today when left out), in
@@ -27,6 +37,8 @@ public class PersonBulkService {
      * this runs, are left as they are. The people it changed. */
     public List<Person> grade(String sheetId, String user, Collection<Long> personIds, String grade, LocalDate from) {
         Set<Long> asked = Set.copyOf(personIds);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
+        if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return List.of();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> asked.contains(p.getId()))
                 .toList();

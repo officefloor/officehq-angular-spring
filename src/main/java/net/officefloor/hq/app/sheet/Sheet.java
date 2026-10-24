@@ -38,6 +38,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The date a claim added or edited without a date is dated; null when that is off (the sheet's today). */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** Whether the sheet is archived: everything on it stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -105,6 +109,19 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The date a claim left without a date is dated: the entry date when it is set, else the sheet's today. */
+    public LocalDate entryDateInForce() {
+        return entryDate == null ? today : entryDate;
     }
 
     public boolean isArchived() {

@@ -348,8 +348,9 @@ export class Claims {
   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
    *  sheet's today changes. Only a DRAFT not dated in a closed period can be edited, and not by a
    *  viewer, so any other edit is refused with an error on the claim, taking no lock (an open claim is
-   *  changed by voiding it and adding a new one). A claim another user holds the lock of is refused
-   *  with an error too, though its editor shows it: saving it is refused while that lock holds. */
+   *  changed by voiding it and adding a new one). A claim another user holds the lock of, or one a
+   *  viewer opens, is refused with an error too, though its editor shows it: saving it is refused while
+   *  that lock holds, and always for a viewer. */
   protected async edit(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);
     const refuse = (message: string) => {
@@ -373,19 +374,20 @@ export class Claims {
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
-      if (status === 412) {
+      if (status === 412 || status === 403) {
         this.release(sheet, was, claim.id);
         this.fill(claim);
         this.rowErrors.update((errors) => ({
           ...errors,
-          [claim.id]: 'Another user is editing that claim; try again once they save or cancel it.',
+          [claim.id]:
+            status === 403
+              ? 'Your role may not edit a claim on this sheet.'
+              : 'Another user is editing that claim; try again once they save or cancel it.',
         }));
         return;
       }
       refuse(
-        status === 403
-          ? 'Your role may not edit a claim on this sheet.'
-          : status === 423
+        status === 423
           ? 'That claim is dated in a closed period.'
           : 'Only a draft claim can be edited; void it and add a new one instead.',
       );

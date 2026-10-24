@@ -57,6 +57,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
+    /** The date a claim left without a date is dated (see {@link Sheet#entryDateInForce()}). */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String id) {
+        return sheets.findById(id).map(Sheet::entryDateInForce).orElseThrow(SheetNotFoundException::new);
+    }
+
     /** Whether a claim opened now on the sheet is numbered within its period (see {@link Sheet#numbersByPeriod()}). */
     @Transactional(readOnly = true)
     public boolean numbersByPeriod(String id) {

@@ -23,7 +23,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. A claim's
+/** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
+ * or its today when that is off. A claim's
  * due-by is fixed when it is added, from the terms of its person's grade in force on its date. Only a
  * DRAFT claim can be edited. No claim dated inside a closed period (not only soft-closed) can be added,
  * edited or change status; one added inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
@@ -74,7 +75,7 @@ public class ClaimService {
             String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        LocalDate dated = date != null ? date : sheets.today(sheetId);
+        LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         refuseClosed(sheetId, dated);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
@@ -95,7 +96,7 @@ public class ClaimService {
             String corrects) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
-        LocalDate dated = date != null ? date : sheets.today(sheetId);
+        LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, dated);
         if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();

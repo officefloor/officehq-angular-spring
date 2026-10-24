@@ -343,4 +343,21 @@ public class SettingsService {
         audit.change("SETTING_CHANGED", sheetId, by, "key=grace-days", "value=" + (graceDays == null ? "" : graceDays));
         return sheet;
     }
+
+    /** The sheet's entry date; null when it is off. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEntryDate();
+    }
+
+    /** Set the sheet's entry date; null turns it off. Only the claims added or edited from then on follow it. */
+    @Transactional
+    public Sheet setEntryDate(String sheetId, String by, LocalDate entryDate) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setEntryDate(entryDate);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=entry-date",
+                "value=" + (entryDate == null ? "" : entryDate.toString()));
+        return sheet;
+    }
 }

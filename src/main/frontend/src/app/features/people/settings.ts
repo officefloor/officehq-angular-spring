@@ -25,7 +25,8 @@ const STANDING: Record<PermAction, string> = {
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
 // a claim opened is numbered within its period; blank for off), its grace days (when the sheet's today
-// is changed, an open period whose to-date plus them is before it is closed; blank for off), its permission matrix (for each of open,
+// is changed, an open period whose to-date plus them is before it is closed; blank for off), its entry date (a claim
+// added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
 // settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
 // for the standing rule) and the role each user name has been given (any other name is a clerk).
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
@@ -255,6 +256,21 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-entry-date">Entry date</label>
+        <input
+          id="setting-entry-date"
+          data-testid="setting-entry-date"
+          type="date"
+          [value]="entryDateInput()"
+          (input)="entryDateInput.set(value($event)); entryDateChanged = true; settingsError.set(null)"
+          (keydown)="entryDateChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span>
+          @if (entryDate() === null) {
+            (off)
+          }
+        </span>
         <fieldset>
           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
           @for (a of permActions; track a) {
@@ -399,6 +415,8 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   /** The grace days as set, as text; null when they are off. */
   protected readonly graceDays = signal<string | null>(null);
+  /** The entry date as set; null when it is off. */
+  protected readonly entryDate = signal<string | null>(null);
 
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
@@ -411,6 +429,7 @@ export class Settings {
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
+  protected readonly entryDateInput = signal('');
   /** The date each dated setting is saved from (YYYY-MM-DD); blank for the sheet's today. */
   protected readonly limitFrom = signal('');
   protected readonly floorFrom = signal('');
@@ -434,6 +453,7 @@ export class Settings {
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
+  protected entryDateChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
@@ -484,6 +504,9 @@ export class Settings {
       this.graceDays.set(null);
       this.graceDaysInput.set('');
       this.graceDaysChanged = false;
+      this.entryDate.set(null);
+      this.entryDateInput.set('');
+      this.entryDateChanged = false;
       this.limitFrom.set('');
       this.floorFrom.set('');
       this.capFrom.set('');
@@ -564,6 +587,8 @@ export class Settings {
       this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
     const graceDays = this.graceDaysInput().trim();
     const saveGraceDays = this.graceDaysChanged || graceDays !== (this.graceDays() ?? '');
+    const entryDate = this.entryDateInput().trim();
+    const saveEntryDate = this.entryDateChanged || entryDate !== (this.entryDate() ?? '');
     const perms = PERM_ACTIONS.map((action) => ({ action, text: this.permInput()[action].trim() })).filter(
       ({ action, text }) => this.permChanged.has(action) || text !== this.perms()[action],
     );
@@ -634,6 +659,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !TERMS.test(graceDays)) {
       this.settingsError.set('Type grace days as a whole number of days, 0 or more, or leave them blank to turn them off.');
+      return;
+    }
+    if (saveEntryDate && entryDate !== '' && !DATE.test(entryDate)) {
+      this.settingsError.set('Type an entry date as YYYY-MM-DD, or leave it blank to turn it off.');
       return;
     }
     const badPerm = perms.find(({ text }) => !PERM.test(text));
@@ -740,6 +769,12 @@ export class Settings {
         if (this.graceDaysInput().trim() === graceDays) this.graceDaysChanged = false;
         this.show(settings);
       }
+      if (saveEntryDate) {
+        const settings = await this.service.setEntryDate(sheet, entryDate || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.entryDateInput().trim() === entryDate) this.entryDateChanged = false;
+        this.show(settings);
+      }
       for (const { action, text } of perms) {
         const settings = await this.service.setPermission(sheet, action, text);
         if (this.session.sheetId() !== sheet) return;
@@ -759,6 +794,7 @@ export class Settings {
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+      if (!this.entryDateChanged) this.entryDateInput.set(this.entryDate() ?? '');
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
@@ -819,6 +855,7 @@ export class Settings {
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+        if (!this.entryDateChanged) this.entryDateInput.set(settings.entryDate ?? '');
       }
     } catch {
       // The settings could not be read; they show as none.
@@ -856,6 +893,7 @@ export class Settings {
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
+    this.entryDate.set(settings.entryDate ?? null);
     this.given.set(settings.roles);
   }
 }

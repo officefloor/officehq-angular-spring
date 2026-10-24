@@ -76,13 +76,16 @@ export interface SheetSettings {
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
+  /** The date (YYYY-MM-DD) a claim added without a date is dated in place of the sheet's today;
+   *  null when off. */
+  entryDate: string | null;
 }
 
 /** The actions the permission matrix decides who may take. */
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from and its grace days), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days and its entry date), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -197,6 +200,13 @@ export class SettingsService {
   setGraceDays(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/grace-days`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value turns the entry date off. */
+  setEntryDate(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/entry-date`, { value }, { headers: this.session.headers() }),
     );
   }
 
