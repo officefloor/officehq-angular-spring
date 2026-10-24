@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8fe53eae..6c6bcefa 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,7 +5,7 @@ import { Claims } from './claims';
+ import { Delegations } from './delegations';
+ import { Holidays } from './holidays';
+ import { Header } from './header';
+-import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
++import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
+ import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+@@ -26,7 +26,7 @@ import { Audit } from './audit';
+ // The people on the active sheet, in list order (each has a position; new people go to the end, and
+ // the up and down buttons on a row swap the person with their neighbour), and the form that adds a person
+ // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
+-// and shows what they have claimed (their OPEN, PENDING and SETTLED claims) and what is due on it: the sum of
++// and shows what they have claimed (their OPEN, PENDING and SETTLED claims, corrections left out) and what is due on it: the sum of
+ // those claims' due figures; the sheet's
+ // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped). A statement
+ // taken of a person binds each of their counting claims to the figure it shows then; the row shows
+@@ -1601,9 +1601,12 @@ export class People {
+   }
+ 
+   /** What the person's OPEN and SETTLED claims add up to (unbound OPEN ones dated within a hold left
+-   *  out); drafts and voided claims do not count. */
++   *  out); drafts, voided claims and corrections do not count. */
+   private claimedCentsOf(person: Person): number {
+-    return this.claimsOf(person.id).reduce((sum, c) => sum + (this.countsLive(c, person) ? cents(c.amount) : 0), 0);
++    return this.claimsOf(person.id).reduce(
++      (sum, c) => sum + (this.countsLive(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
++      0,
++    );
+   }
+ 
+   /** The grade's rate in force on the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 5ef97d61..74fac7aa 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
+- * claims, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
++ * claims that are not corrections, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
+  * retirement date is reached on the sheet's today, that no statement binds)
+  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
+  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
+@@ -92,7 +92,7 @@ public class RollupService {
+             Basis basis = live(sheetId);
+             for (Claim claim : all) {
+                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
+-                claimed = claimed.add(claim.getAmount());
++                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
+                 BigDecimal figure = shownOf(claim, person);
+                 if (figure == null) continue;
+                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
