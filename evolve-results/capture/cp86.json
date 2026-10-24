@@ -1,0 +1,64 @@
+{
+  "checkpoint": 86,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp86_inline-amount",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b977e35b4a485373bf4bf35f9d7b796e84d9ec94",
+  "reset_sha": "",
+  "preagent_sha": "11d26fff947892c4ef3be51f70206ad3376d783c",
+  "prev_sha": "11d26fff947892c4ef3be51f70206ad3376d783c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4967742,
+    "input_tokens": 26,
+    "output_tokens": 4541,
+    "cache_read_tokens": 417131,
+    "cache_creation_tokens": 40303,
+    "num_turns": 14,
+    "duration_ms": 241374,
+    "duration_api_ms": 52993,
+    "model": "claude-opus-5-5",
+    "session_id": "491a21bf-dd74-4a1b-a174-8895ab625976",
+    "stop_reason": "success",
+    "result_text": "Each claim row now has its own amount box and a \"Save amount\" button next to Edit, and all 4 tests in `bin/e2e` pass.\n\nIt's a front-end-only change, in `src/main/frontend/src/app/features/people/claims.ts`. The server's existing claim-edit endpoint (`PUT /claims/{id}`) already checks every rule the request lists and writes `CLAIM_EDITED`, so the row's save button calls that. It sends the new amount and keeps the claim's own date, note and corrected-claim number.\n\n- **Refusals:** an amount that isn't a number with up to two decimals is refused in the browser before anything is sent. Every other refusal comes from the server and shows as the claim's error (`claim-error`) with a message for that case: not a draft, closed period, someone else has the claim open, viewer, negative amount without a correction, or dated after the person retired.\n- **Clearing:** the claim's error goes away when the box is changed or saved again, and the box empties after a successful save.\n- **The amount box is on every claim, not just drafts.** The test types into it on an OPEN claim and expects a refusal, so hiding it would make the test time out. A non-draft claim shows the box but saving is refused.\n- **One addition you didn't ask for:** if your own full editor for that claim is open in the form when you save the amount in the row, the editor closes. Saving releases the claim's lock, so leaving it open would show the old amount and could save over the new one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4967742,
+        "num_turns": 14,
+        "duration_ms": 241374,
+        "duration_api_ms": 52993,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp86.agent.jsonl",
+  "agent_diff_file": "cp86.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

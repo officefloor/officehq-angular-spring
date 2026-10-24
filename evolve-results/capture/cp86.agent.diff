@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index eedac40c..d297c21b 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -202,6 +202,22 @@ const PAST: Record<ClaimAction, string> = {
+             >
+               Move
+             </button>
++            <label [for]="fieldId('inline-amount-' + c.id)">New amount</label>
++            <input
++              [id]="fieldId('inline-amount-' + c.id)"
++              data-testid="claim-inline-amount"
++              inputmode="decimal"
++              [value]="inlineAmounts()[c.id] ?? ''"
++              (input)="setInlineAmount(c.id, value($event))"
++            />
++            <button
++              type="button"
++              data-testid="claim-inline-save"
++              [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date"
++              (click)="saveInline(c)"
++            >
++              Save amount
++            </button>
+             <button
+               type="button"
+               data-testid="claim-edit"
+@@ -292,6 +308,8 @@ export class Claims {
+   protected readonly redates = signal<Record<number, string>>({});
+   /** The amount typed to split off each claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  /** The amount typed to change each draft claim to in its row, by claim id. */
++  protected readonly inlineAmounts = signal<Record<number, string>>({});
+   /** The person chosen to move each claim to, by claim id: their id as text. */
+   protected readonly reassignTos = signal<Record<number, string>>({});
+   protected readonly actions: { action: ClaimAction; label: string }[] = [
+@@ -634,6 +652,58 @@ export class Claims {
+     }
+   }
+ 
++  protected setInlineAmount(id: number, amount: string): void {
++    this.inlineAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    this.clearRowError(id);
++  }
++
++  /** Change the claim's amount to the one typed on its row, keeping its date, note and correction, by the
++   *  claim form's rules: an amount with up to two decimals (a negative one only on a correction), a
++   *  DRAFT not dated in a closed period nor held by another user's editor, and not by a viewer; anything
++   *  else is refused with an error on the claim. */
++  protected async saveInline(claim: Claim): Promise<void> {
++    this.clearRowError(claim.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const refuse = (message: string) => this.rowErrors.update((errors) => ({ ...errors, [claim.id]: message }));
++    const amount = (this.inlineAmounts()[claim.id] ?? '').trim();
++    if (!AMOUNT.test(amount)) {
++      refuse('Type an amount with up to two decimals.');
++      return;
++    }
++    try {
++      const changed = await this.service.update(sheet, claim.id, {
++        amount,
++        date: claim.date,
++        note: claim.note,
++        corrects: claim.corrects,
++      });
++      if (this.session.sheetId() !== sheet) return;
++      this.inlineAmounts.update(({ [claim.id]: _, ...rest }) => rest);
++      // Saving releases the claim's lock, so an editor of it left open on the form is closed.
++      if (this.editingId() === claim.id) this.reset();
++      this.saved.emit(changed);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      refuse(
++        status === 403
++          ? 'Your role may not edit a claim on this sheet.'
++          : status === 423
++          ? 'That claim is dated in a closed period.'
++          : status === 412
++          ? 'Another user is editing that claim; it cannot be saved until they save or cancel it.'
++          : status === 409
++          ? 'Only a draft claim can be edited; void it and add a new one instead.'
++          : status === 400
++          ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
++          : status === 422
++          ? 'A claim cannot be dated after the person retired.'
++          : 'That claim could not be saved.',
++      );
++    }
++  }
++
+   protected setSplitAmount(id: number, amount: string): void {
+     this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+     this.clearRowError(id);
