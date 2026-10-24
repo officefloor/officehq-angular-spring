@@ -1,0 +1,351 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index a7e2b000..abd6a1fb 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -53,6 +53,8 @@ export interface Person {
+   origin: string | null;
+   /** The person's past retirements, each ended by an unretire, by from-date. */
+   retirements: PersonRetirement[];
++  /** The person's tags, trimmed, lower-cased, without repeats and sorted; empty when they have none. */
++  tags: string[];
+ }
+ 
+ /** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
+@@ -107,6 +109,8 @@ export interface PersonFields {
+   terms: string;
+   /** The person's contact, as typed; blank for none. */
+   contact: string;
++  /** The person's tags, comma separated (each trimmed and lower-cased by the server); blank for none. */
++  tags: string;
+ }
+ 
+ /** The grade in force on a date: the one with the latest from-date on or before it, or the first
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3127163c..e6f9c0b1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -143,6 +143,13 @@ import { Audit } from './audit';
+           [value]="contact()"
+           (input)="contact.set(value($event)); error.set(null)"
+         />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input
++          id="person-form-tags"
++          data-testid="person-form-tags"
++          [value]="tags()"
++          (input)="tags.set(value($event)); error.set(null)"
++        />
+         <button type="submit" data-testid="person-form-submit">
+           {{ editingId() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -331,6 +338,7 @@ import { Audit } from './audit';
+               <th scope="col">Grade</th>
+               <th scope="col">Terms</th>
+               <th scope="col">Contact</th>
++              <th scope="col">Tags</th>
+               <th scope="col">Aliases</th>
+               <th scope="col">Clashing</th>
+               <th scope="col">Came from</th>
+@@ -379,6 +387,7 @@ import { Audit } from './audit';
+                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
+                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++                <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+                 <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+@@ -854,16 +863,19 @@ export class People {
+   /** Every tag ever used on the sheet: those the store keeps, and those on its claims now. */
+   protected readonly sheetTags = signal<string[]>([]);
+   /** Each tag ever used on the sheet, sorted, with its due-total: what is due on the claims that count
+-   *  which carry it, as each claim shows it (a claim with two tags counts in both). */
++   *  which carry it, or whose person carries it, as each claim shows it (a claim with two tags counts
++   *  in both, and once for a tag both it and its person carry). */
+   protected readonly tagDueTotals = computed(() => {
+     const sums = new Map<string, number>();
+     for (const tag of this.sheetTags()) sums.set(tag, 0);
+     for (const c of this.claims()) for (const tag of c.tags) if (!sums.has(tag)) sums.set(tag, 0);
++    for (const p of this.people()) for (const tag of p.tags) if (!sums.has(tag)) sums.set(tag, 0);
+     for (const person of this.people()) {
+       for (const c of this.claimsOf(person.id)) {
+-        if (c.tags.length === 0 || !this.countsLive(c, person)) continue;
++        const tags = new Set([...c.tags, ...person.tags]);
++        if (tags.size === 0 || !this.countsLive(c, person)) continue;
+         const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+-        for (const tag of c.tags) sums.set(tag, (sums.get(tag) ?? 0) + due);
++        for (const tag of tags) sums.set(tag, (sums.get(tag) ?? 0) + due);
+       }
+     }
+     return [...sums.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, sum]) => ({ tag, dueTotal: money(sum) }));
+@@ -956,6 +968,8 @@ export class People {
+   protected readonly terms = signal('');
+   /** The person's contact, as typed; blank for none. */
+   protected readonly contact = signal('');
++  /** The person's tags, as typed; blank for none. */
++  protected readonly tags = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion = 0;
+@@ -1819,6 +1833,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set(person.terms === null ? '' : String(person.terms));
+     this.contact.set(person.contact ?? '');
++    this.tags.set(person.tags.join(', '));
+     this.error.set(null);
+   }
+ 
+@@ -1829,6 +1844,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set('');
+     this.contact.set('');
++    this.tags.set('');
+     this.error.set(null);
+   }
+ 
+@@ -1838,7 +1854,7 @@ export class People {
+     this.error.set(null);
+     const sheet = this.sheet();
+     if (!sheet) return;
+-    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim(), contact: this.contact() };
++    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim(), contact: this.contact(), tags: this.tags() };
+     if (!fields.name.trim()) {
+       this.error.set('Type a name for the person.');
+       return;
+@@ -1890,6 +1906,7 @@ export class People {
+           this.grade.set(this.gradeNow(current));
+           this.terms.set(current.terms === null ? '' : String(current.terms));
+           this.contact.set(current.contact ?? '');
++          this.tags.set(current.tags.join(', '));
+         }
+         this.error.set('Someone else saved this person since you opened it; their changes are shown.');
+         return;
+@@ -2071,6 +2088,7 @@ export class People {
+       this.grade.set(this.gradeNow(current));
+       this.terms.set(current.terms === null ? '' : String(current.terms));
+       this.contact.set(current.contact ?? '');
++      this.tags.set(current.tags.join(', '));
+       this.error.set('Someone else saved this person since you opened it; their changes are shown.');
+     } catch {
+       // The people could not be re-read; the list stays as it was.
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 78a247c4..a3080c04 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -81,6 +81,11 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; null when
++     * they have none (see {@link net.officefloor.hq.app.claim.Claim#tagsOf}). */
++    @Column(name = "tags")
++    private String tags;
++
+     /** The sheet the person was transferred from; null when they were not transferred. */
+     @Column(name = "origin_sheet_id")
+     private String originSheetId;
+@@ -136,6 +141,7 @@ public class Person {
+         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
+         copy.terms = terms;
+         copy.contact = contact;
++        copy.tags = tags;
+         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
+         return copy;
+     }
+@@ -154,6 +160,7 @@ public class Person {
+         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
+         copy.terms = terms;
+         copy.contact = contact;
++        copy.tags = tags;
+         copy.position = position;
+         return copy;
+     }
+@@ -205,6 +212,17 @@ public class Person {
+         this.contact = contactOf(contact);
+     }
+ 
++    /** The person's tags, sorted; empty when they have none. */
++    public List<String> getTags() {
++        return tags == null ? List.of() : List.of(tags.split(","));
++    }
++
++    /** Gives the person the tags, as {@link net.officefloor.hq.app.claim.Claim#tagsOf} makes them (none
++     * when null). */
++    public void setTags(String tags) {
++        this.tags = tags;
++    }
++
+     /** The person's aliases, sorted as names are compared. */
+     public List<String> getAliases() {
+         return aliases.stream()
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index f9691c58..6e86c3bb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.stream.Stream;
++import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.SheetHistory;
+ import org.springframework.format.annotation.DateTimeFormat;
+@@ -63,14 +64,14 @@ public class PersonController {
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
+             String contact, List<String> aliases, boolean clashing, String origin,
+-            List<RetirementView> retirements) {
++            List<RetirementView> retirements, List<String> tags) {
+         public static PersonView of(Person person, LocalDate today, boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
+                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
+-                    person.getRetirements().stream().map(RetirementView::of).toList());
++                    person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags());
+         }
+     }
+ 
+@@ -114,10 +115,16 @@ public class PersonController {
+             LocalDate gradeFrom,
+             @Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String terms,
+             Long version,
+-            @Size(max = 200) String contact) {
++            @Size(max = 200) String contact,
++            @Size(max = 500) String tags) {
+         Integer termsValue() {
+             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+         }
++
++        /** The tags given, as a person keeps them (see {@link Claim#tagsOf}); null when none are. */
++        String tagsValue() {
++            return Claim.tagsOf(tags);
++        }
+     }
+ 
+     /** An alias to give a person (blank is refused). */
+@@ -243,7 +250,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PersonRequest request) {
+         return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
+-                request.termsValue(), request.contact()));
++                request.termsValue(), request.contact(), request.tagsValue()));
+     }
+ 
+     @PutMapping("/{personId}")
+@@ -256,7 +263,8 @@ public class PersonController {
+         }
+         try {
+             return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
+-                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.contact()));
++                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.contact(),
++                    request.tagsValue()));
+         } catch (ObjectOptimisticLockingFailureException e) {
+             // Another save of the person committed while this one was under way.
+             throw new PersonStaleException(service.get(sheetId.trim(), personId));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 2f3aa5fd..5201efa5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -5,6 +5,9 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Objects;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.SheetTag;
++import net.officefloor.hq.app.claim.SheetTagRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+@@ -25,10 +28,13 @@ public class PersonService {
+     private final PersonPatronRepository patrons;
+     private final PersonWatchRepository watches;
+     private final PersonTree tree;
++    private final SheetTagRepository tagRepository;
+ 
+     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
+-            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree) {
++            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
++            SheetTagRepository tagRepository) {
+         this.people = people;
++        this.tagRepository = tagRepository;
+         this.tree = tree;
+         this.patrons = patrons;
+         this.watches = watches;
+@@ -58,6 +64,14 @@ public class PersonService {
+      * another person on the sheet has the name or the contact, or another sheet of its tree uses the name. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Adds a person as {@link #add(String, String, String, String, Integer, String)} does, with the tags
++     * {@code tags} (see {@link Claim#tagsOf}; none when null). */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tags) {
+         if (!sheets.existsById(sheetId)) {
+             throw new SheetNotFoundException();
+         }
+@@ -68,8 +82,10 @@ public class PersonService {
+         Person created = new Person(sheetId, name, grade);
+         created.setTerms(terms);
+         created.setContact(contact);
++        created.setTags(tags);
+         created.setPosition(people.maxPosition(sheetId) + 1);
+         Person person = people.saveAndFlush(created);
++        keepTags(person);
+         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + grade));
+         if (terms != null) fields.add("terms=" + terms);
+         if (person.getContact() != null) fields.add("contact=" + person.getContact());
+@@ -93,6 +109,16 @@ public class PersonService {
+     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact,
++                person.getTags().isEmpty() ? null : String.join(",", person.getTags()));
++    }
++
++    /** Saves the person as {@link #update(String, String, long, long, String, String, LocalDate, Integer,
++     * String)} does, giving them the tags {@code tags} (see {@link Claim#tagsOf}; none when null). */
++    @Transactional
++    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, String tags) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         if (person.getVersion() != version) {
+             throw new PersonStaleException(person);
+         }
+@@ -108,7 +134,9 @@ public class PersonService {
+         person.setTerms(terms);
+         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
+         person.setContact(contact);
++        person.setTags(tags);
+         people.flush();
++        keepTags(person);
+         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + person.gradeOn(today)));
+         if (termsChanged) fields.add("terms=" + (terms == null ? "" : terms));
+         if (contactChanged) fields.add("contact=" + (person.getContact() == null ? "" : person.getContact()));
+@@ -267,6 +295,14 @@ public class PersonService {
+         }
+     }
+ 
++    /** Keep each of the person's tags among those ever used on its sheet. */
++    private void keepTags(Person person) {
++        for (String tag : person.getTags()) {
++            SheetTag.Key key = new SheetTag.Key(person.getSheetId(), tag);
++            if (!tagRepository.existsById(key)) tagRepository.save(new SheetTag(person.getSheetId(), tag));
++        }
++    }
++
+     /** Refuses a contact another person on the sheet (other than {@code self}) already has; a blank
+      * contact is none, and is never refused. */
+     private void requireContactFree(String sheetId, String contact, Long self) {
+diff --git a/src/main/resources/db/migration/V76__person_tags.sql b/src/main/resources/db/migration/V76__person_tags.sql
+new file mode 100644
+index 00000000..636096e1
+--- /dev/null
++++ b/src/main/resources/db/migration/V76__person_tags.sql
+@@ -0,0 +1,3 @@
++-- A person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; null when they
++-- have none. A claim counts in a tag's total when it or its person carries the tag.
++ALTER TABLE person ADD COLUMN tags VARCHAR(1000);
