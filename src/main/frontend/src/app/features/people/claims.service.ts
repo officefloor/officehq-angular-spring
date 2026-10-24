@@ -11,6 +11,18 @@ export interface Claim {
   /** YYYY-MM-DD */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Added as DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A status change asked of a claim. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Whether a claim in this status counts toward what is claimed and due. */
+export function counts(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
 export interface ClaimFields {
@@ -53,6 +65,15 @@ export class ClaimsService {
   update(sheet: string, id: number, fields: ClaimFields): Promise<Claim> {
     return firstValueFrom(
       this.http.put<Claim>(`${this.url(sheet)}/claims/${id}`, fields, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Change the claim's status; refused (409) when its status does not allow the change. */
+  act(sheet: string, id: number, action: ClaimAction): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, null, {
         headers: this.session.headers(),
       }),
     );

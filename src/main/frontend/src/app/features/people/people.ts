@@ -2,14 +2,15 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
-import { Claim, ClaimsService, cents, money } from './claims.service';
+import { Claim, ClaimsService, cents, counts, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 import { Rates } from './rates';
 import { Rate, RatesService, dueCents } from './rates.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
-// and shows what they have claimed and what is due on it at their grade's rate; the sheet's
+// and shows what they have claimed (their OPEN and SETTLED claims) and what is due on it at their
+// grade's rate; the sheet's
 // claimed-total and due-total add up everyone's (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
@@ -149,7 +150,7 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.claims().reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0)),
   );
   /** The sheet's rates, by grade. */
   protected readonly rates = signal<Rate[]>([]);
@@ -190,7 +191,12 @@ export class People {
   }
 
   protected claimedOf(personId: number): string {
-    return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+    return money(this.claimedCentsOf(personId));
+  }
+
+  /** What the person's OPEN and SETTLED claims add up to; drafts and voided claims do not count. */
+  private claimedCentsOf(personId: number): number {
+    return this.claimsOf(personId).reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0);
   }
 
   protected rateOf(grade: Grade): string | null {
@@ -205,8 +211,7 @@ export class People {
   }
 
   private dueCentsOf(person: Person): number | null {
-    const claimed = this.claimsOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0);
-    return dueCents(claimed, this.rateOf(person.grade));
+    return dueCents(this.claimedCentsOf(person.id), this.rateOf(person.grade));
   }
 
   /** Put a set rate in place of the grade's old one. */

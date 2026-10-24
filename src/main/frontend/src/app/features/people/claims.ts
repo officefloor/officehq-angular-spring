@@ -1,11 +1,11 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimsService, cents, money } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, cents, money } from './claims.service';
 import { dueCents } from './rates.service';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
-// A person's claims, newest first, and the form that adds a claim to them or, once a claim's
+// A person's claims, newest first, each with its status and the buttons that change it, and the form that adds a claim to them or, once a claim's
 // editor is opened, saves changes to it.
 @Component({
   selector: 'app-claims',
@@ -49,6 +49,17 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+            <span data-testid="claim-status">{{ c.status }}</span>
+            @for (a of actions; track a.action) {
+              <button
+                type="button"
+                [attr.data-testid]="'claim-' + a.action"
+                [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
+                (click)="act(c, a.action)"
+              >
+                {{ a.label }}
+              </button>
+            }
             <button
               type="button"
               data-testid="claim-edit"
@@ -59,6 +70,9 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             </button>
             @if (editingId() === c.id) {
               <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            }
+            @if (rowErrors()[c.id]; as message) {
+              <p role="alert" class="error" data-testid="claim-error">{{ message }}</p>
             }
           </li>
         }
@@ -103,6 +117,13 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error of the last refused action on each claim, by claim id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   protected fieldId(field: string): string {
     return `claim-${this.personId()}-${field}`;
@@ -119,11 +140,33 @@ export class Claims {
   }
 
   protected edit(claim: Claim): void {
+    this.clearRowError(claim.id);
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.error.set(null);
+  }
+
+  /** Change the claim's status; a change its status does not allow is refused with an error. */
+  protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.act(sheet, claim.id, action);
+      if (this.session.sheetId() === sheet) this.saved.emit(changed);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
+      }));
+    }
+  }
+
+  private clearRowError(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   protected reset(): void {

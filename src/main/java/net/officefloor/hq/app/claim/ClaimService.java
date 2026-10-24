@@ -56,6 +56,24 @@ public class ClaimService {
         return claim;
     }
 
+    /** Move the claim to {@code next}; refused when its current status does not allow it. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
+        claim.setStatus(next);
+        claims.flush();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        record(switch (next) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        }, user, person, claim);
+        return claim;
+    }
+
     private void record(String event, String user, Person person, Claim claim) {
         audit.change(event, claim.getSheetId(), user, "person=" + person.getName(),
                 "amount=" + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
