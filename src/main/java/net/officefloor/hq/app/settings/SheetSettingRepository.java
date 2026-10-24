@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SheetSettingRepository extends JpaRepository<SheetSetting, Long> {
 
+    List<SheetSetting> findBySheetIdOrderByIdAsc(String sheetId);
+
     List<SheetSetting> findBySheetIdAndKeyOrderByFromAsc(String sheetId, String key);
 
     Optional<SheetSetting> findBySheetIdAndKeyAndFrom(String sheetId, String key, LocalDate from);

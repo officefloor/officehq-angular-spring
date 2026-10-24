@@ -131,6 +131,25 @@ export class Session {
     }
   }
 
+  /** Clone the active sheet to another id, one never used; resolves the clone's id, or null when refused. */
+  async cloneSheet(to: string): Promise<string | null> {
+    const sheet = this.sheetId();
+    const target = to.trim();
+    if (!sheet || !target) return null;
+    try {
+      const view = await firstValueFrom(
+        this.http.post<SheetView>(
+          `/api/sheets/${encodeURIComponent(sheet)}/clone`,
+          { to: target },
+          { headers: this.headers() },
+        ),
+      );
+      return view.id;
+    } catch {
+      return null;
+    }
+  }
+
   private show(view: SheetView): void {
     this.sheetId.set(view.id);
     this.today.set(view.today);

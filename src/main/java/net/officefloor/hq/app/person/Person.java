@@ -140,6 +140,24 @@ public class Person {
         return copy;
     }
 
+    /** A copy of the person on the sheet {@code sheetId}, a clone of theirs: the same name, place in the
+     * list, every grade (with its from-date), terms, contact, aliases, holds, retirement and past
+     * retirements. */
+    public Person clonedTo(String sheetId) {
+        Person copy = new Person();
+        copy.sheetId = sheetId;
+        copy.setName(name);
+        grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
+        copy.retiredFrom = retiredFrom;
+        retirements.forEach(r -> copy.retirements.add(new PersonRetirement(r.getFrom(), r.getTo())));
+        holds.forEach(h -> copy.holds.add(new PersonHold(h.getFrom(), h.getTo())));
+        aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.position = position;
+        return copy;
+    }
+
     /** The grades the person has been given, by from-date (the one with none first). */
     public List<PersonGrade> getGrades() {
         return grades.stream()

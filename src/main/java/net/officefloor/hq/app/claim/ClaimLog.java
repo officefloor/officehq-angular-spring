@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /** A line of a claim's status log: a status it came to have, the user who made the change, the sheet's
  * today then and what was due on it as it showed then (null when it had no figure). */
@@ -46,6 +47,20 @@ public class ClaimLog {
         this.by = by;
         this.date = date;
         this.due = due;
+    }
+
+    /** The same line, on the log of the claim {@code claimId}. */
+    public ClaimLog copyFor(Long claimId) {
+        return new ClaimLog(claimId, status, by, date, due);
+    }
+
+    /** The sheet's today when the claim whose log is {@code log} (oldest first) was opened: the date of the
+     * first line showing it OPEN, else of the first showing it past DRAFT; null when it shows neither. */
+    public static LocalDate openedOn(List<ClaimLog> log) {
+        if (log == null) return null;
+        return log.stream().filter(line -> line.getStatus() == ClaimStatus.OPEN).map(ClaimLog::getDate).findFirst()
+                .orElseGet(() -> log.stream().filter(line -> line.getStatus() != ClaimStatus.DRAFT)
+                        .map(ClaimLog::getDate).findFirst().orElse(null));
     }
 
     public Long getId() {

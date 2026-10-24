@@ -185,6 +185,15 @@ public class Claim {
         return copy;
     }
 
+    /** A copy of the claim for the person {@code personId} on the sheet {@code sheetId}, a clone of its
+     * sheet: as {@link #transferredTo} makes it, with its reference too; its number, and what names other
+     * claims by number, are given by the clone. */
+    public Claim clonedTo(String sheetId, Long personId) {
+        Claim copy = transferredTo(sheetId, personId);
+        copy.setRef(ref);
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

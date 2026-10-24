@@ -48,6 +48,19 @@ import { Session } from './session';
           <button type="button" data-testid="sheet-archive" (click)="archive()">
             Archive sheet
           </button>
+          <form (submit)="cloneSheet($event)">
+            <label for="sheet-clone-to">Clone to sheet</label>
+            <input
+              id="sheet-clone-to"
+              data-testid="sheet-clone-to"
+              [value]="cloneInput()"
+              (input)="cloneInput.set(value($event)); cloneError.set(false)"
+            />
+            <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+          </form>
+          <span
+            >Cloned to <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></span
+          >
           <form (submit)="setAsOf($event)">
             <label for="asof-date">Show as of</label>
             <input
@@ -74,6 +87,11 @@ import { Session } from './session';
           @if (archiveError()) {
             <p role="alert" class="error" data-testid="sheet-error">
               The sheet could not be archived.
+            </p>
+          }
+          @if (cloneError()) {
+            <p role="alert" class="error" data-testid="sheet-error">
+              The sheet could not be cloned to that sheet.
             </p>
           }
         }
@@ -127,6 +145,9 @@ export class SessionBar {
   protected readonly todayInput = signal('');
   protected readonly todayError = signal(false);
   protected readonly archiveError = signal(false);
+  protected readonly cloneInput = signal('');
+  protected readonly clonedTo = signal<string | null>(null);
+  protected readonly cloneError = signal(false);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal(false);
 
@@ -144,6 +165,7 @@ export class SessionBar {
     this.sheetError.set(false);
     this.todayError.set(false);
     this.archiveError.set(false);
+    this.cloneError.set(false);
     this.sheetError.set(!(await this.session.loadSheet(this.sheetInput())));
   }
 
@@ -151,6 +173,7 @@ export class SessionBar {
     event.preventDefault();
     this.todayError.set(false);
     this.archiveError.set(false);
+    this.cloneError.set(false);
     this.todayError.set(!(await this.session.setToday(this.todayInput())));
   }
 
@@ -159,6 +182,7 @@ export class SessionBar {
     this.asOfError.set(false);
     this.todayError.set(false);
     this.archiveError.set(false);
+    this.cloneError.set(false);
     this.asOfError.set(!(await this.session.setAsOf(this.asOfInput())));
   }
 
@@ -166,12 +190,25 @@ export class SessionBar {
     this.asOfError.set(false);
     this.todayError.set(false);
     this.archiveError.set(false);
+    this.cloneError.set(false);
     await this.session.clearAsOf();
   }
 
   protected async archive(): Promise<void> {
     this.todayError.set(false);
     this.archiveError.set(false);
+    this.cloneError.set(false);
     this.archiveError.set(!(await this.session.archive()));
+  }
+
+  protected async cloneSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    this.todayError.set(false);
+    this.archiveError.set(false);
+    this.cloneError.set(false);
+    this.clonedTo.set(null);
+    const clone = await this.session.cloneSheet(this.cloneInput());
+    this.clonedTo.set(clone);
+    this.cloneError.set(clone === null);
   }
 }

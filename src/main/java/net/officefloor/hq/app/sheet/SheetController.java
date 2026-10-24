@@ -38,16 +38,23 @@ public class SheetController {
     public record TodayRequest(@NotNull LocalDate today) {
     }
 
+    public record CloneRequest(@NotNull @Size(max = 200) String to) {
+    }
+
     private final SheetService service;
 
     private final SheetHistory history;
 
     private final ConsolidatedService consolidated;
 
-    public SheetController(SheetService service, SheetHistory history, ConsolidatedService consolidated) {
+    private final SheetCloneService cloning;
+
+    public SheetController(SheetService service, SheetHistory history, ConsolidatedService consolidated,
+            SheetCloneService cloning) {
         this.service = service;
         this.history = history;
         this.consolidated = consolidated;
+        this.cloning = cloning;
     }
 
     /** The figures of the sheet's descendants as they stand, added up (see {@link ConsolidatedService});
@@ -84,5 +91,13 @@ public class SheetController {
     public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return SheetView.of(service.archive(id.trim(), user.trim()));
+    }
+
+    /** Clone the sheet to another id, one never used: only a steward may. Returns the clone. */
+    @PostMapping("/{id}/clone")
+    public SheetView cloneSheet(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CloneRequest request) {
+        return SheetView.of(cloning.cloneSheet(id.trim(), user.trim(), request.to().trim()));
     }
 }

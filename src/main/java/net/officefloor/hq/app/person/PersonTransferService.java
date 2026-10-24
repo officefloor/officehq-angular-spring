@@ -1,6 +1,5 @@
 package net.officefloor.hq.app.person;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -122,7 +121,7 @@ public class PersonTransferService {
         Map<String, String> renumbered = new HashMap<>();
         moving.stream()
                 .filter(claim -> claim.getNumber() != null)
-                .sorted(Comparator.comparing((Claim claim) -> openedOn(logsOf.get(claim.getId())),
+                .sorted(Comparator.comparing((Claim claim) -> ClaimLog.openedOn(logsOf.get(claim.getId())),
                                 Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Claim::getId))
                 .forEach(claim -> {
@@ -163,14 +162,5 @@ public class PersonTransferService {
         audit.change("PERSON_TRANSFERRED", toSheetId, user, "name=" + arrived.getName(), "from=" + sheetId);
         rollup.recordSince(toSheetId, user, beforeThere);
         return arrived;
-    }
-
-    /** The sheet's today when the claim was opened: the date of the first line of its log showing it OPEN,
-     * else of the first showing it past DRAFT; null when its log shows neither. */
-    private static LocalDate openedOn(List<ClaimLog> log) {
-        if (log == null) return null;
-        return log.stream().filter(line -> line.getStatus() == ClaimStatus.OPEN).map(ClaimLog::getDate).findFirst()
-                .orElseGet(() -> log.stream().filter(line -> line.getStatus() != ClaimStatus.DRAFT)
-                        .map(ClaimLog::getDate).findFirst().orElse(null));
     }
 }

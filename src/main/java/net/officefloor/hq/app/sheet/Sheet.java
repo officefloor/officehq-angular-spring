@@ -71,6 +71,20 @@ public class Sheet {
         this.today = today;
     }
 
+    /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
+     * today and its settings (policy date, period numbering, grace days, entry date, pot and parent) come
+     * with it; it is not archived and has had no settle batch. */
+    public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
+        Sheet copy = new Sheet(id, createdBy, createdAt, today);
+        copy.policyDate = policyDate;
+        copy.periodNumberingFrom = periodNumberingFrom;
+        copy.graceDays = graceDays;
+        copy.entryDate = entryDate;
+        copy.pot = pot;
+        copy.parentId = parentId;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }
