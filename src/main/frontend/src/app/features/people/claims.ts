@@ -17,6 +17,8 @@ const PAST: Record<ClaimAction, string> = {
   approve: 'approved',
   reject: 'rejected',
   void: 'voided',
+  delete: 'deleted',
+  restore: 'restored',
 };
 
 // A person's claims, newest first, each with its status and the buttons that change it, and the form that adds a claim to them or, once a claim's
@@ -403,6 +405,8 @@ export class Claims {
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
+    { action: 'delete', label: 'Delete' },
+    { action: 'restore', label: 'Restore' },
   ];
 
   protected fieldId(field: string): string {
@@ -476,7 +480,11 @@ export class Claims {
       this.rowErrors.update((errors) => ({ ...errors, [claim.id]: message }));
     };
     if (claim.status !== 'DRAFT') {
-      refuse('Only a draft claim can be edited; void it and add a new one instead.');
+      refuse(
+        claim.status === 'DELETED'
+          ? 'A deleted claim cannot be edited; restore it first.'
+          : 'Only a draft claim can be edited; void it and add a new one instead.',
+      );
       return;
     }
     const period = periodOn(this.periods(), claim.dueBy);
@@ -596,6 +604,8 @@ export class Claims {
             : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 400
           ? 'Type a one-word reason to reject that claim.'
+          : e instanceof HttpErrorResponse && e.status === 410 && action === 'restore'
+          ? 'A deleted claim can only be restored on the day it was deleted.'
           : e instanceof HttpErrorResponse && e.status === 410
           ? 'A settled claim can only be voided within 7 days of its settlement.'
           : e instanceof HttpErrorResponse && e.status === 423
@@ -613,7 +623,7 @@ export class Claims {
     }
   }
 
-  /** Raise the claim's proofs count by one; a SETTLED or VOID claim, or one dated in a closed period,
+  /** Raise the claim's proofs count by one; a SETTLED, VOID or DELETED claim, or one dated in a closed period,
    *  is refused with an error. */
   protected async addProof(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);

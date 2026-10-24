@@ -277,6 +277,20 @@ public class ClaimController {
         return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID, reason));
     }
 
+    @PostMapping("/claims/{claimId}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.delete(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.restore(sheetId.trim(), user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

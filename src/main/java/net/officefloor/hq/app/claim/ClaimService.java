@@ -296,7 +296,7 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         if (next == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
@@ -308,6 +308,47 @@ public class ClaimService {
             record(event, user, person, claim, number, extra.toArray(String[]::new));
         }
         rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** Delete a DRAFT claim: it becomes DELETED, counts nowhere and cannot be edited, opened or voided
+     * until it is restored. Refused unless the claim is a DRAFT, and when its due-by is in a closed period. */
+    @Transactional
+    public Claim delete(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimStatusChangeException();
+        if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setStatus(ClaimStatus.DELETED);
+        claim.unlock();
+        claims.flush();
+        log(user, person, claim);
+        record("CLAIM_DELETED", user, person, claim, claim.getNumber());
+        return claim;
+    }
+
+    /** Restore a DELETED claim: it is a DRAFT again. Refused unless the claim is DELETED, when the sheet's
+     * today is not the day it was deleted (its status log's last DELETED date), and when its due-by is in
+     * a closed period. */
+    @Transactional
+    public Claim restore(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DELETED) throw new ClaimStatusChangeException();
+        LocalDate deleted = logs.findByClaimIdInOrderByIdAsc(List.of(claim.getId())).stream()
+                .filter(entry -> entry.getStatus() == ClaimStatus.DELETED)
+                .map(ClaimLog::getDate)
+                .reduce((first, second) -> second)
+                .orElse(null);
+        if (!sheets.today(sheetId).equals(deleted)) throw new ClaimRestoreLateException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setStatus(ClaimStatus.DRAFT);
+        claims.flush();
+        log(user, person, claim);
+        record("CLAIM_RESTORED", user, person, claim, claim.getNumber());
         return claim;
     }
 
@@ -445,7 +486,8 @@ public class ClaimService {
     public Claim addProof(String sheetId, String user, long claimId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ClaimStatusChangeException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
