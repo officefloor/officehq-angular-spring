@@ -43,6 +43,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
+    /** Whether a claim opened now on the sheet is numbered within its period (see {@link Sheet#numbersByPeriod()}). */
+    @Transactional(readOnly = true)
+    public boolean numbersByPeriod(String id) {
+        return sheets.findById(id).map(Sheet::numbersByPeriod).orElseThrow(SheetNotFoundException::new);
+    }
+
     /** Change the sheet's today; the figures it moves are recorded as {@code user}'s change. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -59,5 +65,14 @@ public class SheetService {
     public int nextClaimNumber(String id) {
         if (sheets.advanceClaimNumber(id) == 0) throw new SheetNotFoundException();
         return sheets.lastClaimNumber(id);
+    }
+
+    /** The next number in the sheet's sequence named {@code key}: 1 for its first, then 2, and so on,
+     * never given twice. */
+    @Transactional
+    public int nextInSequence(String id, String key) {
+        if (sheets.lockSheet(id) == 0) throw new SheetNotFoundException();
+        if (sheets.advanceSequence(id, key) == 0) sheets.startSequence(id, key);
+        return sheets.lastInSequence(id, key);
     }
 }

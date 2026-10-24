@@ -11,7 +11,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // limit), its floor (the least a claim's live due can be), its terms (how many days after its date
 // a claim is due by), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
-// or after it half to even; blank for the sheet's today) and the role each user name has been given (any other name is a clerk). Read from the
+// or after it half to even; blank for the sheet's today), its period numbering from (the date from which
+// a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk). Read from the
 // store every time a sheet is loaded. Saving the settings saves only the fields changed since
 // they were last saved.
 @Component({
@@ -78,6 +79,21 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           In force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span>
           @if (policyDate() === null) {
             (the sheet's today)
+          }
+        </span>
+        <label for="setting-period-numbering-from">Period numbering from</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          type="date"
+          [value]="periodNumberingFromInput()"
+          (input)="periodNumberingFromInput.set(value($event)); periodNumberingFromChanged = true; settingsError.set(null)"
+          (keydown)="periodNumberingFromChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span>
+          @if (periodNumberingFrom() === null) {
+            (off)
           }
         </span>
         <button type="submit" data-testid="settings-save">Save settings</button>
@@ -185,11 +201,15 @@ export class Settings {
   /** The policy date saved; null when it is the sheet's today. */
   readonly policyDateSaved = output<string | null>();
 
+  /** The period numbering from date as set; null when it is off. */
+  protected readonly periodNumberingFrom = signal<string | null>(null);
+
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly policyDateInput = signal('');
+  protected readonly periodNumberingFromInput = signal('');
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -198,6 +218,7 @@ export class Settings {
   protected termsChanged = false;
   protected latePctChanged = false;
   protected policyDateChanged = false;
+  protected periodNumberingFromChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
@@ -228,6 +249,9 @@ export class Settings {
       this.policyDate.set(null);
       this.policyDateInput.set('');
       this.policyDateChanged = false;
+      this.periodNumberingFrom.set(null);
+      this.periodNumberingFromInput.set('');
+      this.periodNumberingFromChanged = false;
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
@@ -259,6 +283,9 @@ export class Settings {
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
     const policyDate = this.policyDateInput().trim();
     const savePolicyDate = this.policyDateChanged || policyDate !== (this.policyDate() ?? '');
+    const numberingFrom = this.periodNumberingFromInput().trim();
+    const saveNumberingFrom =
+      this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -277,6 +304,10 @@ export class Settings {
     }
     if (savePolicyDate && policyDate !== '' && !DATE.test(policyDate)) {
       this.settingsError.set('Type a policy date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
+      return;
+    }
+    if (saveNumberingFrom && numberingFrom !== '' && !DATE.test(numberingFrom)) {
+      this.settingsError.set('Type a period numbering from date as YYYY-MM-DD, or leave it blank to turn it off.');
       return;
     }
     this.savingSettings = true;
@@ -315,12 +346,19 @@ export class Settings {
         this.show(settings);
         this.policyDateSaved.emit(settings.policyDate);
       }
+      if (saveNumberingFrom) {
+        const settings = await this.service.setPeriodNumberingFrom(sheet, numberingFrom || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.periodNumberingFromInput().trim() === numberingFrom) this.periodNumberingFromChanged = false;
+        this.show(settings);
+      }
       // Show what is in force in each field, but keep what was typed in one while the save was waiting.
       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
       if (!this.floorChanged) this.floorInput.set(this.floor());
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
+      if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
@@ -374,6 +412,7 @@ export class Settings {
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
+        if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       }
     } catch {
       // The settings could not be read; they show as none.
@@ -386,6 +425,7 @@ export class Settings {
     this.terms.set(String(settings.terms));
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
+    this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.given.set(settings.roles);
   }
 }

@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
  * live due can be, and its terms, how many days after its date a claim is due by, and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
- * date, which decides how a claim's live figures round (the sheet's today when none is set). */
+ * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
+ * period numbering from, the date from which a claim opened is numbered within its period (off when null). */
 @Service
 public class SettingsService {
 
@@ -142,6 +143,23 @@ public class SettingsService {
         audit.change("SETTING_CHANGED", sheetId, by, "key=policy-date",
                 "value=" + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordSince(sheetId, by, before);
+        return sheet;
+    }
+
+    /** The sheet's period numbering from; null when it is off. */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPeriodNumberingFrom();
+    }
+
+    /** Set the sheet's period numbering from; null turns it off. Only the claims opened from then on follow it. */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String sheetId, String by, LocalDate from) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPeriodNumberingFrom(from);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=period-numbering-from",
+                "value=" + (from == null ? "" : from.toString()));
         return sheet;
     }
 }

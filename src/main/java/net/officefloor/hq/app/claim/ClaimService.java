@@ -52,7 +52,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
@@ -67,7 +67,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
@@ -100,9 +100,9 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Integer number = claim.getNumber();
+        String number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId);
+            number = nextNumber(sheetId, claim.getDate());
             claim.setOpenedBy(user);
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
@@ -146,13 +146,25 @@ public class ClaimService {
 
     /** Record a change to the claim; {@code number}, the number it has (or had), follows when there is one,
      * then any {@code extra} fields. */
-    private void record(String event, String user, Person person, Claim claim, Integer number, String... extra) {
+    private void record(String event, String user, Person person, Claim claim, String number, String... extra) {
         List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
                 "amount=" + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                 "date=" + claim.getDate()));
         if (number != null) fields.add("number=" + number);
         fields.addAll(List.of(extra));
         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
+    }
+
+    /** The number a claim dated {@code date} is given when opened now: within the period containing
+     * that date ({@code <period name>-<n>}, or {@code X-<n>} when none does) while the sheet numbers by
+     * period, otherwise the next sheet-wide number. */
+    private String nextNumber(String sheetId, LocalDate date) {
+        if (!sheets.numbersByPeriod(sheetId)) return String.valueOf(sheets.nextClaimNumber(sheetId));
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !date.isBefore(p.getFrom()) && !date.isAfter(p.getTo()))
+                .findFirst()
+                .map(p -> p.getName() + "-" + sheets.nextInSequence(sheetId, "period:" + p.getId()))
+                .orElseGet(() -> "X-" + sheets.nextInSequence(sheetId, "none"));
     }
 
     /** Refuse a clerk's settle of a claim whose due is above the sheet's clerk limit. */
@@ -164,7 +176,7 @@ public class ClaimService {
 
     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
      * the person, and a claim that names one without being a correction. */
-    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, Integer corrects) {
+    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) throw new ClaimCorrectionException();
             return;

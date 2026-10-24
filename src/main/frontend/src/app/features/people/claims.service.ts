@@ -12,8 +12,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when it is opened; null while DRAFT and once VOID. */
-  number: number | null;
+  /** The claim's number on the sheet, given when it is opened (sheet-wide, e.g. "3", or within its
+   *  period, e.g. "P1-2", or "X-1" in no period); null while DRAFT. */
+  number: string | null;
   /** What was due on the claim when it was settled, with two decimals; null otherwise, and when its
    *  person's grade had no rate then. */
   settledDue: string | null;
@@ -26,7 +27,7 @@ export interface Claim {
   statedDue: string | null;
   /** On a correction (a claim with a negative amount), the number of the SETTLED claim of the same
    *  person it corrects; null on any other claim. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
@@ -64,7 +65,7 @@ export interface ClaimFields {
   date: string | null;
   note: string;
   /** The number of the claim a correction corrects; null on a claim that is not a correction. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Whether a claim is a correction: one with a negative amount. */

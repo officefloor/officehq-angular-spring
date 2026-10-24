@@ -7,7 +7,7 @@ import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
-const NUMBER = /^\d{1,9}$/;
+const NUMBER = /^\S.{0,119}$/;
 
 // A person's claims, newest first, each with its status and the buttons that change it, and the form that adds a claim to them or, once a claim's
 // editor is opened, saves changes to it.
@@ -42,7 +42,6 @@ const NUMBER = /^\d{1,9}$/;
       <input
         [id]="fieldId('corrects')"
         data-testid="claim-form-corrects"
-        inputmode="numeric"
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
@@ -223,7 +222,7 @@ export class Claims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
-    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
+    this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
   }
 
@@ -284,7 +283,7 @@ export class Claims {
       amount,
       date: this.date().trim() || null,
       note: this.note(),
-      corrects: corrects === '' ? null : Number(corrects),
+      corrects: corrects === '' ? null : corrects,
     };
     const id = this.editingId();
     this.submitting = true;

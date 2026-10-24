@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,8 +32,8 @@ public class ClaimController {
      * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
      * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue,
-            String openedBy, boolean stated, String statedDue, Integer corrects) {
+            ClaimStatus status, String number, String settledDue,
+            String openedBy, boolean stated, String statedDue, String corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
@@ -54,10 +53,15 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            @Positive Integer corrects) {
+            @Size(max = 120) String corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
+        }
+
+        /** The number named, trimmed; null when none is. */
+        String correctsValue() {
+            return corrects == null || corrects.isBlank() ? null : corrects.trim();
         }
     }
 
@@ -90,7 +94,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
-                request.note(), request.corrects()));
+                request.note(), request.correctsValue()));
     }
 
     @PutMapping("/claims/{claimId}")
@@ -99,7 +103,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amountValue(), request.date(),
-                request.note(), request.corrects()));
+                request.note(), request.correctsValue()));
     }
 
     @PostMapping("/claims/{claimId}/open")

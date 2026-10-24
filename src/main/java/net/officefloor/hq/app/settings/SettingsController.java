@@ -32,9 +32,9 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the late percent as text with two decimals; the policy date as set, null when it is the sheet's today. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles) {
+            List<RoleView> roles, LocalDate periodNumberingFrom) {
     }
 
     /** A role: clerk or steward. */
@@ -79,6 +79,13 @@ public class SettingsController {
         }
     }
 
+    /** A period numbering from date (YYYY-MM-DD); blank or null turns it off. */
+    public record PeriodNumberingFromRequest(@Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String value) {
+        LocalDate dateValue() {
+            return value == null || value.isBlank() ? null : LocalDate.parse(value.trim());
+        }
+    }
+
     private final SettingsService service;
 
     public SettingsController(SettingsService service) {
@@ -90,7 +97,8 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
-                text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList());
+                text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList(),
+                service.periodNumberingFrom(sheet));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -135,6 +143,15 @@ public class SettingsController {
             @RequestBody @Valid PolicyDateRequest request) {
         String sheet = sheetId.trim();
         service.setPolicyDate(sheet, user.trim(), request.dateValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PeriodNumberingFromRequest request) {
+        String sheet = sheetId.trim();
+        service.setPeriodNumberingFrom(sheet, user.trim(), request.dateValue());
         return get(sheet, user);
     }
 
