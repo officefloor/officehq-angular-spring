@@ -147,6 +147,14 @@ import { FigurePipe } from '../../core/figure.pipe';
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
         />
+        <label for="person-form-terms-from">Terms from</label>
+        <input
+          id="person-form-terms-from"
+          type="date"
+          data-testid="person-form-terms-from"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set(null)"
+        />
         <label for="person-form-contact">Contact</label>
         <input
           id="person-form-contact"
@@ -1213,6 +1221,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in days, as typed; blank for none. */
   protected readonly terms = signal('');
+  /** The date the terms are given from on a save; blank for the beginning of time. */
+  protected readonly termsFrom = signal('');
   /** The person's contact, as typed; blank for none. */
   protected readonly contact = signal('');
   /** The person's tags, as typed; blank for none. */
@@ -2201,7 +2211,8 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeNow(person));
     this.gradeFrom.set('');
-    this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.terms.set(person.undatedTerms === null ? '' : String(person.undatedTerms));
+    this.termsFrom.set('');
     this.contact.set(person.contact ?? '');
     this.tags.set(person.tags.join(', '));
     this.error.set(null);
@@ -2213,6 +2224,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.error.set(null);
@@ -2254,6 +2266,7 @@ export class People {
         const saved = await this.service.update(sheet, id, this.editingVersion, {
           ...fields,
           gradeFrom: this.gradeFrom() || null,
+          termsFrom: this.termsFrom() || null,
         });
         if (this.sheet() !== sheet) return;
         this.put(saved);
@@ -2274,7 +2287,7 @@ export class People {
           this.editingVersion = current.version;
           this.name.set(current.name);
           this.grade.set(this.gradeNow(current));
-          this.terms.set(current.terms === null ? '' : String(current.terms));
+          this.terms.set(current.undatedTerms === null ? '' : String(current.undatedTerms));
           this.contact.set(current.contact ?? '');
           this.tags.set(current.tags.join(', '));
         }
@@ -2458,7 +2471,7 @@ export class People {
       this.editingVersion = current.version;
       this.name.set(current.name);
       this.grade.set(this.gradeNow(current));
-      this.terms.set(current.terms === null ? '' : String(current.terms));
+      this.terms.set(current.undatedTerms === null ? '' : String(current.undatedTerms));
       this.contact.set(current.contact ?? '');
       this.tags.set(current.tags.join(', '));
       this.error.set('Someone else saved this person since you opened it; their changes are shown.');

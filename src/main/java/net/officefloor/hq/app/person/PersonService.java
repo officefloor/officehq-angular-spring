@@ -121,6 +121,16 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, tags);
+    }
+
+    /** Saves the person as {@link #update(String, String, long, long, String, String, LocalDate, Integer,
+     * String, String)} does, but with {@code terms} (none when null) given from {@code termsFrom}, in place
+     * of those given from the same date and keeping those given from other dates; from the beginning of
+     * time when {@code termsFrom} is null. */
+    @Transactional
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
@@ -134,19 +144,38 @@ public class PersonService {
         person.setName(name);
         LocalDate from = gradeFrom != null ? gradeFrom : today;
         person.setGrade(grade, from);
-        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
-        person.setTerms(terms);
+        boolean termsChanged;
+        if (termsFrom == null) {
+            termsChanged = !Objects.equals(person.getTerms(), terms);
+            person.setTerms(terms);
+        } else {
+            List<PersonTerms> was = person.getDatedTerms();
+            person.setTerms(terms, termsFrom);
+            termsChanged = !sameTerms(was, person.getDatedTerms());
+        }
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setContact(contact);
         person.setTags(tags);
         people.flush();
         keepTags(person);
         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + person.gradeOn(today)));
-        if (termsChanged) fields.add("terms=" + (terms == null ? "" : terms));
+        Integer termsToday = person.termsOn(today);
+        if (termsChanged) fields.add("terms=" + (termsToday == null ? "" : termsToday));
         if (contactChanged) fields.add("contact=" + (person.getContact() == null ? "" : person.getContact()));
         audit.change("PERSON_EDITED", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return person;
+    }
+
+    /** Whether two lists of dated terms, by from-date, give the same terms from the same dates. */
+    private static boolean sameTerms(List<PersonTerms> a, List<PersonTerms> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            if (!a.get(i).getFrom().equals(b.get(i).getFrom()) || !Objects.equals(a.get(i).getTerms(), b.get(i).getTerms())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the

@@ -840,9 +840,10 @@ public class ClaimService {
         return note == null ? "" : note.trim();
     }
 
-    /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those
+    /** The terms a claim of the person dated {@code date} is due by: the person's own terms in force on that date, else those
      * of their grade in force on that date, else the sheet's then. */
     private int termsOf(String sheetId, Person person, LocalDate date) {
-        return person.getTerms() != null ? person.getTerms() : settings.termsFor(sheetId, person.gradeOn(date), date);
+        Integer own = person.termsOn(date);
+        return own != null ? own : settings.termsFor(sheetId, person.gradeOn(date), date);
     }
 }

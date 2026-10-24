@@ -520,15 +520,17 @@ export class Claims {
   }
 
   constructor() {
-    // An editor left open on this person's form is open again when the sheet is loaded again.
+    // An editor left open on this person's form is open again when the sheet is loaded again, while
+    // its claim is still a draft; one that is no longer is forgotten, so the form is back to adding.
     effect(() => {
       const claims = this.claims();
       untracked(() => {
         const sheet = this.session.sheetId();
         const id = sheet ? this.service.editing(sheet, this.personId()) : null;
-        if (id === null || this.editingId() !== null) return;
+        if (!sheet || id === null || this.editingId() !== null) return;
         const claim = claims.find((c) => c.id === id);
-        if (claim) this.fill(claim);
+        if (claim && claim.status !== 'DRAFT') this.service.setEditing(sheet, this.personId(), null);
+        else if (claim) this.fill(claim);
       });
     });
   }

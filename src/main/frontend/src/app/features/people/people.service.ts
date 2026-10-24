@@ -43,6 +43,8 @@ export interface Person {
   holds: PersonHold[];
   /** The person's own terms in days, in place of their grade's and the sheet's; null when none. */
   terms: number | null;
+  /** The person's own terms from the beginning of time, before any dated ones; null when none. */
+  undatedTerms: number | null;
   /** The person's contact, without surrounding spaces and in lower case; null when none. */
   contact: string | null;
   /** The other names the person goes by, sorted as names are compared. */
@@ -114,6 +116,8 @@ export interface PersonFields {
   gradeFrom?: string | null;
   /** The person's own terms in days, as typed; blank for none. */
   terms: string;
+  /** On a save, the date the terms are given from (YYYY-MM-DD); null for the beginning of time. */
+  termsFrom?: string | null;
   /** The person's contact, as typed; blank for none. */
   contact: string;
   /** The person's tags, comma separated (each trimmed and lower-cased by the server); blank for none. */

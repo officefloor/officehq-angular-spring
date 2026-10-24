@@ -60,18 +60,20 @@ public class PersonController {
      * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
      * have any hold, listed in {@code holds} by from-date; {@code clashing} is whether their name or an
      * alias of theirs is used on another sheet of the sheet's tree; {@code retirements} are their past
-     * retirements by from-date. */
+     * retirements by from-date; {@code terms} are their own terms in force on {@code today}, and
+     * {@code undatedTerms} those they have from the beginning of time. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<RetirementView> retirements, List<String> tags) {
+            List<RetirementView> retirements, List<String> tags, Integer undatedTerms) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
-                    person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
+                    person.getHolds().stream().map(HoldView::of).toList(), person.termsOn(today),
                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
-                    person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags());
+                    person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags(),
+                    person.getTerms());
         }
     }
 
@@ -113,7 +115,8 @@ public class PersonController {
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
      * without regard to case) and grade, one of A, B or C, given from {@code gradeFrom} on a save (the
      * sheet's today when left out; a person's first grade applies from the beginning of time), and
-     * their own terms, a whole number of days, 0 or more (blank or null for none), and their contact
+     * their own terms, a whole number of days, 0 or more (blank or null for none), given from
+     * {@code termsFrom} on a save (from the beginning of time when left out), and their contact
      * (kept without the spaces around it, in lower case, and unique on the sheet; blank or null for
      * none). */
     public record PersonRequest(
@@ -121,6 +124,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String terms,
+            LocalDate termsFrom,
             Long version,
             @Size(max = 200) String contact,
             @Size(max = 500) String tags) {
@@ -281,8 +285,8 @@ public class PersonController {
         }
         try {
             return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.contact(),
-                    request.tagsValue()));
+                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.termsFrom(),
+                    request.contact(), request.tagsValue()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));

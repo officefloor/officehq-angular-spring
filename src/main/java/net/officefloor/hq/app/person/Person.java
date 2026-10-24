@@ -76,6 +76,13 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's own terms dated from a day, at most one per from-date, in place of {@link #terms}
+     * from then. Loaded by a sub-select, so it loads eagerly beside the grades. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonTerms> datedTerms = new ArrayList<>();
+
     /** The person's contact, without surrounding spaces and in lower case, unique on the sheet; null
      * when they have none. */
     @Column(name = "contact")
@@ -140,6 +147,7 @@ public class Person {
         copy.setName(name);
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom())));
         copy.contact = contact;
         copy.tags = tags;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
@@ -159,6 +167,7 @@ public class Person {
         holds.forEach(h -> copy.holds.add(new PersonHold(h.getFrom(), h.getTo())));
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom())));
         copy.contact = contact;
         copy.tags = tags;
         copy.position = position;
@@ -193,8 +202,31 @@ public class Person {
         return terms;
     }
 
+    /** Gives the person {@code terms} (none when null) from the beginning of time, keeping their dated terms. */
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The person's dated terms, by from-date. */
+    public List<PersonTerms> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(PersonTerms::getFrom)).toList();
+    }
+
+    /** Gives the person {@code terms} (none when null) from {@code from}, in place of those given from the same date. */
+    public void setTerms(Integer terms, LocalDate from) {
+        datedTerms.removeIf(t -> from.equals(t.getFrom()));
+        datedTerms.add(new PersonTerms(terms, from));
+    }
+
+    /** The person's own terms in force on {@code date}: those with the latest from-date on or before it,
+     * else their undated terms; null when they have none then. */
+    public Integer termsOn(LocalDate date) {
+        Integer in = terms;
+        for (PersonTerms t : getDatedTerms()) {
+            if (date != null && t.getFrom().isAfter(date)) break;
+            in = t.getTerms();
+        }
+        return in;
     }
 
     /** The form a contact is kept in: without surrounding spaces, in lower case; null for a blank one. */
