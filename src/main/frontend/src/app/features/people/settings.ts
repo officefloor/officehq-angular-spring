@@ -354,6 +354,21 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-alert-threshold">Alert threshold</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThresholdInput()"
+          (input)="alertThresholdInput.set(value($event)); alertThresholdChanged = true; settingsError.set(null)"
+          (keydown)="alertThresholdChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span>
+          @if (alertThreshold() === null) {
+            (off)
+          }
+        </span>
         <label for="setting-parent">Parent sheet</label>
         <input
           id="setting-parent"
@@ -520,6 +535,8 @@ export class Settings {
   /** The grace days as set, as text; null when they are off. */
   protected readonly graceDays = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
+  /** The alert threshold as set; null when it is off. */
+  protected readonly alertThreshold = signal<string | null>(null);
   /** The month (1 to 12) the fiscal year starts in, as text; empty until read. */
   protected readonly fiscalStartMonth = signal('');
   /** The fiscal start month saved, 1 to 12. */
@@ -543,6 +560,7 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly potInput = signal('');
+  protected readonly alertThresholdInput = signal('');
   protected readonly fiscalStartMonthInput = signal('');
   protected readonly parentInput = signal('');
   protected readonly entryDateInput = signal('');
@@ -574,6 +592,7 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
   protected potChanged = false;
+  protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
   protected entryDateChanged = false;
@@ -638,6 +657,9 @@ export class Settings {
       this.pot.set(null);
       this.potInput.set('');
       this.potChanged = false;
+      this.alertThreshold.set(null);
+      this.alertThresholdInput.set('');
+      this.alertThresholdChanged = false;
       this.fiscalStartMonth.set('');
       this.fiscalStartMonthInput.set('');
       this.fiscalStartMonthChanged = false;
@@ -764,6 +786,8 @@ export class Settings {
     const saveFiscalStartMonth = this.fiscalStartMonthChanged || fiscalStartMonth !== this.fiscalStartMonth();
     const pot = this.potInput().trim();
     const savePot = this.potChanged || pot !== (this.pot() ?? '');
+    const alertThreshold = this.alertThresholdInput().trim();
+    const saveAlertThreshold = this.alertThresholdChanged || alertThreshold !== (this.alertThreshold() ?? '');
     const parent = this.parentInput().trim();
     const saveParent = this.parentChanged || parent !== (this.parent() ?? '');
     const entryDate = this.entryDateInput().trim();
@@ -864,6 +888,10 @@ export class Settings {
     }
     if (savePot && pot !== '' && !LIMIT.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveAlertThreshold && alertThreshold !== '' && !LIMIT.test(alertThreshold)) {
+      this.settingsError.set('Type an alert threshold of 0.00 or more, with at most two decimals, or leave it blank to turn it off.');
       return;
     }
     if (saveEntryDate && entryDate !== '' && !DATE.test(entryDate)) {
@@ -1008,6 +1036,12 @@ export class Settings {
         if (this.potInput().trim() === pot) this.potChanged = false;
         this.show(settings);
       }
+      if (saveAlertThreshold) {
+        const settings = await this.service.setAlertThreshold(sheet, alertThreshold || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.alertThresholdInput().trim() === alertThreshold) this.alertThresholdChanged = false;
+        this.show(settings);
+      }
       if (saveParent) {
         const settings = await this.service.setParent(sheet, parent || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1044,6 +1078,7 @@ export class Settings {
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
+      if (!this.alertThresholdChanged) this.alertThresholdInput.set(this.alertThreshold() ?? '');
       if (!this.parentChanged) this.parentInput.set(this.parent() ?? '');
       if (!this.entryDateChanged) this.entryDateInput.set(this.entryDate() ?? '');
     } catch {
@@ -1110,6 +1145,7 @@ export class Settings {
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
+        if (!this.alertThresholdChanged) this.alertThresholdInput.set(settings.alertThreshold ?? '');
         if (!this.parentChanged) this.parentInput.set(settings.parent ?? '');
         if (!this.entryDateChanged) this.entryDateInput.set(settings.entryDate ?? '');
       }
@@ -1173,6 +1209,7 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.entryDate.set(settings.entryDate ?? null);
     this.pot.set(settings.pot ?? null);
+    this.alertThreshold.set(settings.alertThreshold ?? null);
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth ?? 1));
     this.parent.set(settings.parent ?? null);
     this.given.set(settings.roles);

@@ -51,6 +51,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The threshold a person's due-total going above writes an ALERT line; null when it is off. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The id of the sheet's parent, whose rates are used where this sheet has none in force; null when
      * there is none. */
     @Column(name = "parent_id")
@@ -76,7 +80,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, fiscal start month, entry date, pot and parent) come
+     * today and its settings (policy date, period numbering, grace days, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
@@ -86,6 +90,7 @@ public class Sheet {
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
         copy.pot = pot;
+        copy.alertThreshold = alertThreshold;
         copy.parentId = parentId;
         return copy;
     }
@@ -167,6 +172,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParentId() {

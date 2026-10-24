@@ -120,6 +120,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getPot();
     }
 
+    /** The alert threshold then; null when it was off. */
+    public BigDecimal alertThreshold() {
+        return sheet == null ? null : sheet.getAlertThreshold();
+    }
+
     /** The entry date then; null when it was off. */
     public LocalDate entryDate() {
         return sheet == null ? null : sheet.getEntryDate();

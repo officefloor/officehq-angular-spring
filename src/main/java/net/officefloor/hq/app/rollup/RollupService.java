@@ -38,7 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
  * leave out the single highest and lowest person's figure when three or more people have one; a
  * due-total of n/a is no figure). A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
- * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
+ * line when the sheet's totals moved, then an ALERT line per person, in list order, whose due-total went
+ * from at or below the sheet's alert threshold (or none) to above it: take a {@link #snapshot} before the change, and
  * {@link #recordSince} it after the change has recorded its own lines.
  */
 @Service
@@ -133,6 +134,19 @@ public class RollupService {
             audit.change("TOTALS", sheetId, user, "claimed-total=" + after.claimedTotal(),
                     "due-total=" + after.dueTotal(), "overdue-total=" + after.overdueTotal());
         }
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) return;
+        after.people().forEach((id, now) -> {
+            Figures then = before.people().get(id);
+            if (above(now.dueTotal(), threshold) && (then == null || !above(then.dueTotal(), threshold))) {
+                audit.change("ALERT", sheetId, user, "name=" + now.name(), "due-total=" + now.dueTotal());
+            }
+        });
+    }
+
+    /** Whether a due-total as shown is above the threshold (n/a never is). */
+    private static boolean above(String dueTotal, BigDecimal threshold) {
+        return !NONE.equals(dueTotal) && new BigDecimal(dueTotal).compareTo(threshold) > 0;
     }
 
     /** Whether the claim is overdue on {@code basis}: OPEN or PENDING, not deferred on its today, and

@@ -476,4 +476,21 @@ public class SettingsService {
         audit.change("SETTING_CHANGED", sheetId, by, "key=pot", "value=" + (pot == null ? "" : pot.toPlainString()));
         return sheet;
     }
+
+    /** The sheet's alert threshold; null when it is off. */
+    @Transactional(readOnly = true)
+    public BigDecimal alertThreshold(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getAlertThreshold();
+    }
+
+    /** Set the sheet's alert threshold; null for off. */
+    @Transactional
+    public Sheet setAlertThreshold(String sheetId, String by, BigDecimal threshold) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setAlertThreshold(threshold);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=alert-threshold",
+                "value=" + (threshold == null ? "" : threshold.toPlainString()));
+        return sheet;
+    }
 }
