@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim } from './claims.service';
+import { DashboardCounts } from './dashboard';
 
 export type Grade = 'A' | 'B' | 'C';
 
@@ -318,6 +319,15 @@ export class PeopleService {
   addPatron(sheet: string, id: number, patronId: number): Promise<Patron> {
     return firstValueFrom(
       this.http.post<Patron>(`${this.url(sheet)}/${id}/patrons`, { patronId }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** The signed-in user's steward dashboard over the sheet (empty counts unless they are a steward). */
+  dashboard(sheet: string): Promise<DashboardCounts> {
+    return firstValueFrom(
+      this.http.get<DashboardCounts>(`/api/sheets/${encodeURIComponent(sheet)}/dashboard`, {
         headers: this.session.headers(),
       }),
     );

@@ -15,6 +15,7 @@ import { Settings } from './settings';
 import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { Summary, SummaryPerson } from './summary';
+import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
 import { Templates } from './templates';
 import { TreeSearch } from './tree-search';
 import { VoidReasons } from './void-reasons';
@@ -63,7 +64,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -99,6 +100,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (reloaded)="periods.set($event)" />
+    <app-dashboard [counts]="dashboard()" />
     <app-summary
       [people]="summaryPeople()"
       [periods]="periods()"
@@ -929,6 +931,8 @@ export class People {
   });
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
+  /** The signed-in user's steward dashboard over the sheet. */
+  protected readonly dashboard = signal<DashboardCounts>(NO_DASHBOARD);
   /** The sheet's patrons, in the order they were named. */
   protected readonly patrons = signal<Patron[]>([]);
   /** The sheet's snapshots, in the order they were written. */
@@ -1363,6 +1367,7 @@ export class People {
       this.patrons.set([]);
       this.snapshots.set([]);
       this.watched.set(new Set());
+      this.dashboard.set(NO_DASHBOARD);
       this.patronChoices.set({});
       this.mergeChoices.set({});
       this.transferInputs.set({});
@@ -2518,7 +2523,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots, dashboard] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -2532,6 +2537,7 @@ export class People {
         this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
         this.plansService.list(sheet),
         this.service.snapshots(sheet),
+        this.service.dashboard(sheet).catch(() => NO_DASHBOARD),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -2549,6 +2555,7 @@ export class People {
         this.patrons.set(patrons);
         this.snapshots.set(snapshots);
         this.watched.set(new Set(watched));
+        this.dashboard.set(dashboard);
         this.descendants.set(descendants);
         this.plans.set(plans);
         this.people.set(list);
