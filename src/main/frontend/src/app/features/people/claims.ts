@@ -57,6 +57,13 @@ const NUMBER = /^\d{1,9}$/;
       <ul class="claims" [attr.aria-label]="'Claims of ' + personName()">
         @for (c of claims(); track c.id) {
           <li [attr.data-testid]="'claim-row-' + c.id">
+            <input
+              type="checkbox"
+              data-testid="claim-select"
+              [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+              [checked]="selected().has(c.id)"
+              (change)="selectToggled.emit({ id: c.id, selected: checked($event) })"
+            />
             <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
@@ -141,6 +148,10 @@ export class Claims {
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
    *  or after it half to even; null until read. */
   readonly policyDate = input.required<string | null>();
+  /** The ids of the claims selected for a bulk action. */
+  readonly selected = input.required<ReadonlySet<number>>();
+  /** A claim was selected or unselected. */
+  readonly selectToggled = output<{ id: number; selected: boolean }>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -166,6 +177,10 @@ export class Claims {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   /** What is due on the claim at the rate in force on the claim's date of the person's grade in force

@@ -61,10 +61,20 @@ public class ClaimController {
         }
     }
 
-    private final ClaimService service;
+    /** The claims a bulk change is asked of, by id. */
+    public record BulkRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
+    }
 
-    public ClaimController(ClaimService service) {
+    /** How a bulk open went: how many claims it opened and refused, and the claims it opened. */
+    public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
+    }
+
+    private final ClaimService service;
+    private final ClaimBulkService bulk;
+
+    public ClaimController(ClaimService service, ClaimBulkService bulk) {
         this.service = service;
+        this.bulk = bulk;
     }
 
     @GetMapping("/claims")
@@ -111,5 +121,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+    }
+
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenView bulkOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRequest request) {
+        ClaimBulkService.Outcome outcome = bulk.open(sheetId.trim(), user.trim(), request.claimIds());
+        return new BulkOpenView(outcome.changed().size(), outcome.refused(),
+                outcome.changed().stream().map(ClaimView::of).toList());
     }
 }

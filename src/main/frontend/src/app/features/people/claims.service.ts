@@ -51,6 +51,13 @@ export function overdue(claim: Claim, terms: number, today: string | null): bool
   return claim.status === 'OPEN' && today !== null && dueByOf(claim, terms) < today;
 }
 
+/** How a bulk open went: how many claims it opened and refused, and the claims it opened. */
+export interface BulkOpened {
+  opened: number;
+  refused: number;
+  claims: Claim[];
+}
+
 export interface ClaimFields {
   amount: string;
   /** null takes the sheet's today. */
@@ -108,6 +115,16 @@ export class ClaimsService {
   act(sheet: string, id: number, action: ClaimAction): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Open each of the claims that can be opened, numbered in list order; the rest are left as they
+   *  are and counted as refused. */
+  bulkOpen(sheet: string, claimIds: number[]): Promise<BulkOpened> {
+    return firstValueFrom(
+      this.http.post<BulkOpened>(`${this.url(sheet)}/claims/bulk-open`, { claimIds }, {
         headers: this.session.headers(),
       }),
     );

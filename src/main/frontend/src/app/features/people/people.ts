@@ -122,6 +122,14 @@ import { Summary, SummaryPerson } from './summary';
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
 
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+        @if (bulkOpened(); as result) {
+          Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
+          refused <span data-testid="bulk-refused">{{ result.refused }}</span>
+        }
+      </p>
+
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
       } @else {
@@ -175,6 +183,8 @@ import { Summary, SummaryPerson } from './summary';
                     [terms]="terms()"
                     [latePct]="latePct()"
                     [policyDate]="policyDateInForce()"
+                    [selected]="selectedClaims()"
+                    (selectToggled)="selectClaim($event.id, $event.selected)"
                     (saved)="claimSaved($event)"
                   />
                 </td>
@@ -432,6 +442,12 @@ export class People {
   /** A quick-add is waiting for its answer; another meanwhile is ignored. */
   private quickAdding = false;
   private readonly sheet = computed(() => this.session.sheetId());
+  /** The ids of the claims selected for a bulk action. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How the last bulk open went; null before one, and while one runs. */
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  /** A bulk open is waiting for its answer; another meanwhile is ignored. */
+  private bulkOpening = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -448,6 +464,8 @@ export class People {
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
+      this.selectedClaims.set(new Set());
+      this.bulkOpened.set(null);
       this.retireDates.set({});
       this.patrons.set([]);
       this.patronChoices.set({});
@@ -684,6 +702,35 @@ export class People {
       ...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from),
       rate,
     ]);
+  }
+
+  protected selectClaim(id: number, selected: boolean): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together, numbered in list order; those that cannot be opened are left
+   *  as they are. Shows how many were opened and refused; the old counts are gone while it runs. */
+  protected async bulkOpen(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || this.bulkOpening) return;
+    this.bulkOpened.set(null);
+    this.bulkOpening = true;
+    try {
+      const result = await this.claimsService.bulkOpen(sheet, [...this.selectedClaims()]);
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.claims) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkOpened.set({ opened: result.opened, refused: result.refused });
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkOpened.set({ opened: 0, refused: this.selectedClaims().size });
+    } finally {
+      this.bulkOpening = false;
+    }
   }
 
   /** Put an added claim first, or a saved one in its place. */
