@@ -9,10 +9,14 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.crew.SheetCrew;
+import net.officefloor.hq.app.crew.SheetCrewMember;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.pool.SheetPool;
+import net.officefloor.hq.app.pool.SheetPoolMember;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.settings.SheetDelegation;
 import net.officefloor.hq.app.settings.SheetPermission;
@@ -40,7 +44,7 @@ import org.springframework.stereotype.Component;
 /**
  * Writes a line to the sheet's history (see {@code V51__sheet_history.sql}) for every row of what a
  * sheet's screen is made of — the sheet, its people, claims, rates, dated settings, periods, statements,
- * patrons, watches, roles, permissions and delegations — as it stands
+ * patrons, watches, roles, permissions, delegations, pools and their members, and crews and their members — as it stands
  * after each change, with the sheet's today then. The line is written on the change's own connection,
  * so it commits or rolls back with it.
  */
@@ -54,7 +58,9 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
             Map.entry(SheetSetting.class, "setting"), Map.entry(Period.class, "period"),
             Map.entry(Statement.class, "statement"), Map.entry(PersonPatron.class, "patron"),
             Map.entry(PersonWatch.class, "watch"), Map.entry(SheetRole.class, "role"),
-            Map.entry(SheetPermission.class, "permission"), Map.entry(SheetDelegation.class, "delegation"));
+            Map.entry(SheetPermission.class, "permission"), Map.entry(SheetDelegation.class, "delegation"),
+            Map.entry(SheetPool.class, "pool"), Map.entry(SheetPoolMember.class, "pool-member"),
+            Map.entry(SheetCrew.class, "crew"), Map.entry(SheetCrewMember.class, "crew-member"));
 
     /** The sheet's today the lines written on this thread are made on instead of its today now; null when
      * they are made on its today now (see {@link #madeOn}). */
@@ -129,10 +135,17 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
                 : entity instanceof SheetRole role ? role.getSheetId()
                 : entity instanceof SheetPermission permission ? permission.getSheetId()
                 : entity instanceof SheetDelegation delegation ? delegation.getSheetId()
+                : entity instanceof SheetPool pool ? pool.getSheetId()
+                : entity instanceof SheetCrew crew ? crew.getSheetId()
                 : null;
-        if (sheetId == null) return;
         Connection connection = session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection();
         try {
+            if (entity instanceof SheetPoolMember member) {
+                sheetId = sheetOf(connection, "sheet_pool", member.getPoolId());
+            } else if (entity instanceof SheetCrewMember member) {
+                sheetId = sheetOf(connection, "sheet_crew", member.getCrewId());
+            }
+            if (sheetId == null) return;
             LocalDate madeOn = MADE_ON.get() != null ? MADE_ON.get()
                     : entity instanceof Sheet sheet ? sheet.getToday() : todayOf(connection, sheetId);
             if (madeOn == null) return;
@@ -147,6 +160,17 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
             }
         } catch (SQLException e) {
             throw new IllegalStateException("The sheet's history could not be written", e);
+        }
+    }
+
+    /** The sheet of the pool or crew (by its table) with the id; null when there is none. */
+    private static String sheetOf(Connection connection, String table, Long id) throws SQLException {
+        if (id == null) return null;
+        try (PreparedStatement select = connection.prepareStatement("SELECT sheet_id FROM " + table + " WHERE id = ?")) {
+            select.setLong(1, id);
+            try (ResultSet rows = select.executeQuery()) {
+                return rows.next() ? rows.getString(1) : null;
+            }
         }
     }
 

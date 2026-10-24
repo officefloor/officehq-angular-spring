@@ -20,6 +20,8 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // lead and its members are its members at equal shares (100.00 split equally, each rounded half to even, the
 // remainder to the lead), worked out like any pool's; its members come from the crew, so it has no entry to add
 // one, and it is not offered as a member of another pool. A pool's name may not be a crew's.
+// Each member also shows, for every period whose to-date is on or before the sheet's today, its cut as it stood
+// at the end of that period (empty when it had none then).
 // A button downloads the pools, re-read from the store, as a CSV file: one line per member.
 @Component({
   selector: 'app-pools',
@@ -49,6 +51,10 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
                   {{ (m.name) | figure }} <span data-testid="pool-share">{{ (m.share) | figure }}</span>
                   cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span>
+                  @for (ended of m.periodCuts; track ended.period) {
+                    {{ (ended.period) | figure }}
+                    <span [attr.data-testid]="'pool-cut-' + ended.period">{{ (ended.cut ?? '') | figure }}</span>
+                  }
                 </li>
               }
             </ul>

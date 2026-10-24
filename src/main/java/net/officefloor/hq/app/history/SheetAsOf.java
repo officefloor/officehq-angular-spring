@@ -11,10 +11,14 @@ import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.crew.SheetCrew;
+import net.officefloor.hq.app.crew.SheetCrewMember;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.pool.SheetPool;
+import net.officefloor.hq.app.pool.SheetPoolMember;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -45,6 +49,10 @@ public class SheetAsOf implements RollupService.Basis {
     private final List<SheetRole> roles;
     private final List<SheetPermission> permissions;
     private final List<SheetDelegation> delegations;
+    private final List<SheetPool> pools;
+    private final List<SheetPoolMember> poolMembers;
+    private final List<SheetCrew> crews;
+    private final List<SheetCrewMember> crewMembers;
 
     SheetAsOf(LocalDate date, Sheet sheet, Map<Class<?>, List<Object>> rows, List<List<Rate>> inherited) {
         this.date = date;
@@ -75,6 +83,12 @@ public class SheetAsOf implements RollupService.Basis {
         this.permissions = rowsOf(rows, SheetPermission.class);
         this.delegations = rowsOf(rows, SheetDelegation.class).stream()
                 .sorted(Comparator.comparing(SheetDelegation::getId)).toList();
+        this.pools = rowsOf(rows, SheetPool.class).stream().sorted(Comparator.comparing(SheetPool::getId)).toList();
+        this.poolMembers = rowsOf(rows, SheetPoolMember.class).stream()
+                .sorted(Comparator.comparing(SheetPoolMember::getId)).toList();
+        this.crews = rowsOf(rows, SheetCrew.class).stream().sorted(Comparator.comparing(SheetCrew::getId)).toList();
+        this.crewMembers = rowsOf(rows, SheetCrewMember.class).stream()
+                .sorted(Comparator.comparing(SheetCrewMember::getId)).toList();
     }
 
     @SuppressWarnings("unchecked")
@@ -219,6 +233,26 @@ public class SheetAsOf implements RollupService.Basis {
     /** The delegations made by then, oldest first. */
     public List<SheetDelegation> delegations() {
         return delegations;
+    }
+
+    /** The pools then, in the order they were added. */
+    public List<SheetPool> pools() {
+        return pools;
+    }
+
+    /** The pools' memberships then, in the order they were added. */
+    public List<SheetPoolMember> poolMembers() {
+        return poolMembers;
+    }
+
+    /** The crews then, in the order they were added. */
+    public List<SheetCrew> crews() {
+        return crews;
+    }
+
+    /** The crews' memberships then, in the order they were added. */
+    public List<SheetCrewMember> crewMembers() {
+        return crewMembers;
     }
 
     /** Every value recorded for the key by then, oldest from-date first. */

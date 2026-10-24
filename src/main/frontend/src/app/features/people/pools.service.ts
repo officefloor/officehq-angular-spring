@@ -13,6 +13,15 @@ export interface PoolMember {
   name: string;
   share: string;
   cut: string | null;
+  /** For each period whose to-date is on or before the sheet's today (in from-date order), the member's
+   *  cut as it stood at the end of that period; the cut null when it had none then. */
+  periodCuts: PeriodCut[];
+}
+
+/** A member's cut at the end of a period: the period's name and the cut (null when none). */
+export interface PeriodCut {
+  period: string;
+  cut: string | null;
 }
 
 /** A pool on the sheet: its members, their total share (a retired member's counting as 0.00) and

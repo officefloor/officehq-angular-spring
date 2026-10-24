@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.history.AsOfGuard;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,13 +25,22 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member of a pool: the person (or the pool, the other null), its name, its share and its cut (two
-     * decimals; the cut null when none). */
-    public record MemberView(Long personId, Long poolId, String name, String share, String cut) {
+    /** A member of a pool: the person (or the pool, the other null), its name, its share, its cut (two
+     * decimals; the cut null when none) and its cut at the end of each period ended by the sheet's today, in
+     * the periods' order. */
+    public record MemberView(Long personId, Long poolId, String name, String share, String cut,
+            List<PeriodCutView> periodCuts) {
         static MemberView of(PoolService.Member m) {
+            List<PeriodCutView> periodCuts = new ArrayList<>();
+            m.periodCuts().forEach((period, cut) -> periodCuts.add(
+                    new PeriodCutView(period, cut == null ? null : cut.toPlainString())));
             return new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(),
-                    m.cut() == null ? null : m.cut().toPlainString());
+                    m.cut() == null ? null : m.cut().toPlainString(), periodCuts);
         }
+    }
+
+    /** A member's cut at the end of a period: the period's name and the cut (two decimals; null when none). */
+    public record PeriodCutView(String period, String cut) {
     }
 
     /** A pool: its id (a crew's id, and the crew id, for a crew; the crew id null for a pool), name, members,
