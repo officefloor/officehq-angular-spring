@@ -360,6 +360,11 @@ export class Claims {
       refuse('Only a draft claim can be edited; void it and add a new one instead.');
       return;
     }
+    const period = periodOn(this.periods(), claim.date);
+    if (period?.closed && !period.soft) {
+      refuse('That claim is dated in a closed period.');
+      return;
+    }
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const was = this.editingId();

@@ -229,6 +229,9 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Excess</th>
               <th scope="col">Overdue</th>
               <th scope="col">Overdue due</th>
+              <th scope="col">Due aged 0–30 days</th>
+              <th scope="col">Due aged 31–60 days</th>
+              <th scope="col">Due aged 61+ days</th>
               <th scope="col">Statements</th>
               <th scope="col">Last stated</th>
               <th scope="col">Stated on</th>
@@ -266,6 +269,10 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-excess">{{ excessOf(p) }}</td>
                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
                 <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
+                @let aged = agedOf(p);
+                <td data-testid="person-aged-0-30">{{ money(aged[0]) }}</td>
+                <td data-testid="person-aged-31-60">{{ money(aged[1]) }}</td>
+                <td data-testid="person-aged-61">{{ money(aged[2]) }}</td>
                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
                 <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
                 <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
@@ -1050,6 +1057,23 @@ export class People {
     return { count, cents: sum };
   }
 
+  /** What is due on the person's counting OPEN and PENDING claims, in cents, as each claim shows it,
+   *  split by the claim's age on the sheet's today (the days from its date): 0 to 30 days (a claim
+   *  dated after today included), 31 to 60, and 61 or more. */
+  protected agedOf(person: Person): [number, number, number] {
+    const aged: [number, number, number] = [0, 0, 0];
+    const today = this.session.today();
+    if (today === null) return aged;
+    for (const c of this.claimsOf(person.id)) {
+      if (!isOpen(c) || !this.countsLive(c, person)) continue;
+      const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
+      if (due === null) continue;
+      const age = daysBetween(c.date, today);
+      aged[age <= 30 ? 0 : age <= 60 ? 1 : 2] += due;
+    }
+    return aged;
+  }
+
   protected periodAdded(period: Period): void {
     this.periods.update((list) => [...list, period]);
   }
@@ -1383,4 +1407,9 @@ function daysBefore(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+/** The whole days from `from` to `to` (both YYYY-MM-DD); negative when `from` is after `to`. */
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
