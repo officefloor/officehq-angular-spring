@@ -35,7 +35,8 @@ public class Claim {
     private LocalDate date;
 
     /** The date the claim is due by, fixed when it is added: its date plus the terms of its person's
-     * grade in force on that date. Later changes to the terms or to its date leave it as it is. */
+     * grade in force on that date, moved past the sheet's holidays then to the next day that is not one.
+     * Later changes to the terms, to its date or to the holidays leave it as it is. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 

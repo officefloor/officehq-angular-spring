@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -24,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
  * or its today when that is off. A claim's
- * due-by is fixed when it is added, from the terms of its person's grade in force on its date, and the
+ * due-by is fixed when it is added, from the terms of its person's grade in force on its date, moved
+ * past the holidays on the sheet then to the next day that is not one, and the
  * claim belongs to the period containing that due-by (not its date). Only a DRAFT claim can be edited.
  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
  * change status; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
@@ -41,10 +43,13 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final SettingsService settings;
     private final PersonWatchRepository watches;
+    private final HolidayService holidays;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
-            PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, Audit audit) {
+            PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
+            Audit audit) {
+        this.holidays = holidays;
         this.watches = watches;
         this.claims = claims;
         this.logs = logs;
@@ -76,7 +81,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        LocalDate dueBy = dated.plusDays(termsOf(sheetId, person, dated));
+        LocalDate dueBy = dueByOf(sheetId, person, dated);
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
@@ -294,7 +299,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
-        split.setDueBy(claim.getDate().plusDays(termsOf(sheetId, person, claim.getDate())));
+        split.setDueBy(dueByOf(sheetId, person, claim.getDate()));
         refuseClosed(sheetId, split.getDueBy());
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
         split.setListed(sheets.nextInSequence(sheetId, "listed"));
@@ -542,6 +547,12 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
+    }
+
+    /** The due-by fixed for a claim of the person dated {@code date} added now: its date plus its terms,
+     * moved past the holidays on the sheet now to the next day that is not one. */
+    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
+        return holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheetId, person, date)));
     }
 
     /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those

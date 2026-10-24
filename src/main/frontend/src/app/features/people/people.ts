@@ -3,6 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Delegations } from './delegations';
+import { Holidays } from './holidays';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
@@ -46,7 +47,7 @@ import { Summary, SummaryPerson } from './summary';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Delegations, Header, Periods, Rates, Settings, Summary],
+  imports: [Claims, Delegations, Header, Holidays, Periods, Rates, Settings, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -61,6 +62,7 @@ import { Summary, SummaryPerson } from './summary';
       (policyDateSaved)="policyDate.set($event)"
     />
     <app-delegations />
+    <app-holidays />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
     <app-summary
