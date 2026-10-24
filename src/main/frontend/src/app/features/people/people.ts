@@ -18,6 +18,8 @@ import { Summary, SummaryPerson } from './summary';
 import { Templates } from './templates';
 import { VoidReasons } from './void-reasons';
 import { Pools } from './pools';
+import { Plans } from './plans';
+import { Plan, PlansService } from './plans.service';
 import { PoolsService } from './pools.service';
 import { Audit } from './audit';
 
@@ -57,7 +59,7 @@ import { Audit } from './audit';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Pools, Rates, Settings, Summary, Templates, VoidReasons],
+  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -213,6 +215,16 @@ import { Audit } from './audit';
         }
       </form>
 
+      <div class="generate">
+        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+        @if (planGenerated() !== null) {
+          Made <span data-testid="plan-generated-count">{{ planGenerated() }}</span>
+        }
+        @if (planGenerateError(); as message) {
+          <p role="alert" class="error" data-testid="plan-generate-error">{{ message }}</p>
+        }
+      </div>
+
       <label>
         <input
           type="checkbox"
@@ -347,6 +359,7 @@ import { Audit } from './audit';
               <th scope="col">Patrons</th>
               <th scope="col">Backing</th>
               <th scope="col">Claims</th>
+              <th scope="col">Plans</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -412,6 +425,9 @@ import { Audit } from './audit';
                     (selectToggled)="selectClaim($event.id, $event.selected)"
                     (saved)="claimSaved($event)"
                   />
+                </td>
+                <td>
+                  <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" />
                 </td>
                 <td>
                   <button
@@ -675,6 +691,7 @@ export class People {
   private readonly statementsService = inject(StatementsService);
   private readonly periodsService = inject(PeriodsService);
   private readonly poolsService = inject(PoolsService);
+  private readonly plansService = inject(PlansService);
   private readonly document = inject(DOCUMENT);
 
   protected readonly grades = GRADES;
@@ -957,6 +974,13 @@ export class People {
   /** How many claims the last paste added; null before one, and while one runs. */
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
+  /** The sheet's plans, in the order they were added. */
+  protected readonly plans = signal<Plan[]>([]);
+  /** How many claims the last generate made; null before one, and while one runs. */
+  protected readonly planGenerated = signal<number | null>(null);
+  protected readonly planGenerateError = signal<string | null>(null);
+  /** A generate is waiting for its answer; another meanwhile is ignored. */
+  private generating = false;
   /** A paste is waiting for its answer; another meanwhile is ignored. */
   private pasting = false;
   protected readonly importText = signal('');
@@ -1052,6 +1076,9 @@ export class People {
       this.pasteText.set('');
       this.pasteAdded.set(null);
       this.pasteError.set(null);
+      this.plans.set([]);
+      this.planGenerated.set(null);
+      this.planGenerateError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
       this.importUpdated.set(null);
@@ -1916,6 +1943,38 @@ export class People {
     }
   }
 
+  /** The person's plans, in the order they were added. */
+  protected plansOf(personId: number): Plan[] {
+    return this.plans().filter((pl) => pl.personId === personId);
+  }
+
+  protected planAdded(plan: Plan): void {
+    this.plans.update((list) => [...list.filter((pl) => pl.id !== plan.id), plan]);
+  }
+
+  /** Make the DRAFT claims every plan on the sheet is due. Shows how many were made; the old count is
+   *  gone while it runs. */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.planGenerateError.set(null);
+    this.planGenerated.set(null);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    this.generating = true;
+    try {
+      const generated = await this.plansService.generate(sheet);
+      if (this.sheet() !== sheet) return;
+      for (const c of generated.claims) this.claimSaved(c);
+      this.plans.set(generated.plans);
+      this.planGenerated.set(generated.made);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.planGenerateError.set('The plans could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
   /** Add a DRAFT claim per pasted line, in order; when any line is refused nothing is added. Shows
    *  how many were added; the old count is gone while it runs. */
   protected async paste(event: Event): Promise<void> {
@@ -2027,7 +2086,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -2039,6 +2098,7 @@ export class People {
         this.claimsService.tags(sheet),
         // Without its descendants' figures the sheet shows only its own as consolidated.
         this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
+        this.plansService.list(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -2054,6 +2114,7 @@ export class People {
         this.patrons.set(patrons);
         this.watched.set(new Set(watched));
         this.descendants.set(descendants);
+        this.plans.set(plans);
         this.people.set(list);
       }
     } catch {
