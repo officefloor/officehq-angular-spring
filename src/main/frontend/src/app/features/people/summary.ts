@@ -4,7 +4,7 @@ import { GRADES, Grade } from './people.service';
 import { Period } from './periods.service';
 
 /** The statuses the summary counts claims by. */
-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /** A person as the summary counts them: their grade on the sheet's today, whether they are retired,
  *  and their due-total in cents (null when it is n/a). */

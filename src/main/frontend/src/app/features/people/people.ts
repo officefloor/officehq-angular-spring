@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSignal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
+import { Header } from './header';
 import { Claim, ClaimsService, cents, counts, isOpen, money, overdue } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
@@ -34,8 +35,14 @@ import { Summary, SummaryPerson } from './summary';
 // (a due-total that is n/a is skipped).
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates, Settings, Summary],
+  imports: [Claims, Header, Periods, Rates, Settings, Summary],
   template: `
+    <app-header
+      [peopleCount]="people().length"
+      [claims]="claims()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="money(overdueTotal().cents)"
+    />
     <app-settings
       (floorSaved)="floor.set($event)"
       (latePctSaved)="latePct.set($event)"
