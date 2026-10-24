@@ -38,6 +38,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** Whether the person is on hold: their OPEN claims count in no live total while held. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -93,6 +97,14 @@ public class Person {
     /** Retired as soon as a retirement date is set, whatever the date. */
     public boolean isRetired() {
         return retiredFrom != null;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     /** Refuses a claim dated {@code date} when it falls after the person's retirement date. */

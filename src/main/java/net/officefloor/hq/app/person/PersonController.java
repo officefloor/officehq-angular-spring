@@ -31,15 +31,19 @@ public class PersonController {
 
     /** A person; {@code retiredFrom} is null while they are not retired. */
     public record PersonView(long id, String name, String grade, long version, boolean retired,
-            LocalDate retiredFrom) {
+            LocalDate retiredFrom, boolean held) {
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
     /** The date a person is retired from (the sheet's today when left out). */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** Whether the person is to be on hold (true) or taken off it (false). */
+    public record HoldRequest(@NotNull Boolean held) {
     }
 
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
@@ -99,6 +103,14 @@ public class PersonController {
             @RequestBody(required = false) RetireRequest request) {
         return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from()));
+    }
+
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid HoldRequest request) {
+        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, request.held()));
     }
 
     @ExceptionHandler(PersonStaleException.class)

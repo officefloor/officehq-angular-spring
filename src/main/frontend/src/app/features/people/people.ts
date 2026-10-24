@@ -18,7 +18,8 @@ import { Statement, StatementsService } from './statements.service';
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
 // how many statements they have had and the last one's due-total and date. A person can be retired
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
-// keep counting in every total.
+// keep counting in every total. A person can be put on hold and taken off it again: while held,
+// their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates],
@@ -105,6 +106,7 @@ import { Statement, StatementsService } from './statements.service';
               <th scope="col">Stated on</th>
               <th scope="col">Retired</th>
               <th scope="col">Retired from</th>
+              <th scope="col">On hold</th>
               <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
@@ -114,13 +116,14 @@ import { Statement, StatementsService } from './statements.service';
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ p.grade }}</td>
-                <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+                <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
                 <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
                 <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
                 <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
                 <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+                <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -163,6 +166,14 @@ import { Statement, StatementsService } from './statements.service';
                     (click)="retire(p)"
                   >
                     Retire
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="person-hold-toggle"
+                    [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
+                    (click)="toggleHold(p)"
+                  >
+                    {{ p.held ? 'Release' : 'Hold' }}
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
@@ -238,7 +249,7 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0)),
+    money(this.people().reduce((sum, p) => sum + this.claimedCentsOf(p), 0)),
   );
   /** The sheet's statements, in the order they were taken. */
   protected readonly statements = signal<Statement[]>([]);
@@ -260,7 +271,7 @@ export class People {
     for (const p of this.periods()) sums[p.name] = 0;
     for (const person of this.people()) {
       for (const c of this.claimsOf(person.id)) {
-        if (!counts(c)) continue;
+        if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
         sums[period.name] += claimDueCents(c, this.rates(), person.grade) ?? 0;
@@ -378,13 +389,38 @@ export class People {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
-  protected claimedOf(personId: number): string {
-    return money(this.claimedCentsOf(personId));
+  /** Put the person on hold, or take them off it when held. */
+  protected async toggleHold(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const saved = await this.service.hold(sheet, person.id, !person.held);
+      if (this.sheet() !== sheet) return;
+      this.put(saved);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: person.held ? 'That person could not be released.' : 'That person could not be held.',
+      }));
+    }
   }
 
-  /** What the person's OPEN and SETTLED claims add up to; drafts and voided claims do not count. */
-  private claimedCentsOf(personId: number): number {
-    return this.claimsOf(personId).reduce((sum, c) => sum + (counts(c) ? cents(c.amount) : 0), 0);
+  /** Whether the claim counts in the live totals: OPEN or SETTLED, but not OPEN while its person is
+   *  on hold. */
+  private countsLive(claim: Claim, person: Person): boolean {
+    return counts(claim) && !(person.held && claim.status === 'OPEN');
+  }
+
+  protected claimedOf(person: Person): string {
+    return money(this.claimedCentsOf(person));
+  }
+
+  /** What the person's OPEN and SETTLED claims add up to (OPEN ones left out while they are on
+   *  hold); drafts and voided claims do not count. */
+  private claimedCentsOf(person: Person): number {
+    return this.claimsOf(person.id).reduce((sum, c) => sum + (this.countsLive(c, person) ? cents(c.amount) : 0), 0);
   }
 
   /** The grade's rate in force on the sheet's today. */
@@ -405,7 +441,7 @@ export class People {
     let sum = 0;
     let any = false;
     for (const c of this.claimsOf(person.id)) {
-      if (!counts(c)) continue;
+      if (!this.countsLive(c, person)) continue;
       const due = claimDueCents(c, this.rates(), person.grade);
       if (due === null) continue;
       sum += due;

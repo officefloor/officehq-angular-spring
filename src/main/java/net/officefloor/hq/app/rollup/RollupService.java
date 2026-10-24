@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The figures each person on a sheet shows — what they have claimed (their OPEN and SETTLED claims)
+ * The figures each person on a sheet shows — what they have claimed (their OPEN and SETTLED claims,
+ * leaving out the OPEN ones while they are on hold)
  * and their due-total (the sum of those claims' figures, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
@@ -71,7 +72,7 @@ public class RollupService {
             BigDecimal due = zero();
             boolean any = false;
             for (Claim claim : all) {
-                if (!claim.getPersonId().equals(person.getId()) || !claim.getStatus().counts()) continue;
+                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) continue;
                 claimed = claimed.add(claim.getAmount());
                 BigDecimal figure = figureOf(claim, person);
                 if (figure == null) continue;
@@ -101,6 +102,12 @@ public class RollupService {
             audit.change("TOTALS", sheetId, user, "claimed-total=" + after.claimedTotal(),
                     "due-total=" + after.dueTotal());
         }
+    }
+
+    /** Whether the claim counts in the live totals: OPEN or SETTLED, but not OPEN while its person
+     * is on hold. */
+    public static boolean countsLive(Claim claim, Person person) {
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
     }
 
     /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;

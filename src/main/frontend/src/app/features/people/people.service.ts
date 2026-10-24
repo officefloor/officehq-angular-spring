@@ -18,6 +18,8 @@ export interface Person {
   retired: boolean;
   /** The date the person is retired from (YYYY-MM-DD); null while they are not retired. */
   retiredFrom: string | null;
+  /** On hold: their OPEN claims count in no live total while held. */
+  held: boolean;
 }
 
 /** What a quick-add made: the person the claim is for (added just now when the name was new) and
@@ -64,6 +66,15 @@ export class PeopleService {
   retire(sheet: string, id: number, from: string | null): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/retire`, { from }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Put the person on hold (`held` true) or take them off it; refused (409) when they already are. */
+  hold(sheet: string, id: number, held: boolean): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { held }, {
         headers: this.session.headers(),
       }),
     );

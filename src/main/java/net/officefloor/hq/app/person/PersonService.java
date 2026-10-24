@@ -81,6 +81,22 @@ public class PersonService {
         return person;
     }
 
+    /** Puts the person on hold ({@code held}) or takes them off it; refused when they already are
+     * as asked. */
+    @Transactional
+    public Person hold(String sheetId, String user, long personId, boolean held) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.isHeld() == held) {
+            throw new PersonHoldException();
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        person.setHeld(held);
+        people.flush();
+        audit.change(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user, "name=" + person.getName());
+        rollup.recordSince(sheetId, user, before);
+        return person;
+    }
+
     /** Refuses a name another person on the sheet (other than {@code self}) already has. */
     private void requireFree(String sheetId, String name, Long self) {
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))

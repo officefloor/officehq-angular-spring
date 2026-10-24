@@ -80,15 +80,16 @@ public class PeriodService {
     }
 
     /** The due-total of the period now: the sum of the figures of the counting claims dated in it (a
-     * claim with no figure adds nothing). */
+     * claim with no figure adds nothing, nor does an OPEN claim of a person on hold). */
     private BigDecimal dueTotalOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(period.getSheetId())) {
-            if (!claim.getStatus().counts() || !period.overlaps(claim.getDate(), claim.getDate())) continue;
+            if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
             Person person = byId.get(claim.getPersonId());
-            BigDecimal figure = person == null ? null : rollup.figureOf(claim, person);
+            if (person == null || !RollupService.countsLive(claim, person)) continue;
+            BigDecimal figure = rollup.figureOf(claim, person);
             if (figure != null) total = total.add(figure);
         }
         return total;
