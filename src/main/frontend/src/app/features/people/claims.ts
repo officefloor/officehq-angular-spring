@@ -134,6 +134,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
+            <span>Held <span data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | figure }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ (c.waived ? 'yes' : 'no') | figure }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
@@ -268,6 +269,14 @@ const PAST: Record<ClaimAction, string> = {
               (click)="remind(c)"
             >
               Remind
+            </button>
+            <button
+              type="button"
+              data-testid="claim-hold"
+              [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date"
+              (click)="hold(c)"
+            >
+              {{ c.held ? 'Release' : 'Hold' }}
             </button>
             <button
               type="button"
@@ -819,6 +828,25 @@ export class Claims {
           : status === 423
           ? 'That claim is dated in a closed period.'
           : 'Only an open or pending claim can be reminded.',
+      }));
+    }
+  }
+
+  /** Hold the OPEN or PENDING claim, or release it when it is held; a claim in any other status is
+   *  refused with an error. */
+  protected async hold(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.hold(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(changed);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: 'Only an open or pending claim can be held or released.',
       }));
     }
   }

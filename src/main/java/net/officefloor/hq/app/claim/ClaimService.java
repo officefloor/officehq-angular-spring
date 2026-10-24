@@ -435,6 +435,25 @@ public class ClaimService {
         return claim;
     }
 
+    /** Hold an OPEN or PENDING claim that is not held, or release one that is: while held and unbound by a
+     * statement it counts in no live total, as a claim of a held person does. Refused unless the claim is
+     * OPEN or PENDING. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimStatusChangeException();
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setHeld(!claim.isHeld());
+        claims.flush();
+        record(claim.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, claim, claim.getNumber());
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward's waiver of an OPEN or PENDING claim's late charge: it bears none from then on, whatever
      * its overdue state. Refused when the user is not a steward, unless the claim is OPEN or PENDING, and
      * when it is already waived. */

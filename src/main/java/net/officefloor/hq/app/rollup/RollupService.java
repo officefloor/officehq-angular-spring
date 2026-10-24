@@ -168,8 +168,8 @@ public class RollupService {
 
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
      * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when it is dated
-     * within one of its person's holds, or its person's retirement date is reached on {@code today}, and
-     * no statement binds it. */
+     * within one of its person's holds, or held itself, or its person's retirement date is reached on
+     * {@code today}, and no statement binds it. */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return countsAs(claim, claim.getStatus(), person, today);
     }
@@ -181,7 +181,7 @@ public class RollupService {
         if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
         boolean bound = claim.isStated();
-        return bound || !(person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
+        return bound || !(claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
     /** What a sheet's figures are worked out from: its today, the policy date, rates and dated settings in

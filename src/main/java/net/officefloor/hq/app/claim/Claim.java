@@ -183,6 +183,11 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live
+     * total, as a claim of a held person does. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     protected Claim() {
     }
 
@@ -215,6 +220,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;
@@ -538,5 +544,13 @@ public class Claim {
     /** Waive the claim's late charge. */
     public void waive() {
         this.waived = true;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 }

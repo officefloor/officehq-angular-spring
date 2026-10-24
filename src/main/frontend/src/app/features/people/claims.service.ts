@@ -72,6 +72,9 @@ export interface Claim {
   reviewLate: boolean;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
+  /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live
+   *  total, as a claim of a held person does. */
+  held: boolean;
   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
   proofsByKind: Record<ProofKind, number>;
 }
@@ -342,6 +345,16 @@ export class ClaimsService {
   remind(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/remind`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Hold an OPEN or PENDING claim that is not held, or release one that is; refused (409) when it is
+   *  not OPEN or PENDING. */
+  hold(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/hold`, null, {
         headers: this.session.headers(),
       }),
     );

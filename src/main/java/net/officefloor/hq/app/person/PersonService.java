@@ -107,8 +107,7 @@ public class PersonService {
     }
 
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
-     * (the sheet's today when left out, in place of one given from the same date; nothing is given when
-     * it is left out and {@code grade} is the one in force on the sheet's today) and keeping
+     * (the sheet's today when left out, in place of one given from the same date) and keeping
      * the grades given from other dates; refused when they
      * have been saved since. The person's own terms become {@code terms} (none when null), and their
      * contact {@code contact} (none when blank), refused when another person on the sheet has it. Refused
@@ -147,17 +146,15 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheetService.today(sheetId);
         person.setName(name);
-        // A save from no date that keeps the grade in force today leaves the grades given as they are.
-        if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
-            person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
-        }
-        // The terms are recorded when those saved differ from the terms shown, those in force today.
-        boolean termsChanged = !Objects.equals(person.termsOn(today), terms);
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        // The terms are recorded when the save moves the terms shown, those in force today.
+        Integer termsBefore = person.termsOn(today);
         if (termsFrom == null) {
             person.setTerms(terms);
         } else {
             person.setTerms(terms, termsFrom);
         }
+        boolean termsChanged = !Objects.equals(termsBefore, person.termsOn(today));
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setContact(contact);
         person.setTags(tags);
