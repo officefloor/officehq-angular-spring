@@ -1,0 +1,82 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index ad41e2c9..72044e48 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -6,6 +6,7 @@ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+@@ -76,8 +77,11 @@ public class PersonTransferService {
+ 
+     /** Transfers the person {@code personId} to the sheet {@code toSheetId} (started when it was never
+      * loaded), returning them as they now are there; refused unless the user is a steward, for a retired
+-     * person, for this sheet's own id or an archived sheet, and when the person's name, an alias or their
+-     * contact is already on the other sheet. */
++     * person, for this sheet's own id or an archived sheet, and when their contact is already on the other
++     * sheet. When the person's name or an alias is already on the other sheet (as names are compared), they
++     * are merged into the one person who has it, as a merge does: their claims are listed after that
++     * person's, their name and aliases become aliases, and their contact is dropped; refused when those
++     * names belong to more than one person there, or to a retired one. */
+     @Transactional
+     public Person transfer(String sheetId, String user, long personId, String toSheetId) {
+         Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -89,22 +93,31 @@ public class PersonTransferService {
+         List<String> names = new ArrayList<>();
+         names.add(from.getName());
+         names.addAll(from.getAliases());
++        Person into = null;
+         for (String name : names) {
+             String key = Person.keyOf(name);
+-            if (people.findBySheetIdAndNameKey(toSheetId, key).isPresent()
+-                    || people.findBySheetIdAndAliasKey(toSheetId, key).isPresent()) {
+-                throw new PersonTransferException();
++            for (Person match : List.of(people.findBySheetIdAndNameKey(toSheetId, key),
++                    people.findBySheetIdAndAliasKey(toSheetId, key)).stream().flatMap(Optional::stream).toList()) {
++                if (into != null && !into.getId().equals(match.getId())) throw new PersonTransferException();
++                into = match;
+             }
+         }
+-        if (from.getContact() != null && people.findBySheetIdAndContact(toSheetId, from.getContact()).isPresent()) {
++        if (into != null && into.isRetired()) throw new PersonTransferException();
++        if (into == null && from.getContact() != null
++                && people.findBySheetIdAndContact(toSheetId, from.getContact()).isPresent()) {
+             throw new PersonTransferException();
+         }
+         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
+         RollupService.Snapshot beforeThere = rollup.snapshot(toSheetId);
+ 
+-        Person transferred = from.transferredTo(toSheetId);
+-        transferred.setPosition(people.maxPosition(toSheetId) + 1);
+-        Person arrived = people.saveAndFlush(transferred);
++        Person arrived;
++        if (into != null) {
++            arrived = into;
++        } else {
++            Person transferred = from.transferredTo(toSheetId);
++            transferred.setPosition(people.maxPosition(toSheetId) + 1);
++            arrived = people.saveAndFlush(transferred);
++        }
+ 
+         // Oldest first: each is listed anew on the other sheet in this order, so they keep their order.
+         List<Claim> moving = new ArrayList<>(claims.lockBySheetIdAndPersonId(sheetId, from.getId()));
+@@ -159,7 +172,15 @@ public class PersonTransferService {
+ 
+         audit.change("PERSON_TRANSFERRED", sheetId, user, "name=" + from.getName(), "to=" + toSheetId);
+         rollup.recordSince(sheetId, user, beforeHere);
+-        audit.change("PERSON_TRANSFERRED", toSheetId, user, "name=" + arrived.getName(), "from=" + sheetId);
++        if (into != null) {
++            // Merged into the one already there, as a merge does: their name and aliases become aliases.
++            names.forEach(into::addAlias);
++            people.flush();
++            audit.change("PERSON_TRANSFERRED", toSheetId, user, "name=" + from.getName(), "from=" + sheetId);
++            audit.change("PERSON_MERGED", toSheetId, user, "from=" + from.getName(), "into=" + into.getName());
++        } else {
++            audit.change("PERSON_TRANSFERRED", toSheetId, user, "name=" + arrived.getName(), "from=" + sheetId);
++        }
+         rollup.recordSince(toSheetId, user, beforeThere);
+         return arrived;
+     }

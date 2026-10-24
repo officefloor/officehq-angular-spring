@@ -1,0 +1,68 @@
+{
+  "checkpoint": 128,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp128_transfer-merges",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    111
+  ],
+  "replaced_tests": [
+    "cp111_transfer-person.spec.ts::transfer person"
+  ],
+  "request": {
+    "spec": "A transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4c15c2851e4cc672eb0784f1973c3213ccc5065b",
+  "reset_sha": "",
+  "preagent_sha": "600be769f8b142fde1887ef1547d2d0d51e82fa5",
+  "prev_sha": "600be769f8b142fde1887ef1547d2d0d51e82fa5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3863316,
+    "input_tokens": 20,
+    "output_tokens": 4547,
+    "cache_read_tokens": 284198,
+    "cache_creation_tokens": 29809,
+    "num_turns": 10,
+    "duration_ms": 205009,
+    "duration_api_ms": 55203,
+    "model": "claude-opus-5-5",
+    "session_id": "bf2d14a4-dbe0-4ea3-ae9d-f7c51d659690",
+    "stop_reason": "success",
+    "result_text": "A transfer to a sheet that already has someone with the same name or alias now merges the arriving person into them instead of being refused. `bin/e2e` passes all 4 tests in the spec, including the new transfer-merge test.\n\nThe change is all in `PersonTransferService.java`; the front end didn't need anything.\n\n**What happens on a merge:**\n- **No new person is created.** The arriving claims go straight to the person already there.\n- **Claims** are listed after that person's own claims. Numbered claims get the other sheet's next numbers, as a normal transfer does. Figures a statement bound are lost.\n- **Name and aliases:** the arriving person's name and aliases become aliases of the person already there.\n- **Audit:** the other sheet writes `PERSON_TRANSFERRED name=<name> from=<sheet id>` then `PERSON_MERGED from=<name> into=<name>`. The sending sheet still writes its usual `PERSON_TRANSFERRED \u2026 to=\u2026` record.\n\n**Choices the request didn't cover \u2014 say if you want them different:**\n- **Contact clash:** this is still refused when there's no match on name. When a merge happens, the arriving person's contact is dropped, as a merge does, so it can't clash.\n- **Matches on two different people** (say the name matches one and an alias matches another): refused, because it's unclear which one to merge into.\n- **Retired match:** refused, the same way a merge into a retired person is refused.\n- **Grades:** the arriving person's grades are not kept. The person merged into keeps their own grades and rates, which is why the moved claims' amounts due follow that person's grade.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3863316,
+        "num_turns": 10,
+        "duration_ms": 205009,
+        "duration_api_ms": 55203,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp128.agent.jsonl",
+  "agent_diff_file": "cp128.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
