@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import net.officefloor.hq.app.settings.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -73,6 +76,53 @@ public class Audit {
         } else {
             record(entry);
         }
+    }
+
+    /**
+     * The lines the file holds for a sheet, exactly as written, newest first. With a name (not blank),
+     * only the lines about that person: those with a {@code name=} or {@code person=} field equal to
+     * it, compared as names are (case and surrounding spaces ignored).
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        List<String> all;
+        try {
+            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String key = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        List<String> found = new ArrayList<>();
+        for (int i = all.size() - 1; i >= 0; i--) {
+            String line = all.get(i);
+            if (ofSheet(line, sheetId) && (key.isEmpty() || isAbout(line, key))) found.add(line);
+        }
+        return found;
+    }
+
+    private static boolean ofSheet(String line, String sheetId) {
+        String[] tokens = line.split(" ", 3);
+        return tokens.length >= 2 && tokens[1].equals("sheet=" + sheetId);
+    }
+
+    /** Whether a line has a name= or person= field naming the person (a value runs to the next field). */
+    private static boolean isAbout(String line, String key) {
+        String field = null;
+        StringBuilder value = new StringBuilder();
+        for (String token : (line + " end=").split(" ")) {
+            int eq = token.indexOf('=');
+            if (eq > 0) {
+                if (field != null && (field.equals("name") || field.equals("person"))
+                        && value.toString().trim().toLowerCase(Locale.ROOT).equals(key)) {
+                    return true;
+                }
+                field = token.substring(0, eq);
+                value.setLength(0);
+                value.append(token.substring(eq + 1));
+            } else if (field != null) {
+                value.append(' ').append(token);
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */

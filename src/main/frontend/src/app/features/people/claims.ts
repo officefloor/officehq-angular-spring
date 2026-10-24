@@ -457,11 +457,11 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const was = this.editingId();
-    // The form shows the claim at once, so what is typed while the lock is asked for is kept.
+    // The form shows the claim once the lock is answered, so it never shows as open before a refusal.
     this.release(sheet, was, claim.id);
-    this.fill(claim);
     try {
       await this.service.lock(sheet, claim.id);
+      if (this.session.sheetId() === sheet) this.fill(claim);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
@@ -473,6 +473,7 @@ export class Claims {
               ? 'Your role may not edit a claim on this sheet.'
               : 'Another user is editing that claim; try again once they save or cancel it.',
         }));
+        this.fill(claim);
         return;
       }
       refuse(

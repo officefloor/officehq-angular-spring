@@ -16,6 +16,7 @@ import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { Summary, SummaryPerson } from './summary';
 import { VoidReasons } from './void-reasons';
+import { Audit } from './audit';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
@@ -48,7 +49,7 @@ import { VoidReasons } from './void-reasons';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Delegations, Header, Holidays, Periods, Rates, Settings, Summary, VoidReasons],
+  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -66,6 +67,7 @@ import { VoidReasons } from './void-reasons';
     <app-delegations />
     <app-holidays (added)="holidayAdded()" />
     <app-void-reasons />
+    <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
     <app-summary
