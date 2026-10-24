@@ -6,6 +6,8 @@ interface SheetView {
   id: string;
   /** The sheet's today (YYYY-MM-DD): every date-dependent decision and default uses it. */
   today: string;
+  /** Whether the sheet is archived: everything stays visible and every change is refused. */
+  archived: boolean;
 }
 
 // Who is signed in and which sheet is active. Every request to the server carries the signed-in
@@ -18,6 +20,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. */
   readonly today = signal<string | null>(null);
+  /** Whether the active sheet is archived. */
+  readonly archived = signal(false);
   /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
   readonly loads = signal(0);
   readonly signedIn = computed(() => this.user() !== null);
@@ -28,6 +32,7 @@ export class Session {
     this.user.set(user);
     this.sheetId.set(null);
     this.today.set(null);
+    this.archived.set(false);
     return true;
   }
 
@@ -73,8 +78,26 @@ export class Session {
     }
   }
 
+  /** Archive the active sheet; resolves false when refused. */
+  async archive(): Promise<boolean> {
+    const sheet = this.sheetId();
+    if (!sheet) return false;
+    try {
+      const view = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(sheet)}/archive`, null, {
+          headers: this.headers(),
+        }),
+      );
+      if (this.sheetId() === view.id) this.show(view);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private show(view: SheetView): void {
     this.sheetId.set(view.id);
     this.today.set(view.today);
+    this.archived.set(view.archived);
   }
 }

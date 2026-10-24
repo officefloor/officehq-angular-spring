@@ -3,8 +3,11 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,12 +23,17 @@ public class SheetService {
     private final SheetRepository sheets;
     private final RollupService rollup;
     private final PeriodService periods;
+    private final SettingsService settings;
+    private final Audit audit;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods,
+            SettingsService settings, Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
+        this.settings = settings;
+        this.audit = audit;
     }
 
     @Transactional
@@ -63,6 +71,23 @@ public class SheetService {
         periods.closeOverdue(id, user);
         rollup.recordSince(id, user, before);
         return sheet;
+    }
+
+    /** Archive the sheet; only a steward may, and an archived sheet is not archived again. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived()) throw new SheetArchivedException();
+        if (settings.roleOf(id, user) != Role.STEWARD) throw new SheetNotStewardException();
+        sheet.setArchived(true);
+        audit.change("SHEET_ARCHIVED", id, user);
+        return sheet;
+    }
+
+    /** Whether the sheet is archived; a sheet never loaded is not. */
+    @Transactional(readOnly = true)
+    public boolean archived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
     }
 
     /** The next claim number on the sheet: 1 for its first, then 2, and so on, never given twice. */

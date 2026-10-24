@@ -12,11 +12,14 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /** Status changes asked of several claims at once. Each claim changes in its own transaction, through
  * {@link ClaimService}, so a refused one changes (and records) nothing while the others go through. A
- * viewer's bulk change goes through with nothing done: every claim asked is refused. */
+ * viewer's bulk change, or one on an archived sheet, goes through with nothing done: every claim asked
+ * is refused. */
 @Service
 public class ClaimBulkService {
 
@@ -28,9 +31,11 @@ public class ClaimBulkService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SettingsService settings;
+    private final SheetRepository sheets;
 
     public ClaimBulkService(ClaimService service, ClaimRepository claims, PersonRepository people,
-            SettingsService settings) {
+            SettingsService settings, SheetRepository sheets) {
+        this.sheets = sheets;
         this.service = service;
         this.claims = claims;
         this.people = people;
@@ -54,6 +59,7 @@ public class ClaimBulkService {
     private Outcome change(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
         Set<Long> asked = Set.copyOf(claimIds);
         if (settings.roleOf(sheetId, user) == Role.VIEWER) return new Outcome(List.of(), asked.size());
+        if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return new Outcome(List.of(), asked.size());
         Map<Long, Integer> personOrder = new HashMap<>();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
