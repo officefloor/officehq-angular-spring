@@ -1,0 +1,64 @@
+{
+  "checkpoint": 171,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp171_review-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a8664b07452b56077a2575d0b0a4aee4a6d660f5",
+  "reset_sha": "",
+  "preagent_sha": "121a03a24b72edf2fe9fc0f7a34bb11b9203d22a",
+  "prev_sha": "121a03a24b72edf2fe9fc0f7a34bb11b9203d22a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9321882,
+    "input_tokens": 42,
+    "output_tokens": 11648,
+    "cache_read_tokens": 962861,
+    "cache_creation_tokens": 63311,
+    "num_turns": 21,
+    "duration_ms": 283047,
+    "duration_api_ms": 110185,
+    "model": "claude-opus-5-5",
+    "session_id": "c55ee106-b2c3-4f5b-819d-ebba565e4c27",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a review SLA, and `bin/e2e` passes all 4 tests in the spec.\n\n**How a claim counts as late:** its review day is the sheet's today when it went to REVIEW. The app already logs every status change with that date, so I read the review day from the claim's latest REVIEW log entry. I didn't add a new date column to claims. A claim shows `claim-review-late` \"yes\" when it is in REVIEW and its review day plus the SLA days is before the sheet's today. With no SLA set, every claim shows \"no\".\n\n**What changed:**\n- **Stored data:** migration `V94__review_sla.sql` adds a `review_sla` column to the sheet table, where a blank (null) value means none. Copying a sheet copies the SLA too.\n- **Server:**\n  - The setting is saved with `PUT /settings/review-sla`, built the same way as the existing escalate-after setting. It writes `SETTING_CHANGED ... key=review-sla value=<days>`, with an empty value when cleared.\n  - Settings now include `reviewSla`, both live and when viewing the sheet as of a past date.\n  - Each claim now carries a `reviewLate` flag, worked out by the server against the sheet's today and SLA. Most of this is in `ClaimController.java` and `ClaimService.java`.\n- **Front end:**\n  - The settings panel has a \"Review SLA (days)\" field (`setting-review-sla`) and shows the value in force (`setting-review-sla-current`). It accepts a whole number of days or blank.\n  - Each claim row shows `claim-review-late`.\n  - The summary's status table has a \"Review late\" count (`summary-review-late-count`).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9321882,
+        "num_turns": 21,
+        "duration_ms": 283047,
+        "duration_api_ms": 110185,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp171.agent.jsonl",
+  "agent_diff_file": "cp171.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
