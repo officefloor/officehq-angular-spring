@@ -1,0 +1,308 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 348ff319..2da05043 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -285,8 +285,8 @@ export class Claims {
+   }
+ 
+   /** What is due on the claim at the rate in force on the claim's date of the person's grade in force
+-   *  then; n/a when no rate of that grade applies then; never below the sheet's floor in force then; with its late charge added while it is
+-   *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
++   *  then (or the figure a statement bound it to), with its late charge added while it is overdue, and
++   *  then never below the sheet's floor in force on its date; n/a when no rate of that grade applies then. A claim settled at a rate keeps what was due on it then; one settled without a rate
+    *  fixed nothing. */
+   protected dueOf(claim: Claim): string {
+     const late = { today: this.session.today(), latePcts: this.latePcts() };
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index e3292d46..31b83057 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -120,7 +120,7 @@ export class PeopleService {
+   }
+ 
+   /** Put the person on a hold from `from` (the sheet's today when null) to `to` (no end when null);
+-   *  refused (409) when it ends before it starts or they are already on that very hold. */
++   *  refused (409) when it ends before it starts. */
+   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<Person> {
+     return firstValueFrom(
+       this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { from, to }, {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a5e9f101..ce376b18 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,7 +30,8 @@ import { Summary, SummaryPerson } from './summary';
+ // A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
+ // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
+ // what is due on them. An overdue claim's due gains, for every full 30 days it is overdue, the sheet's
+-// late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in.
++// late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in. The floor is
++// applied last: the live due is the greater of the floor in force on the claim's date and its figure plus that charge.
+ // A person can name other people on the sheet as their patrons, one at a time from their row; the
+ // row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
+ // (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index a421fdc5..f73abfd6 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -61,24 +61,21 @@ export function dueCents(amountCents: number, pct: string | null, halfUp = false
+   return Number(negative ? -quotient : quotient);
+ }
+ 
+-/** What is due on a claim, in cents: a claim settled at a rate keeps what was due on it then; a
++/** The figure of a claim, in cents: a claim settled at a rate keeps what was due on it then; a
+  *  claim a statement bound keeps, unless it is PENDING (no statement binds it while it is), the figure it was bound to (null when that was none); otherwise
+  *  what is due on its amount at the rate in force on the claim's date of the grade in force
+- *  for its person then, rounded as the claim rounds (see roundsHalfUp), raised to
+- *  the sheet's floor in force on the claim's date when below it (a correction has no floor), null
+- *  when no rate applies then. `floors` is every floor recorded, oldest first. */
++ *  for its person then, rounded as the claim rounds (see roundsHalfUp) — the rate figure alone,
++ *  before any late charge or floor (see claimShownCents); null when no rate applies then. */
+ export function claimDueCents(
+   claim: Claim,
+   rates: Rate[],
+   grades: PersonGrade[],
+-  floors: readonly Dated[],
+   rounding: Rounding,
+ ): number | null {
+   if (claim.status === 'SETTLED' && claim.settledDue !== null) return cents(claim.settledDue);
+   if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
+   const grade = gradeOn(grades, claim.date);
+-  const due = grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
+-  return due === null ? null : isCorrection(claim) ? due : Math.max(due, cents(inForce(floors, claim.date, FLOOR)));
++  return grade === null ? null : dueCents(cents(claim.amount), rateOn(rates, grade, claim.date), roundsHalfUp(claim, rounding));
+ }
+ 
+ /** What a late charge is worked from: the sheet's today and every late percent recorded, oldest
+@@ -107,8 +104,10 @@ export function lateChargeCents(claim: Claim, figureCents: number, late: Latenes
+   return charge;
+ }
+ 
+-/** What is due on a claim as it shows and totals, in cents: its figure (see claimDueCents) plus its
+- *  late charge; null when it has no figure. */
++/** What is due on a claim as it shows and totals, in cents: a claim settled at a rate keeps what was
++ *  due on it then; otherwise the greater of the sheet's floor in force on the claim's date and its
++ *  figure (see claimDueCents) plus its late charge (a correction has neither); null when it has no
++ *  figure. `floors` is every floor recorded, oldest first. */
+ export function claimShownCents(
+   claim: Claim,
+   rates: Rate[],
+@@ -117,8 +116,10 @@ export function claimShownCents(
+   late: Lateness,
+   rounding: Rounding,
+ ): number | null {
+-  const figure = claimDueCents(claim, rates, grades, floors, rounding);
+-  return figure === null ? null : figure + lateChargeCents(claim, figure, late, rounding);
++  const figure = claimDueCents(claim, rates, grades, rounding);
++  if (figure === null || isCorrection(claim)) return figure;
++  if (claim.status === 'SETTLED' && claim.settledDue !== null) return figure;
++  return Math.max(figure + lateChargeCents(claim, figure, late, rounding), cents(inForce(floors, claim.date, FLOOR)));
+ }
+ 
+ // The rates of the grades on a sheet, read from and written to the server.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0cc8ecdb..01abf6ce 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -145,7 +145,7 @@ public class ClaimService {
+                 .orElseThrow(PersonNotFoundException::new);
+         if (next == ClaimStatus.SETTLED) {
+             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
+-            BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
++            BigDecimal due = rollup.liveDueOf(claim, figure);
+             refuseUnproved(claim, due);
+             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
+             else claim.setSettledDue(due);
+@@ -237,7 +237,7 @@ public class ClaimService {
+                 .orElseThrow(PersonNotFoundException::new);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal figure = rollup.dueOf(claim, person);
+-        BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
++        BigDecimal due = rollup.liveDueOf(claim, figure);
+         refuseUnproved(claim, due);
+         claim.setSettledDue(due);
+         claim.setStatus(ClaimStatus.SETTLED);
+@@ -350,7 +350,7 @@ public class ClaimService {
+         return due == null ? "n/a" : due.toPlainString();
+     }
+ 
+-    /** The figure the claim shows and totals now, without its late charge; null when it has no figure
++    /** The figure the claim shows and totals now, without its late charge or floor; null when it has no figure
+      * (see {@link RollupService#figureOf}). */
+     public BigDecimal figureOf(Claim claim, Person person) {
+         return rollup.figureOf(claim, person);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index dc9ecc78..487c507d 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -126,12 +126,12 @@ public class PeriodService {
+ 
+     /** Close, as {@link #close(String, String, long)} would, every open period of the sheet whose to-date
+      * plus its grace days is before its today, in order of their to-dates, each marked auto=yes; nothing
+-     * when the grace days are off or the user's role may not close. */
++     * when the grace days are off. An automatic close is not subject to the permission matrix. */
+     @Transactional
+     public void closeOverdue(String sheetId, String user) {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+         Integer grace = sheet.getGraceDays();
+-        if (grace == null || !settings.allowed(sheetId, user, Action.CLOSE)) return;
++        if (grace == null) return;
+         List<Period> due = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                 .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(sheet.getToday()))
+                 .sorted(Comparator.comparing(Period::getTo)).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 7cc3023d..5cb10c19 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -14,10 +14,10 @@ import jakarta.persistence.Version;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+-import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
+-import java.util.Set;
++import org.hibernate.annotations.Fetch;
++import org.hibernate.annotations.FetchMode;
+ 
+ /**
+  * A person on a sheet: a name and a dated grade (A, B or C): each grade they are given is in force
+@@ -51,10 +51,12 @@ public class Person {
+     private LocalDate retiredFrom;
+ 
+     /** The holds the person has been put on: their OPEN and PENDING claims dated within one count in no
+-     * live total, unless a statement binds them. A set, so it loads eagerly beside the grades. */
++     * live total, unless a statement binds them. The same hold may be put on more than once. Loaded by
++     * a sub-select, so it loads eagerly beside the grades. */
+     @ElementCollection(fetch = FetchType.EAGER)
++    @Fetch(FetchMode.SUBSELECT)
+     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+-    private Set<PersonHold> holds = new HashSet<>();
++    private List<PersonHold> holds = new ArrayList<>();
+ 
+     /** The person's own terms in days, in place of their grade's and the sheet's; null when they have none. */
+     @Column(name = "terms")
+@@ -149,9 +151,9 @@ public class Person {
+                 .toList();
+     }
+ 
+-    /** Puts the person on {@code hold}; false when they are already on that very hold. */
+-    public boolean addHold(PersonHold hold) {
+-        return holds.add(hold);
++    /** Puts the person on {@code hold}. */
++    public void addHold(PersonHold hold) {
++        holds.add(hold);
+     }
+ 
+     /** Whether the person has any hold, whatever its dates. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonHoldException.java b/src/main/java/net/officefloor/hq/app/person/PersonHoldException.java
+index 36fe0978..92a9855e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonHoldException.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonHoldException.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.person;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+-/** A hold that ends before it starts, or one the person is already on. */
++/** A hold that ends before it starts. */
+ @ResponseStatus(HttpStatus.CONFLICT)
+ public class PersonHoldException extends RuntimeException {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c829f0b0..350655b5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -112,8 +112,8 @@ public class PersonService {
+     }
+ 
+     /** Puts the person on a hold from {@code from} (the sheet's today when left out) to {@code to}
+-     * (no end when left out); refused when it would end before it starts, or when they are already on
+-     * that very hold. A hold ends on its to-date: there is no release. */
++     * (no end when left out); refused when it would end before it starts. The same hold may be put on
++     * again. A hold ends on its to-date: there is no release. */
+     @Transactional
+     public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -122,9 +122,7 @@ public class PersonService {
+             throw new PersonHoldException();
+         }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        if (!person.addHold(new PersonHold(dated, to))) {
+-            throw new PersonHoldException();
+-        }
++        person.addHold(new PersonHold(dated, to));
+         people.flush();
+         audit.change("PERSON_HELD", sheetId, user, "name=" + person.getName(), "from=" + dated);
+         rollup.recordSince(sheetId, user, before);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 7e5a9687..949bc260 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -171,11 +171,29 @@ public class RollupService {
+         return dueOf(claim, person);
+     }
+ 
+-    /** What is due on the claim as it shows and totals now: its figure, plus its late charge; null when
+-     * it has no figure. */
++    /** What is due on the claim as it shows and totals now: what was fixed when it was settled at a
++     * rate; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
+     public BigDecimal shownOf(Claim claim, Person person) {
+         BigDecimal figure = figureOf(claim, person);
+-        return figure == null ? null : figure.add(lateChargeOf(claim, figure));
++        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return figure;
++        return liveDueOf(claim, figure);
++    }
++
++    /** The live due on the claim whose figure (at its rate, or as a statement bound it) is
++     * {@code figure}: the greater of the sheet's floor in force on the claim's date and that figure plus
++     * its late charge (see {@link #lateChargeOf}); a correction has neither floor nor charge. Null when
++     * {@code figure} is. */
++    public BigDecimal liveDueOf(Claim claim, BigDecimal figure) {
++        if (figure == null) return null;
++        if (claim.isCorrection()) return figure;
++        return floored(claim, figure.add(lateChargeOf(claim, figure)));
++    }
++
++    /** {@code due}, at least the sheet's floor in force on the claim's date. */
++    private BigDecimal floored(Claim claim, BigDecimal due) {
++        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
++        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
++        return due.max(floor);
+     }
+ 
+     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
+@@ -188,11 +206,12 @@ public class RollupService {
+     }
+ 
+     /** What would be due on the claim now were it an OPEN claim bound by no statement: its due at its
+-     * person's rate (see {@link #dueOf}) plus the late charge it would have then; null when it would
+-     * have no figure. */
++     * person's rate (see {@link #dueOf}) plus the late charge it would have then, at least the sheet's
++     * floor in force on its date (a correction has neither); null when it would have no figure. */
+     public BigDecimal openShownOf(Claim claim, Person person) {
+         BigDecimal figure = dueOf(claim, person);
+-        return figure == null ? null : figure.add(overdueChargeOf(claim, figure));
++        if (figure == null || claim.isCorrection()) return figure;
++        return floored(claim, figure.add(overdueChargeOf(claim, figure)));
+     }
+ 
+     /** The late charge on a claim whose figure is {@code figure}, whatever its status (see {@link #lateChargeOf}). */
+@@ -212,17 +231,15 @@ public class RollupService {
+     }
+ 
+     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
+-     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}), and at least the sheet's floor in force on the claim's date (a correction,
+-     * whose due is negative, has no floor); null when no
++     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}) — the rate
++     * figure alone, before any late charge or floor (see {@link #liveDueOf}); null when no
+      * rate of the grade in force for them on the claim's date applies then. */
+     public BigDecimal dueOf(Claim claim, Person person) {
+         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+-        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
+         RoundingMode rounding = roundingOf(claim, sheet);
+         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
+-                .map(due -> claim.isCorrection() ? due : due.max(floor))
+                 .orElse(null);
+     }
+ 

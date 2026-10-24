@@ -1,0 +1,86 @@
+{
+  "checkpoint": 64,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp64_floor-after-late",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    24,
+    32,
+    43,
+    45,
+    49,
+    50,
+    51,
+    52,
+    53
+  ],
+  "replaced_tests": [
+    "cp24_floor.spec.ts::floor",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp51_proofs.spec.ts::proofs scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3"
+  ],
+  "request": {
+    "spec": "The order of the due steps changes: the late charge is now worked out on the rate figure alone,\nor on the figure a statement bound, and the floor is applied last: a claim's live due is the\ngreater of the floor in force on its date and its figure plus its late charge. A statement now\nbinds the rate figure, not the floored one. Settled figures stay frozen; a correction is unchanged\n(no floor, no charge).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe order of the due steps changes: the late charge is now worked out on the rate figure alone,\nor on the figure a statement bound, and the floor is applied last: a claim's live due is the\ngreater of the floor in force on its date and its figure plus its late charge. A statement now\nbinds the rate figure, not the floored one. Settled figures stay frozen; a correction is unchanged\n(no floor, no charge).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ec6e76f13ff1aef54825871906c8ce30f541d096",
+  "reset_sha": "",
+  "preagent_sha": "9ee040096e5214fbc4df89def928032ce684c024",
+  "prev_sha": "9ee040096e5214fbc4df89def928032ce684c024",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5036393999999997,
+    "input_tokens": 84,
+    "output_tokens": 19433,
+    "cache_read_tokens": 2502977,
+    "cache_creation_tokens": 76756,
+    "num_turns": 43,
+    "duration_ms": 1031460,
+    "duration_api_ms": 250599,
+    "model": "claude-opus-5-5",
+    "session_id": "f231b7ce-af02-4a4d-b29d-0ec3f934c21e",
+    "stop_reason": "success",
+    "result_text": "The due order now works as the request asks: the late charge is worked out on the rate figure (or the figure a statement bound), and the floor is applied last. `bin/e2e` passes all 4 scenarios. After that run I only edited two comments.\n\n**The due calculation**, on both the server (`RollupService`) and the screen (`rates.service.ts`), since the front end works out the due shown itself:\n- **Rate figure:** the rate figure (`dueOf` / `claimDueCents`) no longer has the floor in it.\n- **Live due:** it is now the greater of the floor in force on the claim's date and the figure plus its late charge. A correction still gets no floor and no charge, and settled figures stay frozen.\n- **Statements:** a statement now binds the unfloored rate figure.\n- **Settling:** settle, approve and re-settle now fix the due in the new order too, so a settled figure is floored after the charge is added.\n\n**Two extra changes the spec forced.** Scenarios 2 and 3 failed on rules that have nothing to do with fees but that the app enforced on purpose:\n- **Duplicate holds are now accepted.** The spec puts Ada on the same hold twice and expects two `PERSON_HELD` audit lines; the app used to refuse the second one. Holds are now a list instead of a set (`Person.java`, `PersonService.java`). It is loaded by sub-select so it can still load eagerly next to the grades list, and no schema migration was needed.\n- **Auto-close ignores the permission matrix.** The spec expects a steward to auto-close overdue periods when the sheet's today changes, even though `perm-close=clerk`. In the same scenario that steward's manual close is still refused, so I took the permission check out of `closeOverdue` only. Manual close and reopen still check it.\n\nI updated the comments that described the old behaviour.\n\n**Your call:** claims bound by a statement before this change still hold the floored figure in the store. The original rate figure isn't kept, so I couldn't reliably put it back with a migration. The tests use fresh sheets and aren't affected, but any existing stated claims on real sheets will keep that older figure until they're stated again.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5036393999999997,
+        "num_turns": 43,
+        "duration_ms": 1031460,
+        "duration_api_ms": 250599,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp64.agent.jsonl",
+  "agent_diff_file": "cp64.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
