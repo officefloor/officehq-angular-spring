@@ -160,6 +160,14 @@ public class ClaimController {
     public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims a bulk move is asked of, by id, and the person they are moved to. */
+    public record BulkReassignRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull Long personId) {
+    }
+
+    /** How a bulk move went: how many claims it moved and refused, and the claims it moved. */
+    public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
 
@@ -347,6 +355,17 @@ public class ClaimController {
         if (asOf != null) return new BulkSettleView(0, Set.copyOf(request.claimIds()).size(), List.of());
         ClaimBulkService.Outcome outcome = bulk.settle(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkSettleView(outcome.changed().size(), outcome.refused(),
+                views(outcome.changed()));
+    }
+
+    @PostMapping("/claims/bulk-reassign")
+    public BulkReassignView bulkReassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestBody @Valid BulkReassignRequest request) {
+        if (asOf != null) return new BulkReassignView(0, Set.copyOf(request.claimIds()).size(), List.of());
+        ClaimBulkService.Outcome outcome = bulk.reassign(sheetId.trim(), user.trim(), request.claimIds(), request.personId());
+        return new BulkReassignView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));
     }
 

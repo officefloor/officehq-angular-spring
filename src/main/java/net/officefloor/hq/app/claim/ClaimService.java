@@ -459,12 +459,24 @@ public class ClaimService {
      * is dated after the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
+        return move(sheetId, user, claimId, personId, false);
+    }
+
+    /** A move of one of several claims moved together: by the rules of {@link #reassign}, except that a
+     * claim that already belongs to the person goes through (it is listed as the person's newest claim,
+     * and recorded). */
+    @Transactional
+    public Claim reassignOfBulk(String sheetId, String user, long claimId, long personId) {
+        return move(sheetId, user, claimId, personId, true);
+    }
+
+    private Claim move(String sheetId, String user, long claimId, long personId, boolean samePerson) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!settings.allowed(sheetId, user, Action.REASSIGN)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDueBy());
         ClaimStatus status = claim.getStatus();
         if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)
-                || claim.isCorrection() || claim.getPersonId() == personId) {
+                || claim.isCorrection() || (!samePerson && claim.getPersonId() == personId)) {
             throw new ClaimReassignException();
         }
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)

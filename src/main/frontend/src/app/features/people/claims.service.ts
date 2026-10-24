@@ -115,6 +115,13 @@ export interface BulkSettled {
   claims: Claim[];
 }
 
+/** How a bulk move went: how many claims it moved and refused, and the claims it moved. */
+export interface BulkReassigned {
+  reassigned: number;
+  refused: number;
+  claims: Claim[];
+}
+
 /** How a paste of claims went: how many it added, and the claims, in the order of their lines. */
 export interface Pasted {
   added: number;
@@ -332,6 +339,16 @@ export class ClaimsService {
   bulkSettle(sheet: string, claimIds: number[]): Promise<BulkSettled> {
     return firstValueFrom(
       this.http.post<BulkSettled>(`${this.url(sheet)}/claims/bulk-settle`, { claimIds }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Move each of the claims that can be moved to the person, in list order, by the rules of moving
+   *  one; the rest are left as they are and counted as refused. */
+  bulkReassign(sheet: string, claimIds: number[], personId: number): Promise<BulkReassigned> {
+    return firstValueFrom(
+      this.http.post<BulkReassigned>(`${this.url(sheet)}/claims/bulk-reassign`, { claimIds, personId }, {
         headers: this.session.headers(),
       }),
     );

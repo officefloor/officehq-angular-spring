@@ -10,6 +10,7 @@ import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -56,19 +57,49 @@ public class ClaimBulkService {
         return change(sheetId, user, claimIds, ClaimStatus.SETTLED);
     }
 
-    private Outcome change(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+    /** Move each of the claims that can be moved to the person, in list order, by exactly the rules of
+     * moving one claim (each move records its CLAIM_REASSIGNED and rollup lines); any that cannot be
+     * moved (or is not on the sheet) is left as it is and counted as refused. */
+    public Outcome reassign(String sheetId, String user, Collection<Long> claimIds, long personId) {
         Set<Long> asked = Set.copyOf(claimIds);
-        if (settings.roleOf(sheetId, user) == Role.VIEWER) return new Outcome(List.of(), asked.size());
-        if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return new Outcome(List.of(), asked.size());
+        if (refusesAll(sheetId, user)) return new Outcome(List.of(), asked.size());
+        List<Claim> found = inListOrder(sheetId, asked);
+        int refused = asked.size() - found.size();
+        List<Claim> changed = new ArrayList<>();
+        for (Claim claim : found) {
+            try {
+                changed.add(service.reassignOfBulk(sheetId, user, claim.getId(), personId));
+            } catch (ClaimReassignException | ClaimPeriodClosedException | ClaimNotFoundException | ClaimNotStewardException
+                    | PersonNotFoundException | PersonRetiredException e) {
+                refused++;
+            }
+        }
+        return new Outcome(changed, refused);
+    }
+
+    private boolean refusesAll(String sheetId, String user) {
+        return settings.roleOf(sheetId, user) == Role.VIEWER
+                || sheets.findById(sheetId).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** The claims asked that are on the sheet: people in the order they were added, each person's
+     * claims newest first. */
+    private List<Claim> inListOrder(String sheetId, Set<Long> asked) {
         Map<Long, Integer> personOrder = new HashMap<>();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
-        List<Claim> found = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> asked.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
                         .thenComparing(Claim::getListed, Comparator.reverseOrder())
                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
                 .toList();
+    }
+
+    private Outcome change(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+        Set<Long> asked = Set.copyOf(claimIds);
+        if (refusesAll(sheetId, user)) return new Outcome(List.of(), asked.size());
+        List<Claim> found = inListOrder(sheetId, asked);
         int refused = asked.size() - found.size();
         List<Claim> changed = new ArrayList<>();
         for (Claim claim : found) {
