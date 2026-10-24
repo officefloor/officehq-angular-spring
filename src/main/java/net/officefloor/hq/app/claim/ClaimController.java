@@ -438,6 +438,16 @@ public class ClaimController {
         return views(service.split(sheetId.trim(), user.trim(), claimId, request.amountValue()));
     }
 
+    /** Part-settle the claim: split an amount off it and settle the new claim; the claim as it is now,
+     * then the new claim. */
+    @PostMapping("/claims/{claimId}/settle-part")
+    public List<ClaimView> settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SplitRequest request) {
+        return views(service.partSettle(sheetId.trim(), user.trim(), claimId, request.amountValue()));
+    }
+
     @PostMapping("/claims/{claimId}/redate")
     public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

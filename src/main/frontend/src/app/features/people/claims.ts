@@ -342,6 +342,22 @@ const PAST: Record<ClaimAction, string> = {
             >
               Split
             </button>
+            <label [for]="fieldId('settle-part-amount-' + c.id)">Settle part</label>
+            <input
+              [id]="fieldId('settle-part-amount-' + c.id)"
+              data-testid="claim-settle-part-amount"
+              inputmode="decimal"
+              [value]="settlePartAmounts()[c.id] ?? ''"
+              (input)="setSettlePartAmount(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-settle-part"
+              [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date"
+              (click)="settlePart(c)"
+            >
+              Settle part
+            </button>
             <label [for]="fieldId('reassign-to-' + c.id)">Move to</label>
             <select
               [id]="fieldId('reassign-to-' + c.id)"
@@ -497,6 +513,8 @@ export class Claims {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed to part-settle on each claim, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The amount typed to change each draft claim to in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The person chosen to move each claim to, by claim id: their id as text. */
@@ -1152,6 +1170,45 @@ export class Claims {
           : e instanceof HttpErrorResponse && (e.status === 422 || e.status === 400)
           ? 'Type an amount more than 0.00 and less than the claim\'s amount to split off.'
           : 'Only an open claim that is not deferred can be split.',
+      }));
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+    this.clearRowError(id);
+  }
+
+  /** Split the amount typed on its row off the claim, as a split does, and settle the new claim at once,
+   *  as a settle does (left PENDING over the clerk limit); a split or settle that would be refused
+   *  refuses the whole action with an error. */
+  protected async settlePart(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: 'Type an amount more than 0.00 and less than the claim\'s amount to settle.',
+      }));
+      return;
+    }
+    try {
+      const [kept, made] = await this.service.settlePart(sheet, claim.id, amount);
+      if (this.session.sheetId() !== sheet) return;
+      this.settlePartAmounts.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(kept);
+      this.saved.emit(made);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && (e.status === 422 || e.status === 400)
+          ? 'Type an amount more than 0.00 and less than the claim\'s amount to settle.'
+          : 'That claim cannot be part-settled by you now.',
       }));
     }
   }

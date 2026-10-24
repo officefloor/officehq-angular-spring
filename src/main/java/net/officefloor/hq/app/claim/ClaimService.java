@@ -307,6 +307,34 @@ public class ClaimService {
      * be one on it (see {@link VoidReasonService#refuseUnlisted}), and is kept on the claim. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
+        return changeStatus(sheetId, user, claimId, next, voidReason, false);
+    }
+
+    /** Part-settle an OPEN claim: split {@code amount} off it as {@link #split} does, then settle the new
+     * claim as {@link #changeStatus(String, String, long, ClaimStatus)} does (left PENDING when the clerk
+     * limit says so). Who may settle and the proof rule are judged on the claim as it was before the split,
+     * so the user, who opens the new claim, may still settle it. Refused, changing nothing, when the split
+     * or the settle would be. Both claims are returned, the original first. */
+    @Transactional
+    public List<Claim> partSettle(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!settings.allowed(sheetId, user, Action.SETTLE)) throw new ClaimNotStewardException();
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ClaimStatusChangeException();
+        }
+        if (claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        refuseUnproved(claim, person, rollup.shownOf(claim, person));
+        List<Claim> split = split(sheetId, user, claimId, amount);
+        Claim settled = changeStatus(sheetId, user, split.get(1).getId(), ClaimStatus.SETTLED, null, true);
+        return List.of(split.get(0), settled);
+    }
+
+    /** Move the claim to {@code next}; with {@code judged}, who may settle it and the proof rule have
+     * already been judged (on the claim a part-settle split it from). */
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
+            boolean judged) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         Action action = switch (next) {
             case OPEN -> Action.OPEN;
@@ -324,7 +352,7 @@ public class ClaimService {
         if (reversing) refuseLateVoid(sheetId, user, claim);
         String reason = next == ClaimStatus.VOID ? voidReasons.refuseUnlisted(sheetId, voidReason) : null;
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
-        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
+        if (next == ClaimStatus.SETTLED && !judged && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.OPEN && person.isFlaggedOn(sheets.today(sheetId))
@@ -344,7 +372,7 @@ public class ClaimService {
         }
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = rollup.shownOf(claim, person);
-            refuseUnproved(claim, person, due);
+            if (!judged) refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
         }

@@ -393,6 +393,16 @@ export class ClaimsService {
     );
   }
 
+  /** Split an amount off an OPEN claim and settle the new claim (or leave it PENDING): the claim as it
+   *  is now, then the new claim; refused as a split or a settle of the claim would be. */
+  settlePart(sheet: string, id: number, amount: string): Promise<Claim[]> {
+    return firstValueFrom(
+      this.http.post<Claim[]>(`${this.url(sheet)}/claims/${id}/settle-part`, { amount }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Move the claim to another person on the sheet; refused (403) when the user is not a steward,
    *  (409) when it is SETTLED or VOID, a correction or already theirs, (423) when it is dated in a
    *  closed period and (422) when it is dated after the person retired. */
