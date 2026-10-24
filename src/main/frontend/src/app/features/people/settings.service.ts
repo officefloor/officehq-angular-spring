@@ -13,14 +13,19 @@ export interface RoleGiven {
   role: Role;
 }
 
+/** The floor a sheet starts with, in cents. */
+export const FLOOR_CENTS = 100;
+
 export interface SheetSettings {
   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due can be, with two decimals. */
+  floor: string;
   /** The roles given on the sheet, by user name. */
   roles: RoleGiven[];
 }
 
-// The settings of a sheet (its roles and its clerk limit), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit and its floor), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -40,6 +45,12 @@ export class SettingsService {
         { value },
         { headers: this.session.headers() },
       ),
+    );
+  }
+
+  setFloor(sheet: string, value: string): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/floor`, { value }, { headers: this.session.headers() }),
     );
   }
 

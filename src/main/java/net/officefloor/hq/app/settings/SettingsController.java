@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A sheet's settings: its roles and its clerk limit. The signed-in user's name travels in the
+/** A sheet's settings: its roles, its clerk limit and its floor. The signed-in user's name travels in the
  * {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -31,8 +31,8 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the clerk limit is sent as text with two decimals, null when there is none. */
-    public record SettingsView(String clerkLimit, List<RoleView> roles) {
+    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none. */
+    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {
     }
 
     /** A role: clerk or steward. */
@@ -49,6 +49,13 @@ public class SettingsController {
         }
     }
 
+    /** A floor: 0.00 or more, with up to two decimals. */
+    public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
+        BigDecimal floorValue() {
+            return new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
     private final SettingsService service;
 
     public SettingsController(SettingsService service) {
@@ -59,7 +66,7 @@ public class SettingsController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
-        return new SettingsView(text(service.clerkLimit(sheet)),
+        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
                 service.roles(sheet).stream().map(RoleView::of).toList());
     }
 
@@ -69,6 +76,15 @@ public class SettingsController {
             @RequestBody @Valid ClerkLimitRequest request) {
         String sheet = sheetId.trim();
         service.setClerkLimit(sheet, user.trim(), request.limitValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/floor")
+    public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FloorRequest request) {
+        String sheet = sheetId.trim();
+        service.setFloor(sheet, user.trim(), request.floorValue());
         return get(sheet, user);
     }
 

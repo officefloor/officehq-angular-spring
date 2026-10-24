@@ -1,12 +1,14 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, output, signal } from '@angular/core';
+import { cents } from './claims.service';
 import { Session } from '../../core/session';
-import { ROLES, Role, RoleGiven, SettingsService } from './settings.service';
+import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
-// limit) and the role each user name has been given (any other name is a clerk). Read from the
-// store every time a sheet is loaded.
+// limit), its floor (the least a claim's live due can be) and the role each user name has been given (any other name is a clerk). Read from the
+// store every time a sheet is loaded. Saving the settings saves only the fields changed since
+// they were last saved.
 @Component({
   selector: 'app-settings',
   template: `
@@ -19,7 +21,7 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
           data-testid="setting-clerk-limit"
           inputmode="decimal"
           [value]="limit()"
-          (input)="limit.set(value($event)); settingsError.set(null)"
+          (input)="limit.set(value($event)); limitChanged = true; settingsError.set(null)"
         />
         <span>
           In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
@@ -27,6 +29,15 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
             (no limit)
           }
         </span>
+        <label for="setting-floor">Floor</label>
+        <input
+          id="setting-floor"
+          data-testid="setting-floor"
+          inputmode="decimal"
+          [value]="floorInput()"
+          (input)="floorInput.set(value($event)); floorChanged = true; settingsError.set(null)"
+        />
+        <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
@@ -114,9 +125,18 @@ export class Settings {
   protected readonly roles = ROLES;
   /** The clerk limit in force; null when there is none. */
   protected readonly clerkLimit = signal<string | null>(null);
+  /** The floor in force, with two decimals; empty until read. */
+  protected readonly floor = signal('');
   protected readonly given = signal<RoleGiven[]>([]);
+  /** The floor saved, in cents. */
+  readonly floorSaved = output<number>();
 
   protected readonly limit = signal('');
+  protected readonly floorInput = signal('');
+  /** Whether each field was typed in since the settings were last loaded or saved; a field is saved
+   *  when it was, or when it differs from the value in force. */
+  protected limitChanged = false;
+  protected floorChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
@@ -130,8 +150,12 @@ export class Settings {
       const sheet = this.session.sheetId();
       this.session.loads();
       this.clerkLimit.set(null);
+      this.floor.set('');
       this.given.set([]);
       this.limit.set('');
+      this.floorInput.set('');
+      this.limitChanged = false;
+      this.floorChanged = false;
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
@@ -151,16 +175,34 @@ export class Settings {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const limit = this.limit().trim();
-    if (limit !== '' && !LIMIT.test(limit)) {
+    const floor = this.floorInput().trim();
+    const saveLimit = this.limitChanged || limit !== (this.clerkLimit() ?? '');
+    const saveFloor = this.floorChanged || floor !== this.floor();
+    if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (saveFloor && !LIMIT.test(floor)) {
+      this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
       return;
     }
     this.savingSettings = true;
     try {
-      const settings = await this.service.setClerkLimit(sheet, limit || null);
-      if (this.session.sheetId() !== sheet) return;
-      this.clerkLimit.set(settings.clerkLimit);
-      this.given.set(settings.roles);
+      if (saveLimit) {
+        const settings = await this.service.setClerkLimit(sheet, limit || null);
+        if (this.session.sheetId() !== sheet) return;
+        this.limitChanged = false;
+        this.show(settings);
+      }
+      if (saveFloor) {
+        const settings = await this.service.setFloor(sheet, floor);
+        if (this.session.sheetId() !== sheet) return;
+        this.floorChanged = false;
+        this.show(settings);
+        this.floorSaved.emit(cents(settings.floor));
+      }
+      this.limit.set(this.clerkLimit() ?? '');
+      this.floorInput.set(this.floor());
     } catch {
       this.settingsError.set('Those settings could not be saved.');
     } finally {
@@ -204,11 +246,18 @@ export class Settings {
     try {
       const settings = await this.service.get(sheet);
       if (this.session.sheetId() === sheet) {
-        this.clerkLimit.set(settings.clerkLimit);
-        this.given.set(settings.roles);
+        this.show(settings);
+        if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
+        if (!this.floorChanged) this.floorInput.set(settings.floor);
       }
     } catch {
       // The settings could not be read; they show as none.
     }
+  }
+
+  private show(settings: SheetSettings): void {
+    this.clerkLimit.set(settings.clerkLimit);
+    this.floor.set(settings.floor);
+    this.given.set(settings.roles);
   }
 }

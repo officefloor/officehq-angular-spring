@@ -118,6 +118,8 @@ export class Claims {
   readonly grade = input.required<Grade>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's floor, in cents: the least a claim's live due can be. */
+  readonly floor = input.required<number>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   /** A claim was added or saved. */
@@ -147,10 +149,10 @@ export class Claims {
   }
 
   /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
-   *  their grade applies then. A claim settled
+   *  their grade applies then; never below the sheet's floor. A claim settled
    *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
   protected dueOf(claim: Claim): string {
-    const due = claimDueCents(claim, this.rates(), this.grade());
+    const due = claimDueCents(claim, this.rates(), this.grade(), this.floor());
     return due === null ? 'n/a' : money(due);
   }
 

@@ -120,11 +120,14 @@ public class RollupService {
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded half to even to two decimals; null when no rate of their grade applies then. */
+     * divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when no
+     * rate of their grade applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
+        BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(zero());
         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
     }
 

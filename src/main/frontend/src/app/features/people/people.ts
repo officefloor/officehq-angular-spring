@@ -9,6 +9,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
 import { Settings } from './settings';
+import { FLOOR_CENTS, SettingsService } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
@@ -25,7 +26,7 @@ import { Statement, StatementsService } from './statements.service';
   selector: 'app-people',
   imports: [Claims, Periods, Rates, Settings],
   template: `
-    <app-settings />
+    <app-settings (floorSaved)="floor.set($event)" />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
     <section aria-labelledby="people-heading">
@@ -133,6 +134,7 @@ import { Statement, StatementsService } from './statements.service';
                     [claims]="claimsOf(p.id)"
                     [grade]="p.grade"
                     [rates]="rates()"
+                    [floor]="floor()"
                     [periods]="periods()"
                     (saved)="claimSaved($event)"
                   />
@@ -230,6 +232,7 @@ export class People {
   private readonly service = inject(PeopleService);
   private readonly claimsService = inject(ClaimsService);
   private readonly ratesService = inject(RatesService);
+  private readonly settingsService = inject(SettingsService);
   private readonly statementsService = inject(StatementsService);
   private readonly periodsService = inject(PeriodsService);
 
@@ -264,6 +267,8 @@ export class People {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The sheet's rates, by grade. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The sheet's floor, in cents: the least a claim's live due can be. */
+  protected readonly floor = signal(FLOOR_CENTS);
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
@@ -276,7 +281,7 @@ export class People {
         if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        sums[period.name] += claimDueCents(c, this.rates(), person.grade) ?? 0;
+        sums[period.name] += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
       }
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
@@ -309,6 +314,7 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.floor.set(FLOOR_CENTS);
       this.statements.set([]);
       this.periods.set([]);
       this.rowErrors.set({});
@@ -444,7 +450,7 @@ export class People {
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
-      const due = claimDueCents(c, this.rates(), person.grade);
+      const due = claimDueCents(c, this.rates(), person.grade, this.floor());
       if (due === null) continue;
       sum += due;
       any = true;
@@ -589,14 +595,16 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
         this.statementsService.list(sheet),
         this.periodsService.list(sheet),
+        this.settingsService.get(sheet),
       ]);
       if (this.sheet() === sheet) {
+        this.floor.set(cents(settings.floor));
         this.rates.set(rates);
         this.periods.set(periods);
         this.statements.set(statements);
