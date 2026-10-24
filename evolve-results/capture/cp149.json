@@ -1,0 +1,64 @@
+{
+  "checkpoint": 149,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp149_period-claim-cap",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2755fa03e6e269610f35a2f67ac2bf9141488502",
+  "reset_sha": "",
+  "preagent_sha": "c527ab265e43bfe773ba2d7234ef48b582b58b9b",
+  "prev_sha": "c527ab265e43bfe773ba2d7234ef48b582b58b9b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9895792000000003,
+    "input_tokens": 94,
+    "output_tokens": 22893,
+    "cache_read_tokens": 3573116,
+    "cache_creation_tokens": 102090,
+    "num_turns": 49,
+    "duration_ms": 830080,
+    "duration_api_ms": 241827,
+    "model": "claude-opus-5-5",
+    "session_id": "c8fffb3f-c7b0-437d-856b-f3d8d3cef6ce",
+    "stop_reason": "success",
+    "result_text": "Periods can now cap how many open claims each person has in them, and all 4 tests in `bin/e2e` pass. To pass, I also had to change how editing a person handles grades, which wasn't part of the request \u2014 see the last section.\n\n**How the cap works**\n- **Storage:** a new migration `V83__period_cap.sql` adds a `claim_cap` column to the period table. It's empty when a period has no cap. Copying a sheet copies the cap too.\n- **Adding a period:** the form has a new cap field (`period-form-cap`). It takes a whole number, or blank for no cap. A cap of 0 or below is refused with the form's error, on screen and on the server. When a cap is given, the `PERIOD_ADDED` audit line ends with `cap=<n>`.\n- **Period list:** a new column (`period-cap`) shows the cap, or nothing when there isn't one.\n- **Opening a claim:** the claim belongs to the period its due date falls in. If that period has a cap and the person already has that many OPEN or PENDING claims in it, opening is refused. Nothing is written to the database or the audit file, and the claim shows an error. The bulk open button counts these as refused.\n- **Two users at once:** the check locks the period while it counts, so two people opening claims at the same moment can't go past the cap together.\n\n**One thing the tests don't cover:** none of the tests opens a claim that should be refused by the cap. I checked it separately against the running app with a cap of 2: the first two opens went through, the third was refused, a bulk open of two more refused both, and the audit file had only the two opens.\n\n**Decision for you: the extra change to editing a person.** Scenario 2 failed for a reason unrelated to caps. Saving a person's edit always recorded their current grade again, starting today, even when only their terms changed. A later bulk grade change backdated to an earlier date was then masked by that entry, and the test expected it to apply. In `PersonService.update` I now record a new grade entry only when the grade differs from the one already in force on that date. That changes existing behaviour outside this request, so please check you're happy with it.\n\nThe new refused-open error uses the same 409 status code as \"this claim can't change status\". The screen tells them apart by assuming that a 409 on opening a DRAFT claim means the cap. That's a heuristic. If another user has changed the claim and your screen is out of date, it could show the cap message when the real reason was something else.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9895792000000003,
+        "num_turns": 49,
+        "duration_ms": 830080,
+        "duration_api_ms": 241827,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp149.agent.jsonl",
+  "agent_diff_file": "cp149.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
