@@ -520,7 +520,7 @@ public class ClaimService {
      * numbered in (as when opened now), its old number never used again; it loses
      * any figure a statement bound it to (it is live again until its new person's next statement), and is listed as its new person's newest claim. Refused when the user's
      * role may not reassign, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
-     * own person) or already belongs to the person, when it is dated in a closed period, and when it
+     * own person) or already belongs to the person, when it is dated or due by in a closed period, and when it
      * is dated after the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
@@ -539,6 +539,7 @@ public class ClaimService {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!settings.allowed(sheetId, user, Action.REASSIGN)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDueBy());
+        refuseClosed(sheetId, claim.getDate());
         ClaimStatus status = claim.getStatus();
         if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)
                 || claim.isCorrection() || (!samePerson && claim.getPersonId() == personId)) {
