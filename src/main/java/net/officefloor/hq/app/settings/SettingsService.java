@@ -28,12 +28,13 @@ import org.springframework.transaction.annotation.Transactional;
  * period numbering from, the date from which a claim opened is numbered within its period (off when null),
  * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null; each grade may
  * have its own in its place),
+ * and its fiscal start month, the month (1 to 12) its fiscal year starts in (1 unless set),
  * and its grace days, how many days after its to-date an open period is closed when the sheet's today
  * is changed (off when null), and each grade's grace days, how many days past its due-by a claim of the
  * grade is overdue from (none when null).
  * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent, the proof threshold and the grades' grace days)
  * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date, the
- * period numbering from and the grace days are not. Its permission matrix, also not dated, gives for each {@link Action}
+ * period numbering from, the fiscal start month and the grace days are not. Its permission matrix, also not dated, gives for each {@link Action}
  * the roles that may take it; a blank entry keeps the action's standing rule. */
 @Service
 public class SettingsService {
@@ -392,6 +393,22 @@ public class SettingsService {
         sheet.setGraceDays(graceDays);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=grace-days", "value=" + (graceDays == null ? "" : graceDays));
+        return sheet;
+    }
+
+    /** The month (1 to 12) the sheet's fiscal year starts in. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getFiscalStartMonth();
+    }
+
+    /** Set the month (1 to 12) the sheet's fiscal year starts in. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String sheetId, String by, int month) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setFiscalStartMonth(month);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=fiscal-start-month", "value=" + month);
         return sheet;
     }
 

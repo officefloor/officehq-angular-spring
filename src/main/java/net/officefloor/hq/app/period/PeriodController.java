@@ -61,6 +61,13 @@ public class PeriodController {
     public record GenerateRequest(LocalDate from, LocalDate to) {
     }
 
+    /** A fiscal year, by the calendar year its first day falls in: four digits. */
+    public record GenerateFiscalYearRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+        int yearValue() {
+            return Integer.parseInt(year.trim());
+        }
+    }
+
     private final PeriodService service;
 
     private final SheetHistory history;
@@ -93,6 +100,15 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody GenerateRequest request) {
         return service.generate(sheetId.trim(), user.trim(), request.from(), request.to()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Generate the fiscal year's twelve monthly periods: the periods made, in order. */
+    @PostMapping("/generate-fy")
+    public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateFiscalYearRequest request) {
+        return service.generateFiscalYear(sheetId.trim(), user.trim(), request.yearValue()).stream()
                 .map(PeriodView::of).toList();
     }
 

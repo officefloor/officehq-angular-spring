@@ -568,7 +568,7 @@ public class ClaimService {
 
     /** A move of one of several claims moved together: by the rules of {@link #reassign}, except that a
      * claim that already belongs to the person goes through (it is listed as the person's newest claim,
-     * and recorded). */
+     * and recorded), even when it is dated in a closed period, so long as it is not due by in one. */
     @Transactional
     public Claim reassignOfBulk(String sheetId, String user, long claimId, long personId) {
         return move(sheetId, user, claimId, personId, true);
@@ -578,7 +578,8 @@ public class ClaimService {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!settings.allowed(sheetId, user, Action.REASSIGN)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDueBy());
-        refuseClosed(sheetId, claim.getDate());
+        // A claim that stays with its own person takes nothing out of the closed period its date is in.
+        if (claim.getPersonId() != personId) refuseClosed(sheetId, claim.getDate());
         ClaimStatus status = claim.getStatus();
         if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)
                 || claim.isCorrection() || (!samePerson && claim.getPersonId() == personId)) {

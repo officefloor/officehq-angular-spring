@@ -93,13 +93,23 @@ export interface SheetSettings {
   /** The id of the parent sheet, whose rates are used where this sheet has none in force; null when
    *  there is none. */
   parent: string | null;
+  /** The month (1 to 12) the sheet's fiscal year starts in. */
+  fiscalStartMonth: number;
+}
+
+/** The fiscal year (FYyyyy, by the calendar year its first day falls in) the date (YYYY-MM-DD) falls
+ *  in, for a fiscal year starting in the month (1 to 12). */
+export function fiscalYearOf(date: string, startMonth: number): string {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  return `FY${month >= startMonth ? year : year - 1}`;
 }
 
 /** The actions the permission matrix decides who may take. */
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its entry date, its pot and its parent), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its fiscal start month, its entry date, its pot and its parent), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -237,6 +247,13 @@ export class SettingsService {
   setGraceDays(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/grace-days`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** The month, 1 to 12, the sheet's fiscal year starts in. */
+  setFiscalStartMonth(sheet: string, value: string): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/fiscal-start-month`, { value }, { headers: this.session.headers() }),
     );
   }
 

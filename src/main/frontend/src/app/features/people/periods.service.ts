@@ -56,6 +56,14 @@ export class PeriodsService {
     );
   }
 
+  /** Make the twelve monthly periods of the fiscal year FYyyyy (the one whose first day falls in the
+   *  year), as {@link generate} does: those made. */
+  generateFiscalYear(sheet: string, year: string): Promise<Period[]> {
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheet)}/generate-fy`, { year }, { headers: this.session.headers() }),
+    );
+  }
+
   /** Close the period, fixing its due-total now. */
   close(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(

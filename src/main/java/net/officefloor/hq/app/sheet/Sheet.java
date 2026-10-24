@@ -39,6 +39,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The month (1 to 12) the sheet's fiscal year starts in. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The date a claim added or edited without a date is dated; null when that is off (the sheet's today). */
     @Column(name = "entry_date")
     private LocalDate entryDate;
@@ -72,13 +76,14 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, entry date, pot and parent) come
+     * today and its settings (policy date, period numbering, grace days, fiscal start month, entry date, pot and parent) come
      * with it; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.graceDays = graceDays;
+        copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
         copy.pot = pot;
         copy.parentId = parentId;
@@ -138,6 +143,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
     }
 
     public LocalDate getEntryDate() {

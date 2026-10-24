@@ -7,6 +7,7 @@ import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsServic
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^(0?[1-9]|1[0-2])$/;
 const PERM = /^((clerk|steward)\s*(,\s*(clerk|steward)\s*)*)?$/;
 const STANDING: Record<PermAction, string> = {
   open: 'clerk and steward',
@@ -26,7 +27,7 @@ const STANDING: Record<PermAction, string> = {
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
 // a claim opened is numbered within its period; blank for off), its grace days (when the sheet's today
-// is changed, an open period whose to-date plus them is before it is closed; blank for off), its entry date (a claim
+// is changed, an open period whose to-date plus them is before it is closed; blank for off), its fiscal start month (the month, 1 to 12, its fiscal year starts in), its entry date (a claim
 // added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
 // settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
 // for the standing rule) and the role each user name has been given (any other name is a clerk).
@@ -326,6 +327,18 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-fiscal-start-month">Fiscal year starts in month</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonthInput()"
+          (input)="fiscalStartMonthInput.set(value($event)); fiscalStartMonthChanged = true; settingsError.set(null)"
+          (keydown)="fiscalStartMonthChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</span>
+        </span>
         <label for="setting-pot">Pot</label>
         <input
           id="setting-pot"
@@ -507,6 +520,10 @@ export class Settings {
   /** The grace days as set, as text; null when they are off. */
   protected readonly graceDays = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
+  /** The month (1 to 12) the fiscal year starts in, as text; empty until read. */
+  protected readonly fiscalStartMonth = signal('');
+  /** The fiscal start month saved, 1 to 12. */
+  readonly fiscalStartMonthSaved = output<number>();
   /** The parent sheet's id as set; null when there is none. */
   protected readonly parent = signal<string | null>(null);
   /** The entry date as set; null when it is off. */
@@ -526,6 +543,7 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly potInput = signal('');
+  protected readonly fiscalStartMonthInput = signal('');
   protected readonly parentInput = signal('');
   protected readonly entryDateInput = signal('');
   /** The date each dated setting is saved from (YYYY-MM-DD); blank for the sheet's today. */
@@ -556,6 +574,7 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
   protected potChanged = false;
+  protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
   protected entryDateChanged = false;
   protected readonly settingsError = signal<string | null>(null);
@@ -619,6 +638,9 @@ export class Settings {
       this.pot.set(null);
       this.potInput.set('');
       this.potChanged = false;
+      this.fiscalStartMonth.set('');
+      this.fiscalStartMonthInput.set('');
+      this.fiscalStartMonthChanged = false;
       this.parent.set(null);
       this.parentInput.set('');
       this.parentChanged = false;
@@ -738,6 +760,8 @@ export class Settings {
       this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
     const graceDays = this.graceDaysInput().trim();
     const saveGraceDays = this.graceDaysChanged || graceDays !== (this.graceDays() ?? '');
+    const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+    const saveFiscalStartMonth = this.fiscalStartMonthChanged || fiscalStartMonth !== this.fiscalStartMonth();
     const pot = this.potInput().trim();
     const savePot = this.potChanged || pot !== (this.pot() ?? '');
     const parent = this.parentInput().trim();
@@ -832,6 +856,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !TERMS.test(graceDays)) {
       this.settingsError.set('Type grace days as a whole number of days, 0 or more, or leave them blank to turn them off.');
+      return;
+    }
+    if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
+      this.settingsError.set('Type the month the fiscal year starts in as a whole number from 1 to 12.');
       return;
     }
     if (savePot && pot !== '' && !LIMIT.test(pot)) {
@@ -967,6 +995,13 @@ export class Settings {
         if (this.graceDaysInput().trim() === graceDays) this.graceDaysChanged = false;
         this.show(settings);
       }
+      if (saveFiscalStartMonth) {
+        const settings = await this.service.setFiscalStartMonth(sheet, fiscalStartMonth);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.fiscalStartMonthInput().trim() === fiscalStartMonth) this.fiscalStartMonthChanged = false;
+        this.show(settings);
+        this.fiscalStartMonthSaved.emit(settings.fiscalStartMonth);
+      }
       if (savePot) {
         const settings = await this.service.setPot(sheet, pot || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1007,6 +1042,7 @@ export class Settings {
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+      if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
       if (!this.parentChanged) this.parentInput.set(this.parent() ?? '');
       if (!this.entryDateChanged) this.entryDateInput.set(this.entryDate() ?? '');
@@ -1072,6 +1108,7 @@ export class Settings {
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+        if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
         if (!this.parentChanged) this.parentInput.set(settings.parent ?? '');
         if (!this.entryDateChanged) this.entryDateInput.set(settings.entryDate ?? '');
@@ -1136,6 +1173,7 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.entryDate.set(settings.entryDate ?? null);
     this.pot.set(settings.pot ?? null);
+    this.fiscalStartMonth.set(String(settings.fiscalStartMonth ?? 1));
     this.parent.set(settings.parent ?? null);
     this.given.set(settings.roles);
   }

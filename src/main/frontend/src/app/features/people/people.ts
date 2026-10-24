@@ -81,6 +81,7 @@ import { Audit } from './audit';
       (latePctSaved)="latePcts.set($event)"
       (graceSaved)="graces.set($event)"
       (policyDateSaved)="policyDate.set($event)"
+      (fiscalStartMonthSaved)="fiscalStartMonth.set($event)"
     />
     <app-delegations />
     <app-holidays (added)="holidayAdded()" />
@@ -89,7 +90,7 @@ import { Audit } from './audit';
     <app-templates />
     <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
     <app-summary
       [people]="summaryPeople()"
       [periods]="periods()"
@@ -858,6 +859,8 @@ export class People {
   protected readonly graces = signal<Graces>({});
   /** The sheet's policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
+  /** The month (1 to 12) the sheet's fiscal year starts in. */
+  protected readonly fiscalStartMonth = signal(1);
   /** The policy date in force: the one set, or the sheet's today. */
   protected readonly policyDateInForce = computed(() => this.policyDate() ?? this.session.today());
   /** What the claims' late charges are worked from. */
@@ -1092,6 +1095,7 @@ export class People {
       this.latePcts.set([]);
       this.graces.set({});
       this.policyDate.set(null);
+      this.fiscalStartMonth.set(1);
       this.statements.set([]);
       this.periods.set([]);
       this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
@@ -2203,6 +2207,7 @@ export class People {
         this.latePcts.set(settings.latePcts);
         this.graces.set(settings.graces ?? {});
         this.policyDate.set(settings.policyDate);
+        this.fiscalStartMonth.set(settings.fiscalStartMonth ?? 1);
         this.rates.set(rates);
         this.periods.set(periods);
         this.statements.set(statements);

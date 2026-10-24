@@ -2,13 +2,15 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Period, PeriodsService } from './periods.service';
+import { fiscalYearOf } from './settings.service';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR = /^\d{4}$/;
 
-// The periods of the sheet, by from-date, each with the due-total of the counting claims dated in
+// The periods of the sheet, by from-date, each with the fiscal year its from-date falls in, the due-total of the counting claims dated in
 // it (fixed once it is closed or soft-closed), whether it is closed (soft for a soft close), the buttons
 // that close, soft-close and reopen it, and the
-// form that adds a period.
+// form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
 @Component({
   selector: 'app-periods',
   template: `
@@ -62,6 +64,18 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
         <span aria-live="polite">Made: <span data-testid="period-generated">{{ generated() ?? '' }}</span></span>
+        <label for="period-generate-fy-year">Fiscal year</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          placeholder="YYYY"
+          [value]="generateFyYear()"
+          (input)="generateFyYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">
+          Generate fiscal year
+        </button>
         @if (generateError(); as message) {
           <p role="alert" class="error" data-testid="period-generate-error">{{ message }}</p>
         }
@@ -73,6 +87,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="col">Period</th>
               <th scope="col">From</th>
               <th scope="col">To</th>
+              <th scope="col">Fiscal year</th>
               <th scope="col">Due</th>
               <th scope="col">Closed</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -84,6 +99,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                 <td data-testid="period-name">{{ p.name }}</td>
                 <td data-testid="period-from">{{ p.from }}</td>
                 <td data-testid="period-to">{{ p.to }}</td>
+                <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
                 <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
                 <td data-testid="period-closed">{{ p.closed ? (p.soft ? 'soft' : 'yes') : 'no' }}</td>
                 <td>
@@ -163,6 +179,8 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total, by name: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Record<string, string>>();
+  /** The month (1 to 12) the sheet's fiscal year starts in. */
+  readonly fiscalStartMonth = input.required<number>();
   /** A period was added. */
   readonly added = output<Period>();
   /** A period was closed. */
@@ -177,6 +195,7 @@ export class Periods {
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
+  protected readonly generateFyYear = signal('');
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -186,6 +205,11 @@ export class Periods {
   private submitting = false;
   /** A generate is waiting for its answer; another meanwhile is ignored. */
   private generating = false;
+
+  /** The fiscal year the period's from-date falls in. */
+  protected fiscalYear(period: Period): string {
+    return fiscalYearOf(period.from, this.fiscalStartMonth());
+  }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -286,6 +310,33 @@ export class Periods {
           ? 'The to-date must not be before the from-date.'
           : 'Those periods could not be generated.',
       );
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year typed, as the generator does, showing how
+   *  many were made; a year not typed as four digits is refused with an error. */
+  protected async generateFiscalYear(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.generateFyYear().trim();
+    if (!YEAR.test(year)) {
+      this.generateError.set('Type the fiscal year as four digits, YYYY.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.service.generateFiscalYear(sheet, year);
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of made) this.added.emit(period);
+      this.generated.set(made.length);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set('That fiscal year\'s periods could not be generated.');
     } finally {
       this.generating = false;
     }

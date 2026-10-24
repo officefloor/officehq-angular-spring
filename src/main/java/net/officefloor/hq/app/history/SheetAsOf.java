@@ -125,6 +125,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getEntryDate();
     }
 
+    /** The fiscal start month then; 1 before the sheet was made. */
+    public int fiscalStartMonth() {
+        return sheet == null ? 1 : sheet.getFiscalStartMonth();
+    }
+
     /** The grace days then; null when they were off. */
     public Integer graceDays() {
         return sheet == null ? null : sheet.getGraceDays();

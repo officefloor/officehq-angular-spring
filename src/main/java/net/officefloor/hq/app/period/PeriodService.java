@@ -110,6 +110,15 @@ public class PeriodService {
         return made;
     }
 
+    /** Make the twelve monthly periods of the fiscal year FY{@code year}, the one whose first day is the
+     * first of the sheet's fiscal start month in {@code year}, exactly as {@link #generate} would. */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        YearMonth first = YearMonth.of(year, sheet.getFiscalStartMonth());
+        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+    }
+
     /** Close the period, fixing its due-total now (afresh when it was soft-closed); refused when the
      * user's role may not close (see {@link SettingsService#allowed}) or it is already closed, not
      * only soft-closed. */
