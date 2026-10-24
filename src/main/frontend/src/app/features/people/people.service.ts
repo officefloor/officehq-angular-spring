@@ -51,6 +51,14 @@ export interface Person {
   clashing: boolean;
   /** The sheet the person was transferred from; null when they were not transferred. */
   origin: string | null;
+  /** The person's past retirements, each ended by an unretire, by from-date. */
+  retirements: PersonRetirement[];
+}
+
+/** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
+export interface PersonRetirement {
+  from: string;
+  to: string;
 }
 
 /** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
@@ -200,6 +208,15 @@ export class PeopleService {
   retire(sheet: string, id: number, from: string | null): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/retire`, { from }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Unretire the person on the sheet's today; refused (409) for one not retired. */
+  unretire(sheet: string, id: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/unretire`, {}, {
         headers: this.session.headers(),
       }),
     );

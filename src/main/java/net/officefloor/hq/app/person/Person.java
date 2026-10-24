@@ -50,6 +50,13 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The person's past retirements, each ended by an unretire. Loaded by a sub-select, so it loads
+     * eagerly beside the grades. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonRetirement> retirements = new ArrayList<>();
+
     /** The holds the person has been put on: their OPEN and PENDING claims dated within one count in no
      * live total, unless a statement binds them. The same hold may be put on more than once. Loaded by
      * a sub-select, so it loads eagerly beside the grades. */
@@ -211,6 +218,19 @@ public class Person {
         return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
     }
 
+    /** The person's past retirements, by from-date. */
+    public List<PersonRetirement> getRetirements() {
+        return retirements.stream()
+                .sorted(Comparator.comparing(PersonRetirement::getFrom).thenComparing(PersonRetirement::getTo))
+                .toList();
+    }
+
+    /** Ends the person's retirement on {@code on}, keeping it as a past retirement; they are no longer retired. */
+    public void unretire(LocalDate on) {
+        retirements.add(new PersonRetirement(retiredFrom, on));
+        retiredFrom = null;
+    }
+
     /** The holds the person has been put on, by from-date. */
     public List<PersonHold> getHolds() {
         return holds.stream()
@@ -234,9 +254,10 @@ public class Person {
         return holds.stream().anyMatch(h -> h.covers(date));
     }
 
-    /** Refuses a claim dated {@code date} when it falls after the person's retirement date. */
+    /** Refuses a claim dated {@code date} when it falls after the person's retirement date, or after the
+     * from-date and before the to-date of a past retirement. */
     public void requireClaimable(LocalDate date) {
-        if (retiredFrom != null && date.isAfter(retiredFrom)) {
+        if ((retiredFrom != null && date.isAfter(retiredFrom)) || retirements.stream().anyMatch(r -> r.excludes(date))) {
             throw new PersonRetiredException();
         }
     }

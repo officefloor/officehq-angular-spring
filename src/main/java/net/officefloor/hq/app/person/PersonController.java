@@ -48,19 +48,29 @@ public class PersonController {
         }
     }
 
+    /** A past retirement of a person, from {@code from} to {@code to}, the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
+        public static RetirementView of(PersonRetirement retirement) {
+            return new RetirementView(retirement.getFrom(), retirement.getTo());
+        }
+    }
+
     /** A person: the grade in force on the sheet's {@code today}, and every grade they were given by
      * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
      * have any hold, listed in {@code holds} by from-date; {@code clashing} is whether their name or an
-     * alias of theirs is used on another sheet of the sheet's tree. */
+     * alias of theirs is used on another sheet of the sheet's tree; {@code retirements} are their past
+     * retirements by from-date. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
-            String contact, List<String> aliases, boolean clashing, String origin) {
+            String contact, List<String> aliases, boolean clashing, String origin,
+            List<RetirementView> retirements) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
-                    person.getContact(), person.getAliases(), clashing, person.getOriginSheetId());
+                    person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
+                    person.getRetirements().stream().map(RetirementView::of).toList());
         }
     }
 
@@ -288,6 +298,14 @@ public class PersonController {
             @RequestBody(required = false) RetireRequest request) {
         return view(sheetId, service.retire(sheetId.trim(), user.trim(), personId,
                 request == null ? null : request.from()));
+    }
+
+    /** Unretires the person on the sheet's today; refused (409) for one not retired. */
+    @PostMapping("/{personId}/unretire")
+    public PersonView unretire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.unretire(sheetId.trim(), user.trim(), personId));
     }
 
     /** Swaps the person with the one above them in the list; refused (409) for the top person. */

@@ -72,11 +72,17 @@ public class PoolService {
     /** The sheet's pools, in the order they were added. */
     @Transactional(readOnly = true)
     public List<Pooled> pools(String sheetId) {
+        return pools(sheetId, null);
+    }
+
+    /** The sheet's pools, in the order they were added, worked out on {@code on} (the sheet's today when null). */
+    @Transactional(readOnly = true)
+    public List<Pooled> pools(String sheetId, LocalDate on) {
         List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         if (all.isEmpty()) return List.of();
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         BigDecimal pot = sheet == null ? null : sheet.getPot();
-        LocalDate today = sheet == null ? null : sheet.getToday();
+        LocalDate today = on != null ? on : sheet == null ? null : sheet.getToday();
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, SheetPool> poolsById = all.stream().collect(Collectors.toMap(SheetPool::getId, Function.identity()));

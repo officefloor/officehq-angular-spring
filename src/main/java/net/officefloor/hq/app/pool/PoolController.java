@@ -5,7 +5,10 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -58,9 +61,15 @@ public class PoolController {
         this.service = service;
     }
 
+    /** The sheet's pools; with an as-of date, worked out with that date standing in for the sheet's today. */
     @GetMapping
-    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.pools(sheetId.trim()).stream().map(PoolView::of).toList();
+    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return service.pools(sheetId.trim(), asOf).stream().map(PoolView::of).toList();
+    }
+
+    private List<PoolView> list(String sheetId) {
+        return list(sheetId, null);
     }
 
     @PostMapping

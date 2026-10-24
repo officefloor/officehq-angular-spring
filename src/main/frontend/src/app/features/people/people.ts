@@ -30,7 +30,9 @@ import { Audit } from './audit';
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
 // how many statements they have had and the last one's due-total and date. A person can be retired
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
-// keep counting in every total. A person can be put on several holds over time, each from a date (the
+// keep counting in every total. A retired person can be unretired on the sheet's today: the retirement
+// is kept on their row as a past one, and no claim can be dated after its from-date and before its
+// to-date. A person can be put on several holds over time, each from a date (the
 // sheet's today when left blank) and to an optional date: their OPEN and PENDING claims dated within a
 // hold count in no live total (theirs, the sheet's or a period's) unless a statement binds them;
 // SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
@@ -472,6 +474,19 @@ import { Audit } from './audit';
                   >
                     Retire
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-unretire"
+                    [attr.aria-label]="'Unretire ' + p.name"
+                    (click)="unretire(p)"
+                  >
+                    Unretire
+                  </button>
+                  <ul class="retirements">
+                    @for (r of p.retirements; track $index) {
+                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
                   <ul class="holds">
                     @for (h of p.holds; track $index) {
                       <li data-testid="person-hold-line">held from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
@@ -1172,6 +1187,21 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That person could not be retired.' }));
+    }
+  }
+
+  /** Unretire the person on the sheet's today; one not retired is refused with an error. */
+  protected async unretire(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const unretired = await this.service.unretire(sheet, person.id);
+      if (this.sheet() !== sheet) return;
+      this.put(unretired);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Only a retired person can be unretired.' }));
     }
   }
 

@@ -153,6 +153,23 @@ public class PersonService {
         return person;
     }
 
+    /** Unretires the person on the sheet's today, keeping the retirement as a past one; refused for one
+     * not retired. The figures it moves are recorded as {@code user}'s change. */
+    @Transactional
+    public Person unretire(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate today = sheetService.today(sheetId);
+        if (!person.isRetired() || today == null) {
+            throw new PersonUnretireException();
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        person.unretire(today);
+        people.flush();
+        audit.change("PERSON_UNRETIRED", sheetId, user, "name=" + person.getName(), "on=" + today);
+        rollup.recordSince(sheetId, user, before);
+        return person;
+    }
+
     /** Puts the person on a hold from {@code from} (the sheet's today when left out) to {@code to}
      * (no end when left out); refused when it would end before it starts. The same hold may be put on
      * again. A hold ends on its to-date: there is no release. */
