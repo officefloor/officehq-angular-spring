@@ -15,7 +15,7 @@ public enum ClaimStatus {
     }
 
     /** Whether a claim in this status is still open: OPEN, or PENDING, which is handled like OPEN
-     * (it goes overdue, bears the late charge and leaves the totals while its person is on hold). */
+     * (it goes overdue, bears the late charge and leaves the totals when dated within a hold of its person). */
     public boolean isOpen() {
         return this == OPEN || this == PENDING;
     }

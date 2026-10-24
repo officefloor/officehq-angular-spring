@@ -28,8 +28,22 @@ export interface Person {
   retired: boolean;
   /** The date the person is retired from (YYYY-MM-DD); null while they are not retired. */
   retiredFrom: string | null;
-  /** On hold: their OPEN claims count in no live total while held. */
+  /** Whether the person has any hold, whatever its dates. */
   held: boolean;
+  /** The holds the person has been put on, by from-date: their OPEN and PENDING claims dated within
+   *  one count in no live total, unless a statement binds them. */
+  holds: PersonHold[];
+}
+
+/** A hold a person was put on, from `from` to `to` (YYYY-MM-DD, both included; `to` null: no end). */
+export interface PersonHold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether `date` falls within any of the holds. */
+export function heldOn(holds: PersonHold[], date: string): boolean {
+  return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
 /** A patron a person has named: another person on the same sheet. */
@@ -101,10 +115,11 @@ export class PeopleService {
     );
   }
 
-  /** Put the person on hold (`held` true) or take them off it; refused (409) when they already are. */
-  hold(sheet: string, id: number, held: boolean): Promise<Person> {
+  /** Put the person on a hold from `from` (the sheet's today when null) to `to` (no end when null);
+   *  refused (409) when it ends before it starts or they are already on that very hold. */
+  hold(sheet: string, id: number, from: string | null, to: string | null): Promise<Person> {
     return firstValueFrom(
-      this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { held }, {
+      this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { from, to }, {
         headers: this.session.headers(),
       }),
     );

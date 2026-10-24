@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
- * claims, leaving out the OPEN and PENDING ones while they are on hold)
+ * claims, leaving out the OPEN and PENDING ones dated within one of their holds that no statement binds)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
@@ -106,9 +106,13 @@ public class RollupService {
     }
 
     /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
-     * while its person is on hold. */
+     * when it is dated within one of its person's holds and no statement binds it (a PENDING claim is
+     * bound by none while it is). */
     public static boolean countsLive(Claim claim, Person person) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
+        if (!claim.getStatus().counts()) return false;
+        if (!claim.getStatus().isOpen()) return true;
+        boolean bound = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+        return bound || !person.isHeldOn(claim.getDate());
     }
 
     /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;

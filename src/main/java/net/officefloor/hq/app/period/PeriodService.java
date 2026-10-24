@@ -102,7 +102,7 @@ public class PeriodService {
 
     /** The due-total of the period now: the sum of what is due on the counting claims dated in it, as
      * each shows it, late charges included (a
-     * claim with no figure adds nothing, nor does an OPEN claim of a person on hold). */
+     * claim with no figure adds nothing, nor does an unbound OPEN claim dated within one of its person's holds). */
     private BigDecimal dueTotalOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));

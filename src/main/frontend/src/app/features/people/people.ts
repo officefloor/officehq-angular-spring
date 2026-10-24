@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
+import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSignal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, isOpen, money, overdue } from './claims.service';
-import { GRADES, Grade, Patron, PeopleService, Person, gradeOn } from './people.service';
+import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -21,8 +21,10 @@ import { Summary, SummaryPerson } from './summary';
 // taken of a person binds each of their counting claims to the figure it shows then; the row shows
 // how many statements they have had and the last one's due-total and date. A person can be retired
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
-// keep counting in every total. A person can be put on hold and taken off it again: while held,
-// their OPEN and PENDING claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
+// keep counting in every total. A person can be put on several holds over time, each from a date (the
+// sheet's today when left blank) and to an optional date: their OPEN and PENDING claims dated within a
+// hold count in no live total (theirs, the sheet's or a period's) unless a statement binds them;
+// SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
 // A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
@@ -219,13 +221,32 @@ import { Summary, SummaryPerson } from './summary';
                   >
                     Retire
                   </button>
+                  <ul class="holds">
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">held from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+                    }
+                  </ul>
+                  <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                  <input
+                    [id]="'person-hold-from-' + p.id"
+                    data-testid="person-hold-from"
+                    [value]="holdFroms()[p.id] ?? ''"
+                    (input)="setHoldDate(holdFroms, p.id, value($event))"
+                  />
+                  <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                  <input
+                    [id]="'person-hold-to-' + p.id"
+                    data-testid="person-hold-to"
+                    [value]="holdTos()[p.id] ?? ''"
+                    (input)="setHoldDate(holdTos, p.id, value($event))"
+                  />
                   <button
                     type="button"
                     data-testid="person-hold-toggle"
-                    [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
-                    (click)="toggleHold(p)"
+                    [attr.aria-label]="'Hold ' + p.name"
+                    (click)="hold(p)"
                   >
-                    {{ p.held ? 'Release' : 'Hold' }}
+                    Hold
                   </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
@@ -325,6 +346,9 @@ export class People {
   );
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The hold from- and to-dates typed on each person's row, by person id. */
+  protected readonly holdFroms = signal<Record<number, string>>({});
+  protected readonly holdTos = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -462,6 +486,8 @@ export class People {
       this.selectedClaims.set(new Set());
       this.bulkOpened.set(null);
       this.retireDates.set({});
+      this.holdFroms.set({});
+      this.holdTos.set({});
       this.patrons.set([]);
       this.patronChoices.set({});
       this.patronErrors.set({});
@@ -581,36 +607,52 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or take them off it when held. */
-  protected async toggleHold(person: Person): Promise<void> {
+  protected setHoldDate(dates: WritableSignal<Record<number, string>>, id: number, date: string): void {
+    dates.update((typed) => ({ ...typed, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /** Put the person on a hold from the date typed on their row (the sheet's today when blank) to the
+   *  to-date typed (no end when blank). */
+  protected async hold(person: Person): Promise<void> {
     this.clearRowError(person.id);
     const sheet = this.sheet();
     if (!sheet) return;
+    const from = (this.holdFroms()[person.id] ?? '').trim();
+    const to = (this.holdTos()[person.id] ?? '').trim();
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if ((from !== '' && !date.test(from)) || (to !== '' && !date.test(to))) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
+      return;
+    }
     try {
-      const saved = await this.service.hold(sheet, person.id, !person.held);
+      const saved = await this.service.hold(sheet, person.id, from || null, to || null);
       if (this.sheet() !== sheet) return;
       this.put(saved);
+      this.holdFroms.update(({ [person.id]: _, ...rest }) => rest);
+      this.holdTos.update(({ [person.id]: _, ...rest }) => rest);
     } catch {
       if (this.sheet() !== sheet) return;
-      this.rowErrors.update((errors) => ({
-        ...errors,
-        [person.id]: person.held ? 'That person could not be released.' : 'That person could not be held.',
-      }));
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That person could not be held.' }));
     }
   }
 
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
-   *  while its person is on hold. */
+   *  when it is dated within one of its person's holds and no statement binds it (a PENDING claim is
+   *  bound by none while it is). */
   private countsLive(claim: Claim, person: Person): boolean {
-    return counts(claim) && !(person.held && isOpen(claim));
+    if (!counts(claim)) return false;
+    if (!isOpen(claim)) return true;
+    const bound = claim.stated && claim.status !== 'PENDING';
+    return bound || !heldOn(person.holds, claim.date);
   }
 
   protected claimedOf(person: Person): string {
     return money(this.claimedCentsOf(person));
   }
 
-  /** What the person's OPEN and SETTLED claims add up to (OPEN ones left out while they are on
-   *  hold); drafts and voided claims do not count. */
+  /** What the person's OPEN and SETTLED claims add up to (unbound OPEN ones dated within a hold left
+   *  out); drafts and voided claims do not count. */
   private claimedCentsOf(person: Person): number {
     return this.claimsOf(person.id).reduce((sum, c) => sum + (this.countsLive(c, person) ? cents(c.amount) : 0), 0);
   }

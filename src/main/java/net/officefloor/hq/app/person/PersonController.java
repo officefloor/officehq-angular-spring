@@ -36,14 +36,23 @@ public class PersonController {
         }
     }
 
+    /** A hold a person was put on, from {@code from} to {@code to} (both included; null: no end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+        public static HoldView of(PersonHold hold) {
+            return new HoldView(hold.getFrom(), hold.getTo());
+        }
+    }
+
     /** A person: the grade in force on the sheet's {@code today}, and every grade they were given by
-     * from-date; {@code retiredFrom} is null while they are not retired. */
+     * from-date; {@code retiredFrom} is null while they are not retired; {@code held} is whether they
+     * have any hold, listed in {@code holds} by from-date. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds) {
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(HoldView::of).toList());
         }
     }
 
@@ -62,8 +71,9 @@ public class PersonController {
     public record RetireRequest(LocalDate from) {
     }
 
-    /** Whether the person is to be on hold (true) or taken off it (false). */
-    public record HoldRequest(@NotNull Boolean held) {
+    /** A hold to put a person on: from {@code from} (the sheet's today when left out) to {@code to}
+     * (no end when left out). */
+    public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
     /** A person's name (not blank; kept without the spaces around it and unique on the sheet
@@ -147,8 +157,9 @@ public class PersonController {
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @RequestBody @Valid HoldRequest request) {
-        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, request.held()));
+            @RequestBody(required = false) HoldRequest request) {
+        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId,
+                request == null ? null : request.from(), request == null ? null : request.to()));
     }
 
     @ExceptionHandler(PersonStaleException.class)

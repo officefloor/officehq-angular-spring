@@ -14,8 +14,10 @@ import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * A person on a sheet: a name and a dated grade (A, B or C): each grade they are given is in force
@@ -48,9 +50,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN and PENDING claims count in no live total while held. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The holds the person has been put on: their OPEN and PENDING claims dated within one count in no
+     * live total, unless a statement binds them. A set, so it loads eagerly beside the grades. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private Set<PersonHold> holds = new HashSet<>();
 
     /** Raised each time the person is saved. */
     @Version
@@ -125,12 +129,27 @@ public class Person {
         return retiredFrom != null;
     }
 
-    public boolean isHeld() {
-        return held;
+    /** The holds the person has been put on, by from-date. */
+    public List<PersonHold> getHolds() {
+        return holds.stream()
+                .sorted(Comparator.comparing(PersonHold::getFrom)
+                        .thenComparing(PersonHold::getTo, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Puts the person on {@code hold}; false when they are already on that very hold. */
+    public boolean addHold(PersonHold hold) {
+        return holds.add(hold);
+    }
+
+    /** Whether the person has any hold, whatever its dates. */
+    public boolean isHeld() {
+        return !holds.isEmpty();
+    }
+
+    /** Whether {@code date} falls within any of the person's holds. */
+    public boolean isHeldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
     }
 
     /** Refuses a claim dated {@code date} when it falls after the person's retirement date. */
