@@ -169,6 +169,24 @@ import { Audit } from './audit';
         }
       </form>
 
+      <form (submit)="importPeople($event)" aria-label="Import people" data-testid="import-form">
+        <label for="import-people">People to import, one per line: name,grade,terms,contact (terms and contact may be left out)</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (importAdded() !== null) {
+          Added <span data-testid="import-added">{{ importAdded() }}</span>
+        }
+        @if (importError(); as message) {
+          <p role="alert" class="error" data-testid="import-error">{{ message }}</p>
+        }
+      </form>
+
       <form (submit)="paste($event)" aria-label="Paste claims" data-testid="paste-form">
         <label for="paste-claims">Claims to paste, one per line: name,amount,date,note (a note may end with " #reference")</label>
         <textarea
@@ -851,6 +869,12 @@ export class People {
   protected readonly pasteError = signal<string | null>(null);
   /** A paste is waiting for its answer; another meanwhile is ignored. */
   private pasting = false;
+  protected readonly importText = signal('');
+  /** How many people the last import added; null before one, and while one runs. */
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  /** An import is waiting for its answer; another meanwhile is ignored. */
+  private importing = false;
 
   /** The ids of the claims selected for a bulk action. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
@@ -926,6 +950,9 @@ export class People {
       this.pasteText.set('');
       this.pasteAdded.set(null);
       this.pasteError.set(null);
+      this.importText.set('');
+      this.importAdded.set(null);
+      this.importError.set(null);
       if (sheet) void this.read(sheet);
     });
     // A change of the sheet's today may close periods its grace days have passed: re-read them.
@@ -1735,6 +1762,38 @@ export class People {
       );
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /** Add a person per pasted line, in order, as the person form adds them; when any line is refused
+   *  no one is added. Shows how many were added; the old count is gone while it runs. */
+  protected async importPeople(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importError.set(null);
+    this.importAdded.set(null);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    if (!this.importText().trim()) {
+      this.importError.set('Paste a line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const imported = await this.service.importPeople(sheet, this.importText());
+      if (this.sheet() !== sheet) return;
+      this.people.update((list) => [...list, ...imported.people]);
+      this.importText.set('');
+      this.importAdded.set(imported.added);
+    } catch (e) {
+      if (this.sheet() !== sheet) return;
+      this.importError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'You may not add people to this sheet.'
+          : 'A line is not a person the form would add, or repeats a name or contact; no one was added.',
+      );
+    } finally {
+      this.importing = false;
     }
   }
 

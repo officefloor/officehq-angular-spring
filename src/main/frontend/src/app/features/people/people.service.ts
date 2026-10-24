@@ -15,6 +15,12 @@ export interface PersonGrade {
   from: string | null;
 }
 
+/** How an import of people went: how many it added, and those people, in the order of their lines. */
+export interface Imported {
+  added: number;
+  people: Person[];
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -123,6 +129,14 @@ export class PeopleService {
       this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`, {
         headers: this.session.headers(),
       }),
+    );
+  }
+
+  /** Add a person per pasted line of name,grade,terms,contact, in order; when any line is refused
+   *  no one is added. */
+  importPeople(sheet: string, text: string): Promise<Imported> {
+    return firstValueFrom(
+      this.http.post<Imported>(`${this.url(sheet)}/import`, { text }, { headers: this.session.headers() }),
     );
   }
 

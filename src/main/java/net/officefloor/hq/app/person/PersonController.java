@@ -124,6 +124,14 @@ public class PersonController {
     public record BulkGradeView(int graded, List<PersonView> people) {
     }
 
+    /** The pasted lines of {@code name,grade,terms,contact}. */
+    public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How an import went: how many people it added, and those people, in the order of their lines. */
+    public record ImportView(int added, List<PersonView> people) {
+    }
+
     /** A save refused because the person was saved by someone else since the editor loaded them:
      * the person as now stored. */
     public record StaleView(String error, PersonView current) {
@@ -139,13 +147,16 @@ public class PersonController {
 
     private final SheetHistory history;
 
+    private final PersonImportService imports;
+
     private final PersonMergeService merges;
 
     private final PersonTransferService transfers;
 
     public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history,
-            PersonMergeService merges, PersonTransferService transfers) {
+            PersonMergeService merges, PersonTransferService transfers, PersonImportService imports) {
         this.service = service;
+        this.imports = imports;
         this.transfers = transfers;
         this.bulk = bulk;
         this.merges = merges;
@@ -229,6 +240,15 @@ public class PersonController {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));
         }
+    }
+
+    @PostMapping("/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ImportView importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ImportRequest request) {
+        List<Person> added = imports.importPeople(sheetId.trim(), user.trim(), request.text());
+        return new ImportView(added.size(), added.stream().map(p -> view(sheetId, p)).toList());
     }
 
     @PostMapping("/bulk-grade")
