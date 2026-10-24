@@ -4,6 +4,7 @@ import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Delegations } from './delegations';
 import { Holidays } from './holidays';
+import { Notes } from './notes';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
 import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
@@ -64,7 +65,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -92,6 +93,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     />
     <app-delegations />
     <app-holidays (added)="holidayAdded()" />
+    <app-notes />
     <app-void-reasons />
     <app-pools [people]="people()" />
     <app-crews [people]="people()" [dueCents]="dueCentsById()" />
