@@ -1,0 +1,64 @@
+{
+  "checkpoint": 53,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp53_permission-matrix",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ce7b09e20aa7dc6604ba26e7381bc7204060de80",
+  "reset_sha": "",
+  "preagent_sha": "89246c3e889bcf6b0fd1a3287ea699203f83b7c0",
+  "prev_sha": "89246c3e889bcf6b0fd1a3287ea699203f83b7c0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.4115005999999997,
+    "input_tokens": 96,
+    "output_tokens": 27266,
+    "cache_read_tokens": 4227663,
+    "cache_creation_tokens": 127533,
+    "num_turns": 49,
+    "duration_ms": 1122864,
+    "duration_api_ms": 338568,
+    "model": "claude-opus-5-5",
+    "session_id": "fe12c97a-e625-480b-93a6-67f292ba212a",
+    "stop_reason": "success",
+    "result_text": "The permission matrix is in, and `bin/e2e` passes all 4 tests on the last two full runs. On my first run the main \"permission matrix\" test also failed, but the output was cut off so I don't know why. It has passed every run since, so it may be flaky.\n\n**What I built**\n- **Storage:** a new table, `V40__sheet_permission.sql`, holds the roles allowed for each action on each sheet. It's not dated, as the request says. A blank entry means the standing rule applies: open, settle, void and close by clerk and steward; reassign and reopen by steward only.\n- **Server:**\n  - `SettingsService` can read the matrix, check whether a user's role is allowed an action, and save an entry. Saving writes `SETTING_CHANGED ... key=perm-<action> value=<roles>`.\n  - Saving goes through `PUT /settings/perm/{action}`. Only `clerk`/`steward` lists separated by commas are accepted, and spaces are removed before saving.\n- **Where it's enforced:**\n  - Open, settle and void check the matrix before anything else happens.\n  - Reassign and reopen now use the matrix instead of a hard-coded steward check. Close checks it too.\n  - A refusal uses the existing \"forbidden\" errors, so it shows the usual `claim-error` / `period-error`. Bulk actions count a refused claim as refused instead of failing the whole batch.\n  - The self-settle rule, the clerk limit, the proof threshold, and steward-only approve/reject are unchanged.\n- **Front end:**\n  - The Settings form has a `setting-perm-<action>` field and a `setting-perm-<action>-current` value for each action. Blank shows the standing rule, and only changed entries are saved.\n  - The error messages now say the role isn't allowed. The \"you opened that claim\" message only appears when you did open it.\n\n**A change outside the request.** Scenario 3 expected a person's P1 total to include a claim that was open on the period's last day but has since been voided, even though the person was on hold on its date. The existing code left that claim out because of the hold, and the spec can't pass with that rule. So hold and deferral exclusions now apply only to claims that are still open or pending now; a claim since settled or voided counts by its status on the period's last day. I changed this in both the live figures (`people.ts`) and the close calculation (`PeriodService`) so they agree. It's a small change to existing behaviour, so you may want to check it's what you intend.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.4115005999999997,
+        "num_turns": 49,
+        "duration_ms": 1122864,
+        "duration_api_ms": 338568,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp53.agent.jsonl",
+  "agent_diff_file": "cp53.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
