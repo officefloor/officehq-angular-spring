@@ -11,6 +11,8 @@ export interface Person {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised each time the person is saved. */
+  version: number;
 }
 
 export interface PersonFields {
@@ -36,9 +38,11 @@ export class PeopleService {
     );
   }
 
-  update(sheet: string, id: number, fields: PersonFields): Promise<Person> {
+  /** Save the person as edited from `version`; refused with 409 and the person as now stored
+   *  (`current`) when someone else has saved them since. */
+  update(sheet: string, id: number, version: number, fields: PersonFields): Promise<Person> {
     return firstValueFrom(
-      this.http.put<Person>(`${this.url(sheet)}/${id}`, fields, {
+      this.http.put<Person>(`${this.url(sheet)}/${id}`, { ...fields, version }, {
         headers: this.session.headers(),
       }),
     );

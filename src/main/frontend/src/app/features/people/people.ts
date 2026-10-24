@@ -163,6 +163,10 @@ export class People {
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private editingVersion = 0;
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly error = signal<string | null>(null);
   private readonly sheet = computed(() => this.session.sheetId());
 
@@ -246,6 +250,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editingId.set(person.id);
+    this.editingVersion = person.version;
     this.name.set(person.name);
     this.grade.set(person.grade);
     this.error.set(null);
@@ -260,6 +265,7 @@ export class People {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.sheet();
     if (!sheet) return;
@@ -269,23 +275,50 @@ export class People {
       return;
     }
     const id = this.editingId();
+    this.submitting = true;
     try {
       if (id === null) {
         const added = await this.service.add(sheet, fields);
         if (this.sheet() === sheet) this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.service.update(sheet, id, fields);
-        if (this.sheet() === sheet)
-          this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        const saved = await this.service.update(sheet, id, this.editingVersion, fields);
+        if (this.sheet() === sheet) this.put(saved);
       }
       if (this.sheet() === sheet) this.reset();
     } catch (e) {
+      if (this.sheet() !== sheet) return;
+      const current = this.staleOf(e);
+      if (current !== null) {
+        // Someone else saved the person since the editor loaded them: show them as now stored.
+        this.put(current);
+        if (this.editingId() === current.id) {
+          this.editingVersion = current.version;
+          this.name.set(current.name);
+          this.grade.set(current.grade);
+        }
+        this.error.set('Someone else saved this person since you opened it; their changes are shown.');
+        return;
+      }
       if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('Another person on the sheet already has that name.');
         return;
       }
       this.error.set(id === null ? 'That person could not be added.' : 'That person could not be saved.');
+    } finally {
+      this.submitting = false;
     }
+  }
+
+  /** Put a saved person in place of their old row. */
+  private put(person: Person): void {
+    this.people.update((list) => list.map((p) => (p.id === person.id ? person : p)));
+  }
+
+  /** The person as now stored, when a save was refused for being made from an older version. */
+  private staleOf(e: unknown): Person | null {
+    if (!(e instanceof HttpErrorResponse) || e.status !== 409) return null;
+    const body = e.error as { error?: unknown; current?: Person } | null;
+    return body?.error === 'stale' && body.current ? body.current : null;
   }
 
   private async read(sheet: string): Promise<void> {

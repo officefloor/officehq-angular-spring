@@ -27,6 +27,11 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    @Transactional(readOnly = true)
+    public Person get(String sheetId, long personId) {
+        return people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+    }
+
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         if (!sheets.existsById(sheetId)) {
@@ -38,9 +43,13 @@ public class PersonService {
         return person;
     }
 
+    /** Saves the person as edited from {@code version}; refused when they have been saved since. */
     @Transactional
-    public Person update(String sheetId, String user, long personId, String name, String grade) {
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getVersion() != version) {
+            throw new PersonStaleException(person);
+        }
         requireFree(sheetId, name, person.getId());
         person.setName(name);
         person.setGrade(grade);

@@ -134,6 +134,8 @@ export class Rates {
   protected readonly pct = signal('');
   protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private submitting = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -151,6 +153,7 @@ export class Rates {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -164,6 +167,7 @@ export class Rates {
       this.error.set('Type a from-date as YYYY-MM-DD, or leave it blank.');
       return;
     }
+    this.submitting = true;
     try {
       const rate = await this.service.set(sheet, this.grade(), pct, from || null);
       if (this.session.sheetId() !== sheet) return;
@@ -172,6 +176,8 @@ export class Rates {
       this.from.set('');
     } catch {
       this.error.set('That rate could not be set.');
+    } finally {
+      this.submitting = false;
     }
   }
 }

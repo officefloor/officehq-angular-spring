@@ -123,6 +123,8 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private submitting = false;
   /** The error of the last refused action on each claim, by claim id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -190,6 +192,7 @@ export class Claims {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -200,6 +203,7 @@ export class Claims {
     }
     const fields = { amount, date: this.date().trim() || null, note: this.note() };
     const id = this.editingId();
+    this.submitting = true;
     try {
       const claim =
         id === null
@@ -210,6 +214,8 @@ export class Claims {
       this.reset();
     } catch {
       this.error.set(id === null ? 'That claim could not be added.' : 'That claim could not be saved.');
+    } finally {
+      this.submitting = false;
     }
   }
 }
