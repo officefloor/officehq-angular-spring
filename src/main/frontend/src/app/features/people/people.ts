@@ -241,6 +241,12 @@ import { Audit } from './audit';
         />
         Show retired
       </label>
+      <label for="sort-by">Sort people by</label>
+      <select id="sort-by" data-testid="sort-by" (change)="sortKey.set(sortKeyOf($event))">
+        @for (k of sortKeys; track k) {
+          <option [value]="k" [selected]="sortKey() === k">{{ k }}</option>
+        }
+      </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
 
@@ -708,10 +714,20 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen is first opened, kept across sheet loads. */
   protected readonly showRetired = signal(false);
-  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
-  protected readonly shownPeople = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  protected readonly sortKeys = SORT_KEYS;
+  /** How this screen orders the people it lists; added (list order) when the screen is first
+   *  opened, kept across sheet loads. Only what the screen shows is reordered. */
+  protected readonly sortKey = signal<SortKey>('added');
+  /** The people listed: everyone, or only those not retired unless "show retired" is on, in the
+   *  chosen order; people with equal keys keep their list order. */
+  protected readonly shownPeople = computed(() => {
+    const listed = this.showRetired() ? this.people() : this.people().filter((p) => !p.retired);
+    const key = this.sortKey();
+    if (key === 'added') return listed;
+    const keyed = listed.map((p, i) => ({ p, i, k: this.sortValueOf(p, key) }));
+    keyed.sort((a, b) => compareKeys(a.k, b.k) || a.i - b.i);
+    return keyed.map((x) => x.p);
+  });
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The statement as-of date typed on each person's row, by person id. */
@@ -1544,6 +1560,23 @@ export class People {
     setTimeout(() => URL.revokeObjectURL(url));
   }
 
+  /** The value the person is sorted on under `key`; null (n/a) sorts last. */
+  private sortValueOf(person: Person, key: Exclude<SortKey, 'added'>): string | number | null {
+    switch (key) {
+      case 'name':
+        return nameKey(person.name);
+      case 'grade':
+        return this.gradeNow(person);
+      case 'due-total':
+        return this.dueCentsOf(person);
+    }
+  }
+
+  protected sortKeyOf(event: Event): SortKey {
+    const v = (event.target as HTMLSelectElement).value;
+    return (SORT_KEYS as readonly string[]).includes(v) ? (v as SortKey) : 'added';
+  }
+
   /** The person's grade in force on the sheet's today. */
   protected gradeNow(person: Person): Grade {
     return gradeOn(person.grades, this.session.today()) ?? person.grade;
@@ -2176,6 +2209,15 @@ function daysBetween(from: string, to: string): number {
 }
 
 /** A name as names are compared: trimmed, ignoring case. */
+const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+
+/** Ascending, with null (n/a) after every value. */
+function compareKeys(a: string | number | null, b: string | number | null): number {
+  if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function nameKey(name: string): string {
   return name.trim().toLowerCase();
 }
