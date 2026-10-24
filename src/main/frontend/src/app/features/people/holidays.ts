@@ -1,11 +1,12 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Holiday, HolidaysService } from './holidays.service';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's holidays, one line each, earliest first, and the entry by which one is added (a date
-// already on the list is refused). Read from the store every time a sheet is loaded.
+// already on the list is refused). Read from the store every time a sheet is loaded. An added holiday
+// re-fixes the due-by of the sheet's claims on the server; `added` tells the screen to re-read them.
 @Component({
   selector: 'app-holidays',
   template: `
@@ -45,6 +46,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export class Holidays {
   private readonly session = inject(Session);
   private readonly service = inject(HolidaysService);
+
+  readonly added = output<void>();
 
   protected readonly holidays = signal<Holiday[]>([]);
   protected readonly date = signal('');
@@ -87,6 +90,7 @@ export class Holidays {
       if (this.session.sheetId() !== sheet) return;
       this.holidays.set(all);
       this.date.set('');
+      this.added.emit();
     } catch {
       this.error.set('That date is already a holiday, or is not a date.');
     } finally {

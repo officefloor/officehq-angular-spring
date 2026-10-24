@@ -36,7 +36,8 @@ public class Claim {
 
     /** The date the claim is due by: the terms-th business day after its due-from (see
      * {@link net.officefloor.hq.app.holiday.HolidayService#dueBy}), skipping weekends and the sheet's
-     * holidays when it was added; a holiday added later leaves it as it is. */
+     * holidays; a holiday added later on or before it works it out again from its date while the claim is
+     * not SETTLED or VOID. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 

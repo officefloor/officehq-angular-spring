@@ -64,7 +64,7 @@ import { VoidReasons } from './void-reasons';
       (policyDateSaved)="policyDate.set($event)"
     />
     <app-delegations />
-    <app-holidays />
+    <app-holidays (added)="holidayAdded()" />
     <app-void-reasons />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
@@ -1167,6 +1167,18 @@ export class People {
   /** Put a closed or reopened period in its place. */
   protected periodClosed(period: Period): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
+  }
+
+  /** Re-read the sheet's claims: an added holiday re-fixes their due-by on the server. */
+  protected async holidayAdded(): Promise<void> {
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const claims = await this.claimsService.list(sheet);
+      if (this.sheet() === sheet) this.claims.set(claims);
+    } catch {
+      // The claims could not be re-read; they show as they were until the sheet is loaded again.
+    }
   }
 
   /** Put a set rate in place of the grade's old one for the same from-date. */
