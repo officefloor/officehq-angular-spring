@@ -145,7 +145,7 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
-            BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+            BigDecimal due = rollup.liveDueOf(claim, figure);
             refuseUnproved(claim, due);
             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
@@ -237,7 +237,7 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal figure = rollup.dueOf(claim, person);
-        BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+        BigDecimal due = rollup.liveDueOf(claim, figure);
         refuseUnproved(claim, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
@@ -350,7 +350,7 @@ public class ClaimService {
         return due == null ? "n/a" : due.toPlainString();
     }
 
-    /** The figure the claim shows and totals now, without its late charge; null when it has no figure
+    /** The figure the claim shows and totals now, without its late charge or floor; null when it has no figure
      * (see {@link RollupService#figureOf}). */
     public BigDecimal figureOf(Claim claim, Person person) {
         return rollup.figureOf(claim, person);

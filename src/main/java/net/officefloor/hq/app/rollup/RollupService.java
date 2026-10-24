@@ -171,11 +171,29 @@ public class RollupService {
         return dueOf(claim, person);
     }
 
-    /** What is due on the claim as it shows and totals now: its figure, plus its late charge; null when
-     * it has no figure. */
+    /** What is due on the claim as it shows and totals now: what was fixed when it was settled at a
+     * rate; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
     public BigDecimal shownOf(Claim claim, Person person) {
         BigDecimal figure = figureOf(claim, person);
-        return figure == null ? null : figure.add(lateChargeOf(claim, figure));
+        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return figure;
+        return liveDueOf(claim, figure);
+    }
+
+    /** The live due on the claim whose figure (at its rate, or as a statement bound it) is
+     * {@code figure}: the greater of the sheet's floor in force on the claim's date and that figure plus
+     * its late charge (see {@link #lateChargeOf}); a correction has neither floor nor charge. Null when
+     * {@code figure} is. */
+    public BigDecimal liveDueOf(Claim claim, BigDecimal figure) {
+        if (figure == null) return null;
+        if (claim.isCorrection()) return figure;
+        return floored(claim, figure.add(lateChargeOf(claim, figure)));
+    }
+
+    /** {@code due}, at least the sheet's floor in force on the claim's date. */
+    private BigDecimal floored(Claim claim, BigDecimal due) {
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
+        return due.max(floor);
     }
 
     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
@@ -188,11 +206,12 @@ public class RollupService {
     }
 
     /** What would be due on the claim now were it an OPEN claim bound by no statement: its due at its
-     * person's rate (see {@link #dueOf}) plus the late charge it would have then; null when it would
-     * have no figure. */
+     * person's rate (see {@link #dueOf}) plus the late charge it would have then, at least the sheet's
+     * floor in force on its date (a correction has neither); null when it would have no figure. */
     public BigDecimal openShownOf(Claim claim, Person person) {
         BigDecimal figure = dueOf(claim, person);
-        return figure == null ? null : figure.add(overdueChargeOf(claim, figure));
+        if (figure == null || claim.isCorrection()) return figure;
+        return floored(claim, figure.add(overdueChargeOf(claim, figure)));
     }
 
     /** The late charge on a claim whose figure is {@code figure}, whatever its status (see {@link #lateChargeOf}). */
@@ -212,17 +231,15 @@ public class RollupService {
     }
 
     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}), and at least the sheet's floor in force on the claim's date (a correction,
-     * whose due is negative, has no floor); null when no
+     * divided by 100, rounded to two decimals as the claim rounds (see {@link #roundingOf}) — the rate
+     * figure alone, before any late charge or floor (see {@link #liveDueOf}); null when no
      * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
         RoundingMode rounding = roundingOf(claim, sheet);
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

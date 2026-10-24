@@ -112,8 +112,8 @@ public class PersonService {
     }
 
     /** Puts the person on a hold from {@code from} (the sheet's today when left out) to {@code to}
-     * (no end when left out); refused when it would end before it starts, or when they are already on
-     * that very hold. A hold ends on its to-date: there is no release. */
+     * (no end when left out); refused when it would end before it starts. The same hold may be put on
+     * again. A hold ends on its to-date: there is no release. */
     @Transactional
     public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -122,9 +122,7 @@ public class PersonService {
             throw new PersonHoldException();
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        if (!person.addHold(new PersonHold(dated, to))) {
-            throw new PersonHoldException();
-        }
+        person.addHold(new PersonHold(dated, to));
         people.flush();
         audit.change("PERSON_HELD", sheetId, user, "name=" + person.getName(), "from=" + dated);
         rollup.recordSince(sheetId, user, before);

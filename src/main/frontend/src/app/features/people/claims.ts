@@ -285,8 +285,8 @@ export class Claims {
   }
 
   /** What is due on the claim at the rate in force on the claim's date of the person's grade in force
-   *  then; n/a when no rate of that grade applies then; never below the sheet's floor in force then; with its late charge added while it is
-   *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
+   *  then (or the figure a statement bound it to), with its late charge added while it is overdue, and
+   *  then never below the sheet's floor in force on its date; n/a when no rate of that grade applies then. A claim settled at a rate keeps what was due on it then; one settled without a rate
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
     const late = { today: this.session.today(), latePcts: this.latePcts() };

@@ -120,7 +120,7 @@ export class PeopleService {
   }
 
   /** Put the person on a hold from `from` (the sheet's today when null) to `to` (no end when null);
-   *  refused (409) when it ends before it starts or they are already on that very hold. */
+   *  refused (409) when it ends before it starts. */
   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/hold`, { from, to }, {

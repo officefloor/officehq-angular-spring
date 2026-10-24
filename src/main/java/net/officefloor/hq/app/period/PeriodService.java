@@ -126,12 +126,12 @@ public class PeriodService {
 
     /** Close, as {@link #close(String, String, long)} would, every open period of the sheet whose to-date
      * plus its grace days is before its today, in order of their to-dates, each marked auto=yes; nothing
-     * when the grace days are off or the user's role may not close. */
+     * when the grace days are off. An automatic close is not subject to the permission matrix. */
     @Transactional
     public void closeOverdue(String sheetId, String user) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         Integer grace = sheet.getGraceDays();
-        if (grace == null || !settings.allowed(sheetId, user, Action.CLOSE)) return;
+        if (grace == null) return;
         List<Period> due = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
                 .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(sheet.getToday()))
                 .sorted(Comparator.comparing(Period::getTo)).toList();

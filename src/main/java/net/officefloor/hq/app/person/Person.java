@@ -14,10 +14,10 @@ import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 /**
  * A person on a sheet: a name and a dated grade (A, B or C): each grade they are given is in force
@@ -51,10 +51,12 @@ public class Person {
     private LocalDate retiredFrom;
 
     /** The holds the person has been put on: their OPEN and PENDING claims dated within one count in no
-     * live total, unless a statement binds them. A set, so it loads eagerly beside the grades. */
+     * live total, unless a statement binds them. The same hold may be put on more than once. Loaded by
+     * a sub-select, so it loads eagerly beside the grades. */
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
-    private Set<PersonHold> holds = new HashSet<>();
+    private List<PersonHold> holds = new ArrayList<>();
 
     /** The person's own terms in days, in place of their grade's and the sheet's; null when they have none. */
     @Column(name = "terms")
@@ -149,9 +151,9 @@ public class Person {
                 .toList();
     }
 
-    /** Puts the person on {@code hold}; false when they are already on that very hold. */
-    public boolean addHold(PersonHold hold) {
-        return holds.add(hold);
+    /** Puts the person on {@code hold}. */
+    public void addHold(PersonHold hold) {
+        holds.add(hold);
     }
 
     /** Whether the person has any hold, whatever its dates. */
