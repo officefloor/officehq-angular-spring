@@ -99,6 +99,10 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
+    /** How a bulk settle went: how many claims it settled (or left PENDING) and refused, and those claims. */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
 
@@ -182,6 +186,15 @@ public class ClaimController {
             @RequestBody @Valid BulkRequest request) {
         ClaimBulkService.Outcome outcome = bulk.open(sheetId.trim(), user.trim(), request.claimIds());
         return new BulkOpenView(outcome.changed().size(), outcome.refused(),
+                views(outcome.changed()));
+    }
+
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleView bulkSettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRequest request) {
+        ClaimBulkService.Outcome outcome = bulk.settle(sheetId.trim(), user.trim(), request.claimIds());
+        return new BulkSettleView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));
     }
 

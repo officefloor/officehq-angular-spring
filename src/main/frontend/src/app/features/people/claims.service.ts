@@ -67,6 +67,13 @@ export interface BulkOpened {
   claims: Claim[];
 }
 
+/** How a bulk settle went: how many it settled (or left PENDING) and refused, and those claims. */
+export interface BulkSettled {
+  settled: number;
+  refused: number;
+  claims: Claim[];
+}
+
 export interface ClaimFields {
   amount: string;
   /** null takes the sheet's today. */
@@ -146,6 +153,16 @@ export class ClaimsService {
   bulkOpen(sheet: string, claimIds: number[]): Promise<BulkOpened> {
     return firstValueFrom(
       this.http.post<BulkOpened>(`${this.url(sheet)}/claims/bulk-open`, { claimIds }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Settle each of the claims that can be settled, in list order, by the rules of settling one;
+   *  one left PENDING counts as settled, the rest are left as they are and counted as refused. */
+  bulkSettle(sheet: string, claimIds: number[]): Promise<BulkSettled> {
+    return firstValueFrom(
+      this.http.post<BulkSettled>(`${this.url(sheet)}/claims/bulk-settle`, { claimIds }, {
         headers: this.session.headers(),
       }),
     );

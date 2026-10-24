@@ -35,6 +35,17 @@ public class ClaimBulkService {
      * added, each person's claims newest first), so they are numbered in that order; any that cannot
      * be opened (or is not on the sheet) is left as it is and counted as refused. */
     public Outcome open(String sheetId, String user, Collection<Long> claimIds) {
+        return change(sheetId, user, claimIds, ClaimStatus.OPEN);
+    }
+
+    /** Settle each of the claims that can be settled, in list order, by exactly the rules of settling
+     * one claim (one that goes to PENDING instead counts as settled); any that cannot be settled (or
+     * is not on the sheet) is left as it is and counted as refused. */
+    public Outcome settle(String sheetId, String user, Collection<Long> claimIds) {
+        return change(sheetId, user, claimIds, ClaimStatus.SETTLED);
+    }
+
+    private Outcome change(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
         Set<Long> asked = Set.copyOf(claimIds);
         Map<Long, Integer> personOrder = new HashMap<>();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
@@ -49,8 +60,8 @@ public class ClaimBulkService {
         List<Claim> changed = new ArrayList<>();
         for (Claim claim : found) {
             try {
-                changed.add(service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
-            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimNotFoundException
+                changed.add(service.changeStatus(sheetId, user, claim.getId(), next));
+            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimNotFoundException
                     | PersonNotFoundException e) {
                 refused++;
             }
