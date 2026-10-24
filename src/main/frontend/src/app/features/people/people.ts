@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Claim, ClaimsService, cents, counts, money, overdue } from './claims.service';
@@ -120,6 +120,7 @@ import { Summary, SummaryPerson } from './summary';
         />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
 
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
@@ -302,6 +303,7 @@ export class People {
   private readonly settingsService = inject(SettingsService);
   private readonly statementsService = inject(StatementsService);
   private readonly periodsService = inject(PeriodsService);
+  private readonly document = inject(DOCUMENT);
 
   protected readonly grades = GRADES;
   protected readonly money = money;
@@ -611,6 +613,22 @@ export class People {
     return { policyDate: this.policyDateInForce(), claims: this.claimsOf(personId) };
   }
 
+  /** Download everyone, retired people included, in list order as a CSV file: name, grade in force
+   *  today, retired-from date (blank when not retired) and due-total as shown. */
+  protected exportCsv(): void {
+    const lines = [['name', 'grade', 'retired-from', 'due-total']];
+    for (const p of this.people()) {
+      lines.push([p.name, this.gradeNow(p), p.retiredFrom ?? '', this.dueTotalOf(p) ?? 'n/a']);
+    }
+    const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    const link = this.document.createElement('a');
+    link.href = url;
+    link.download = 'people.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
   /** The person's grade in force on the sheet's today. */
   protected gradeNow(person: Person): Grade {
     return gradeOn(person.grades, this.session.today()) ?? person.grade;
@@ -819,4 +837,10 @@ export class People {
       // The sheet's people could not be read; the list stays empty.
     }
   }
+}
+
+/** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a
+ *  quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
