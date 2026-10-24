@@ -50,10 +50,13 @@ public class SheetController {
         this.consolidated = consolidated;
     }
 
-    /** The figures of the sheet's descendants as they stand, added up (see {@link ConsolidatedService}). */
+    /** The figures of the sheet's descendants as they stand, added up (see {@link ConsolidatedService});
+     * while the sheet is read as it stood on an earlier date, the sheet's own figures as they stand now
+     * are added in too, the consolidated figures not following that date. */
     @GetMapping("/{id}/descendants")
-    public ConsolidatedService.Figures descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
-        return consolidated.descendantsOf(id.trim());
+    public ConsolidatedService.Figures descendants(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedOf(id.trim());
     }
 
     /** Load a sheet by id, starting it empty if it has never been loaded; as it stood at the end of

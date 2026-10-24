@@ -163,6 +163,28 @@ public class Claim {
         this.corrects = corrects;
     }
 
+    /** A copy of the claim for the person {@code personId} on the sheet {@code sheetId}: its amount,
+     * dates, terms, note, status, frozen figure, opener and editor, deferral, proofs, tags and void reason
+     * come with it; its number, any figure a statement bound, its reference, lock and settle batch do
+     * not, nor what names other claims by number. */
+    public Claim transferredTo(String sheetId, Long personId) {
+        Claim copy = new Claim(sheetId, personId, amount, date, note, null);
+        copy.dueBy = dueBy;
+        copy.dueFrom = dueFrom;
+        copy.terms = terms;
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.lateEntry = lateEntry;
+        copy.remindedOn = remindedOn;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

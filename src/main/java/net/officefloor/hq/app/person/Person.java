@@ -110,6 +110,19 @@ public class Person {
         this.nameKey = keyOf(name);
     }
 
+    /** A copy of the person on the sheet {@code sheetId}: the same name, every grade they were given
+     * (with its from-date), their terms, contact and aliases; nothing else of theirs comes with it. */
+    public Person transferredTo(String sheetId) {
+        Person copy = new Person();
+        copy.sheetId = sheetId;
+        copy.setName(name);
+        grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
+        copy.terms = terms;
+        copy.contact = contact;
+        aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
+        return copy;
+    }
+
     /** The grades the person has been given, by from-date (the one with none first). */
     public List<PersonGrade> getGrades() {
         return grades.stream()

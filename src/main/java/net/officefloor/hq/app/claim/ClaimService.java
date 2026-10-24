@@ -579,7 +579,7 @@ public class ClaimService {
     }
 
     /** Keep each of the claim's tags among those ever used on its sheet. */
-    private void keepTags(Claim claim) {
+    public void keepTags(Claim claim) {
         for (String tag : claim.getTags()) {
             SheetTag.Key key = new SheetTag.Key(claim.getSheetId(), tag);
             if (!tagRepository.existsById(key)) tagRepository.save(new SheetTag(claim.getSheetId(), tag));
@@ -616,7 +616,7 @@ public class ClaimService {
     /** The number a claim due by {@code date} is given when opened now: within the period containing
      * that date ({@code <period name>-<n>}, or {@code X-<n>} when none does) while the sheet numbers by
      * period, otherwise the next sheet-wide number. */
-    private String nextNumber(String sheetId, LocalDate date) {
+    public String nextNumber(String sheetId, LocalDate date) {
         if (!sheets.numbersByPeriod(sheetId)) return String.valueOf(sheets.nextClaimNumber(sheetId));
         return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
                 .filter(p -> !date.isBefore(p.getFrom()) && !date.isAfter(p.getTo()))

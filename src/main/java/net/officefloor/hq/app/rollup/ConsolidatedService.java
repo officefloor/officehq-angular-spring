@@ -31,6 +31,17 @@ public class ConsolidatedService {
         this.rollup = rollup;
     }
 
+    /** The figures of the sheet itself and its descendants as they stand, added up: the consolidated
+     * figures the screen shows while it reads the sheet as it stood on an earlier date. */
+    @Transactional(readOnly = true)
+    public Figures consolidatedOf(String sheetId) {
+        Figures descendants = descendantsOf(sheetId);
+        RollupService.Snapshot own = rollup.snapshot(sheetId);
+        return new Figures(descendants.peopleCount() + own.people().size(),
+                new BigDecimal(descendants.dueTotal()).add(new BigDecimal(own.dueTotal())).toPlainString(),
+                new BigDecimal(descendants.overdueTotal()).add(new BigDecimal(own.overdueTotal())).toPlainString());
+    }
+
     /** The figures of the sheet's descendants as they stand, added up. */
     @Transactional(readOnly = true)
     public Figures descendantsOf(String sheetId) {

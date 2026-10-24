@@ -509,6 +509,21 @@ import { Audit } from './audit';
                   >
                     Merge
                   </button>
+                  <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
+                  <input
+                    [id]="'person-transfer-to-' + p.id"
+                    data-testid="person-transfer-to"
+                    [value]="transferInputs()[p.id] ?? ''"
+                    (input)="setTransferInput(p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-transfer"
+                    [attr.aria-label]="'Transfer ' + p.name + ' to the sheet given'"
+                    (click)="transfer(p)"
+                  >
+                    Transfer
+                  </button>
                 </td>
               </tr>
             }
@@ -622,6 +637,9 @@ export class People {
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into (a person id), by person id. */
   protected readonly mergeChoices = signal<Record<number, string>>({});
+
+  /** The sheet id typed on each person's row to transfer them to, by person id. */
+  protected readonly transferInputs = signal<Record<number, string>>({});
   /** The error of the last refused patron added on each person's row, by person id. */
   protected readonly patronErrors = signal<Record<number, string>>({});
   /** Each person's patrons with their shares in hundredths, in the order they were named, by person id:
@@ -792,9 +810,11 @@ export class People {
   });
   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
-  /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up. */
+  /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up.
+   *  While the sheet is read as of an earlier date they stand as now: the server adds the sheet's own in. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
+    if (this.session.asOf()) return d;
     return {
       peopleCount: this.people().length + d.peopleCount,
       dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
@@ -895,6 +915,7 @@ export class People {
       this.watched.set(new Set());
       this.patronChoices.set({});
       this.mergeChoices.set({});
+      this.transferInputs.set({});
       this.patronErrors.set({});
       this.reset();
       this.quickName.set('');
@@ -1124,6 +1145,36 @@ export class People {
       this.rowErrors.update((errors) => ({
         ...errors,
         [person.id]: 'That person cannot be merged into the one chosen.',
+      }));
+    }
+  }
+
+  protected setTransferInput(id: number, sheetId: string): void {
+    this.transferInputs.update((typed) => ({ ...typed, [id]: sheetId }));
+    this.clearRowError(id);
+  }
+
+  /** Transfer the person to the sheet typed on their row, then re-read the sheet: they leave it
+   *  entirely, with their patron links and pool memberships. */
+  protected async transfer(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const to = (this.transferInputs()[person.id] ?? '').trim();
+    if (to === '') {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Enter a sheet to transfer to.' }));
+      return;
+    }
+    try {
+      await this.service.transfer(sheet, person.id, to);
+      if (this.sheet() !== sheet) return;
+      this.transferInputs.update(({ [person.id]: _, ...rest }) => rest);
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet)]);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That person cannot be transferred to that sheet.',
       }));
     }
   }

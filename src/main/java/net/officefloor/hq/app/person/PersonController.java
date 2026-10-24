@@ -77,6 +77,10 @@ public class PersonController {
     public record MergeRequest(@NotNull Long intoId) {
     }
 
+    /** The id of the sheet a person is transferred to. */
+    public record TransferRequest(@NotBlank @Size(max = 100) String toSheet) {
+    }
+
     /** The date a person is retired from (the sheet's today when left out). */
     public record RetireRequest(LocalDate from) {
     }
@@ -136,9 +140,12 @@ public class PersonController {
 
     private final PersonMergeService merges;
 
+    private final PersonTransferService transfers;
+
     public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history,
-            PersonMergeService merges) {
+            PersonMergeService merges, PersonTransferService transfers) {
         this.service = service;
+        this.transfers = transfers;
         this.bulk = bulk;
         this.merges = merges;
         this.history = history;
@@ -248,6 +255,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MergeRequest request) {
         return view(sheetId, merges.merge(sheetId.trim(), user.trim(), personId, request.intoId()));
+    }
+
+    /** Transfers the person to another sheet; answers them as they now are there. */
+    @PostMapping("/{personId}/transfer")
+    public PersonView transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TransferRequest request) {
+        String to = request.toSheet().trim();
+        return view(to, transfers.transfer(sheetId.trim(), user.trim(), personId, to));
     }
 
     @PostMapping("/{personId}/aliases")

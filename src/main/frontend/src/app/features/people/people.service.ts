@@ -115,7 +115,7 @@ export class PeopleService {
   }
 
   /** The figures of the sheet's descendants (its children, their children, and so on) as they stand,
-   *  added up. */
+   *  added up; while the sheet is read as of an earlier date, with the sheet's own as they stand now. */
   descendants(sheet: string): Promise<DescendantFigures> {
     return firstValueFrom(
       this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`, {
@@ -184,6 +184,17 @@ export class PeopleService {
   merge(sheet: string, id: number, intoId: number): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/merge`, { intoId }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Transfer the person to the sheet `toSheet`; refused (409) unless the signed-in user is a
+   *  steward, for a retired person, for this sheet's own id, and when their name, an alias or their
+   *  contact is already on the other sheet. */
+  transfer(sheet: string, id: number, toSheet: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheet)}/${id}/transfer`, { toSheet }, {
         headers: this.session.headers(),
       }),
     );
