@@ -81,6 +81,11 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; null when
+     * they have none (see {@link net.officefloor.hq.app.claim.Claim#tagsOf}). */
+    @Column(name = "tags")
+    private String tags;
+
     /** The sheet the person was transferred from; null when they were not transferred. */
     @Column(name = "origin_sheet_id")
     private String originSheetId;
@@ -136,6 +141,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
         return copy;
     }
@@ -154,6 +160,7 @@ public class Person {
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(a.getAlias())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.position = position;
         return copy;
     }
@@ -203,6 +210,17 @@ public class Person {
     /** Gives the person {@code contact} (none when blank), kept in its {@link #contactOf stored form}. */
     public void setContact(String contact) {
         this.contact = contactOf(contact);
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Gives the person the tags, as {@link net.officefloor.hq.app.claim.Claim#tagsOf} makes them (none
+     * when null). */
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** The person's aliases, sorted as names are compared. */

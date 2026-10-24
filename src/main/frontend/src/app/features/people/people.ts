@@ -143,6 +143,13 @@ import { Audit } from './audit';
           [value]="contact()"
           (input)="contact.set(value($event)); error.set(null)"
         />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -331,6 +338,7 @@ import { Audit } from './audit';
               <th scope="col">Grade</th>
               <th scope="col">Terms</th>
               <th scope="col">Contact</th>
+              <th scope="col">Tags</th>
               <th scope="col">Aliases</th>
               <th scope="col">Clashing</th>
               <th scope="col">Came from</th>
@@ -379,6 +387,7 @@ import { Audit } from './audit';
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
                 <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
                 <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
@@ -854,16 +863,19 @@ export class People {
   /** Every tag ever used on the sheet: those the store keeps, and those on its claims now. */
   protected readonly sheetTags = signal<string[]>([]);
   /** Each tag ever used on the sheet, sorted, with its due-total: what is due on the claims that count
-   *  which carry it, as each claim shows it (a claim with two tags counts in both). */
+   *  which carry it, or whose person carries it, as each claim shows it (a claim with two tags counts
+   *  in both, and once for a tag both it and its person carry). */
   protected readonly tagDueTotals = computed(() => {
     const sums = new Map<string, number>();
     for (const tag of this.sheetTags()) sums.set(tag, 0);
     for (const c of this.claims()) for (const tag of c.tags) if (!sums.has(tag)) sums.set(tag, 0);
+    for (const p of this.people()) for (const tag of p.tags) if (!sums.has(tag)) sums.set(tag, 0);
     for (const person of this.people()) {
       for (const c of this.claimsOf(person.id)) {
-        if (c.tags.length === 0 || !this.countsLive(c, person)) continue;
+        const tags = new Set([...c.tags, ...person.tags]);
+        if (tags.size === 0 || !this.countsLive(c, person)) continue;
         const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
-        for (const tag of c.tags) sums.set(tag, (sums.get(tag) ?? 0) + due);
+        for (const tag of tags) sums.set(tag, (sums.get(tag) ?? 0) + due);
       }
     }
     return [...sums.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, sum]) => ({ tag, dueTotal: money(sum) }));
@@ -956,6 +968,8 @@ export class People {
   protected readonly terms = signal('');
   /** The person's contact, as typed; blank for none. */
   protected readonly contact = signal('');
+  /** The person's tags, as typed; blank for none. */
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
@@ -1819,6 +1833,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
     this.contact.set(person.contact ?? '');
+    this.tags.set(person.tags.join(', '));
     this.error.set(null);
   }
 
@@ -1829,6 +1844,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -1838,7 +1854,7 @@ export class People {
     this.error.set(null);
     const sheet = this.sheet();
     if (!sheet) return;
-    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim(), contact: this.contact() };
+    const fields = { name: this.name(), grade: this.grade(), terms: this.terms().trim(), contact: this.contact(), tags: this.tags() };
     if (!fields.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
@@ -1890,6 +1906,7 @@ export class People {
           this.grade.set(this.gradeNow(current));
           this.terms.set(current.terms === null ? '' : String(current.terms));
           this.contact.set(current.contact ?? '');
+          this.tags.set(current.tags.join(', '));
         }
         this.error.set('Someone else saved this person since you opened it; their changes are shown.');
         return;
@@ -2071,6 +2088,7 @@ export class People {
       this.grade.set(this.gradeNow(current));
       this.terms.set(current.terms === null ? '' : String(current.terms));
       this.contact.set(current.contact ?? '');
+      this.tags.set(current.tags.join(', '));
       this.error.set('Someone else saved this person since you opened it; their changes are shown.');
     } catch {
       // The people could not be re-read; the list stays as it was.

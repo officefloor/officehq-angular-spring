@@ -53,6 +53,8 @@ export interface Person {
   origin: string | null;
   /** The person's past retirements, each ended by an unretire, by from-date. */
   retirements: PersonRetirement[];
+  /** The person's tags, trimmed, lower-cased, without repeats and sorted; empty when they have none. */
+  tags: string[];
 }
 
 /** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
@@ -107,6 +109,8 @@ export interface PersonFields {
   terms: string;
   /** The person's contact, as typed; blank for none. */
   contact: string;
+  /** The person's tags, comma separated (each trimmed and lower-cased by the server); blank for none. */
+  tags: string;
 }
 
 /** The grade in force on a date: the one with the latest from-date on or before it, or the first

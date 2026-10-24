@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Stream;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetHistory;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -63,14 +64,14 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<RetirementView> retirements) {
+            List<RetirementView> retirements, List<String> tags) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getTerms(),
                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
-                    person.getRetirements().stream().map(RetirementView::of).toList());
+                    person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags());
         }
     }
 
@@ -114,9 +115,15 @@ public class PersonController {
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String terms,
             Long version,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 500) String tags) {
         Integer termsValue() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
+
+        /** The tags given, as a person keeps them (see {@link Claim#tagsOf}); null when none are. */
+        String tagsValue() {
+            return Claim.tagsOf(tags);
         }
     }
 
@@ -243,7 +250,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
-                request.termsValue(), request.contact()));
+                request.termsValue(), request.contact(), request.tagsValue()));
     }
 
     @PutMapping("/{personId}")
@@ -256,7 +263,8 @@ public class PersonController {
         }
         try {
             return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.contact()));
+                    request.name(), request.grade(), request.gradeFrom(), request.termsValue(), request.contact(),
+                    request.tagsValue()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another save of the person committed while this one was under way.
             throw new PersonStaleException(service.get(sheetId.trim(), personId));

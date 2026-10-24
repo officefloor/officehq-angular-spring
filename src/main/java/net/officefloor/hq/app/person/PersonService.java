@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.SheetTag;
+import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -25,10 +28,13 @@ public class PersonService {
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
     private final PersonTree tree;
+    private final SheetTagRepository tagRepository;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
-            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree) {
+            SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
+            SheetTagRepository tagRepository) {
         this.people = people;
+        this.tagRepository = tagRepository;
         this.tree = tree;
         this.patrons = patrons;
         this.watches = watches;
@@ -58,6 +64,14 @@ public class PersonService {
      * another person on the sheet has the name or the contact, or another sheet of its tree uses the name. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Adds a person as {@link #add(String, String, String, String, Integer, String)} does, with the tags
+     * {@code tags} (see {@link Claim#tagsOf}; none when null). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
@@ -68,8 +82,10 @@ public class PersonService {
         Person created = new Person(sheetId, name, grade);
         created.setTerms(terms);
         created.setContact(contact);
+        created.setTags(tags);
         created.setPosition(people.maxPosition(sheetId) + 1);
         Person person = people.saveAndFlush(created);
+        keepTags(person);
         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + grade));
         if (terms != null) fields.add("terms=" + terms);
         if (person.getContact() != null) fields.add("contact=" + person.getContact());
@@ -93,6 +109,16 @@ public class PersonService {
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact,
+                person.getTags().isEmpty() ? null : String.join(",", person.getTags()));
+    }
+
+    /** Saves the person as {@link #update(String, String, long, long, String, String, LocalDate, Integer,
+     * String)} does, giving them the tags {@code tags} (see {@link Claim#tagsOf}; none when null). */
+    @Transactional
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
         }
@@ -108,7 +134,9 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setContact(contact);
+        person.setTags(tags);
         people.flush();
+        keepTags(person);
         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + person.gradeOn(today)));
         if (termsChanged) fields.add("terms=" + (terms == null ? "" : terms));
         if (contactChanged) fields.add("contact=" + (person.getContact() == null ? "" : person.getContact()));
@@ -264,6 +292,14 @@ public class PersonService {
                 });
         if (people.findBySheetIdAndAliasKey(sheetId, Person.keyOf(name)).isPresent()) {
             throw new PersonNameTakenException();
+        }
+    }
+
+    /** Keep each of the person's tags among those ever used on its sheet. */
+    private void keepTags(Person person) {
+        for (String tag : person.getTags()) {
+            SheetTag.Key key = new SheetTag.Key(person.getSheetId(), tag);
+            if (!tagRepository.existsById(key)) tagRepository.save(new SheetTag(person.getSheetId(), tag));
         }
     }
 
