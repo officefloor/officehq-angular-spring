@@ -1,12 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
+import { Claims } from './claims';
+import { Claim, ClaimsService, cents, money } from './claims.service';
 import { GRADES, Grade, PeopleService, Person } from './people.service';
 
 // The people on the active sheet, in the order they were added, and the form that adds a person
-// or, once a person's editor is opened, saves changes to them.
+// or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
+// and shows what they have claimed; the sheet's claimed-total adds up everyone's.
 @Component({
   selector: 'app-people',
+  imports: [Claims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -49,6 +53,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Grade</th>
+              <th scope="col">Claimed</th>
+              <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -57,6 +63,15 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ p.grade }}</td>
+                <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+                <td>
+                  <app-claims
+                    [personId]="p.id"
+                    [personName]="p.name"
+                    [claims]="claimsOf(p.id)"
+                    (saved)="claimSaved($event)"
+                  />
+                </td>
                 <td>
                   <button
                     type="button"
@@ -71,6 +86,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             }
           </tbody>
         </table>
+        <p>
+          Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
+        </p>
       }
     </section>
   `,
@@ -94,6 +112,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
       text-align: left;
       padding: 0.25rem 0.75rem 0.25rem 0;
       white-space: pre;
+      vertical-align: top;
     }
     .visually-hidden {
       position: absolute;
@@ -107,9 +126,20 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 export class People {
   private readonly session = inject(Session);
   private readonly service = inject(PeopleService);
+  private readonly claimsService = inject(ClaimsService);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** The sheet's claims, newest first. */
+  protected readonly claims = signal<Claim[]>([]);
+  private readonly claimsByPerson = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
+  });
+  protected readonly claimedTotal = computed(() =>
+    money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
@@ -122,6 +152,7 @@ export class People {
       const sheet = this.sheet();
       this.session.loads();
       this.people.set([]);
+      this.claims.set([]);
       this.reset();
       if (sheet) void this.read(sheet);
     });
@@ -133,6 +164,23 @@ export class People {
 
   protected gradeOf(event: Event): Grade {
     return (event.target as HTMLSelectElement).value as Grade;
+  }
+
+  protected claimsOf(personId: number): Claim[] {
+    return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  protected claimedOf(personId: number): string {
+    return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+  }
+
+  /** Put an added claim first, or a saved one in its place. */
+  protected claimSaved(claim: Claim): void {
+    this.claims.update((list) =>
+      list.some((c) => c.id === claim.id)
+        ? list.map((c) => (c.id === claim.id ? claim : c))
+        : [claim, ...list],
+    );
   }
 
   protected edit(person: Person): void {
@@ -181,8 +229,14 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const list = await this.service.list(sheet);
-      if (this.sheet() === sheet) this.people.set(list);
+      const [list, claims] = await Promise.all([
+        this.service.list(sheet),
+        this.claimsService.list(sheet),
+      ]);
+      if (this.sheet() === sheet) {
+        this.claims.set(claims);
+        this.people.set(list);
+      }
     } catch {
       // The sheet's people could not be read; the list stays empty.
     }
