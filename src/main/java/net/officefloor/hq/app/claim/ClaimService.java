@@ -436,7 +436,7 @@ public class ClaimService {
     }
 
     /** Hold an OPEN or PENDING claim that is not held, or release one that is: while held and unbound by a
-     * statement it counts in no live total, as a claim of a held person does. Refused unless the claim is
+     * statement it counts in no live due figure (it stays in what is claimed), as a claim of a held person does. Refused unless the claim is
      * OPEN or PENDING. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long claimId) {

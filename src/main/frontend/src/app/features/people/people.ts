@@ -42,8 +42,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 // is kept on their row as a past one, and no claim can be dated after its from-date and before its
 // to-date. A person can be put on several holds over time, each from a date (the
 // sheet's today when left blank) and to an optional date: their OPEN and PENDING claims dated within a
-// hold count in no live total (theirs, the sheet's or a period's) unless a statement binds them;
-// SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
+// hold count in no live due figure (theirs, the sheet's or a period's) unless a statement binds them,
+// though they still count in what is claimed; SETTLED ones and those dated outside every hold still do. A hold ends on its to-date.
 // A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains, for every full 30 days it is overdue, the sheet's
@@ -1864,6 +1864,17 @@ export class People {
     return this.countsAs(claim, claim.status, person);
   }
 
+  /** Whether the claim counts in what its person has claimed: as countsLive says, but a hold, the
+   *  person's or the claim's own, does not take it out. */
+  private countsClaimed(claim: Claim, person: Person): boolean {
+    if (!counts(claim)) return false;
+    if (!isOpen(claim)) return true;
+    const today = this.session.today();
+    if (deferred(claim, today)) return false;
+    const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
+    return claim.stated || !retired;
+  }
+
   /** Whether the claim would count in the live totals were its status `status` (see countsLive). */
   private countsAs(claim: Claim, status: ClaimStatus, person: Person): boolean {
     const as = { ...claim, status };
@@ -1901,11 +1912,11 @@ export class People {
     return money(this.claimedCentsOf(person));
   }
 
-  /** What the person's OPEN and SETTLED claims add up to (unbound OPEN ones dated within a hold left
-   *  out); drafts, voided claims and corrections do not count. */
+  /** What the person's OPEN, PENDING and SETTLED claims add up to, held ones included (see
+   *  countsClaimed); drafts, voided claims and corrections do not count. */
   private claimedCentsOf(person: Person): number {
     return this.claimsOf(person.id).reduce(
-      (sum, c) => sum + (this.countsLive(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
+      (sum, c) => sum + (this.countsClaimed(c, person) && !isCorrection(c) ? cents(c.amount) : 0),
       0,
     );
   }

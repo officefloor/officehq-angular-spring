@@ -29,9 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
- * claims that are not corrections, leaving out the OPEN and PENDING ones dated within one of their holds, or all of them once their
- * retirement date is reached on the sheet's today, that no statement binds)
- * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
+ * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
+ * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
+ * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
@@ -95,8 +95,9 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean any = false;
             for (Claim claim : all) {
-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
-                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
+                if (!claim.getPersonId().equals(person.getId())) continue;
+                if (countsClaimed(claim, person, today) && !claim.isCorrection()) claimed = claimed.add(claim.getAmount());
+                if (!countsLive(claim, person, today)) continue;
                 BigDecimal figure = shownOf(claim, person, basis);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
@@ -172,6 +173,16 @@ public class RollupService {
      * {@code today}, and no statement binds it. */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return countsAs(claim, claim.getStatus(), person, today);
+    }
+
+    /** Whether the claim counts in what its person has claimed on the sheet's {@code today}: as it counts in
+     * the live totals (see {@link #countsLive}), but a hold, the person's or the claim's own, does not take it out. */
+    public static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
+        ClaimStatus status = claim.getStatus();
+        if (!status.counts()) return false;
+        if (!status.isOpen()) return true;
+        if (claim.isDeferredOn(today)) return false;
+        return claim.isStated() || !person.isRetiredOn(today);
     }
 
     /** Whether the claim would count in the live totals on the sheet's {@code today} were its status
