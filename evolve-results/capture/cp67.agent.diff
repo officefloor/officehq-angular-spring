@@ -1,0 +1,109 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ce376b18..aad9bf79 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -204,6 +204,7 @@ import { Summary, SummaryPerson } from './summary';
+               <th scope="col">Retired</th>
+               <th scope="col">Retired from</th>
+               <th scope="col">On hold</th>
++              <th scope="col">Active</th>
+               <th scope="col">Watched</th>
+               <th scope="col">Patrons</th>
+               <th scope="col">Backing</th>
+@@ -231,6 +232,7 @@ import { Summary, SummaryPerson } from './summary';
+                 <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+                 <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++                <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
+                 <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
+@@ -524,9 +526,10 @@ export class People {
+     }
+     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+   });
+-  /** Everyone as the summary counts them: their grade today, whether retired, and their due-total. */
++  /** Everyone as the summary counts them: their grade today, whether retired, their due-total, and
++   *  whether they are active. */
+   protected readonly summaryPeople = computed<SummaryPerson[]>(() =>
+-    this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p) })),
++    this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p), active: this.isActive(p) })),
+   );
+   /** The sheet's due-total: everyone's due-totals added up (n/a ones skipped), trimmed. */
+   protected readonly dueTotal = computed(() =>
+@@ -820,6 +823,17 @@ export class People {
+     return this.countsAs(claim, status, person);
+   }
+ 
++  /** Whether the person is active: they have an OPEN or PENDING claim that counts, dated within the
++   *  30 days up to and including the sheet's today. */
++  protected isActive(person: Person): boolean {
++    const today = this.session.today();
++    if (today === null) return false;
++    const from = daysBefore(today, 29);
++    return this.claimsOf(person.id).some(
++      (c) => isOpen(c) && this.countsLive(c, person) && from <= c.date && c.date <= today,
++    );
++  }
++
+   protected claimedOf(person: Person): string {
+     return money(this.claimedCentsOf(person));
+   }
+@@ -1207,3 +1221,10 @@ function trimmedSum(figures: number[]): number {
+   const sum = figures.reduce((a, b) => a + b, 0);
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+ }
++
++/** The date (YYYY-MM-DD) `days` days before `date`. */
++function daysBefore(date: string, days: number): string {
++  const d = new Date(`${date}T00:00:00Z`);
++  d.setUTCDate(d.getUTCDate() - days);
++  return d.toISOString().slice(0, 10);
++}
+diff --git a/src/main/frontend/src/app/features/people/summary.ts b/src/main/frontend/src/app/features/people/summary.ts
+index 9d33174b..e923b2a2 100644
+--- a/src/main/frontend/src/app/features/people/summary.ts
++++ b/src/main/frontend/src/app/features/people/summary.ts
+@@ -7,15 +7,16 @@ import { Period } from './periods.service';
+ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+ 
+ /** A person as the summary counts them: their grade on the sheet's today, whether they are retired,
+- *  and their due-total in cents (null when it is n/a). */
++ *  their due-total in cents (null when it is n/a), and whether they are active. */
+ export interface SummaryPerson {
+   grade: Grade;
+   retired: boolean;
+   dueCents: number | null;
++  active: boolean;
+ }
+ 
+ // A summary of the sheet, worked from the same figures the list shows: per grade, how many people
+-// not retired are on it today and their due-totals added up (a due-total that is n/a is skipped);
++// not retired are on it today, how many of them are active, and their due-totals added up (a due-total that is n/a is skipped);
+ // per period, its due-total; per status, how many of the sheet's claims have it.
+ @Component({
+   selector: 'app-summary',
+@@ -28,6 +29,7 @@ export interface SummaryPerson {
+             <th scope="col">Grade</th>
+             <th scope="col">People</th>
+             <th scope="col">Due</th>
++            <th scope="col">Active</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -36,6 +38,7 @@ export interface SummaryPerson {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -106,6 +109,7 @@ export class Summary {
+       return {
+         grade,
+         count: on.length,
++        active: on.filter((p) => p.active).length,
+         dueTotal: money(on.reduce((sum, p) => sum + (p.dueCents ?? 0), 0)),
+       };
+     }),
