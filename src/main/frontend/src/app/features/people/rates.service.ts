@@ -11,16 +11,20 @@ export interface Rate {
   pct: string;
   /** The date the rate applies from (YYYY-MM-DD); null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date the rate applies on (YYYY-MM-DD); null when it applies on with no end. */
+  to: string | null;
 }
 
 /** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
- *  one with no from-date when none has; null when no rate applies yet. */
+ *  one with no from-date when none has; null when no rate applies yet, or when that rate's to-date
+ *  is before the date (an earlier rate does not apply again). */
 export function rateOn(rates: Rate[], grade: Grade, date: string): string | null {
   let best: Rate | null = null;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
     if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
   }
+  if (best !== null && best.to !== null && best.to < date) return null;
   return best?.pct ?? null;
 }
 
@@ -117,10 +121,10 @@ export class RatesService {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheet), { headers: this.session.headers() }));
   }
 
-  /** A null from sets the rate that applies from the beginning of time. */
-  set(sheet: string, grade: Grade, pct: string, from: string | null): Promise<Rate> {
+  /** A null from sets the rate that applies from the beginning of time; a null to, one with no end. */
+  set(sheet: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<Rate> {
     return firstValueFrom(
-      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from }, { headers: this.session.headers() }),
+      this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from, to }, { headers: this.session.headers() }),
     );
   }
 

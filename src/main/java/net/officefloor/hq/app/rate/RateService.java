@@ -12,7 +12,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time).
+/** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time)
+ * through its to-date (or with no end).
  * Setting a grade's rate for a from-date it already has a rate for replaces that rate. */
 @Service
 public class RateService {
@@ -36,22 +37,27 @@ public class RateService {
     }
 
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
+        }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = (from == null ? rates.findUndated(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElse(null);
         if (rate == null) {
-            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, pct));
+            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, pct));
         } else {
             rate.setPct(pct);
+            rate.setTo(to);
             rates.flush();
         }
         List<String> fields = new ArrayList<>(List.of("grade=" + grade,
                 "rate=" + rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
         if (from != null) fields.add("from=" + from);
+        if (to != null) fields.add("to=" + to);
         audit.change("RATE_SET", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return rate;

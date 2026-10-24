@@ -5,7 +5,7 @@ import { Rate, RatesService, rateOn } from './rates.service';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
-// The rates of each grade on the sheet, each from its from-date, with the one in force on the
+// The rates of each grade on the sheet, each from its from-date (through its to-date, if any), with the one in force on the
 // sheet's today, and the form that sets a grade's rate from a date.
 @Component({
   selector: 'app-rates',
@@ -40,6 +40,14 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           [value]="from()"
           (input)="from.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-to">To</label>
+        <input
+          id="rate-form-to"
+          type="date"
+          data-testid="rate-form-to"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
@@ -71,6 +79,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
             <tr>
               <th scope="col">Grade</th>
               <th scope="col">From</th>
+              <th scope="col">To</th>
               <th scope="col">Rate (%)</th>
             </tr>
           </thead>
@@ -79,6 +88,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
               <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
                 <td>{{ r.grade }}</td>
                 <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+                <td data-testid="rate-to">{{ r.to ?? '' }}</td>
                 <td data-testid="rate-pct">{{ r.pct }}</td>
               </tr>
             }
@@ -133,6 +143,7 @@ export class Rates {
   protected readonly grade = signal<Grade>('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
@@ -167,13 +178,23 @@ export class Rates {
       this.error.set('Type a from-date as YYYY-MM-DD, or leave it blank.');
       return;
     }
+    const to = this.to().trim();
+    if (to !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.error.set('Type a to-date as YYYY-MM-DD, or leave it blank.');
+      return;
+    }
+    if (from !== '' && to !== '' && to < from) {
+      this.error.set('A to-date cannot be before the from-date.');
+      return;
+    }
     this.submitting = true;
     try {
-      const rate = await this.service.set(sheet, this.grade(), pct, from || null);
+      const rate = await this.service.set(sheet, this.grade(), pct, from || null, to || null);
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(rate);
       this.pct.set('');
       this.from.set('');
+      this.to.set('');
     } catch {
       this.error.set('That rate could not be set.');
     } finally {

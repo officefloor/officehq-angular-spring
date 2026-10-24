@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A sheet's rate for a grade: a percent (0.00 or more, two decimals), in force from its from-date on
- * (from the beginning of time when it has none). */
+ * (from the beginning of time when it has none) through its to-date (with no end when it has none). */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -31,13 +31,17 @@ public class Rate {
     @Column(name = "from_date")
     private LocalDate from;
 
+    @Column(name = "to_date")
+    private LocalDate to;
+
     protected Rate() {
     }
 
-    public Rate(String sheetId, String grade, LocalDate from, BigDecimal pct) {
+    public Rate(String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         this.sheetId = sheetId;
         this.grade = grade;
         this.from = from;
+        this.to = to;
         this.pct = pct;
     }
 
@@ -56,6 +60,15 @@ public class Rate {
     /** The date the rate applies from; null when it applies from the beginning of time. */
     public LocalDate getFrom() {
         return from;
+    }
+
+    /** The last date the rate applies on; null when it applies on with no end. */
+    public LocalDate getTo() {
+        return to;
+    }
+
+    public void setTo(LocalDate to) {
+        this.to = to;
     }
 
     public BigDecimal getPct() {
