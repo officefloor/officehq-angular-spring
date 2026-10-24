@@ -53,17 +53,21 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a plan for the person; refused when the end is before the start, the interval is under 1 day or
-     * the amount is not above zero. Records PLAN_ADDED. */
+    /** Add a plan for the person, every {@code every} days or monthly on {@code day} (exactly one given);
+     * refused when the end is before the start, the interval is under 1 day, the day is not 1 to 31, both
+     * or neither are given, or the amount is not above zero. Records PLAN_ADDED. */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (end.isBefore(start) || every < 1 || amount.signum() <= 0) throw new PlanDatesException();
-        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, end));
+        if (end.isBefore(start) || amount.signum() <= 0 || (every == null) == (day == null)
+                || (every != null && every < 1) || (day != null && (day < 1 || day > 31))) {
+            throw new PlanDatesException();
+        }
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
         audit.change("PLAN_ADDED", sheetId, user, "name=" + person.getName(),
                 "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString(), "start=" + start,
-                "every=" + every, "end=" + end);
+                every != null ? "every=" + every : "day=" + day, "end=" + end);
         return plan;
     }
 

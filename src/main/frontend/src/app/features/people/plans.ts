@@ -5,10 +5,11 @@ import { Plan, PlansService } from './plans.service';
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EVERY = /^\d{1,5}$/;
+const DAY = /^\d{1,2}$/;
 
 // A person's plans, one line each in the order they were added with how many claims each has made so
-// far, and the form on the row that adds one: an amount, a start date, every N days (a whole number, at
-// least 1) and an end date not before the start.
+// far, and the form on the row that adds one: an amount, a start date, either every N days (a whole
+// number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
 @Component({
   selector: 'app-plans',
   template: `
@@ -17,7 +18,9 @@ const EVERY = /^\d{1,5}$/;
         @for (pl of plans(); track pl.id) {
           <li [attr.data-testid]="'plan-row-' + pl.id">
             {{ pl.amount }}
-            from {{ pl.start }} every {{ pl.every }} days to {{ pl.end }}, made
+            from {{ pl.start }}
+            @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
+            to {{ pl.end }}, made
             <span data-testid="plan-generated">{{ pl.generated }}</span>
           </li>
         }
@@ -30,6 +33,8 @@ const EVERY = /^\d{1,5}$/;
       <input [id]="'plan-form-start-' + personId()" data-testid="plan-form-start" placeholder="YYYY-MM-DD" [value]="start()" (input)="start.set(value($event)); error.set(null)" />
       <label [for]="'plan-form-every-' + personId()">Every (days)</label>
       <input [id]="'plan-form-every-' + personId()" data-testid="plan-form-every" inputmode="numeric" [value]="every()" (input)="every.set(value($event)); error.set(null)" />
+      <label [for]="'plan-form-day-' + personId()">or monthly on day</label>
+      <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" inputmode="numeric" [value]="day()" (input)="day.set(value($event)); error.set(null)" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" data-testid="plan-form-end" placeholder="YYYY-MM-DD" [value]="end()" (input)="end.set(value($event)); error.set(null)" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
@@ -67,6 +72,7 @@ export class Plans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   private saving = false;
@@ -81,13 +87,21 @@ export class Plans {
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const fields = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), end: this.end().trim() };
+    const fields = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), day: this.day().trim(), end: this.end().trim() };
     if (!AMOUNT.test(fields.amount) || Number(fields.amount) <= 0) {
       this.error.set('Type an amount above zero with up to two decimals.');
       return;
     }
-    if (!EVERY.test(fields.every) || Number(fields.every) < 1) {
+    if ((fields.every === '') === (fields.day === '')) {
+      this.error.set('Give either every N days or a day of the month.');
+      return;
+    }
+    if (fields.every !== '' && (!EVERY.test(fields.every) || Number(fields.every) < 1)) {
       this.error.set('Every must be a whole number of days, at least 1.');
+      return;
+    }
+    if (fields.day !== '' && (!DAY.test(fields.day) || Number(fields.day) < 1 || Number(fields.day) > 31)) {
+      this.error.set('The day of the month must be a whole number from 1 to 31.');
       return;
     }
     if (!DATE.test(fields.start) || !DATE.test(fields.end)) {
@@ -105,6 +119,7 @@ export class Plans {
       this.amount.set('');
       this.start.set('');
       this.every.set('');
+      this.day.set('');
       this.end.set('');
       this.added.emit(plan);
     } catch {

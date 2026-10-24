@@ -4,23 +4,27 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim } from './claims.service';
 
-/** A person's plan: a claim of `amount` on every plan date (the start, then every `every` days) up to
- *  the end, and how many claims it has made so far. */
+/** A person's plan: a claim of `amount` on every plan date (the start, then every `every` days; or,
+ *  monthly, `day` of every month from the start's month, the month's last day when it is shorter, those
+ *  before the start left out) up to the end, and how many claims it has made so far. */
 export interface Plan {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
   generated: number;
 }
 
-/** A plan asked: amount, start and end as typed, the interval in whole days. */
+/** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of
+ *  the month (the other blank). */
 export interface PlanFields {
   amount: string;
   start: string;
   every: string;
+  day: string;
   end: string;
 }
 
@@ -41,7 +45,8 @@ export class PlansService {
     return firstValueFrom(this.http.get<Plan[]>(this.url(sheet), { headers: this.session.headers() }));
   }
 
-  /** Add a plan for the person. Refused (400, 422) when the amount or interval is bad or the end is
+  /** Add a plan for the person. Refused (400, 422) when the amount, interval or day is bad,
+   *  both or neither of interval and day are given, or the end is
    *  before the start. */
   add(sheet: string, personId: number, fields: PlanFields): Promise<Plan> {
     return firstValueFrom(
