@@ -1,0 +1,72 @@
+{
+  "checkpoint": 120,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp120_hold-pauses-cuts",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    115,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp115_nested-pools.spec.ts::nested pools",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "A person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before. The\npool's total share and balance are unchanged by the hold.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before. The\npool's total share and balance are unchanged by the hold.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ff941267cbc679e99ff660bc60e0074cedfcc23a",
+  "reset_sha": "",
+  "preagent_sha": "098fb062598344bbea87f344c365f875ee54c46d",
+  "prev_sha": "098fb062598344bbea87f344c365f875ee54c46d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2367971999999998,
+    "input_tokens": 72,
+    "output_tokens": 16627,
+    "cache_read_tokens": 1863766,
+    "cache_creation_tokens": 66402,
+    "num_turns": 36,
+    "duration_ms": 635795,
+    "duration_api_ms": 253522,
+    "model": "claude-opus-5-5",
+    "session_id": "23891448-8fb4-40c9-a055-c52e4a35f405",
+    "stop_reason": "success",
+    "result_text": "A person on hold today now gets no cut from any pool, and their share goes to the other members. `bin/e2e` passes all 4 tests. I also changed one claim rule outside the request, explained below.\n\n**The hold change** is in `PoolService.java`:\n- A person whose hold covers the sheet's today gets a cut of 0.00, like a retired person.\n- Each other member's cut is the pot times their share, divided by the shares of the members who still get a cut added up. It is rounded half to even, and the remainder still goes to the largest share among them.\n- A pool's total share and balanced flag still count the held person, so the hold doesn't change them.\n- Nested pools pick this up too, since each pool's cut is its pot in the pool below.\n- In the test, Ada (50), Ben (30) and Cam (20) share a pot of 10.00. With Ben on hold, Ada gets 7.14, Cam 2.86 and Ben 0.00. Once today passes Ben's hold, the normal split comes back.\n\nThe stored data and front end needed no changes: holds and their dates are already saved, and the screen shows the cuts the server sends.\n\n**Decision for you: the extra claim rule.** Scenario 3 has no holds, but it failed anyway. It expects moving a claim to another person (\"reassign\") to be refused when the claim is dated 2026-03-05, inside a closed period. The server only refused when the claim's due-by date was in a closed period, and this one was due on 2026-03-27.\n\nI made reassign also refuse when the claim's own date is in a closed period (in `ClaimService.java`). That's the literal reading of the method's own comment (\"refused when it is dated in a closed period\"). It differs from the class-level rule that a claim belongs to the period of its due-by, and from every other claim action, which still checks only the due-by.\n\nThe test's expectation is the only evidence for this reading, so it was a judgement call. Another reading would also pass this test: recompute the due-by from the new person's terms, which lands on 2026-03-10, inside the closed period. If that's the intended rule, I can switch to it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2367971999999998,
+        "num_turns": 36,
+        "duration_ms": 635795,
+        "duration_api_ms": 253522,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp120.agent.jsonl",
+  "agent_diff_file": "cp120.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
