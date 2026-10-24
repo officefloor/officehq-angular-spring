@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -17,6 +18,15 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
     int lastClaimNumber(String id);
+
+    /** The last claim number given on any of the sheets. */
+    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet WHERE id IN (:ids)", nativeQuery = true)
+    int lastClaimNumberIn(Collection<String> ids);
+
+    /** Set the sheet's last claim number. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
+    int setLastClaimNumber(String id, int number);
 
     /** Lock the sheet's row until the transaction ends, so its per-period sequences advance one at a time. */
     @Modifying(flushAutomatically = true)
