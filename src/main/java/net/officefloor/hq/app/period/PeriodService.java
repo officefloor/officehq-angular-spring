@@ -16,7 +16,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
-import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The periods of each sheet: uniquely named, none overlapping another. A period can be closed, which
- * fixes its due-total then, and a steward can reopen it, which makes its due-total live again. */
+ * fixes its due-total then, and a steward (or the roles the permission matrix allows) can reopen it, which makes its due-total live again. */
 @Service
 public class PeriodService {
 
@@ -76,10 +76,14 @@ public class PeriodService {
         return period;
     }
 
-    /** Close the period, fixing its due-total now; refused when it is already closed. */
+    /** Close the period, fixing its due-total now; refused when the user's role may not close (see
+     * {@link SettingsService#allowed}) or it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
         Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (!settings.allowed(sheetId, user, Action.CLOSE)) {
+            throw new PeriodNotStewardException();
+        }
         if (period.isClosed()) {
             throw new PeriodRefusedException("already closed");
         }
@@ -90,12 +94,12 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen the period, making its due-total live again; refused when the user is not a steward of
-     * the sheet or the period is not closed. */
+    /** Reopen the period, making its due-total live again; refused when the user's role may not
+     * reopen (a steward's by default, see {@link SettingsService#allowed}) or the period is not closed. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
         Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+        if (!settings.allowed(sheetId, user, Action.REOPEN)) {
             throw new PeriodNotStewardException();
         }
         if (!period.isClosed()) {
@@ -110,7 +114,7 @@ public class PeriodService {
     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
      * what is due on their claims dated in it that counted by the status each had at the end of the
      * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
-     * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds). */
+     * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds, while the claim is still OPEN or PENDING now). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -125,7 +129,9 @@ public class PeriodService {
         for (Claim claim : dated) {
             Person person = byId.get(claim.getPersonId());
             ClaimStatus status = statusAt(logsOf.getOrDefault(claim.getId(), List.of()), period.getTo());
-            if (person == null || status == null || !RollupService.countsAs(claim, status, person, today)) continue;
+            if (person == null || status == null) continue;
+            boolean counts = claim.getStatus().isOpen() ? RollupService.countsAs(claim, status, person, today) : status.counts();
+            if (!counts) continue;
             BigDecimal figure = rollup.shownOf(claim, person);
             if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
         }

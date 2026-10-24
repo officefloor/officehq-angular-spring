@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,10 +35,18 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule. */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
-            String proofThreshold) {
+            String proofThreshold, Map<String, String> permissions) {
+    }
+
+    /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
+     * the action's standing rule. */
+    public record PermissionRequest(@Size(max = 100) @Pattern(regexp = "\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String value) {
+        String rolesValue() {
+            return value == null ? "" : value.replaceAll("\\s", "");
+        }
     }
 
     /** A value of a dated setting, as text, and the date it is recorded from. */
@@ -174,7 +184,23 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
-                text(service.proofThreshold(sheet)));
+                text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)));
+    }
+
+    private static Map<String, String> permissionsOf(Map<Action, String> matrix) {
+        Map<String, String> byKey = new LinkedHashMap<>();
+        matrix.forEach((action, roles) -> byKey.put(action.key(), roles));
+        return byKey;
+    }
+
+    @PutMapping("/settings/perm/{action}")
+    public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PermissionRequest request) {
+        String sheet = sheetId.trim();
+        service.setPermission(sheet, user.trim(), Action.valueOf(action.toUpperCase(Locale.ROOT)), request.rolesValue());
+        return get(sheet, user);
     }
 
     @PutMapping("/settings/clerk-limit")

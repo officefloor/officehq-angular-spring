@@ -318,7 +318,8 @@ export class Claims {
     this.clearRowError(id);
   }
 
-  /** Change the claim's status; a change its status does not allow, a settle by the user who opened
+  /** Change the claim's status; an open, settle or void the sheet's permission matrix does not allow
+   *  the user's role, a change its status does not allow, a settle by the user who opened
    *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
    *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
    *  a claim whose due is above the clerk limit leaves it PENDING for a steward. A settle or approve of a
@@ -342,9 +343,11 @@ export class Claims {
       this.rowErrors.update((errors) => ({
         ...errors,
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
-          ? action === 'settle'
+          ? action === 'settle' && claim.openedBy === this.session.user()
             ? 'You opened that claim, so another user must settle it.'
-            : `Only a steward${action === 'approve' ? ' who did not open that claim' : ''} can ${action} it.`
+            : action === 'approve' || action === 'reject'
+            ? `Only a steward${action === 'approve' ? ' who did not open that claim' : ''} can ${action} it.`
+            : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 400
           ? 'Type a one-word reason to reject that claim.'
           : e instanceof HttpErrorResponse && e.status === 423
@@ -464,7 +467,7 @@ export class Claims {
       this.rowErrors.update((errors) => ({
         ...errors,
         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
-          ? 'Only a steward can move a claim.'
+          ? 'Your role may not move a claim on this sheet.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : e instanceof HttpErrorResponse && e.status === 422

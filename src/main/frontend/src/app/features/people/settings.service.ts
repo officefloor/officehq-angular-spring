@@ -67,7 +67,14 @@ export interface SheetSettings {
   /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
    *  null when there is none. */
   proofThreshold: string | null;
+  /** The permission matrix as set: for each action, the roles that may take it as a comma separated
+   *  list; blank for the action's standing rule. */
+  permissions: Record<PermAction, string>;
 }
+
+/** The actions the permission matrix decides who may take. */
+export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export type PermAction = (typeof PERM_ACTIONS)[number];
 
 // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
 @Injectable({ providedIn: 'root' })
@@ -89,6 +96,13 @@ export class SettingsService {
         { value, from },
         { headers: this.session.headers() },
       ),
+    );
+  }
+
+  /** Set the roles that may take the action, a comma separated list; blank for its standing rule. */
+  setPermission(sheet: string, action: PermAction, value: string): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/perm/${action}`, { value }, { headers: this.session.headers() }),
     );
   }
 

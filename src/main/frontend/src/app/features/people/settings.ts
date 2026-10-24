@@ -1,11 +1,20 @@
 import { Component, effect, inject, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from './people.service';
 import { Session } from '../../core/session';
-import { Dated, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
+import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const PERM = /^((clerk|steward)\s*(,\s*(clerk|steward)\s*)*)?$/;
+const STANDING: Record<PermAction, string> = {
+  open: 'clerk and steward',
+  settle: 'clerk and steward',
+  void: 'clerk and steward',
+  reassign: 'steward',
+  close: 'clerk and steward',
+  reopen: 'steward',
+};
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
 // limit), its floor (the least a claim's live due can be), its cap (the most a person's due-total
@@ -15,7 +24,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // is settled or approved; blank for none), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
-// a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk).
+// a claim opened is numbered within its period; blank for off), its permission matrix (for each of open,
+// settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
+// for the standing rule) and the role each user name has been given (any other name is a clerk).
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -205,6 +216,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             (off)
           }
         </span>
+        <fieldset>
+          <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
+          @for (a of permActions; track a) {
+            <label [for]="'setting-perm-' + a">Who may {{ a }}</label>
+            <input
+              [id]="'setting-perm-' + a"
+              [attr.data-testid]="'setting-perm-' + a"
+              [value]="permInput()[a]"
+              (input)="setPermInput(a, value($event)); permChanged.add(a); settingsError.set(null)"
+              (keydown)="permChanged.add(a)"
+            />
+            <span>
+              In force: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ perms()[a] }}</span>
+              @if (perms()[a] === '') {
+                ({{ standing[a] }})
+              }
+            </span>
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
@@ -317,6 +347,13 @@ export class Settings {
   /** The policy date saved; null when it is the sheet's today. */
   readonly policyDateSaved = output<string | null>();
 
+  protected readonly permActions = PERM_ACTIONS;
+  protected readonly standing = STANDING;
+  /** The permission matrix as set, by action; blank for the action's standing rule. */
+  protected readonly perms = signal<Record<PermAction, string>>(blankPerms());
+  protected readonly permInput = signal<Record<PermAction, string>>(blankPerms());
+  protected readonly permChanged = new Set<PermAction>();
+
   /** The period numbering from date as set; null when it is off. */
   protected readonly periodNumberingFrom = signal<string | null>(null);
 
@@ -398,6 +435,9 @@ export class Settings {
       this.termsFrom.set('');
       this.latePctFrom.set('');
       this.gradeTermsFrom.set(blankGrades());
+      this.perms.set(blankPerms());
+      this.permInput.set(blankPerms());
+      this.permChanged.clear();
       this.settingsError.set(null);
       this.roleUser.set('');
       this.role.set('');
@@ -424,6 +464,10 @@ export class Settings {
 
   protected setGradeTermsInput(grade: Grade, text: string): void {
     this.gradeTermsInput.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  protected setPermInput(action: PermAction, text: string): void {
+    this.permInput.update((inputs) => ({ ...inputs, [action]: text }));
   }
 
   /** The grade's own terms in force, as text; empty when it uses the sheet's terms. */
@@ -461,6 +505,9 @@ export class Settings {
     const numberingFrom = this.periodNumberingFromInput().trim();
     const saveNumberingFrom =
       this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
+    const perms = PERM_ACTIONS.map((action) => ({ action, text: this.permInput()[action].trim() })).filter(
+      ({ action, text }) => this.permChanged.has(action) || text !== this.perms()[action],
+    );
     const limitFrom = this.limitFrom().trim();
     const floorFrom = this.floorFrom().trim();
     const capFrom = this.capFrom().trim();
@@ -518,6 +565,13 @@ export class Settings {
     }
     if (saveNumberingFrom && numberingFrom !== '' && !DATE.test(numberingFrom)) {
       this.settingsError.set('Type a period numbering from date as YYYY-MM-DD, or leave it blank to turn it off.');
+      return;
+    }
+    const badPerm = perms.find(({ text }) => !PERM.test(text));
+    if (badPerm) {
+      this.settingsError.set(
+        `Type who may ${badPerm.action} as roles (clerk, steward) separated by commas, or leave it blank for the standing rule.`,
+      );
       return;
     }
     this.savingSettings = true;
@@ -602,6 +656,12 @@ export class Settings {
         if (this.periodNumberingFromInput().trim() === numberingFrom) this.periodNumberingFromChanged = false;
         this.show(settings);
       }
+      for (const { action, text } of perms) {
+        const settings = await this.service.setPermission(sheet, action, text);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.permInput()[action].trim() === text) this.permChanged.delete(action);
+        this.show(settings);
+      }
       // Show what is in force in each field, but keep what was typed in one while the save was waiting.
       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
       if (!this.floorChanged) this.floorInput.set(this.floor());
@@ -610,6 +670,7 @@ export class Settings {
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
+      this.showPermInputs();
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
     } catch {
@@ -667,6 +728,7 @@ export class Settings {
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
+        this.showPermInputs();
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       }
@@ -684,7 +746,17 @@ export class Settings {
     });
   }
 
+  /** Show each action's roles as set in its field, but keep what was typed in one since. */
+  private showPermInputs(): void {
+    this.permInput.update((inputs) => {
+      const next = { ...inputs };
+      for (const action of PERM_ACTIONS) if (!this.permChanged.has(action)) next[action] = this.perms()[action];
+      return next;
+    });
+  }
+
   private show(settings: SheetSettings): void {
+    this.perms.set({ ...blankPerms(), ...settings.permissions });
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
     this.cap.set(settings.cap);
@@ -700,4 +772,8 @@ export class Settings {
 
 function blankGrades(): Record<Grade, string> {
   return { A: '', B: '', C: '' };
+}
+
+function blankPerms(): Record<PermAction, string> {
+  return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
 }

@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -105,7 +106,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** Move the claim to {@code next}; refused when its current status does not allow it (a PENDING
+    /** Move the claim to {@code next}; refused when the user's role may not open, settle or void it (see
+     * {@link SettingsService#allowed}), and when its current status does not allow it (a PENDING
      * claim can only be voided here: it is approved or rejected instead). Settling it fixes what is due
      * on it then (the figure it is bound to, when a statement bound it, otherwise its person's rate then)
      * together with its late charge then (none on a correction); the user who opened it cannot settle it,
@@ -116,6 +118,13 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Action action = switch (next) {
+            case OPEN -> Action.OPEN;
+            case SETTLED -> Action.SETTLE;
+            case VOID -> Action.VOID;
+            default -> null;
+        };
+        if (action != null && !settings.allowed(sheetId, user, action)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next) || (claim.getStatus() == ClaimStatus.PENDING && next != ClaimStatus.VOID)) {
             throw new ClaimStatusChangeException();
@@ -234,16 +243,16 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward's move of a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+    /** A move, by a role the permission matrix allows to reassign (a steward by default), of a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
      * number and date, loses any figure a statement bound it to (it is live again until its new
-     * person's next statement), and is listed as its new person's newest claim. Refused when the user
-     * is not a steward, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
+     * person's next statement), and is listed as its new person's newest claim. Refused when the user's
+     * role may not reassign, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
      * own person) or already belongs to the person, when it is dated in a closed period, and when it
      * is dated after the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (!settings.allowed(sheetId, user, Action.REASSIGN)) throw new ClaimNotStewardException();
         refuseClosed(sheetId, claim.getDate());
         ClaimStatus status = claim.getStatus();
         if ((status != ClaimStatus.DRAFT && status != ClaimStatus.OPEN && status != ClaimStatus.PENDING)

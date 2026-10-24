@@ -152,7 +152,8 @@ export class Periods {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** Close the period, fixing its due-total; closing one already closed is refused with an error. */
+  /** Close the period, fixing its due-total; closing one already closed, or a close the
+   * sheet's permission matrix does not allow the user's role, is refused with an error. */
   protected async close(period: Period): Promise<void> {
     this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
     const sheet = this.session.sheetId();
@@ -160,14 +161,20 @@ export class Periods {
     try {
       const closed = await this.service.close(sheet, period.id);
       if (this.session.sheetId() === sheet) this.closed.emit(closed);
-    } catch {
+    } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      this.rowErrors.update((errors) => ({ ...errors, [period.id]: 'That period could not be closed.' }));
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [period.id]:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not close a period on this sheet.'
+            : 'That period could not be closed.',
+      }));
     }
   }
 
-  /** Reopen the period, making its due-total live again; refused with an error unless the user is a
-   * steward and the period is closed. */
+  /** Reopen the period, making its due-total live again; refused with an error unless the
+   * permission matrix allows the user's role (a steward's by default) and the period is closed. */
   protected async reopen(period: Period): Promise<void> {
     this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
     const sheet = this.session.sheetId();
@@ -181,7 +188,7 @@ export class Periods {
         ...errors,
         [period.id]:
           e instanceof HttpErrorResponse && e.status === 403
-            ? 'Only a steward can reopen a period.'
+            ? 'Your role may not reopen a period on this sheet.'
             : 'That period could not be reopened.',
       }));
     }

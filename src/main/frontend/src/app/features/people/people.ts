@@ -741,10 +741,13 @@ export class People {
   }
 
   /** Whether the claim counts in a period ending on `end`: by the status it had at the end of
-   *  that day (a claim added after does not count), otherwise as the live rules say. */
+   *  that day (a claim added after does not count), otherwise as the live rules say while it is still
+   *  open now (a claim since settled or voided is left out by no hold or deferral). */
   private countsAtEnd(claim: Claim, person: Person, end: string): boolean {
     const status = statusOn(claim, end);
-    return status !== null && this.countsAs(claim, status, person);
+    if (status === null) return false;
+    if (!isOpen(claim)) return counts({ ...claim, status });
+    return this.countsAs(claim, status, person);
   }
 
   protected claimedOf(person: Person): string {

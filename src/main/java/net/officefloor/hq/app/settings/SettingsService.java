@@ -3,9 +3,13 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -24,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
  * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null).
  * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent and the proof threshold)
  * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date and the
- * period numbering from are not. */
+ * period numbering from are not. Its permission matrix, also not dated, gives for each {@link Action}
+ * the roles that may take it; a blank entry keeps the action's standing rule. */
 @Service
 public class SettingsService {
 
@@ -33,12 +38,14 @@ public class SettingsService {
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
     private final SheetSettingRepository settings;
+    private final SheetPermissionRepository permissions;
     private final DatedSettings dated;
     private final RollupService rollup;
     private final Audit audit;
 
     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
-            DatedSettings dated, RollupService rollup, Audit audit) {
+            SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup, Audit audit) {
+        this.permissions = permissions;
         this.sheets = sheets;
         this.roles = roles;
         this.settings = settings;
@@ -71,6 +78,48 @@ public class SettingsService {
         }
         audit.change("ROLE_SET", sheetId, by, "user=" + user, "role=" + role.name().toLowerCase());
         return given;
+    }
+
+    /** The sheet's permission matrix as set: for each action, the roles that may take it as a comma
+     * separated list, blank for its standing rule. */
+    @Transactional(readOnly = true)
+    public Map<Action, String> permissions(String sheetId) {
+        Map<Action, String> matrix = new EnumMap<>(Action.class);
+        for (Action action : Action.values()) matrix.put(action, "");
+        for (SheetPermission set : permissions.findBySheetId(sheetId)) matrix.put(set.getAction(), set.getRoles());
+        return matrix;
+    }
+
+    /** Whether the user's role on the sheet may take {@code action}: one of the roles the matrix lists
+     * for it, or of its standing rule when the matrix leaves it blank. */
+    @Transactional(readOnly = true)
+    public boolean allowed(String sheetId, String user, Action action) {
+        String listed = permissions.findBySheetIdAndAction(sheetId, action).map(SheetPermission::getRoles).orElse("");
+        Set<Role> may = listed.isBlank() ? action.standing() : rolesOf(listed);
+        return may.contains(roleOf(sheetId, user));
+    }
+
+    /** Set the roles that may take {@code action} on the sheet: a comma separated list of roles, or blank
+     * for its standing rule. */
+    @Transactional
+    public void setPermission(String sheetId, String by, Action action, String roles) {
+        if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+        SheetPermission set = permissions.findBySheetIdAndAction(sheetId, action).orElse(null);
+        if (set == null) {
+            permissions.save(new SheetPermission(sheetId, action, roles));
+        } else {
+            set.setRoles(roles);
+        }
+        permissions.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=perm-" + action.key(), "value=" + roles);
+    }
+
+    private static Set<Role> rolesOf(String listed) {
+        Set<Role> roles = EnumSet.noneOf(Role.class);
+        for (String role : listed.split(",")) {
+            if (!role.isBlank()) roles.add(Role.valueOf(role.trim().toUpperCase(Locale.ROOT)));
+        }
+        return roles;
     }
 
     /** The clerk limit in force on the sheet's today; null when there is none. */
