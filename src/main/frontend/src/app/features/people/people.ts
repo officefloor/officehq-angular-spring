@@ -56,6 +56,28 @@ import { Statement, StatementsService } from './statements.service';
         }
       </form>
 
+      <form (submit)="quickAdd($event)" aria-label="Quick add a claim" data-testid="quick-form">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add claim</button>
+        @if (quickError(); as message) {
+          <p role="alert" class="error" data-testid="quick-error">{{ message }}</p>
+        }
+      </form>
+
       @if (people().length === 0) {
         <p data-testid="home-empty">Nothing here yet.</p>
       } @else {
@@ -220,6 +242,11 @@ export class People {
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  /** A quick-add is waiting for its answer; another meanwhile is ignored. */
+  private quickAdding = false;
   private readonly sheet = computed(() => this.session.sheetId());
 
   constructor() {
@@ -234,6 +261,9 @@ export class People {
       this.periods.set([]);
       this.rowErrors.set({});
       this.reset();
+      this.quickName.set('');
+      this.quickAmount.set('');
+      this.quickError.set(null);
       if (sheet) void this.read(sheet);
     });
   }
@@ -398,6 +428,40 @@ export class People {
       this.error.set(id === null ? 'That person could not be added.' : 'That person could not be saved.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Add a DRAFT claim for the named person, adding them (grade A) first when the name is new. */
+  protected async quickAdd(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const name = this.quickName();
+    if (!name.trim()) {
+      this.quickError.set('Type a name for the claim.');
+      return;
+    }
+    this.quickAdding = true;
+    try {
+      const added = await this.service.quickAdd(sheet, name, this.quickAmount());
+      if (this.sheet() !== sheet) return;
+      this.people.update((list) =>
+        list.some((p) => p.id === added.person.id) ? list : [...list, added.person],
+      );
+      this.claimSaved(added.claim);
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (e) {
+      if (this.sheet() !== sheet) return;
+      this.quickError.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim falls in a closed period.'
+          : 'That claim could not be added.',
+      );
+    } finally {
+      this.quickAdding = false;
     }
   }
 

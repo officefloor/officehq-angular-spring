@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim } from './claims.service';
 
 export type Grade = 'A' | 'B' | 'C';
 
@@ -13,6 +14,13 @@ export interface Person {
   grade: Grade;
   /** Raised each time the person is saved. */
   version: number;
+}
+
+/** What a quick-add made: the person the claim is for (added just now when the name was new) and
+ *  the DRAFT claim. */
+export interface QuickAdded {
+  person: Person;
+  claim: Claim;
 }
 
 export interface PersonFields {
@@ -43,6 +51,16 @@ export class PeopleService {
   update(sheet: string, id: number, version: number, fields: PersonFields): Promise<Person> {
     return firstValueFrom(
       this.http.put<Person>(`${this.url(sheet)}/${id}`, { ...fields, version }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Add a DRAFT claim of `amount`, dated the sheet's today, for the person named `name`, adding
+   *  them with grade A first when no one on the sheet has that name; all or nothing. */
+  quickAdd(sheet: string, name: string, amount: string): Promise<QuickAdded> {
+    return firstValueFrom(
+      this.http.post<QuickAdded>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, {
         headers: this.session.headers(),
       }),
     );
