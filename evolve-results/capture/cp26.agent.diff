@@ -1,0 +1,675 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 42c56840..b56758eb 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
+ import { Claim, ClaimAction, ClaimsService, dueByOf, money, overdue } from './claims.service';
+ import { Grade } from './people.service';
+ import { Period, periodOn } from './periods.service';
+-import { Rate, claimDueCents } from './rates.service';
++import { Rate, claimShownCents } from './rates.service';
+ 
+ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+ 
+@@ -126,6 +126,8 @@ export class Claims {
+   readonly periods = input.required<Period[]>();
+   /** The sheet's terms, in days: how long after its date a claim is due by. */
+   readonly terms = input.required<number>();
++  /** The sheet's late percent, with two decimals. */
++  readonly latePct = input.required<string>();
+   /** A claim was added or saved. */
+   readonly saved = output<Claim>();
+ 
+@@ -153,10 +155,12 @@ export class Claims {
+   }
+ 
+   /** What is due on the claim at the person's rate in force on the claim's date; n/a when no rate of
+-   *  their grade applies then; never below the sheet's floor. A claim settled
+-   *  at a rate keeps what was due on it then; one settled without a rate fixed nothing. */
++   *  their grade applies then; never below the sheet's floor; with its late charge added while it is
++   *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
++   *  fixed nothing. */
+   protected dueOf(claim: Claim): string {
+-    const due = claimDueCents(claim, this.rates(), this.grade(), this.floor());
++    const late = { terms: this.terms(), today: this.session.today(), latePct: this.latePct() };
++    const due = claimShownCents(claim, this.rates(), this.grade(), this.floor(), late);
+     return due === null ? 'n/a' : money(due);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 710192c1..c3a42f8d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,9 +7,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+-import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
++import { Lateness, Rate, RatesService, claimShownCents, rateOn } from './rates.service';
+ import { Settings } from './settings';
+-import { FLOOR_CENTS, SettingsService, TERMS_DAYS } from './settings.service';
++import { FLOOR_CENTS, LATE_PCT, SettingsService, TERMS_DAYS } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+ 
+ // The people on the active sheet, in the order they were added, and the form that adds a person
+@@ -24,12 +24,17 @@ import { Statement, StatementsService } from './statements.service';
+ // their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
+ // A claim is due by its date plus the sheet's terms; an OPEN one due by a date before the sheet's
+ // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
+-// what is due on them.
++// what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
++// full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
+ @Component({
+   selector: 'app-people',
+   imports: [Claims, Periods, Rates, Settings],
+   template: `
+-    <app-settings (floorSaved)="floor.set($event)" (termsSaved)="terms.set($event)" />
++    <app-settings
++      (floorSaved)="floor.set($event)"
++      (termsSaved)="terms.set($event)"
++      (latePctSaved)="latePct.set($event)"
++    />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
+     <section aria-labelledby="people-heading">
+@@ -144,6 +149,7 @@ import { Statement, StatementsService } from './statements.service';
+                     [floor]="floor()"
+                     [periods]="periods()"
+                     [terms]="terms()"
++                    [latePct]="latePct()"
+                     (saved)="claimSaved($event)"
+                   />
+                 </td>
+@@ -284,6 +290,14 @@ export class People {
+   protected readonly floor = signal(FLOOR_CENTS);
+   /** The sheet's terms, in days: how long after its date a claim is due by. */
+   protected readonly terms = signal(TERMS_DAYS);
++  /** The sheet's late percent, with two decimals. */
++  protected readonly latePct = signal(LATE_PCT);
++  /** What the claims' late charges are worked from. */
++  private readonly lateness = computed<Lateness>(() => ({
++    terms: this.terms(),
++    today: this.session.today(),
++    latePct: this.latePct(),
++  }));
+   /** The sheet's periods. */
+   protected readonly periods = signal<Period[]>([]);
+   /** Each period's due-total, by name: what is due on the OPEN and SETTLED claims dated in it, as
+@@ -296,7 +310,7 @@ export class People {
+         if (!this.countsLive(c, person)) continue;
+         const period = periodOn(this.periods(), c.date);
+         if (period === null) continue;
+-        sums[period.name] += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
++        sums[period.name] += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
+       }
+     }
+     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+@@ -341,6 +355,7 @@ export class People {
+       this.rates.set([]);
+       this.floor.set(FLOOR_CENTS);
+       this.terms.set(TERMS_DAYS);
++      this.latePct.set(LATE_PCT);
+       this.statements.set([]);
+       this.periods.set([]);
+       this.rowErrors.set({});
+@@ -476,7 +491,7 @@ export class People {
+     let any = false;
+     for (const c of this.claimsOf(person.id)) {
+       if (!this.countsLive(c, person)) continue;
+-      const due = claimDueCents(c, this.rates(), person.grade, this.floor());
++      const due = claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness());
+       if (due === null) continue;
+       sum += due;
+       any = true;
+@@ -493,7 +508,7 @@ export class People {
+     for (const c of this.claimsOf(person.id)) {
+       if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
+       count++;
+-      sum += claimDueCents(c, this.rates(), person.grade, this.floor()) ?? 0;
++      sum += claimShownCents(c, this.rates(), person.grade, this.floor(), this.lateness()) ?? 0;
+     }
+     return { count, cents: sum };
+   }
+@@ -646,6 +661,7 @@ export class People {
+       if (this.sheet() === sheet) {
+         this.floor.set(cents(settings.floor));
+         this.terms.set(settings.terms);
++        this.latePct.set(settings.latePct);
+         this.rates.set(rates);
+         this.periods.set(periods);
+         this.statements.set(statements);
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index d5263529..2499c824 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, cents } from './claims.service';
++import { Claim, cents, dueByOf } from './claims.service';
+ import { Grade } from './people.service';
+ 
+ export interface Rate {
+@@ -49,6 +49,37 @@ export function claimDueCents(claim: Claim, rates: Rate[], grade: Grade, floorCe
+   return due === null ? null : Math.max(due, floorCents);
+ }
+ 
++/** What a late charge is worked from: the sheet's terms, in days, its today, and its late percent
++ *  with two decimals. */
++export interface Lateness {
++  terms: number;
++  today: string | null;
++  latePct: string;
++}
++
++/** The late charge on a claim whose figure is figureCents, in cents: the late percent of that figure
++ *  for every full 30 days the claim is overdue (OPEN, and past its due-by on the sheet's today),
++ *  rounded like a due; 0 on any other claim. A statement never binds it; settling fixes it in. */
++export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness): number {
++  if (claim.status !== 'OPEN' || late.today === null) return 0;
++  const days = (Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000;
++  const periods = Math.max(0, Math.floor(days / 30));
++  return dueCents(figureCents * periods, late.latePct) ?? 0;
++}
++
++/** What is due on a claim as it shows and totals, in cents: its figure (see claimDueCents) plus its
++ *  late charge; null when it has no figure. */
++export function claimShownCents(
++  claim: Claim,
++  rates: Rate[],
++  grade: Grade,
++  floorCents: number,
++  late: Lateness,
++): number | null {
++  const figure = claimDueCents(claim, rates, grade, floorCents);
++  return figure === null ? null : figure + lateChargeCents(claim, figure, late);
++}
++
+ // The rates of the grades on a sheet, read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class RatesService {
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 97eac7c6..9a165d5e 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -19,6 +19,9 @@ export const FLOOR_CENTS = 100;
+ /** The terms a sheet starts with, in days. */
+ export const TERMS_DAYS = 14;
+ 
++/** The late percent a sheet starts with. */
++export const LATE_PCT = '0.00';
++
+ export interface SheetSettings {
+   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
+   clerkLimit: string | null;
+@@ -26,11 +29,14 @@ export interface SheetSettings {
+   floor: string;
+   /** How many days after its date a claim is due by. */
+   terms: number;
++  /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue,
++   *  with two decimals. */
++  latePct: string;
+   /** The roles given on the sheet, by user name. */
+   roles: RoleGiven[];
+ }
+ 
+-// The settings of a sheet (its roles, its clerk limit, its floor and its terms), read from and written to the server.
++// The settings of a sheet (its roles, its clerk limit, its floor, its terms and its late percent), read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsService {
+   private readonly http = inject(HttpClient);
+@@ -65,6 +71,12 @@ export class SettingsService {
+     );
+   }
+ 
++  setLatePct(sheet: string, value: string): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/late-pct`, { value }, { headers: this.session.headers() }),
++    );
++  }
++
+   setRole(sheet: string, user: string, role: Role): Promise<RoleGiven> {
+     return firstValueFrom(
+       this.http.put<RoleGiven>(
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 77e75e61..31275048 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -8,7 +8,8 @@ const TERMS = /^\d{1,4}$/;
+ 
+ // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
+ // limit), its floor (the least a claim's live due can be), its terms (how many days after its date
+-// a claim is due by) and the role each user name has been given (any other name is a clerk). Read from the
++// a claim is due by), its late percent (the percent of its figure an overdue claim's due gains for
++// every full 30 days it is overdue) and the role each user name has been given (any other name is a clerk). Read from the
+ // store every time a sheet is loaded. Saving the settings saves only the fields changed since
+ // they were last saved.
+ @Component({
+@@ -24,6 +25,7 @@ const TERMS = /^\d{1,4}$/;
+           inputmode="decimal"
+           [value]="limit()"
+           (input)="limit.set(value($event)); limitChanged = true; settingsError.set(null)"
++          (keydown)="limitChanged = true"
+         />
+         <span>
+           In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
+@@ -38,6 +40,7 @@ const TERMS = /^\d{1,4}$/;
+           inputmode="decimal"
+           [value]="floorInput()"
+           (input)="floorInput.set(value($event)); floorChanged = true; settingsError.set(null)"
++          (keydown)="floorChanged = true"
+         />
+         <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
+         <label for="setting-terms">Terms (days)</label>
+@@ -47,8 +50,19 @@ const TERMS = /^\d{1,4}$/;
+           inputmode="numeric"
+           [value]="termsInput()"
+           (input)="termsInput.set(value($event)); termsChanged = true; settingsError.set(null)"
++          (keydown)="termsChanged = true"
+         />
+         <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
++        <label for="setting-late-pct">Late percent</label>
++        <input
++          id="setting-late-pct"
++          data-testid="setting-late-pct"
++          inputmode="decimal"
++          [value]="latePctInput()"
++          (input)="latePctInput.set(value($event)); latePctChanged = true; settingsError.set(null)"
++          (keydown)="latePctChanged = true"
++        />
++        <span>In force: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></span>
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as message) {
+           <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
+@@ -141,19 +155,26 @@ export class Settings {
+   protected readonly given = signal<RoleGiven[]>([]);
+   /** The terms in force, in days, as text; empty until read. */
+   protected readonly terms = signal('');
++  /** The late percent in force, with two decimals; empty until read. */
++  protected readonly latePct = signal('');
+   /** The floor saved, in cents. */
+   readonly floorSaved = output<number>();
+   /** The terms saved, in days. */
+   readonly termsSaved = output<number>();
++  /** The late percent saved, with two decimals. */
++  readonly latePctSaved = output<string>();
+ 
+   protected readonly limit = signal('');
+   protected readonly floorInput = signal('');
+   protected readonly termsInput = signal('');
+-  /** Whether each field was typed in since the settings were last loaded or saved; a field is saved
+-   *  when it was, or when it differs from the value in force. */
++  protected readonly latePctInput = signal('');
++  /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
++   *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
++   *  from the value in force. */
+   protected limitChanged = false;
+   protected floorChanged = false;
+   protected termsChanged = false;
++  protected latePctChanged = false;
+   protected readonly settingsError = signal<string | null>(null);
+   protected readonly roleUser = signal('');
+   protected readonly role = signal('');
+@@ -176,6 +197,9 @@ export class Settings {
+       this.limitChanged = false;
+       this.floorChanged = false;
+       this.termsChanged = false;
++      this.latePct.set('');
++      this.latePctInput.set('');
++      this.latePctChanged = false;
+       this.settingsError.set(null);
+       this.roleUser.set('');
+       this.role.set('');
+@@ -200,6 +224,8 @@ export class Settings {
+     const saveFloor = this.floorChanged || floor !== this.floor();
+     const terms = this.termsInput().trim();
+     const saveTerms = this.termsChanged || terms !== this.terms();
++    const latePct = this.latePctInput().trim();
++    const saveLatePct = this.latePctChanged || latePct !== this.latePct();
+     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -212,6 +238,10 @@ export class Settings {
+       this.settingsError.set('Type terms as a whole number of days, 0 or more.');
+       return;
+     }
++    if (saveLatePct && !LIMIT.test(latePct)) {
++      this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
++      return;
++    }
+     this.savingSettings = true;
+     try {
+       if (saveLimit) {
+@@ -234,9 +264,17 @@ export class Settings {
+         this.show(settings);
+         this.termsSaved.emit(settings.terms);
+       }
++      if (saveLatePct) {
++        const settings = await this.service.setLatePct(sheet, latePct);
++        if (this.session.sheetId() !== sheet) return;
++        this.latePctChanged = false;
++        this.show(settings);
++        this.latePctSaved.emit(settings.latePct);
++      }
+       this.limit.set(this.clerkLimit() ?? '');
+       this.floorInput.set(this.floor());
+       this.termsInput.set(this.terms());
++      this.latePctInput.set(this.latePct());
+     } catch {
+       this.settingsError.set('Those settings could not be saved.');
+     } finally {
+@@ -284,6 +322,7 @@ export class Settings {
+         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
+         if (!this.floorChanged) this.floorInput.set(settings.floor);
+         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
++        if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
+       }
+     } catch {
+       // The settings could not be read; they show as none.
+@@ -294,6 +333,7 @@ export class Settings {
+     this.clerkLimit.set(settings.clerkLimit);
+     this.floor.set(settings.floor);
+     this.terms.set(String(settings.terms));
++    this.latePct.set(settings.latePct);
+     this.given.set(settings.roles);
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3f129d7e..7991c8f8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -83,7 +83,7 @@ public class ClaimService {
+ 
+     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
+      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
+-     * its person's rate then); the user who opened it cannot settle it, and a clerk cannot settle it when
++     * its person's rate then) together with its late charge then; the user who opened it cannot settle it, and a clerk cannot settle it when
+      * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
+      * if it had one. */
+     @Transactional
+@@ -101,7 +101,8 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         if (next == ClaimStatus.SETTLED) {
+-            BigDecimal due = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
++            BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
++            BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+             refuseOverLimit(sheetId, user, due);
+             claim.setSettledDue(due);
+         }
+@@ -124,12 +125,18 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** The figure the claim shows and totals now; null when it has no figure (see
+-     * {@link RollupService#figureOf}). */
++    /** The figure the claim shows and totals now, without its late charge; null when it has no figure
++     * (see {@link RollupService#figureOf}). */
+     public BigDecimal figureOf(Claim claim, Person person) {
+         return rollup.figureOf(claim, person);
+     }
+ 
++    /** What is due on the claim as it shows and totals now, its late charge included; null when it has
++     * no figure (see {@link RollupService#shownOf}). */
++    public BigDecimal shownOf(Claim claim, Person person) {
++        return rollup.shownOf(claim, person);
++    }
++
+     /** Record a change to the claim; {@code number}, the number it has (or had), follows when there is one,
+      * then any {@code extra} fields. */
+     private void record(String event, String user, Person person, Claim claim, Integer number, String... extra) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 198366fa..4b6d0ba9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -79,7 +79,8 @@ public class PeriodService {
+         return period;
+     }
+ 
+-    /** The due-total of the period now: the sum of the figures of the counting claims dated in it (a
++    /** The due-total of the period now: the sum of what is due on the counting claims dated in it, as
++     * each shows it, late charges included (a
+      * claim with no figure adds nothing, nor does an OPEN claim of a person on hold). */
+     private BigDecimal dueTotalOf(Period period) {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
+@@ -89,7 +90,7 @@ public class PeriodService {
+             if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
+             Person person = byId.get(claim.getPersonId());
+             if (person == null || !RollupService.countsLive(claim, person)) continue;
+-            BigDecimal figure = rollup.figureOf(claim, person);
++            BigDecimal figure = rollup.shownOf(claim, person);
+             if (figure != null) total = total.add(figure);
+         }
+         return total;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 151b6974..f7396e35 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -24,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * The figures each person on a sheet shows — what they have claimed (their OPEN and SETTLED claims,
+  * leaving out the OPEN ones while they are on hold)
+- * and their due-total (the sum of those claims' figures, n/a when none has a figure and no rate of
++ * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
+  * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
+  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
+  * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
+@@ -74,7 +75,7 @@ public class RollupService {
+             for (Claim claim : all) {
+                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) continue;
+                 claimed = claimed.add(claim.getAmount());
+-                BigDecimal figure = figureOf(claim, person);
++                BigDecimal figure = shownOf(claim, person);
+                 if (figure == null) continue;
+                 due = due.add(figure);
+                 any = true;
+@@ -119,6 +120,27 @@ public class RollupService {
+         return dueOf(claim, person);
+     }
+ 
++    /** What is due on the claim as it shows and totals now: its figure, plus its late charge; null when
++     * it has no figure. */
++    public BigDecimal shownOf(Claim claim, Person person) {
++        BigDecimal figure = figureOf(claim, person);
++        return figure == null ? null : figure.add(lateChargeOf(claim, figure));
++    }
++
++    /** The late charge on an OPEN claim whose figure is {@code figure}: the sheet's late percent of that
++     * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
++     * terms, on the sheet's today), rounded half to even to two decimals; 0.00 on a claim not OPEN or
++     * not overdue. A statement never binds it: it follows the sheet's today until the claim is settled. */
++    public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
++        if (claim.getStatus() != ClaimStatus.OPEN) return zero();
++        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
++        if (sheet == null) return zero();
++        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
++        long periods = Math.max(0, ChronoUnit.DAYS.between(dueBy, sheet.getToday())) / 30;
++        return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
++                .setScale(2, RoundingMode.HALF_EVEN);
++    }
++
+     /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
+      * divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when no
+      * rate of their grade applies then. */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 7431a355..91b0c513 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** A sheet's settings: its roles, its clerk limit, its floor and its terms. The signed-in user's name travels in the
++/** A sheet's settings: its roles, its clerk limit, its floor, its terms and its late percent. The signed-in user's name travels in the
+  * {@code X-User} header. */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}")
+@@ -31,8 +31,8 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days. */
+-    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {
++    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the late percent as text with two decimals. */
++    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {
+     }
+ 
+     /** A role: clerk or steward. */
+@@ -63,6 +63,13 @@ public class SettingsController {
+         }
+     }
+ 
++    /** A late percent: 0.00 or more, with up to two decimals. */
++    public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
++        BigDecimal latePctValue() {
++            return new BigDecimal(value.trim()).setScale(2);
++        }
++    }
++
+     private final SettingsService service;
+ 
+     public SettingsController(SettingsService service) {
+@@ -74,7 +81,7 @@ public class SettingsController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         String sheet = sheetId.trim();
+         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
+-                service.roles(sheet).stream().map(RoleView::of).toList());
++                text(service.latePct(sheet)), service.roles(sheet).stream().map(RoleView::of).toList());
+     }
+ 
+     @PutMapping("/settings/clerk-limit")
+@@ -104,6 +111,15 @@ public class SettingsController {
+         return get(sheet, user);
+     }
+ 
++    @PutMapping("/settings/late-pct")
++    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid LatePctRequest request) {
++        String sheet = sheetId.trim();
++        service.setLatePct(sheet, user.trim(), request.latePctValue());
++        return get(sheet, user);
++    }
++
+     @PutMapping("/roles/{name}")
+     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @NotBlank @Size(max = 100) String name,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 6269257c..6b5499c7 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
+  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
+- * live due can be, and its terms, how many days after its date a claim is due by. */
++ * live due can be, and its terms, how many days after its date a claim is due by, and its late percent, the
++ * percent of its figure an overdue claim's due gains for every full 30 days it is overdue. */
+ @Service
+ public class SettingsService {
+ 
+@@ -104,4 +105,22 @@ public class SettingsService {
+         audit.change("SETTING_CHANGED", sheetId, by, "key=terms", "value=" + terms);
+         return sheet;
+     }
++
++    /** The sheet's late percent. */
++    @Transactional(readOnly = true)
++    public BigDecimal latePct(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getLatePct).orElseThrow(SheetNotFoundException::new);
++    }
++
++    /** Set the sheet's late percent; the late charges, and so the figures, follow it. */
++    @Transactional
++    public Sheet setLatePct(String sheetId, String by, BigDecimal latePct) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        sheet.setLatePct(latePct);
++        sheets.flush();
++        audit.change("SETTING_CHANGED", sheetId, by, "key=late-pct", "value=" + latePct.toPlainString());
++        rollup.recordSince(sheetId, by, before);
++        return sheet;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index cb043a68..e561865d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -38,6 +38,10 @@ public class Sheet {
+     @Column(name = "terms", nullable = false)
+     private int terms = 14;
+ 
++    /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue. */
++    @Column(name = "late_pct", nullable = false, precision = 12, scale = 2)
++    private BigDecimal latePct = new BigDecimal("0.00");
++
+     protected Sheet() {
+     }
+ 
+@@ -91,4 +95,12 @@ public class Sheet {
+     public void setTerms(int terms) {
+         this.terms = terms;
+     }
++
++    public BigDecimal getLatePct() {
++        return latePct;
++    }
++
++    public void setLatePct(BigDecimal latePct) {
++        this.latePct = latePct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2b7bc146..ca8e7d79 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -16,8 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The statements taken of the people on each sheet. Taking one binds each of the person's claims that
+- * counts (OPEN or SETTLED) to the figure it shows then, and leaves each that does not count unbound;
+- * it records the person's due-total then: the sum of those figures (a claim with none is skipped).
++ * counts (OPEN or SETTLED, but not OPEN while they are on hold) to the figure it shows then, and leaves
++ * each that does not count unbound;
++ * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
++ * charges included (a claim with no figure is skipped). A late charge is never bound: it keeps following
++ * the sheet's today.
+  */
+ @Service
+ public class StatementService {
+@@ -59,13 +62,13 @@ public class StatementService {
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+         int counted = 0;
+         for (Claim claim : theirs) {
+-            if (!claim.getStatus().counts()) {
++            if (!RollupService.countsLive(claim, person)) {
+                 claim.unbind();
+                 continue;
+             }
+-            BigDecimal figure = claimService.figureOf(claim, person);
+-            claim.bind(figure);
+-            if (figure != null) total = total.add(figure);
++            BigDecimal due = claimService.shownOf(claim, person);
++            claim.bind(claimService.figureOf(claim, person));
++            if (due != null) total = total.add(due);
+             counted++;
+         }
+         claims.flush();
+diff --git a/src/main/resources/db/migration/V23__sheet_late_pct.sql b/src/main/resources/db/migration/V23__sheet_late_pct.sql
+new file mode 100644
+index 00000000..879dbc1a
+--- /dev/null
++++ b/src/main/resources/db/migration/V23__sheet_late_pct.sql
+@@ -0,0 +1,3 @@
++-- The sheet's late percent: an overdue claim's due gains this percent of its figure for every full
++-- 30 days it is overdue. A settled claim keeps the charge it had when it was settled.
++ALTER TABLE sheet ADD COLUMN late_pct DECIMAL(12, 2) DEFAULT 0.00 NOT NULL CHECK (late_pct >= 0);
