@@ -64,12 +64,17 @@ public class SheetService {
     }
 
     /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
-     * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change. */
+     * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change.
+     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
-        if (!today.equals(sheet.getToday())) claims.unlockBySheetId(id);
+        if (!today.equals(sheet.getToday())) {
+            before.people().values().forEach(figures -> audit.change("SNAPSHOT", id, user,
+                    "name=" + figures.name(), "due-total=" + figures.dueTotal()));
+            claims.unlockBySheetId(id);
+        }
         sheet.setToday(today);
         sheets.flush();
         periods.closeOverdue(id, user);
