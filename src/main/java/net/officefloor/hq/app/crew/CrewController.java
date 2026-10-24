@@ -27,10 +27,11 @@ public class CrewController {
         }
     }
 
-    /** A crew: its id, name, lead and members. */
+    /** A crew: its id, name, lead (null once the lead has left the sheet) and members. */
     public record CrewView(long id, String name, MemberView lead, List<MemberView> members) {
         static CrewView of(CrewService.Crewed c) {
-            return new CrewView(c.crew().getId(), c.crew().getName(), MemberView.of(c.lead()),
+            return new CrewView(c.crew().getId(), c.crew().getName(),
+                    c.lead() == null ? null : MemberView.of(c.lead()),
                     c.members().stream().map(MemberView::of).toList());
         }
     }

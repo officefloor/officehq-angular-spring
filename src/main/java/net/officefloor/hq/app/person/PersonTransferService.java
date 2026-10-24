@@ -36,8 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
  * next number of the other sheet, in the order the claims were opened (by the sheet's today when each was
  * opened, then by the order they were added). Figures a statement bound are kept, and their statements go
  * with them (as a merge carries them, when they are merged into one already there); references are not
- * carried. The person leaves this sheet entirely: their holds, patron links, pool memberships, crew memberships, the crews they lead
- * and watches are dropped.
+ * carried. The person leaves this sheet entirely: their holds, patron links, pool memberships, crew memberships and
+ * watches are dropped, and the crews they lead are kept without a lead.
  */
 @Service
 public class PersonTransferService {

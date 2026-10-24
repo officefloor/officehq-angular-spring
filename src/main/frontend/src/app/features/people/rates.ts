@@ -122,6 +122,29 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           }
         </tbody>
       </table>
+      @if (months().length > 0) {
+        <table data-testid="rate-calendar">
+          <caption>Rate on the first of each month of {{ (months()[0].slice(0, 4)) | figure }}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of months(); track m) {
+                <th scope="col">{{ (m) | figure }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of grades; track g) {
+              <tr>
+                <th scope="row">{{ (g) | figure }}</th>
+                @for (m of months(); track m) {
+                  <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (monthOf(g, m) ?? 'n/a') | figure }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       @if (sorted().length > 0) {
         <table data-testid="rate-history">
           <caption>All rates</caption>
@@ -188,6 +211,11 @@ export class Rates {
       (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
     ),
   );
+  /** Each month (YYYY-MM) of the calendar year of the sheet's today; none until today is read. */
+  protected readonly months = computed(() => {
+    const year = this.session.today()?.slice(0, 4);
+    return year ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) : [];
+  });
   /** A grade's rate was set. */
   readonly saved = output<Rate>();
 
@@ -224,6 +252,11 @@ export class Rates {
   protected currentOf(grade: Grade): string | null {
     const today = this.session.today();
     return today === null ? null : rateOn(this.rates(), grade, today);
+  }
+
+  /** The grade's rate in force on the first day of a month (YYYY-MM). */
+  protected monthOf(grade: Grade, month: string): string | null {
+    return rateOn(this.rates(), grade, month + '-01');
   }
 
   protected async submit(event: Event): Promise<void> {

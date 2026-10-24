@@ -1188,7 +1188,7 @@ export class People {
   protected readonly myCrewDueTotal = computed(() => {
     const me = this.me();
     if (!me) return '';
-    const led = this.crewsService.crews().filter((c) => c.lead.personId === me.id);
+    const led = this.crewsService.crews().filter((c) => c.lead?.personId === me.id);
     if (led.length === 0) return '';
     const due = this.dueCentsById();
     return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));

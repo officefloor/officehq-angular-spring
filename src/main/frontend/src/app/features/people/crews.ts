@@ -37,7 +37,7 @@ import { FigurePipe } from '../../core/figure.pipe';
         <div class="crew" [attr.data-testid]="'crew-row-' + crew.name">
           <h3>{{ (crew.name) | figure }}</h3>
           <p>
-            Lead <span data-testid="crew-lead">{{ (crew.lead.name) | figure }}</span>,
+            Lead <span data-testid="crew-lead">{{ (crew.lead?.name ?? '') | figure }}</span>,
             due-total <span data-testid="crew-due-total">{{ (dueTotalOf(crew)) | figure }}</span>
           </p>
           @if (crew.members.length > 0) {
@@ -177,7 +177,7 @@ export class Crews {
       this.setMemberError(crew.id, 'Choose a person.');
       return;
     }
-    if (crew.lead.personId === personId) {
+    if (crew.lead?.personId === personId) {
       this.setMemberError(crew.id, 'That person leads the crew.');
       return;
     }

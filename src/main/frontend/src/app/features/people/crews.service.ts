@@ -9,18 +9,19 @@ export interface CrewPerson {
   name: string;
 }
 
-/** A crew on the sheet: its name, its lead and its members (never the lead), in the order added. */
+/** A crew on the sheet: its name, its lead (null once the lead has left the sheet) and its members (never the
+ *  lead), in the order added. */
 export interface Crew {
   id: number;
   name: string;
-  lead: CrewPerson;
+  lead: CrewPerson | null;
   members: CrewPerson[];
 }
 
 /** A crew's due-total in cents: its lead's and its members' due-totals (in cents, by person id; null
  *  when n/a) added up, n/a ones skipped. */
 export function crewDueCents(crew: Crew, due: Map<number, number | null>): number {
-  return [crew.lead, ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0);
+  return [...(crew.lead ? [crew.lead] : []), ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0);
 }
 
 // The crews on a sheet, read from and written to the server, and kept for the sheet loaded: re-read

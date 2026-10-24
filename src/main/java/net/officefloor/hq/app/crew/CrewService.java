@@ -28,7 +28,7 @@ public class CrewService {
     public record Member(long personId, String name) {
     }
 
-    /** A crew as shown: its lead and its members in the order they were added. */
+    /** A crew as shown: its lead (null once the lead has left the sheet) and its members in the order they were added. */
     public record Crewed(SheetCrew crew, Member lead, List<Member> members) {
     }
 
@@ -65,9 +65,8 @@ public class CrewService {
         }
         List<Crewed> found = new ArrayList<>();
         for (SheetCrew crew : all) {
-            Person lead = byId.get(crew.getLeadPersonId());
-            if (lead == null) continue;
-            found.add(new Crewed(crew, new Member(lead.getId(), lead.getName()),
+            Person lead = crew.getLeadPersonId() == null ? null : byId.get(crew.getLeadPersonId());
+            found.add(new Crewed(crew, lead == null ? null : new Member(lead.getId(), lead.getName()),
                     byCrew.getOrDefault(crew.getId(), List.of())));
         }
         return found;
@@ -93,7 +92,7 @@ public class CrewService {
     public SheetCrewMember addMember(String sheetId, String by, long crewId, long personId) {
         SheetCrew crew = crews.findByIdAndSheetId(crewId, sheetId).orElseThrow(CrewNotFoundException::new);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (crew.getLeadPersonId().equals(person.getId())
+        if (person.getId().equals(crew.getLeadPersonId())
                 || members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
             throw new CrewMemberTakenException();
         }
@@ -102,16 +101,14 @@ public class CrewService {
         return added;
     }
 
-    /** The person leaves the sheet: their memberships are dropped, and so is each crew they lead, with its
-     * members. */
+    /** The person leaves the sheet: their memberships are dropped, and each crew they lead is kept, with its
+     * members, but no lead. */
     @Transactional
     public void personLeaving(long personId) {
         members.deleteAll(members.findByPersonIdOrderByIdAsc(personId));
         members.flush();
         for (SheetCrew crew : crews.findByLeadPersonIdOrderByIdAsc(personId)) {
-            members.deleteAll(members.findByCrewIdOrderByIdAsc(crew.getId()));
-            members.flush();
-            crews.delete(crew);
+            crew.setLeadPersonId(null);
         }
         crews.flush();
     }
@@ -131,7 +128,7 @@ public class CrewService {
         members.flush();
         for (SheetCrewMember m : members.findByPersonIdOrderByIdAsc(fromId)) {
             SheetCrew crew = crews.findById(m.getCrewId()).orElseThrow();
-            if (crew.getLeadPersonId().equals(intoId) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
+            if (Long.valueOf(intoId).equals(crew.getLeadPersonId()) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
                 members.delete(m);
             } else {
                 m.setPersonId(intoId);
@@ -148,7 +145,7 @@ public class CrewService {
         Map<Long, Long> crewIds = new HashMap<>();
         for (SheetCrew crew : all) {
             crewIds.put(crew.getId(), crews.saveAndFlush(
-                    new SheetCrew(toSheetId, crew.getName(), personIds.get(crew.getLeadPersonId()))).getId());
+                    new SheetCrew(toSheetId, crew.getName(), crew.getLeadPersonId() == null ? null : personIds.get(crew.getLeadPersonId()))).getId());
         }
         members.findByCrewIdInOrderByIdAsc(crewIds.keySet()).forEach(m -> members.save(
                 new SheetCrewMember(crewIds.get(m.getCrewId()), personIds.get(m.getPersonId()))));

@@ -22,7 +22,7 @@ public class SheetCrew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_person_id", nullable = false)
+    @Column(name = "lead_person_id")
     private Long leadPersonId;
 
     protected SheetCrew() {

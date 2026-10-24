@@ -164,8 +164,9 @@ public class PoolService {
     }
 
     /** The crews as pools, in the order they were added: each the lead and the members (those among the
-     * people) at equal shares, the remainder on the lead, with the sheet's pot. A crew whose lead is not among
-     * the people, or whose name a pool has, is left out. */
+     * people) at equal shares, the remainder on the lead (on the first member when the lead is no longer among
+     * the people), with the sheet's pot. A crew with none of them among the people, or whose name a pool has, is
+     * left out. */
     private List<Pooled> crewPools(List<SheetCrew> crewed, List<SheetPool> all, BigDecimal pot, LocalDate today,
             Map<Long, Person> byId) {
         if (crewed.isEmpty()) return List.of();
@@ -177,11 +178,11 @@ public class PoolService {
         }
         List<Pooled> found = new ArrayList<>();
         for (SheetCrew crew : crewed) {
-            if (!byId.containsKey(crew.getLeadPersonId())) continue;
             if (all.stream().anyMatch(p -> p.getName().equals(crew.getName()))) continue;
             List<Long> ids = new ArrayList<>();
-            ids.add(crew.getLeadPersonId());
+            if (byId.containsKey(crew.getLeadPersonId())) ids.add(crew.getLeadPersonId());
             ids.addAll(byCrew.getOrDefault(crew.getId(), List.of()));
+            if (ids.isEmpty()) continue;
             BigDecimal share = HUNDRED.divide(BigDecimal.valueOf(ids.size()), 2, RoundingMode.HALF_EVEN);
             BigDecimal leadShare = HUNDRED.subtract(share.multiply(BigDecimal.valueOf(ids.size() - 1)));
             List<SheetPoolMember> kept = new ArrayList<>();
