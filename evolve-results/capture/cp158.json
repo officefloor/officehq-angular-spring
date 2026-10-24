@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "84afd106831f2ee75b65e269686834ad71328999",
+  "reset_sha": "",
+  "preagent_sha": "dfd42ed06181cb16dbe44954a8f7b1667dd89e06",
+  "prev_sha": "dfd42ed06181cb16dbe44954a8f7b1667dd89e06",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6910058000000001,
+    "input_tokens": 32,
+    "output_tokens": 9636,
+    "cache_read_tokens": 585389,
+    "cache_creation_tokens": 47635,
+    "num_turns": 17,
+    "duration_ms": 308795,
+    "duration_api_ms": 107170,
+    "model": "claude-opus-5-5",
+    "session_id": "de5b9964-19bc-4ee4-a871-01a3a1257f57",
+    "stop_reason": "success",
+    "result_text": "Each user can now choose which people-list columns their own screen shows. `bin/e2e` passes all 4 tests in the spec.\n\n**One addition beyond your list:** the spec switches off `excess` and expects that cell to disappear, so I added an `excess` checkbox as well. That makes 15 columns rather than the 14 in the request.\n\n**How it works**\n- **Stored data:** a new table, `user_columns`, holds the columns each user has switched off, per sheet. Its migration is `V88__user_columns.sql`, modelled on `user_locale`. A user with no saved row sees every column. Like the locale, this choice isn't part of the sheet's history, isn't cloned, and writes nothing to the audit file.\n- **Server:** a new `columns` package adds `GET` and `PUT /api/sheets/{id}/columns`. It refuses any column name that isn't one of the 15. The address is exempt from the archived-sheet, as-of-date and viewer guards, the same way `/locale` is, because choosing columns doesn't change the sheet.\n- **Front end:** `session.ts` loads the user's hidden columns along with their locale whenever a sheet is loaded, and saves changes. `people.ts` has a \"Columns shown\" group with one `column-<key>` checkbox per column. A column that's switched off loses both its cells and its header from the table. Totals, the header bar, the summary and the CSV exports don't change.\n\nThe column choice is saved per sheet as well as per user, matching how the locale works. If someone switches columns off on one sheet, other sheets still show everything.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6910058000000001,
+        "num_turns": 17,
+        "duration_ms": 308795,
+        "duration_api_ms": 107170,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
