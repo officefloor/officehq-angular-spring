@@ -18,6 +18,12 @@ export interface Rate {
   level: number;
 }
 
+/** How a rate import went: how many rates it set, and the rates, in the order of their lines. */
+export interface RatesImported {
+  set: number;
+  rates: Rate[];
+}
+
 /** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
 export interface RatePreview {
   count: number;
@@ -182,6 +188,13 @@ export class RatesService {
   set(sheet: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<Rate> {
     return firstValueFrom(
       this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from, to }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Set a rate per pasted line of grade,rate,from,to, in order; when any line is refused none is set. */
+  importRates(sheet: string, text: string): Promise<RatesImported> {
+    return firstValueFrom(
+      this.http.post<RatesImported>(`${this.url(sheet)}/import`, { text }, { headers: this.session.headers() }),
     );
   }
 

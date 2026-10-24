@@ -16,6 +16,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -54,12 +55,23 @@ public class RateController {
         }
     }
 
+    /** The pasted lines of {@code grade,rate,from,to}. */
+    public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How many rates were set, and the rates, in the order of their lines. */
+    public record ImportView(int set, List<RateView> rates) {
+    }
+
     private final RateService service;
+
+    private final RateImportService importer;
 
     private final SheetHistory history;
 
-    public RateController(RateService service, SheetHistory history) {
+    public RateController(RateService service, RateImportService importer, SheetHistory history) {
         this.service = service;
+        this.importer = importer;
         this.history = history;
     }
 
@@ -82,6 +94,15 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+    }
+
+    @PostMapping("/import")
+    public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ImportRequest request) {
+        List<RateView> rates = importer.importRates(sheetId.trim(), user.trim(), request.text()).stream()
+                .map(RateView::of).toList();
+        return new ImportView(rates.size(), rates);
     }
 
     /** A rate preview: how many claims would show a different due, and the sum of the differences as

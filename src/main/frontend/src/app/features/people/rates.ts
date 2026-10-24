@@ -53,6 +53,23 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
         }
       </form>
+      <form (submit)="importRates($event)" aria-label="Import rates" data-testid="import-rates-form">
+        <label for="import-rates">Rates to import, one per line: grade,rate,from,to (the dates may be left out)</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (imported() !== null) {
+          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ imported() }}</span></span>
+        }
+        @if (importError(); as message) {
+          <p role="alert" class="error" data-testid="import-rates-error">{{ message }}</p>
+        }
+      </form>
       <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
         <label for="rate-preview-grade">Grade</label>
         <select
@@ -180,6 +197,12 @@ export class Rates {
   protected readonly previewPct = signal('');
   protected readonly previewed = signal<RatePreview | null>(null);
   protected readonly previewError = signal<string | null>(null);
+  protected readonly importText = signal('');
+  /** How many rates the last import set; null before one, and while one runs. */
+  protected readonly imported = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  /** An import is waiting for its answer; another meanwhile is ignored. */
+  private importing = false;
   /** Counts previews, so only the answer to the latest one shows. */
   private previewSeq = 0;
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
@@ -236,6 +259,34 @@ export class Rates {
       this.error.set('That rate could not be set.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Set a rate per pasted line, in order; when any line is refused none is set. Shows how many were
+   *  set; the old count is gone while it runs. */
+  protected async importRates(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importError.set(null);
+    this.imported.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!this.importText().trim()) {
+      this.importError.set('Paste a line of grade,rate,from,to.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const result = await this.service.importRates(sheet, this.importText());
+      if (this.session.sheetId() !== sheet) return;
+      for (const r of result.rates) this.saved.emit(r);
+      this.importText.set('');
+      this.imported.set(result.set);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.importError.set('Those rates could not be set: each line needs a grade, a rate of 0.00 or more with up to two decimals, and dates as YYYY-MM-DD with the to-date not before the from-date.');
+    } finally {
+      this.importing = false;
     }
   }
 
