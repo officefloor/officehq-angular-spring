@@ -108,7 +108,7 @@ export interface Lateness {
 /** The late charge on a claim whose figure is figureCents, in cents: for every full 30 days the claim
  *  is overdue (OPEN or PENDING, not deferred, and past its due-by plus any grace of its grade on the
  *  sheet's today, see overdueFrom), the late percent in force on that boundary date (that date plus
- *  30, 60, 90 ... days) of that figure, rounded
+ *  30, 60, 90 ... days) of that figure plus the charges of the boundaries before it (compounding), rounded
  *  like the claim's due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
 export function lateChargeCents(
   claim: Claim,
@@ -126,7 +126,7 @@ export function lateChargeCents(
     const boundary = new Date(dueBy + k * 30 * 86_400_000).toISOString().slice(0, 10);
     const latePct = inForce(late.latePcts, boundary, LATE_PCT);
     if (Number(latePct) === 0) continue;
-    charge += dueCents(figureCents, latePct, roundsHalfUp(claim, rounding)) ?? 0;
+    charge += dueCents(figureCents + charge, latePct, roundsHalfUp(claim, rounding)) ?? 0;
   }
   return charge;
 }

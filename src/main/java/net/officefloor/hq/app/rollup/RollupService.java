@@ -339,7 +339,7 @@ public class RollupService {
 
     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, plus
      * any grace of its grade (see {@link Basis#overdueFrom}), on the sheet's today), the sheet's late percent
-     * in force on that boundary date (that date plus 30, 60, 90 ... days) of that figure, rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
+     * in force on that boundary date (that date plus 30, 60, 90 ... days) of that figure plus the charges of the boundaries before it (compounding), rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue (a deferred claim is not), and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         return lateChargeOf(claim, figure, live(claim.getSheetId()));
@@ -372,7 +372,7 @@ public class RollupService {
         for (long k = 1; k <= periods; k++) {
             BigDecimal pct = basis.latePctOn(from.plusDays(30 * k));
             if (pct.signum() == 0) continue;
-            charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+            charge = charge.add(figure.add(charge).multiply(pct).movePointLeft(2).setScale(2, rounding));
         }
         return charge;
     }
