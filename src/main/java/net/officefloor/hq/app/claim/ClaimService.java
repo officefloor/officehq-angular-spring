@@ -92,6 +92,7 @@ public class ClaimService {
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, dated);
@@ -105,9 +106,34 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
+        claim.unlock();
         claims.flush();
         record("CLAIM_EDITED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** Open the claim's editor for {@code user}, locking the claim for everyone else until it is saved
+     * (see {@link #update}) or cancelled (see {@link #unlock}), or the sheet's today changes. Refused,
+     * taking no lock, when the claim cannot be edited (not a DRAFT, or dated in a closed period) or
+     * another user holds its lock. */
+    @Transactional
+    public Claim lock(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        LocalDate today = sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();
+        if (claim.isLockedFor(user, today)) throw new ClaimLockedException();
+        claim.lock(user, today);
+        return claim;
+    }
+
+    /** Close {@code user}'s editor of the claim without saving, releasing the lock it holds; a lock
+     * another user holds is left alone. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (user.equals(claim.getLockedBy())) claim.unlock();
         return claim;
     }
 

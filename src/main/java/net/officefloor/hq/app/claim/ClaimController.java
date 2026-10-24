@@ -155,6 +155,20 @@ public class ClaimController {
                 request.note(), request.correctsValue()));
     }
 
+    @PostMapping("/claims/{claimId}/lock")
+    public ClaimView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.lock(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/unlock")
+    public ClaimView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.unlock(sheetId.trim(), user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/open")
     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

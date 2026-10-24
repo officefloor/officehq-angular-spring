@@ -133,6 +133,8 @@ export function money(cents: number): string {
 export class ClaimsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  /** The claim whose editor is open, by sheet and person. */
+  private readonly editors = new Map<string, number>();
 
   /** The sheet's claims, newest first. */
   list(sheet: string): Promise<Claim[]> {
@@ -147,6 +149,38 @@ export class ClaimsService {
         headers: this.session.headers(),
       }),
     );
+  }
+
+  /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or
+   *  the sheet's today changes; refused (409) when the claim is not a DRAFT, (423) when it is dated in
+   *  a closed period, (412) when another user holds its lock, (403) for a viewer. */
+  lock(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/lock`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Close the claim's editor without saving, releasing the lock the user holds on it. */
+  unlock(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/unlock`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** The claim whose editor is open on the person's claim form on the sheet; null when none is. Kept
+   *  here, not in the form, so the editor is still open when the sheet is loaded again. */
+  editing(sheet: string, personId: number): number | null {
+    return this.editors.get(`${sheet}\n${personId}`) ?? null;
+  }
+
+  setEditing(sheet: string, personId: number, claimId: number | null): void {
+    const key = `${sheet}\n${personId}`;
+    if (claimId === null) this.editors.delete(key);
+    else this.editors.set(key, claimId);
   }
 
   update(sheet: string, id: number, fields: ClaimFields): Promise<Claim> {

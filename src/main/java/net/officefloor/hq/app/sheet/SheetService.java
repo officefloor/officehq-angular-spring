@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
@@ -25,11 +26,13 @@ public class SheetService {
     private final PeriodService periods;
     private final SettingsService settings;
     private final Audit audit;
+    private final ClaimRepository claims;
     private final Clock clock = Clock.systemDefaultZone();
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods,
-            SettingsService settings, Audit audit) {
+            SettingsService settings, Audit audit, ClaimRepository claims) {
         this.sheets = sheets;
+        this.claims = claims;
         this.rollup = rollup;
         this.periods = periods;
         this.settings = settings;
@@ -60,12 +63,13 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::numbersByPeriod).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today, closing the open periods its grace days have passed (see
-     * {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change. */
+    /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
+     * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}); the figures it moves are recorded as {@code user}'s change. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
+        if (!today.equals(sheet.getToday())) claims.unlockBySheetId(id);
         sheet.setToday(today);
         sheets.flush();
         periods.closeOverdue(id, user);

@@ -92,6 +92,15 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The user whose open editor locks the claim for everyone else; null while no one holds it. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
+    /** The sheet's today when {@link #lockedBy} took the lock: it holds only while that is still the
+     * sheet's today. */
+    @Column(name = "locked_on")
+    private LocalDate lockedOn;
+
     protected Claim() {
     }
 
@@ -253,5 +262,26 @@ public class Claim {
     /** Whether the claim is deferred on {@code today}: OPEN and deferred until a date after it. */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    /** Whether a user other than {@code user} holds the claim's lock on {@code today}. */
+    public boolean isLockedFor(String user, LocalDate today) {
+        return lockedBy != null && !lockedBy.equals(user) && today.equals(lockedOn);
+    }
+
+    /** Lock the claim for everyone but {@code user} while {@code today} is the sheet's today. */
+    public void lock(String user, LocalDate today) {
+        this.lockedBy = user;
+        this.lockedOn = today;
+    }
+
+    /** Release the claim's lock, whoever holds it. */
+    public void unlock() {
+        this.lockedBy = null;
+        this.lockedOn = null;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
     }
 }

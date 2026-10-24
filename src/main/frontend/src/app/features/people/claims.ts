@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, cents, deferred, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
@@ -201,7 +201,7 @@ const PAST: Record<ClaimAction, string> = {
               Edit
             </button>
             @if (editingId() === c.id) {
-              <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+              <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
             }
             @if (rowErrors()[c.id]; as message) {
               <p role="alert" class="error" data-testid="claim-error">{{ message }}</p>
@@ -330,24 +330,89 @@ export class Claims {
     return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
-  /** Open the claim's editor; only a DRAFT can be edited, so the edit of any other claim is refused with
-   *  an error on the claim (an open claim is changed by voiding it and adding a new one). */
-  protected edit(claim: Claim): void {
+  constructor() {
+    // An editor left open on this person's form is open again when the sheet is loaded again.
+    effect(() => {
+      const claims = this.claims();
+      untracked(() => {
+        const sheet = this.session.sheetId();
+        const id = sheet ? this.service.editing(sheet, this.personId()) : null;
+        if (id === null || this.editingId() !== null) return;
+        const claim = claims.find((c) => c.id === id);
+        if (claim) this.fill(claim);
+      });
+    });
+  }
+
+  /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
+   *  sheet's today changes. Only a DRAFT not dated in a closed period can be edited, and not by a
+   *  viewer, so any other edit is refused with an error on the claim, taking no lock (an open claim is
+   *  changed by voiding it and adding a new one). A claim another user holds the lock of is refused
+   *  with an error too, though its editor shows it: saving it is refused while that lock holds. */
+  protected async edit(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);
-    if (claim.status !== 'DRAFT') {
+    const refuse = (message: string) => {
       if (this.editingId() === claim.id) this.reset();
-      this.rowErrors.update((errors) => ({
-        ...errors,
-        [claim.id]: 'Only a draft claim can be edited; void it and add a new one instead.',
-      }));
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: message }));
+    };
+    if (claim.status !== 'DRAFT') {
+      refuse('Only a draft claim can be edited; void it and add a new one instead.');
       return;
     }
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const was = this.editingId();
+    try {
+      await this.service.lock(sheet, claim.id);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      if (status === 412) {
+        this.release(sheet, was, claim.id);
+        this.fill(claim);
+        this.rowErrors.update((errors) => ({
+          ...errors,
+          [claim.id]: 'Another user is editing that claim; try again once they save or cancel it.',
+        }));
+        return;
+      }
+      refuse(
+        status === 403
+          ? 'Your role may not edit a claim on this sheet.'
+          : status === 423
+          ? 'That claim is dated in a closed period.'
+          : 'Only a draft claim can be edited; void it and add a new one instead.',
+      );
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
+    this.release(sheet, was, claim.id);
+    this.fill(claim);
+  }
+
+  /** Release the lock of the editor that was open before another claim's editor replaced it. */
+  private release(sheet: string, was: number | null, now: number): void {
+    if (was !== null && was !== now) this.service.unlock(sheet, was).catch(() => undefined);
+  }
+
+  /** Show the claim in the form, its editor open. */
+  private fill(claim: Claim): void {
+    const sheet = this.session.sheetId();
+    if (sheet) this.service.setEditing(sheet, this.personId(), claim.id);
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
+  }
+
+  /** Close the claim's editor without saving, releasing the lock on it. */
+  protected cancel(): void {
+    const sheet = this.session.sheetId();
+    const id = this.editingId();
+    this.reset();
+    if (sheet && id !== null) this.service.unlock(sheet, id).catch(() => undefined);
   }
 
   protected setRejectReason(id: number, reason: string): void {
@@ -600,6 +665,8 @@ export class Claims {
   }
 
   protected reset(): void {
+    const sheet = this.session.sheetId();
+    if (sheet) this.service.setEditing(sheet, this.personId(), null);
     this.editingId.set(null);
     this.amount.set('');
     this.date.set('');
@@ -650,6 +717,8 @@ export class Claims {
             ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects (and only a correction names one).'
           : id !== null && e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a draft claim can be edited; void it and add a new one instead.'
+          : id !== null && e instanceof HttpErrorResponse && e.status === 412
+            ? 'Another user is editing that claim; it cannot be saved until they save or cancel it.'
           : id === null
             ? 'That claim could not be added.'
             : 'That claim could not be saved.',
