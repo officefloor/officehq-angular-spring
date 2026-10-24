@@ -60,6 +60,13 @@ const PAST: Record<ClaimAction, string> = {
         [value]="ref()"
         (input)="ref.set(value($event)); error.set(null)"
       />
+      <label [for]="fieldId('tags')">Tags (comma separated)</label>
+      <input
+        [id]="fieldId('tags')"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -83,6 +90,7 @@ const PAST: Record<ClaimAction, string> = {
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+            <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
@@ -303,6 +311,7 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
@@ -449,6 +458,7 @@ export class Claims {
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.ref.set(claim.ref ?? '');
+    this.tags.set(claim.tags.join(', '));
     this.error.set(null);
   }
 
@@ -686,6 +696,7 @@ export class Claims {
         note: claim.note,
         corrects: claim.corrects,
         ref: claim.ref,
+        tags: claim.tags.join(','),
       });
       if (this.session.sheetId() !== sheet) return;
       this.inlineAmounts.update(({ [claim.id]: _, ...rest }) => rest);
@@ -801,6 +812,7 @@ export class Claims {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -826,6 +838,7 @@ export class Claims {
       note: this.note(),
       corrects: corrects === '' ? null : corrects,
       ref: this.ref().trim() || null,
+      tags: this.tags().trim() || null,
     };
     const id = this.editingId();
     this.submitting = true;

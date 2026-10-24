@@ -45,10 +45,12 @@ public class ClaimService {
     private final PersonWatchRepository watches;
     private final HolidayService holidays;
     private final Audit audit;
+    private final SheetTagRepository tagRepository;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
-            Audit audit) {
+            Audit audit, SheetTagRepository tagRepository) {
+        this.tagRepository = tagRepository;
         this.holidays = holidays;
         this.watches = watches;
         this.claims = claims;
@@ -81,11 +83,24 @@ public class ClaimService {
         return add(sheetId, user, personId, amount, date, note, corrects, null);
     }
 
-    /** Add a claim with the external reference {@code ref} (none when null), refused when another claim
-     * on the sheet has it (compared without regard to case). */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /** Every tag ever used on the sheet's claims, sorted. */
+    @Transactional(readOnly = true)
+    public List<String> tags(String sheetId) {
+        return tagRepository.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
+    }
+
+    /** Add a claim with the external reference {@code ref} (none when null), refused when another claim
+     * on the sheet has it (compared without regard to case), and the tags {@code tags} (see
+     * {@link Claim#tagsOf}; none when null). */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
@@ -97,14 +112,18 @@ public class ClaimService {
         refuseRefTaken(sheetId, null, ref);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
         claim.setRef(ref);
+        claim.setTags(tags);
         claim.fixTerms(dated, terms);
         claim.setDueBy(dueBy);
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         claim = claims.saveAndFlush(claim);
         log(user, person, claim);
-        if (ref != null) record("CLAIM_ADDED", user, person, claim, claim.getNumber(), "ref=" + ref);
-        else record("CLAIM_ADDED", user, person, claim, claim.getNumber());
+        keepTags(claim);
+        List<String> extra = new ArrayList<>();
+        if (ref != null) extra.add("ref=" + ref);
+        if (tags != null) extra.add("tags=" + tags);
+        record("CLAIM_ADDED", user, person, claim, claim.getNumber(), extra.toArray(String[]::new));
         if (claim.isLateEntry()) record("LATE_ENTRY", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
@@ -112,7 +131,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
@@ -129,6 +148,8 @@ public class ClaimService {
         claim.setDate(dated);
         claim.setNote(noteOf(note));
         claim.setRef(ref);
+        claim.setTags(tags);
+        keepTags(claim);
         claim.unlock();
         claims.flush();
         record("CLAIM_EDITED", user, person, claim, claim.getNumber());
@@ -324,6 +345,7 @@ public class ClaimService {
         split.setNumber(nextNumber(sheetId, split.getDueBy()));
         split.setOpenedBy(user);
         split.setSplitFrom(claim.getNumber());
+        split.setTags(claim.getTags().isEmpty() ? null : String.join(",", claim.getTags()));
         split = claims.saveAndFlush(split);
         log(user, person, split);
         record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), "into=" + split.getNumber());
@@ -479,6 +501,14 @@ public class ClaimService {
      * no figure (see {@link RollupService#shownOf}). */
     public BigDecimal shownOf(Claim claim, Person person) {
         return rollup.shownOf(claim, person);
+    }
+
+    /** Keep each of the claim's tags among those ever used on its sheet. */
+    private void keepTags(Claim claim) {
+        for (String tag : claim.getTags()) {
+            SheetTag.Key key = new SheetTag.Key(claim.getSheetId(), tag);
+            if (!tagRepository.existsById(key)) tagRepository.save(new SheetTag(claim.getSheetId(), tag));
+        }
     }
 
     /** Write the status the claim has now to its log, with the sheet's today and what is due on it as

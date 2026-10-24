@@ -47,6 +47,8 @@ export interface Claim {
   remindedOn: string | null;
   /** The claim's external reference; null when it has none. */
   ref: string | null;
+  /** The claim's tags, trimmed, lower-cased, without repeats and sorted; empty when it has none. */
+  tags: string[];
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -122,6 +124,8 @@ export interface ClaimFields {
   corrects: string | null;
   /** The claim's external reference (trimmed by the server); null or blank for none. */
   ref: string | null;
+  /** The claim's tags, comma separated (each trimmed and lower-cased by the server); null or blank for none. */
+  tags: string | null;
 }
 
 /** Whether a claim is a correction: one with a negative amount. */
@@ -150,6 +154,13 @@ export class ClaimsService {
   list(sheet: string): Promise<Claim[]> {
     return firstValueFrom(
       this.http.get<Claim[]>(`${this.url(sheet)}/claims`, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Every tag ever used on the sheet's claims, sorted. */
+  tags(sheet: string): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`${this.url(sheet)}/tags`, { headers: this.session.headers() }),
     );
   }
 

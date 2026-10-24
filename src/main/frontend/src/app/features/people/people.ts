@@ -71,6 +71,7 @@ import { Summary, SummaryPerson } from './summary';
       [periods]="periods()"
       [periodDueTotals]="periodDueTotals()"
       [claims]="claims()"
+      [tagDueTotals]="tagDueTotals()"
     />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -613,6 +614,23 @@ export class People {
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
   });
+  /** Every tag ever used on the sheet: those the store keeps, and those on its claims now. */
+  protected readonly sheetTags = signal<string[]>([]);
+  /** Each tag ever used on the sheet, sorted, with its due-total: what is due on the claims that count
+   *  which carry it, as each claim shows it (a claim with two tags counts in both). */
+  protected readonly tagDueTotals = computed(() => {
+    const sums = new Map<string, number>();
+    for (const tag of this.sheetTags()) sums.set(tag, 0);
+    for (const c of this.claims()) for (const tag of c.tags) if (!sums.has(tag)) sums.set(tag, 0);
+    for (const person of this.people()) {
+      for (const c of this.claimsOf(person.id)) {
+        if (c.tags.length === 0 || !this.countsLive(c, person)) continue;
+        const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+        for (const tag of c.tags) sums.set(tag, (sums.get(tag) ?? 0) + due);
+      }
+    }
+    return [...sums.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, sum]) => ({ tag, dueTotal: money(sum) }));
+  });
   /** Everyone as the summary counts them: their grade today, whether retired, their due-total, and
    *  whether they are active. */
   protected readonly summaryPeople = computed<SummaryPerson[]>(() =>
@@ -694,6 +712,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.sheetTags.set([]);
       this.rates.set([]);
       this.floors.set([]);
       this.caps.set([]);
@@ -1220,6 +1239,9 @@ export class People {
         ? list.map((c) => (c.id === claim.id ? claim : c))
         : [claim, ...list.filter((c) => c.id !== claim.id)],
     );
+    // A tag once used stays among the sheet's tags, even when the claim later drops it.
+    const fresh = claim.tags.filter((t) => !this.sheetTags().includes(t));
+    if (fresh.length > 0) this.sheetTags.update((tags) => [...tags, ...fresh]);
   }
 
   /** The other people on the sheet, by name, whom the person's claims can be moved to. */
@@ -1401,7 +1423,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons, watched] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched, tags] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -1410,6 +1432,7 @@ export class People {
         this.settingsService.get(sheet),
         this.service.patrons(sheet),
         this.service.watched(sheet),
+        this.claimsService.tags(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -1421,6 +1444,7 @@ export class People {
         this.periods.set(periods);
         this.statements.set(statements);
         this.claims.set(claims);
+        this.sheetTags.set(tags);
         this.patrons.set(patrons);
         this.watched.set(new Set(watched));
         this.people.set(list);

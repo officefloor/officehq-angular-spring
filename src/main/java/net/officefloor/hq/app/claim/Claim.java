@@ -132,6 +132,11 @@ public class Claim {
     @Column(name = "ref_key")
     private String refKey;
 
+    /** The claim's tags: trimmed, lower-cased, without repeats, sorted and comma separated; null when it
+     * has none (see {@link #tagsOf}). */
+    @Column(name = "tags")
+    private String tags;
+
     protected Claim() {
     }
 
@@ -361,6 +366,28 @@ public class Claim {
     /** A reference as compared: lower-cased; null for none. */
     public static String keyOf(String ref) {
         return ref == null ? null : ref.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public java.util.List<String> getTags() {
+        return tags == null ? java.util.List.of() : java.util.List.of(tags.split(","));
+    }
+
+    /** Give the claim the tags, as {@link #tagsOf} makes them (none when null). */
+    public void setTags(String tags) {
+        this.tags = tags;
+    }
+
+    /** Tags as kept from comma separated text: each trimmed and lower-cased, blanks and repeats dropped,
+     * sorted and comma separated; null when there are none. */
+    public static String tagsOf(String text) {
+        if (text == null) return null;
+        java.util.TreeSet<String> tags = new java.util.TreeSet<>();
+        for (String tag : text.split(",")) {
+            String t = tag.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!t.isEmpty()) tags.add(t);
+        }
+        return tags.isEmpty() ? null : String.join(",", tags);
     }
 
     public String getLockedBy() {

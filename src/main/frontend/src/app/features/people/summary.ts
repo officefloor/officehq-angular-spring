@@ -17,7 +17,7 @@ export interface SummaryPerson {
 
 // A summary of the sheet, worked from the same figures the list shows: per grade, how many people
 // not retired are on it today, how many of them are active, and their due-totals added up (a due-total that is n/a is skipped);
-// per period, its due-total; per status, how many of the sheet's claims have it.
+// per period, its due-total; per tag ever used, its due-total; per status, how many of the sheet's claims have it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -56,6 +56,24 @@ export interface SummaryPerson {
               <tr>
                 <th scope="row">{{ p.name }}</th>
                 <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+      @if (tagDueTotals().length > 0) {
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of tagDueTotals(); track t.tag) {
+              <tr>
+                <th scope="row">{{ t.tag }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
               </tr>
             }
           </tbody>
@@ -102,6 +120,8 @@ export class Summary {
   readonly periodDueTotals = input.required<Record<string, string>>();
   /** The sheet's claims. */
   readonly claims = input.required<Claim[]>();
+  /** Each tag ever used on the sheet, sorted, with its due-total. */
+  readonly tagDueTotals = input.required<{ tag: string; dueTotal: string }[]>();
 
   protected readonly byGrade = computed(() =>
     GRADES.map((grade) => {
