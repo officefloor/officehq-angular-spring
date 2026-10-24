@@ -1,0 +1,64 @@
+{
+  "checkpoint": 29,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp29_reopen-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3604a7e3ada1d1909d59a937138ea3a82d7468e4",
+  "reset_sha": "",
+  "preagent_sha": "d03060ded4eb9f494f972ba07af653daa6aa7dc1",
+  "prev_sha": "d03060ded4eb9f494f972ba07af653daa6aa7dc1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5429394,
+    "input_tokens": 28,
+    "output_tokens": 5746,
+    "cache_read_tokens": 487897,
+    "cache_creation_tokens": 41291,
+    "num_turns": 14,
+    "duration_ms": 138924,
+    "duration_api_ms": 81339,
+    "model": "claude-opus-5-5",
+    "session_id": "00b5c607-d4a0-412d-9fd0-c78f6ba1b7cf",
+    "stop_reason": "success",
+    "result_text": "A steward can now reopen a closed period. All 4 tests in `bin/e2e` pass.\n\n**What reopening does**\n- Only a steward can reopen. Anyone else gets a \"forbidden\" refusal, shown as the period's error (\"Only a steward can reopen a period.\"). Reopening a period that isn't closed is also refused.\n- On success the period is marked open and its saved due-total is cleared. The audit file gets `PERIOD_REOPENED sheet=<id> by=<user> period=<name>`.\n- Once reopened, the period's due-total is worked out live from its claims again, and bound claims count at their bound figure. In the main test, a rate change after closing makes the total go from the frozen 6.00 to 11.00.\n\n**Server** (`src/main/java/.../period/`)\n- New `Period.reopen()` method.\n- New `PeriodService.reopen()`, which checks the user's role through `SettingsService.roleOf`.\n- New endpoint `POST /api/sheets/{sheetId}/periods/{periodId}/reopen`.\n- New `PeriodNotStewardException` for the refusal.\n- No database change was needed, because the saved-total column already allows empty values.\n\n**Front end**\n- `periods.service.ts` has a new `reopen()` call.\n- `periods.ts` adds a Reopen button (`period-reopen`) to every period row, which clears or sets the row's error the same way Close does.\n- `people.ts` puts the reopened period back in its place in the list.\n\n**Decision for you:** the Reopen button shows on open periods too, not just closed ones. The test clicks Reopen on a period that is already open and expects an error, so the button has to be there. If you'd rather hide it on open periods, that test would need to change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5429394,
+        "num_turns": 14,
+        "duration_ms": 138924,
+        "duration_api_ms": 81339,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp29.agent.jsonl",
+  "agent_diff_file": "cp29.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
