@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dad061de1e12b4bb9351a9993b74da21dfbd8e78",
+  "reset_sha": "",
+  "preagent_sha": "645bb220bd45d57b31abf9ff03d67721dd6a17b1",
+  "prev_sha": "645bb220bd45d57b31abf9ff03d67721dd6a17b1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8733038,
+    "input_tokens": 54,
+    "output_tokens": 9033,
+    "cache_read_tokens": 1198859,
+    "cache_creation_tokens": 56582,
+    "num_turns": 29,
+    "duration_ms": 862237,
+    "duration_api_ms": 136812,
+    "model": "claude-opus-5-5",
+    "session_id": "c14c5ae1-2045-4bc0-a997-e4471dc91521",
+    "stop_reason": "success",
+    "result_text": "The people, claims and pools exports now use the as-of figures when an as-of date is set. All 4 tests in `bin/e2e` passed on two runs in a row.\n\n**What was wrong.** Before my change, only the pools export failed. With an as-of date set, it worked out the cuts with that date standing in for \"today\", but still used the current pot and current people. So it reported a cut of 20.00 where the as-of figure is 10.00. The people and claims exports were already built from the data loaded for the as-of view, so their numbers were right.\n\n**Changes:**\n\n1. **Pools (server)** \u2013 `src/main/java/net/officefloor/hq/app/pool/PoolService.java`. When an as-of date is given, the pool figures now take the pot and the people (their retirements and holds) from the sheet's history as it stood at the end of that date. Without an as-of date nothing changes.\n\n2. **People and claims exports (front end)** \u2013 `src/main/frontend/src/app/features/people/people.ts`. On my second run the people export came back with only its header row: it fired right after the as-of reload, before the people list had been read again. Both exports now wait for the latest sheet read to finish before building the file.\n\nThe pools themselves and their memberships aren't kept in the sheet's history, so the as-of view still uses the current pools and memberships. A pool added after the as-of date would therefore still appear. Each membership's own from- and to-dates are still checked against the as-of date, and anyone who wasn't on the sheet yet is left out. Recording pools in the history would cover that gap, but this change doesn't need it and the test doesn't exercise it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8733038,
+        "num_turns": 29,
+        "duration_ms": 862237,
+        "duration_api_ms": 136812,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
