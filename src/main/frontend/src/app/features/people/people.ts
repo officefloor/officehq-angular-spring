@@ -40,6 +40,9 @@ import { Summary, SummaryPerson } from './summary';
 // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (a due-total of n/a is no figure).
+// Each row splits its figures before the cap into a settled-total (its counting SETTLED claims, at
+// their frozen figures) and an open-total (its counting OPEN and PENDING claims); the sheet's
+// settled-total and open-total simply add up everyone's.
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
@@ -223,6 +226,8 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Terms</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
+              <th scope="col">Settled due</th>
+              <th scope="col">Open due</th>
               @for (pd of periods(); track pd.id) {
                 <th scope="col">Due in {{ pd.name }}</th>
               }
@@ -263,6 +268,9 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                @let split = splitOf(p);
+                <td data-testid="person-settled-total">{{ money(split.settled) }}</td>
+                <td data-testid="person-open-total">{{ money(split.open) }}</td>
                 @for (pd of periods(); track pd.id) {
                   <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ money(personPeriodCents().get(p.id)?.[pd.name] ?? 0) }}</td>
                 }
@@ -423,6 +431,10 @@ import { Summary, SummaryPerson } from './summary';
       </p>
       <p>
         Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
+      </p>
+      <p>
+        Settled due in total: <span data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</span>,
+        open due in total: <span data-testid="rollup-open-total">{{ money(splitTotal().open) }}</span>
       </p>
       <p>
         Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
@@ -603,6 +615,14 @@ export class People {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum(this.people().map((p) => this.dueCentsOf(p)).filter((c): c is number => c !== null))),
   );
+  /** Everyone's settled-totals and open-totals, in cents, each simply added up (not trimmed). */
+  protected readonly splitTotal = computed(() => {
+    const each = this.people().map((p) => this.splitOf(p));
+    return {
+      settled: each.reduce((sum, s) => sum + s.settled, 0),
+      open: each.reduce((sum, s) => sum + s.open, 0),
+    };
+  });
   /** How many of everyone's counting claims are overdue, and what is due on them, in cents (trimmed). */
   protected readonly overdueTotal = computed(() => {
     const each = this.people().map((p) => this.overdueOf(p));
@@ -1031,16 +1051,26 @@ export class People {
 
   /** The sum of the person's figures in cents, before the cap; null when it is n/a. */
   private sumCentsOf(person: Person): number | null {
-    let sum = 0;
+    const split = this.splitOf(person);
+    return split.any || this.rateOf(this.gradeNow(person)) !== null ? split.settled + split.open : null;
+  }
+
+  /** The person's figures before the cap, in cents, split in two: what is due on their counting SETTLED
+   *  claims (at their frozen figures) and on their counting OPEN and PENDING ones, as each claim shows
+   *  it (a claim with nothing due is skipped); with whether any claim had a figure. */
+  protected splitOf(person: Person): { settled: number; open: number; any: boolean } {
+    let settled = 0;
+    let open = 0;
     let any = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c, person)) continue;
       const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
       if (due === null) continue;
-      sum += due;
+      if (isOpen(c)) open += due;
+      else settled += due;
       any = true;
     }
-    return any || this.rateOf(this.gradeNow(person)) !== null ? sum : null;
+    return { settled, open, any };
   }
 
   /** How many of the person's counting claims are overdue, and the sum of what is due on them, in
