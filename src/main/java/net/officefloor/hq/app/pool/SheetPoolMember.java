@@ -7,8 +7,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
-/** A person's (or another pool's) membership of a pool, with their share percent of it. */
+/** A person's (or another pool's) membership of a pool, with their share percent of it and the dates it runs
+ * (each optional, both included). */
 @Entity
 @Table(name = "sheet_pool_member")
 public class SheetPoolMember {
@@ -30,6 +32,14 @@ public class SheetPoolMember {
 
     @Column(name = "share", nullable = false, precision = 5, scale = 2)
     private BigDecimal share;
+
+    /** The first day of the membership; null when it has no start. */
+    @Column(name = "from_date")
+    private LocalDate fromDate;
+
+    /** The last day of the membership; null when it has no end. */
+    @Column(name = "to_date")
+    private LocalDate toDate;
 
     protected SheetPoolMember() {
     }
@@ -65,6 +75,27 @@ public class SheetPoolMember {
 
     public BigDecimal getShare() {
         return share;
+    }
+
+    public LocalDate getFromDate() {
+        return fromDate;
+    }
+
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    /** Set the dates the membership runs, each null for none. */
+    public SheetPoolMember dated(LocalDate from, LocalDate to) {
+        this.fromDate = from;
+        this.toDate = to;
+        return this;
+    }
+
+    /** Whether the membership's dates include {@code day} (always, when the day is unknown). */
+    public boolean isOn(LocalDate day) {
+        if (day == null) return true;
+        return (fromDate == null || !day.isBefore(fromDate)) && (toDate == null || !day.isAfter(toDate));
     }
 
     public void setPersonId(Long personId) {

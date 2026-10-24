@@ -13,6 +13,8 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // another pool (as pool:<name>), is added to it with a share (more than 0.00, at most 100.00, two decimals); a person already
 // in the pool, a pool already in one, a pool that would contain itself or make a chain more than three deep, or a bad share,
 // is refused. A pool that is a member of none has the sheet's pot; one that is a member of another has its cut there.
+// A member may be added with a from-date and a to-date (each optional; a to-date before the from-date is refused);
+// a member whose dates leave out the sheet's today counts for nothing in the pool and has no cut.
 @Component({
   selector: 'app-pools',
   template: `
@@ -67,6 +69,22 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
               [value]="shares()[pool.id] ?? ''"
               (input)="setShare(pool.id, value($event))"
             />
+            <label [for]="'pool-member-from-' + pool.id">From</label>
+            <input
+              type="date"
+              [id]="'pool-member-from-' + pool.id"
+              data-testid="pool-member-from"
+              [value]="froms()[pool.id] ?? ''"
+              (input)="setFrom(pool.id, value($event))"
+            />
+            <label [for]="'pool-member-to-' + pool.id">To</label>
+            <input
+              type="date"
+              [id]="'pool-member-to-' + pool.id"
+              data-testid="pool-member-to"
+              [value]="tos()[pool.id] ?? ''"
+              (input)="setTo(pool.id, value($event))"
+            />
             <button type="submit" data-testid="pool-member-add">Add member</button>
             @if (memberErrors()[pool.id]; as message) {
               <p role="alert" class="error" data-testid="pool-error">{{ message }}</p>
@@ -104,9 +122,11 @@ export class Pools {
   protected readonly String = String;
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
-  /** By pool id: the person (its id) or pool (pool:<id>) chosen, the share typed and the error shown for the pool. */
+  /** By pool id: the person (its id) or pool (pool:<id>) chosen, the share and dates typed and the error shown for the pool. */
   protected readonly picked = signal<Record<number, string>>({});
   protected readonly shares = signal<Record<number, string>>({});
+  protected readonly froms = signal<Record<number, string>>({});
+  protected readonly tos = signal<Record<number, string>>({});
   protected readonly memberErrors = signal<Record<number, string | null>>({});
   private saving = false;
 
@@ -118,6 +138,8 @@ export class Pools {
       this.error.set(null);
       this.picked.set({});
       this.shares.set({});
+      this.froms.set({});
+      this.tos.set({});
       this.memberErrors.set({});
     });
   }
@@ -138,6 +160,16 @@ export class Pools {
 
   protected setShare(poolId: number, share: string): void {
     this.shares.update((all) => ({ ...all, [poolId]: share }));
+    this.clearMemberError(poolId);
+  }
+
+  protected setFrom(poolId: number, from: string): void {
+    this.froms.update((all) => ({ ...all, [poolId]: from }));
+    this.clearMemberError(poolId);
+  }
+
+  protected setTo(poolId: number, to: string): void {
+    this.tos.update((all) => ({ ...all, [poolId]: to }));
     this.clearMemberError(poolId);
   }
 
@@ -190,12 +222,27 @@ export class Pools {
       this.setMemberError(pool.id, 'Type a share more than 0.00 and at most 100.00, with at most two decimals.');
       return;
     }
+    const from = (this.froms()[pool.id] ?? '').trim();
+    const to = (this.tos()[pool.id] ?? '').trim();
+    if (from !== '' && to !== '' && to < from) {
+      this.setMemberError(pool.id, 'The to-date cannot be before the from-date.');
+      return;
+    }
     this.saving = true;
     try {
-      await this.service.addMember(sheet, pool.id, memberPoolId ? { poolId: memberPoolId } : { personId: personId! }, share);
+      await this.service.addMember(
+        sheet,
+        pool.id,
+        memberPoolId ? { poolId: memberPoolId } : { personId: personId! },
+        share,
+        from,
+        to,
+      );
       if (this.session.sheetId() === sheet) {
         this.picked.update((all) => ({ ...all, [pool.id]: '' }));
         this.shares.update((all) => ({ ...all, [pool.id]: '' }));
+        this.froms.update((all) => ({ ...all, [pool.id]: '' }));
+        this.tos.update((all) => ({ ...all, [pool.id]: '' }));
       }
     } catch {
       if (this.session.sheetId() === sheet) {

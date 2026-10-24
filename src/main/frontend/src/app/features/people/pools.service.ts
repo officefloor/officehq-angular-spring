@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 /** A member of a pool: a person on the sheet or another pool (the other id null), its share percent and
- *  its cut of the pool's pot (two decimals; the cut null when the pool is unbalanced or has no pot). A pool
+ *  its cut of the pool's pot (two decimals; the cut null when the pool is unbalanced or has no pot, or the
+ *  member's dates leave out the sheet's today). A pool
  *  that is a member of none has the sheet's pot; one that is a member of another has its cut there. */
 export interface PoolMember {
   personId: number | null;
@@ -53,10 +54,21 @@ export class PoolsService {
 
   /** Add a person, or another pool, to a pool with a share. Refused (409) when the person is already in it,
    *  or the other pool is already in a pool, contains it, or would make a chain more than three deep; and (400)
-   *  for a bad share. */
-  async addMember(sheet: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
+   *  for a bad share or a to-date before the from-date. The dates (yyyy-mm-dd) are blank for none. */
+  async addMember(
+    sheet: string,
+    poolId: number,
+    member: { personId: number } | { poolId: number },
+    share: string,
+    from = '',
+    to = '',
+  ): Promise<void> {
     const all = await firstValueFrom(
-      this.http.post<Pool[]>(`${this.url(sheet)}/${poolId}/members`, { ...member, share }, { headers: this.session.headers() }),
+      this.http.post<Pool[]>(
+        `${this.url(sheet)}/${poolId}/members`,
+        { ...member, share, from, to },
+        { headers: this.session.headers() },
+      ),
     );
     if (this.session.sheetId() === sheet) this.pools.set(all);
   }

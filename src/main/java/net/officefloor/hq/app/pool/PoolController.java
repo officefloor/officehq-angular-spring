@@ -42,8 +42,10 @@ public class PoolController {
     public record PoolRequest(@NotNull @Size(max = 200) String name) {
     }
 
-    /** A member asked: the person or the pool (exactly one) and the share as typed. */
-    public record MemberRequest(Long personId, Long poolId, @NotNull @Size(max = 20) String share) {
+    /** A member asked: the person or the pool (exactly one), the share as typed and the optional from- and
+     * to-dates (yyyy-mm-dd, blank or absent for none). */
+    public record MemberRequest(Long personId, Long poolId, @NotNull @Size(max = 20) String share,
+            @Size(max = 20) String from, @Size(max = 20) String to) {
         @AssertTrue
         public boolean isOneMember() {
             return (personId == null) != (poolId == null);
@@ -77,9 +79,11 @@ public class PoolController {
             @RequestBody @Valid MemberRequest request) {
         String sheet = sheetId.trim();
         if (request.poolId() != null) {
-            service.addPoolMember(sheet, user.trim(), poolId, request.poolId(), request.share());
+            service.addPoolMember(sheet, user.trim(), poolId, request.poolId(), request.share(), request.from(),
+                    request.to());
         } else {
-            service.addMember(sheet, user.trim(), poolId, request.personId(), request.share());
+            service.addMember(sheet, user.trim(), poolId, request.personId(), request.share(), request.from(),
+                    request.to());
         }
         return list(sheet);
     }

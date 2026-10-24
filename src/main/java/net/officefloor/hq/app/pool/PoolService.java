@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -30,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
  * and the remainder of the pot over the cuts goes to the member with a cut with the largest share, the earliest
  * added on a tie, so the cuts add up to the pot exactly; a hold changes neither the total share nor the balance; an unbalanced pool, or one with no pot, has no
  * cuts. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
- * at most three deep. */
+ * at most three deep. A membership may carry a from-date and a to-date (each optional, both included); a member
+ * whose dates do not include the sheet's today is left out entirely: not in the total share, not in the balance,
+ * and no cut. */
 @Service
 public class PoolService {
 
@@ -92,7 +95,7 @@ public class PoolService {
         for (SheetPool pool : all) {
             BigDecimal total = BigDecimal.ZERO.setScale(2);
             for (SheetPoolMember m : byPool.getOrDefault(pool.getId(), List.of())) {
-                if (!retired(m, byId)) total = total.add(m.getShare());
+                if (!retired(m, byId) && m.isOn(today)) total = total.add(m.getShare());
             }
             totals.put(pool.getId(), total.setScale(2, RoundingMode.UNNECESSARY));
         }
@@ -152,18 +155,23 @@ public class PoolService {
 
     /** The cuts of a balanced pool's members, in their order: the pot times each share over the shares of the
      * members with a cut, half to even to two decimals (a retired or held person's 0.00), the remainder going to the
-     * largest share with a cut, the earliest added on a tie. */
+     * largest share with a cut, the earliest added on a tie; a member whose dates leave out {@code today} has
+     * none (null). */
     private static List<BigDecimal> cuts(BigDecimal pot, List<SheetPoolMember> kept, Map<Long, Person> byId,
             LocalDate today) {
         BigDecimal shares = BigDecimal.ZERO.setScale(2);
         for (SheetPoolMember m : kept) {
-            if (!retired(m, byId) && !held(m, byId, today)) shares = shares.add(m.getShare());
+            if (m.isOn(today) && !retired(m, byId) && !held(m, byId, today)) shares = shares.add(m.getShare());
         }
         List<BigDecimal> cuts = new ArrayList<>();
         BigDecimal sum = BigDecimal.ZERO.setScale(2);
         int largest = -1;
         for (int i = 0; i < kept.size(); i++) {
             SheetPoolMember m = kept.get(i);
+            if (!m.isOn(today)) {
+                cuts.add(null);
+                continue;
+            }
             if (retired(m, byId) || held(m, byId, today)) {
                 cuts.add(BigDecimal.ZERO.setScale(2));
                 continue;
@@ -188,28 +196,38 @@ public class PoolService {
         return added;
     }
 
-    /** Add the person to the pool with the share (as typed); refused when the person is already in the pool
-     * or the share is not more than 0.00 and at most 100.00 with at most two decimals. */
+    /** Add the person to the pool with the share and the optional from- and to-dates (as typed, blank for none);
+     * refused when the person is already in the pool, the share is not more than 0.00 and at most 100.00 with at
+     * most two decimals, or the to-date is before the from-date. */
     @Transactional
-    public SheetPoolMember addMember(String sheetId, String by, long poolId, long personId, String share) {
+    public SheetPoolMember addMember(String sheetId, String by, long poolId, long personId, String share, String from,
+            String to) {
         SheetPool pool = pools.findByIdAndSheetId(poolId, sheetId).orElseThrow(PoolNotFoundException::new);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         BigDecimal amount = shareOf(share);
+        LocalDate fromDate = dateOf(from);
+        LocalDate toDate = dateOf(to);
+        datesCheck(fromDate, toDate);
         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) throw new PoolMemberTakenException();
-        SheetPoolMember added = members.saveAndFlush(new SheetPoolMember(pool.getId(), person.getId(), amount));
-        audit.change("POOL_MEMBER_ADDED", sheetId, by, "pool=" + pool.getName(), "name=" + person.getName(),
-                "share=" + amount.toPlainString());
+        SheetPoolMember added = members.saveAndFlush(new SheetPoolMember(pool.getId(), person.getId(), amount)
+                .dated(fromDate, toDate));
+        audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
+                "name=" + person.getName(), "share=" + amount.toPlainString()));
         return added;
     }
 
     /** Add the pool {@code memberPoolId} to the pool with the share (as typed); refused when it is already a
      * member of a pool, when it is the pool or contains it through any chain, when the chain of pools would be
-     * more than three deep, or for a bad share. */
+     * more than three deep, for a bad share, or for a to-date before the from-date. */
     @Transactional
-    public SheetPoolMember addPoolMember(String sheetId, String by, long poolId, long memberPoolId, String share) {
+    public SheetPoolMember addPoolMember(String sheetId, String by, long poolId, long memberPoolId, String share,
+            String from, String to) {
         SheetPool pool = pools.findByIdAndSheetId(poolId, sheetId).orElseThrow(PoolNotFoundException::new);
         SheetPool member = pools.findByIdAndSheetId(memberPoolId, sheetId).orElseThrow(PoolNotFoundException::new);
         BigDecimal amount = shareOf(share);
+        LocalDate fromDate = dateOf(from);
+        LocalDate toDate = dateOf(to);
+        datesCheck(fromDate, toDate);
         Map<Long, Long> above = new HashMap<>();
         Map<Long, List<Long>> below = new HashMap<>();
         List<Long> ids = pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(SheetPool::getId).toList();
@@ -224,9 +242,10 @@ public class PoolService {
         }
         if (above.containsKey(member.getId())) throw new PoolNestedException();
         if (depth - 1 + height(member.getId(), below) > DEPTH) throw new PoolDepthException();
-        SheetPoolMember added = members.saveAndFlush(SheetPoolMember.ofPool(pool.getId(), member.getId(), amount));
-        audit.change("POOL_MEMBER_ADDED", sheetId, by, "pool=" + pool.getName(), "name=" + member.getName(),
-                "share=" + amount.toPlainString());
+        SheetPoolMember added = members.saveAndFlush(SheetPoolMember.ofPool(pool.getId(), member.getId(), amount)
+                .dated(fromDate, toDate));
+        audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
+                "name=" + member.getName(), "share=" + amount.toPlainString()));
         return added;
     }
 
@@ -235,6 +254,29 @@ public class PoolService {
         int most = 0;
         for (Long child : below.getOrDefault(poolId, List.of())) most = Math.max(most, height(child, below));
         return most + 1;
+    }
+
+    /** A date as typed (yyyy-mm-dd), or null when blank. */
+    private static LocalDate dateOf(String typed) {
+        String date = typed == null ? "" : typed.trim();
+        if (date.isEmpty()) return null;
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            throw new PoolDatesException();
+        }
+    }
+
+    private static void datesCheck(LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) throw new PoolDatesException();
+    }
+
+    /** The audit fields, with from=<date> and to=<date> at the end when given. */
+    private static String[] datedFields(LocalDate from, LocalDate to, String... fields) {
+        List<String> all = new ArrayList<>(List.of(fields));
+        if (from != null) all.add("from=" + from);
+        if (to != null) all.add("to=" + to);
+        return all.toArray(String[]::new);
     }
 
     private static BigDecimal shareOf(String share) {
