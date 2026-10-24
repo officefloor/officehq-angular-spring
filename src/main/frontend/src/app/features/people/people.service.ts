@@ -168,6 +168,16 @@ export class PeopleService {
     );
   }
 
+  /** Swap the person with the one above (`up`) or below them in the list; refused (409) for the
+   *  top person moving up and the bottom one moving down. */
+  move(sheet: string, id: number, direction: 'up' | 'down'): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/move-${direction}`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Retire the person from `from` (the sheet's today when null). */
   retire(sheet: string, id: number, from: string | null): Promise<Person> {
     return firstValueFrom(

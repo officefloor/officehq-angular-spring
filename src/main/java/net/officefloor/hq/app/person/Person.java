@@ -74,6 +74,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's place in the sheet's list: people are listed by it, lowest first. */
+    @Column(name = "list_position", nullable = false)
+    private Long position;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -229,6 +233,14 @@ public class Person {
         if (retiredFrom != null && date.isAfter(retiredFrom)) {
             throw new PersonRetiredException();
         }
+    }
+
+    public Long getPosition() {
+        return position;
+    }
+
+    public void setPosition(Long position) {
+        this.position = position;
     }
 
     public long getVersion() {

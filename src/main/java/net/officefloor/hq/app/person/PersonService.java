@@ -38,10 +38,10 @@ public class PersonService {
         this.sheetService = sheetService;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in list order. */
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +68,7 @@ public class PersonService {
         Person created = new Person(sheetId, name, grade);
         created.setTerms(terms);
         created.setContact(contact);
+        created.setPosition(people.maxPosition(sheetId) + 1);
         Person person = people.saveAndFlush(created);
         List<String> fields = new ArrayList<>(List.of("name=" + person.getName(), "grade=" + grade));
         if (terms != null) fields.add("terms=" + terms);
@@ -113,6 +114,28 @@ public class PersonService {
         if (contactChanged) fields.add("contact=" + (person.getContact() == null ? "" : person.getContact()));
         audit.change("PERSON_EDITED", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
+        return person;
+    }
+
+    /** Swaps the person with the one above them in the list ({@code up}) or below; refused for the
+     * top person moving up and the bottom one moving down. */
+    @Transactional
+    public Person move(String sheetId, String user, long personId, boolean up) {
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == personId) at = i;
+        }
+        if (at < 0) throw new PersonNotFoundException();
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) throw new PersonMoveException();
+        Person person = listed.get(at);
+        Person other = listed.get(to);
+        Long position = person.getPosition();
+        person.setPosition(other.getPosition());
+        other.setPosition(position);
+        people.flush();
+        audit.change("PERSON_MOVED", sheetId, user, "name=" + person.getName(), "position=" + (to + 1));
         return person;
     }
 

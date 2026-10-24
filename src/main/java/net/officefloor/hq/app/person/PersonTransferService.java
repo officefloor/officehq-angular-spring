@@ -103,7 +103,9 @@ public class PersonTransferService {
         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
         RollupService.Snapshot beforeThere = rollup.snapshot(toSheetId);
 
-        Person arrived = people.saveAndFlush(from.transferredTo(toSheetId));
+        Person transferred = from.transferredTo(toSheetId);
+        transferred.setPosition(people.maxPosition(toSheetId) + 1);
+        Person arrived = people.saveAndFlush(transferred);
 
         // Oldest first: each is listed anew on the other sheet in this order, so they keep their order.
         List<Claim> moving = new ArrayList<>(claims.lockBySheetIdAndPersonId(sheetId, from.getId()));

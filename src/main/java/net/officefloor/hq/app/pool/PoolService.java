@@ -70,7 +70,7 @@ public class PoolService {
         List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         if (all.isEmpty()) return List.of();
         BigDecimal pot = sheets.findById(sheetId).map(Sheet::getPot).orElse(null);
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, SheetPool> poolsById = all.stream().collect(Collectors.toMap(SheetPool::getId, Function.identity()));
         Map<Long, List<SheetPoolMember>> byPool = new LinkedHashMap<>();

@@ -273,6 +273,22 @@ public class PersonController {
                 request == null ? null : request.from()));
     }
 
+    /** Swaps the person with the one above them in the list; refused (409) for the top person. */
+    @PostMapping("/{personId}/move-up")
+    public PersonView moveUp(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.move(sheetId.trim(), user.trim(), personId, true));
+    }
+
+    /** Swaps the person with the one below them in the list; refused (409) for the bottom person. */
+    @PostMapping("/{personId}/move-down")
+    public PersonView moveDown(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.move(sheetId.trim(), user.trim(), personId, false));
+    }
+
     /** Merges the person into another; answers the person merged into. */
     @PostMapping("/{personId}/merge")
     public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,

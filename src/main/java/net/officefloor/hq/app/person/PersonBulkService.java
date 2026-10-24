@@ -33,13 +33,13 @@ public class PersonBulkService {
     }
 
     /** Gives each of the people {@code grade} from {@code from} (the sheet's today when left out), in
-     * list order (the order they were added); those not on the sheet, or saved by someone else while
+     * list order; those not on the sheet, or saved by someone else while
      * this runs, are left as they are. The people it changed. */
     public List<Person> grade(String sheetId, String user, Collection<Long> personIds, String grade, LocalDate from) {
         Set<Long> asked = Set.copyOf(personIds);
         if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
         if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return List.of();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> asked.contains(p.getId()))
                 .toList();
         List<Person> changed = new ArrayList<>();

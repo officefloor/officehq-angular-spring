@@ -49,7 +49,10 @@ public class SheetAsOf implements RollupService.Basis {
         this.date = date;
         this.inherited = List.copyOf(inherited);
         this.sheet = sheet;
-        this.people = rowsOf(rows, Person.class).stream().sorted(Comparator.comparing(Person::getId)).toList();
+        this.people = rowsOf(rows, Person.class).stream()
+                .sorted(Comparator.comparing(Person::getPosition, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Person::getId))
+                .toList();
         this.claims = rowsOf(rows, Claim.class).stream()
                 .sorted(Comparator.comparingLong(Claim::getListed).thenComparing(Claim::getId).reversed())
                 .toList();
@@ -127,7 +130,7 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getGraceDays();
     }
 
-    /** The people then, in the order they were added. */
+    /** The people then, in list order. */
     public List<Person> people() {
         return people;
     }

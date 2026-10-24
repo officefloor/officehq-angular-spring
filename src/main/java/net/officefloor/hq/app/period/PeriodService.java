@@ -193,7 +193,7 @@ public class PeriodService {
      * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
      * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds, while the claim is still OPEN or PENDING now). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, BigDecimal> totals = new HashMap<>();
         for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));

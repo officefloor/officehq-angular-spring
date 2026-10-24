@@ -94,7 +94,7 @@ public class RateService {
      * people on the grade on each claim's date; a claim a statement binds does not change. Saves nothing. */
     @Transactional(readOnly = true)
     public Preview preview(String sheetId, String grade, BigDecimal pct) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         RollupService.Basis live = rollup.live(sheetId);
         RollupService.Basis previewed = RollupService.withRate(live, grade, pct);

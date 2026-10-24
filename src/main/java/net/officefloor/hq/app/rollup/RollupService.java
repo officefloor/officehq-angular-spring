@@ -68,7 +68,7 @@ public class RollupService {
     public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {
     }
 
-    /** The sheet's figures at one moment: each person's, by id in the order they were added, and the totals. */
+    /** The sheet's figures at one moment: each person's, in list order, and the totals. */
     public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal) {
     }
 
@@ -83,7 +83,7 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();

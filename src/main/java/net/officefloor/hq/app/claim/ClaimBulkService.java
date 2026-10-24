@@ -107,11 +107,11 @@ public class ClaimBulkService {
                 || sheets.findById(sheetId).map(Sheet::isArchived).orElse(false);
     }
 
-    /** The claims asked that are on the sheet: people in the order they were added, each person's
+    /** The claims asked that are on the sheet: people in list order, each person's
      * claims newest first. */
     private List<Claim> inListOrder(String sheetId, Set<Long> asked) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> asked.contains(c.getId()))

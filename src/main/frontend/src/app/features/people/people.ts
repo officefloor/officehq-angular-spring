@@ -21,7 +21,8 @@ import { Pools } from './pools';
 import { PoolsService } from './pools.service';
 import { Audit } from './audit';
 
-// The people on the active sheet, in the order they were added, and the form that adds a person
+// The people on the active sheet, in list order (each has a position; new people go to the end, and
+// the up and down buttons on a row swap the person with their neighbour), and the form that adds a person
 // or, once a person's editor is opened, saves changes to them. Each person's row lists their claims
 // and shows what they have claimed (their OPEN, PENDING and SETTLED claims) and what is due on it: the sum of
 // those claims' due figures; the sheet's
@@ -393,6 +394,22 @@ import { Audit } from './audit';
                     (click)="edit(p)"
                   >
                     Edit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="person-move-up"
+                    [attr.aria-label]="'Move ' + p.name + ' up'"
+                    (click)="move(p, 'up')"
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="person-move-down"
+                    [attr.aria-label]="'Move ' + p.name + ' down'"
+                    (click)="move(p, 'down')"
+                  >
+                    Down
                   </button>
                   <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
                   <input
@@ -1067,6 +1084,26 @@ export class People {
     this.clearRowError(id);
   }
 
+  /** Swap the person with the one above or below them in the list; refused for the top person
+   *  moving up and the bottom one moving down. */
+  protected async move(person: Person, direction: 'up' | 'down'): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      await this.service.move(sheet, person.id, direction);
+      const list = await this.service.list(sheet);
+      if (this.sheet() !== sheet) return;
+      this.people.set(list);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: direction === 'up' ? 'That person is already at the top.' : 'That person is already at the bottom.',
+      }));
+    }
+  }
+
   /** Retire the person from the date typed on their row (the sheet's today when blank). */
   protected async retire(person: Person): Promise<void> {
     this.clearRowError(person.id);
@@ -1548,6 +1585,7 @@ export class People {
 
   protected selectPerson(id: number, selected: boolean): void {
     this.bulkGradeError.set(null);
+    this.clearRowError(id);
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
       if (selected) next.add(id);
@@ -1582,6 +1620,8 @@ export class People {
   /** Put an added claim first, or a saved one in its place. */
   /** Show the claim as saved; one new, or moved to another person, is listed first (newest). */
   protected claimSaved(claim: Claim): void {
+    // A claim saved on the row is the next action taken on it: its old error goes.
+    this.clearRowError(claim.personId);
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id && c.personId === claim.personId)
         ? list.map((c) => (c.id === claim.id ? claim : c))
