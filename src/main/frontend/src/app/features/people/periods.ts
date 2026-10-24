@@ -3,6 +3,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { Session } from '../../core/session';
 import { Period, PeriodsService } from './periods.service';
 import { fiscalYearOf } from './settings.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR = /^\d{4}$/;
@@ -13,6 +14,7 @@ const YEAR = /^\d{4}$/;
 // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
 @Component({
   selector: 'app-periods',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -51,7 +53,7 @@ const YEAR = /^\d{4}$/;
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="period-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="period-form-error">{{ (message) | figure }}</p>
         }
       </form>
       <form (submit)="generate($event)" aria-label="Generate monthly periods" data-testid="period-generate-form">
@@ -72,7 +74,7 @@ const YEAR = /^\d{4}$/;
           (input)="generateTo.set(value($event)); generateError.set(null)"
         />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
-        <span aria-live="polite">Made: <span data-testid="period-generated">{{ generated() ?? '' }}</span></span>
+        <span aria-live="polite">Made: <span data-testid="period-generated">{{ (generated() ?? '') | figure }}</span></span>
         <label for="period-generate-fy-year">Fiscal year</label>
         <input
           id="period-generate-fy-year"
@@ -86,7 +88,7 @@ const YEAR = /^\d{4}$/;
           Generate fiscal year
         </button>
         @if (generateError(); as message) {
-          <p role="alert" class="error" data-testid="period-generate-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="period-generate-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (sorted().length > 0) {
@@ -106,13 +108,13 @@ const YEAR = /^\d{4}$/;
           <tbody>
             @for (p of sorted(); track p.id) {
               <tr [attr.data-testid]="'period-row-' + p.name">
-                <td data-testid="period-name">{{ p.name }}</td>
-                <td data-testid="period-from">{{ p.from }}</td>
-                <td data-testid="period-to">{{ p.to }}</td>
-                <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
-                <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
-                <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
-                <td data-testid="period-closed">{{ p.closed ? (p.soft ? 'soft' : 'yes') : 'no' }}</td>
+                <td data-testid="period-name">{{ (p.name) | figure }}</td>
+                <td data-testid="period-from">{{ (p.from) | figure }}</td>
+                <td data-testid="period-to">{{ (p.to) | figure }}</td>
+                <td data-testid="period-fy">{{ (fiscalYear(p)) | figure }}</td>
+                <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+                <td data-testid="period-due-total">{{ (dueTotals()[p.name] ?? '0.00') | figure }}</td>
+                <td data-testid="period-closed">{{ (p.closed ? (p.soft ? 'soft' : 'yes') : 'no') | figure }}</td>
                 <td>
                   @if (!p.closed || p.soft) {
                     <button
@@ -141,7 +143,7 @@ const YEAR = /^\d{4}$/;
                     Reopen
                   </button>
                   @if (rowErrors()[p.id]; as message) {
-                    <p role="alert" class="error" data-testid="period-error">{{ message }}</p>
+                    <p role="alert" class="error" data-testid="period-error">{{ (message) | figure }}</p>
                   }
                 </td>
               </tr>

@@ -2,6 +2,11 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+/** A locale a user may choose. */
+export type Locale = 'en' | 'de';
+
+export const LOCALES: readonly Locale[] = ['en', 'de'];
+
 interface SheetView {
   id: string;
   /** The sheet's today (YYYY-MM-DD): every date-dependent decision and default uses it. */
@@ -39,6 +44,8 @@ export class Session {
   readonly asOf = signal<string | null>(null);
   /** Counts sheet loads, so a view re-reads the store even when the same id is loaded again. */
   readonly loads = signal(0);
+  /** The signed-in user's locale on the active sheet: how figures are shown to them ('en' or 'de'). */
+  readonly locale = signal<Locale>('en');
   readonly signedIn = computed(() => this.user() !== null);
 
   signIn(name: string): boolean {
@@ -51,6 +58,7 @@ export class Session {
     this.lastSettleBatch.set(null);
     this.parent.set(null);
     this.asOf.set(null);
+    this.locale.set('en');
     return true;
   }
 
@@ -86,7 +94,13 @@ export class Session {
           headers: this.headers(),
         }),
       );
+      const { locale } = await firstValueFrom(
+        this.http.get<{ locale: Locale }>(`/api/sheets/${encodeURIComponent(view.id)}/locale`, {
+          headers: this.headers(),
+        }),
+      );
       this.show(view);
+      this.locale.set(locale);
       this.loads.update((n) => n + 1);
       return true;
     } catch {
@@ -147,6 +161,25 @@ export class Session {
       return view.id;
     } catch {
       return null;
+    }
+  }
+
+  /** Choose the signed-in user's locale on the active sheet; resolves false when refused. */
+  async setLocale(locale: string): Promise<boolean> {
+    const sheet = this.sheetId();
+    if (!sheet || !LOCALES.includes(locale as Locale)) return false;
+    try {
+      const view = await firstValueFrom(
+        this.http.put<{ locale: Locale }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/locale`,
+          { locale },
+          { headers: this.headers() },
+        ),
+      );
+      if (this.sheetId() === sheet) this.locale.set(view.locale);
+      return true;
+    } catch {
+      return false;
     }
   }
 

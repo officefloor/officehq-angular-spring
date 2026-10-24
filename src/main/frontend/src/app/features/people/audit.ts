@@ -1,12 +1,14 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { AuditService } from './audit.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 // The audit viewer: the sheet's audit lines exactly as the audit file holds them, newest first, or with
 // a name in the filter only the lines about that person (name= or person= that name, case and
 // surrounding spaces ignored). It reads the file; it records nothing.
 @Component({
   selector: 'app-audit',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="audit-heading">
       <h2 id="audit-heading">Audit</h2>
@@ -15,13 +17,13 @@ import { AuditService } from './audit.service';
         <input id="audit-filter" data-testid="audit-filter" [value]="filter()" (input)="filter.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="audit-show">Show audit</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="audit-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="audit-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (lines().length > 0) {
         <ol data-testid="audit-list">
           @for (line of lines(); track $index) {
-            <li data-testid="audit-line">{{ line }}</li>
+            <li data-testid="audit-line">{{ (line) | figure }}</li>
           }
         </ol>
       }

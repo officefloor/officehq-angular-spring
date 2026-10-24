@@ -1,12 +1,14 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Found, TreeSearchService } from './tree-search.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 // The tree search: every person of this sheet and the other sheets of its tree whose name or an alias
 // contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>. It changes
 // nothing.
 @Component({
   selector: 'app-tree-search',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="search-heading">
       <h2 id="search-heading">Search the tree</h2>
@@ -14,15 +16,15 @@ import { Found, TreeSearchService } from './tree-search.service';
         <label for="search-name">Name or alias</label>
         <input id="search-name" data-testid="search-name" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="search">Search</button>
-        <span>Found <span data-testid="search-count">{{ count() }}</span></span>
+        <span>Found <span data-testid="search-count">{{ (count()) | figure }}</span></span>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="search-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="search-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (found().length > 0) {
         <ol data-testid="search-list">
           @for (f of found(); track $index) {
-            <li data-testid="search-line">{{ f.sheet }} {{ f.name }} {{ f.dueTotal }}</li>
+            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (f.name) | figure }} {{ (f.dueTotal) | figure }}</li>
           }
         </ol>
       }

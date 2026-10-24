@@ -8,6 +8,7 @@ import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
 import { TemplatesService } from './templates.service';
 import { VoidReasonsService } from './void-reasons.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 /** The fields of the claim form. */
 type FormField = 'amount' | 'date' | 'note' | 'corrects' | 'ref' | 'tags';
@@ -29,6 +30,7 @@ const PAST: Record<ClaimAction, string> = {
 // editor is opened, saves changes to it.
 @Component({
   selector: 'app-claims',
+  imports: [FigurePipe],
   template: `
     <form (submit)="submit($event)" [attr.aria-label]="'Claim for ' + personName()" data-testid="claim-form">
       <label [for]="fieldId('amount')">Amount</label>
@@ -76,10 +78,10 @@ const PAST: Record<ClaimAction, string> = {
         (input)="tags.set(value($event)); error.set(null)"
       />
       <button type="submit" data-testid="claim-form-submit">
-        {{ editingId() === null ? 'Add claim' : 'Save claim' }}
+        {{ (editingId() === null ? 'Add claim' : 'Save claim') | figure }}
       </button>
       @if (error(); as message) {
-        <p role="alert" class="error" data-testid="claim-form-error">{{ message }}</p>
+        <p role="alert" class="error" data-testid="claim-form-error">{{ (message) | figure }}</p>
       }
     </form>
     <div class="from-template">
@@ -91,7 +93,7 @@ const PAST: Record<ClaimAction, string> = {
       >
         <option value="" [selected]="template() === ''">Choose a template</option>
         @for (t of templateList(); track t.id) {
-          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+          <option [value]="t.name" [selected]="template() === t.name">{{ (t.name) | figure }}</option>
         }
       </select>
       <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
@@ -107,40 +109,40 @@ const PAST: Record<ClaimAction, string> = {
               [checked]="selected().has(c.id)"
               (change)="selectToggled.emit({ id: c.id, selected: checked($event) })"
             />
-            <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-            <span data-testid="claim-amount">{{ c.amount }}</span>
-            <span data-testid="claim-date">{{ c.date }}</span>
-            <span data-testid="claim-note">{{ c.note }}</span>
-            <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
-            <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
-            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
-            <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
-            <span>Overdue <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span></span>
-            <span data-testid="claim-status">{{ c.status }}</span>
-            <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
-            <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
-            <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
-            <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
-            <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
-            <span>Deferred <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span></span>
-            <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
-            <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
-            <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
-            <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
-            <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+            <span>No. <span data-testid="claim-number">{{ (c.number ?? '') | figure }}</span></span>
+            <span data-testid="claim-amount">{{ (c.amount) | figure }}</span>
+            <span data-testid="claim-date">{{ (c.date) | figure }}</span>
+            <span data-testid="claim-note">{{ (c.note) | figure }}</span>
+            <span>Ref <span data-testid="claim-ref">{{ (c.ref ?? '') | figure }}</span></span>
+            <span>Tags <span data-testid="claim-tags">{{ (c.tags.join(', ')) | figure }}</span></span>
+            <span>Due <span data-testid="claim-due">{{ (dueOf(c)) | figure }}</span></span>
+            <span>Due by <span data-testid="claim-due-by">{{ (dueBy(c)) | figure }}</span></span>
+            <span>Overdue <span data-testid="claim-overdue">{{ (isOverdue(c) ? 'yes' : 'no') | figure }}</span></span>
+            <span data-testid="claim-status">{{ (c.status) | figure }}</span>
+            <span>Batch <span data-testid="claim-batch">{{ (c.settleBatch ?? '') | figure }}</span></span>
+            <span>Opened by <span data-testid="claim-opened-by">{{ (c.openedBy ?? '') | figure }}</span></span>
+            <span>Stated <span data-testid="claim-stated">{{ (c.stated ? 'yes' : 'no') | figure }}</span></span>
+            <span>Period <span data-testid="claim-period">{{ (periodOf(c)) | figure }}</span></span>
+            <span>Corrects <span data-testid="claim-corrects">{{ (c.corrects ?? '') | figure }}</span></span>
+            <span>Deferred <span data-testid="claim-deferred">{{ (isDeferred(c) ? 'yes' : 'no') | figure }}</span></span>
+            <span>Until <span data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | figure }}</span></span>
+            <span>Proofs <span data-testid="claim-proofs">{{ (c.proofs) | figure }}</span></span>
+            <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
+            <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
+            <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
-                <li data-testid="claim-log-line">{{ line }}</li>
+                <li data-testid="claim-log-line">{{ (line) | figure }}</li>
               }
             </ol>
             <ol class="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.comments; track $index) {
-                <li data-testid="claim-comments-line">{{ line }}</li>
+                <li data-testid="claim-comments-line">{{ (line) | figure }}</li>
               }
             </ol>
             <ol class="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.lines; track $index) {
-                <li data-testid="claim-lines-line">{{ line }}</li>
+                <li data-testid="claim-lines-line">{{ (line) | figure }}</li>
               }
             </ol>
             <label [for]="fieldId('line-label-' + c.id)">Line label</label>
@@ -205,7 +207,7 @@ const PAST: Record<ClaimAction, string> = {
               >
                 <option value="" [selected]="!voidReasons()[c.id]">Choose a reason</option>
                 @for (r of voidReasonList(); track r.id) {
-                  <option [value]="r.reason" [selected]="voidReasons()[c.id] === r.reason">{{ r.reason }}</option>
+                  <option [value]="r.reason" [selected]="voidReasons()[c.id] === r.reason">{{ (r.reason) | figure }}</option>
                 }
               </select>
             }
@@ -216,7 +218,7 @@ const PAST: Record<ClaimAction, string> = {
                 [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
                 (click)="act(c, a.action)"
               >
-                {{ a.label }}
+                {{ (a.label) | figure }}
               </button>
             }
             <button
@@ -299,7 +301,7 @@ const PAST: Record<ClaimAction, string> = {
             >
               <option value="" [selected]="!reassignTos()[c.id]">Choose a person</option>
               @for (o of others(); track o.id) {
-                <option [value]="o.id" [selected]="reassignTos()[c.id] === '' + o.id">{{ o.name }}</option>
+                <option [value]="o.id" [selected]="reassignTos()[c.id] === '' + o.id">{{ (o.name) | figure }}</option>
               }
             </select>
             <button
@@ -338,7 +340,7 @@ const PAST: Record<ClaimAction, string> = {
               <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
             }
             @if (rowErrors()[c.id]; as message) {
-              <p role="alert" class="error" data-testid="claim-error">{{ message }}</p>
+              <p role="alert" class="error" data-testid="claim-error">{{ (message) | figure }}</p>
             }
           </li>
         }

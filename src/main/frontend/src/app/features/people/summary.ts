@@ -3,6 +3,7 @@ import { Claim, cents, money } from './claims.service';
 import { GRADES, Grade } from './people.service';
 import { Period } from './periods.service';
 import { VoidReasonsService } from './void-reasons.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 /** The statuses the summary counts claims by. */
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
@@ -23,6 +24,7 @@ export interface SummaryPerson {
 // per reason on the sheet's void reasons, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="summary-heading" data-testid="summary">
       <h2 id="summary-heading">Summary</h2>
@@ -38,10 +40,10 @@ export interface SummaryPerson {
         <tbody>
           @for (g of byGrade(); track g.grade) {
             <tr>
-              <th scope="row">{{ g.grade }}</th>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+              <th scope="row">{{ (g.grade) | figure }}</th>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ (g.count) | figure }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ (g.active) | figure }}</td>
             </tr>
           }
         </tbody>
@@ -58,9 +60,9 @@ export interface SummaryPerson {
           <tbody>
             @for (p of byPeriod(); track p.name) {
               <tr>
-                <th scope="row">{{ p.name }}</th>
-                <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
-                <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+                <th scope="row">{{ (p.name) | figure }}</th>
+                <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ (p.dueTotal) | figure }}</td>
+                <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ (p.change) | figure }}</td>
               </tr>
             }
           </tbody>
@@ -77,8 +79,8 @@ export interface SummaryPerson {
           <tbody>
             @for (t of tagDueTotals(); track t.tag) {
               <tr>
-                <th scope="row">{{ t.tag }}</th>
-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+                <th scope="row">{{ (t.tag) | figure }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ (t.dueTotal) | figure }}</td>
               </tr>
             }
           </tbody>
@@ -95,8 +97,8 @@ export interface SummaryPerson {
           <tbody>
             @for (m of monthDueTotals(); track m.month) {
               <tr>
-                <th scope="row">{{ m.month }}</th>
-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+                <th scope="row">{{ (m.month) | figure }}</th>
+                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ (m.dueTotal) | figure }}</td>
               </tr>
             }
           </tbody>
@@ -112,13 +114,13 @@ export interface SummaryPerson {
         <tbody>
           @for (p of classicByPeriod(); track p.name) {
             <tr>
-              <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <th scope="row">{{ (p.name) | figure }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ (p.dueTotal) | figure }}</td>
             </tr>
           }
           <tr>
             <th scope="row">Sheet</th>
-            <td data-testid="classic-due-total">{{ classicDueTotal() }}</td>
+            <td data-testid="classic-due-total">{{ (classicDueTotal()) | figure }}</td>
           </tr>
         </tbody>
       </table>
@@ -132,8 +134,8 @@ export interface SummaryPerson {
         <tbody>
           @for (s of byStatus(); track s.status) {
             <tr>
-              <th scope="row">{{ s.status }}</th>
-              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
+              <th scope="row">{{ (s.status) | figure }}</th>
+              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ (s.count) | figure }}</td>
             </tr>
           }
         </tbody>
@@ -149,8 +151,8 @@ export interface SummaryPerson {
           <tbody>
             @for (v of byVoidReason(); track v.reason) {
               <tr>
-                <th scope="row">{{ v.reason }}</th>
-                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+                <th scope="row">{{ (v.reason) | figure }}</th>
+                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ (v.count) | figure }}</td>
               </tr>
             }
           </tbody>

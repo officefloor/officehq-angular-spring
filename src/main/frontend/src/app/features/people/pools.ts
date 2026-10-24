@@ -2,6 +2,7 @@ import { Component, DOCUMENT, effect, inject, input, signal } from '@angular/cor
 import { Session } from '../../core/session';
 import { Person } from './people.service';
 import { Pool, PoolMember, PoolsService } from './pools.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 /** A share as typed: a percent with at most two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -18,6 +19,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // A button downloads the pools, re-read from the store, as a CSV file: one line per member.
 @Component({
   selector: 'app-pools',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="pools-heading">
       <h2 id="pools-heading">Pools</h2>
@@ -26,23 +28,23 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
         <input id="pool-form-name" data-testid="pool-form-name" [value]="name()" (input)="name.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="pool-form-submit">Add pool</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="pool-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="pool-form-error">{{ (message) | figure }}</p>
         }
       </form>
       <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools (CSV)</button>
       @for (pool of service.pools(); track pool.id) {
         <div class="pool" [attr.data-testid]="'pool-row-' + pool.name">
-          <h3>{{ pool.name }}</h3>
+          <h3>{{ (pool.name) | figure }}</h3>
           <p>
-            Total share <span data-testid="pool-total-share">{{ pool.totalShare }}</span>,
-            balanced <span data-testid="pool-balanced">{{ pool.balanced ? 'yes' : 'no' }}</span>
+            Total share <span data-testid="pool-total-share">{{ (pool.totalShare) | figure }}</span>,
+            balanced <span data-testid="pool-balanced">{{ (pool.balanced ? 'yes' : 'no') | figure }}</span>
           </p>
           @if (pool.members.length > 0) {
             <ul>
               @for (m of pool.members; track memberKey(m)) {
                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
-                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>
-                  cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+                  {{ (m.name) | figure }} <span data-testid="pool-share">{{ (m.share) | figure }}</span>
+                  cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span>
                 </li>
               }
             </ul>
@@ -56,11 +58,11 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
             >
               <option value="" [selected]="!picked()[pool.id]">Choose a person or pool</option>
               @for (p of people(); track p.id) {
-                <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ p.name }}</option>
+                <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ (p.name) | figure }}</option>
               }
               @for (other of service.pools(); track other.id) {
                 @if (other.id !== pool.id) {
-                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ other.name }}</option>
+                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ (other.name) | figure }}</option>
                 }
               }
             </select>
@@ -89,7 +91,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
             />
             <button type="submit" data-testid="pool-member-add">Add member</button>
             @if (memberErrors()[pool.id]; as message) {
-              <p role="alert" class="error" data-testid="pool-error">{{ message }}</p>
+              <p role="alert" class="error" data-testid="pool-error">{{ (message) | figure }}</p>
             }
           </form>
         </div>

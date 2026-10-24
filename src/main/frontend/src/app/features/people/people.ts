@@ -23,6 +23,7 @@ import { Plans } from './plans';
 import { Plan, PlansService } from './plans.service';
 import { PoolsService } from './pools.service';
 import { Audit } from './audit';
+import { FigurePipe } from '../../core/figure.pipe';
 
 // The people on the active sheet, in list order (each has a position; new people go to the end, and
 // the up and down buttons on a row swap the person with their neighbour), and the form that adds a person
@@ -60,7 +61,7 @@ import { Audit } from './audit';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -72,9 +73,9 @@ import { Audit } from './audit';
     />
     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
       <span>Over this sheet and the sheets below it:</span>
-      <span>People <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong></span>
-      <span>Due <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong></span>
-      <span>Overdue <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></span>
+      <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
+      <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
+      <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
     </section>
     <app-settings
       (floorSaved)="floors.set($event)"
@@ -123,7 +124,7 @@ import { Audit } from './audit';
           (change)="grade.set(gradeOf($event)); error.set(null)"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
           }
         </select>
         <label for="person-form-grade-from">Grade from</label>
@@ -157,13 +158,13 @@ import { Audit } from './audit';
           (input)="tags.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
-          {{ editingId() === null ? 'Add person' : 'Save person' }}
+          {{ (editingId() === null ? 'Add person' : 'Save person') | figure }}
         </button>
         @if (editingId() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
         }
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="person-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="person-form-error">{{ (message) | figure }}</p>
         }
       </form>
 
@@ -185,7 +186,7 @@ import { Audit } from './audit';
         />
         <button type="submit" data-testid="quick-submit">Quick add claim</button>
         @if (quickError(); as message) {
-          <p role="alert" class="error" data-testid="quick-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="quick-error">{{ (message) | figure }}</p>
         }
       </form>
 
@@ -200,13 +201,13 @@ import { Audit } from './audit';
         ></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
         @if (importAdded() !== null) {
-          Added <span data-testid="import-added">{{ importAdded() }}</span>
+          Added <span data-testid="import-added">{{ (importAdded()) | figure }}</span>
         }
         @if (importUpdated() !== null) {
-          Updated <span data-testid="import-updated">{{ importUpdated() }}</span>
+          Updated <span data-testid="import-updated">{{ (importUpdated()) | figure }}</span>
         }
         @if (importError(); as message) {
-          <p role="alert" class="error" data-testid="import-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="import-error">{{ (message) | figure }}</p>
         }
       </form>
 
@@ -221,20 +222,20 @@ import { Audit } from './audit';
         ></textarea>
         <button type="submit" data-testid="paste-submit">Paste claims</button>
         @if (pasteAdded() !== null) {
-          Pasted and opened <span data-testid="paste-added">{{ pasteAdded() }}</span>
+          Pasted and opened <span data-testid="paste-added">{{ (pasteAdded()) | figure }}</span>
         }
         @if (pasteError(); as message) {
-          <p role="alert" class="error" data-testid="paste-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="paste-error">{{ (message) | figure }}</p>
         }
       </form>
 
       <div class="generate">
         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
         @if (planGenerated() !== null) {
-          Made <span data-testid="plan-generated-count">{{ planGenerated() }}</span>
+          Made <span data-testid="plan-generated-count">{{ (planGenerated()) | figure }}</span>
         }
         @if (planGenerateError(); as message) {
-          <p role="alert" class="error" data-testid="plan-generate-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="plan-generate-error">{{ (message) | figure }}</p>
         }
       </div>
 
@@ -250,7 +251,7 @@ import { Audit } from './audit';
       <label for="sort-by">Sort people by</label>
       <select id="sort-by" data-testid="sort-by" (change)="sortKey.set(sortKeyOf($event))">
         @for (k of sortKeys; track k) {
-          <option [value]="k" [selected]="sortKey() === k">{{ k }}</option>
+          <option [value]="k" [selected]="sortKey() === k">{{ (k) | figure }}</option>
         }
       </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
@@ -259,17 +260,17 @@ import { Audit } from './audit';
       <p>
         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
         @if (bulkOpened(); as result) {
-          Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
-          refused <span data-testid="bulk-refused">{{ result.refused }}</span>
+          Opened <span data-testid="bulk-opened">{{ (result.opened) | figure }}</span>,
+          refused <span data-testid="bulk-refused">{{ (result.refused) | figure }}</span>
         }
       </p>
 
       <p>
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
-        Last batch <span data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</span>
+        Last batch <span data-testid="bulk-settle-batch">{{ (session.lastSettleBatch() ?? '') | figure }}</span>
         @if (bulkSettled(); as result) {
-          Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
-          refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span>
+          Settled <span data-testid="bulk-settled">{{ (result.settled) | figure }}</span>,
+          refused <span data-testid="bulk-settle-refused">{{ (result.refused) | figure }}</span>
         }
       </p>
 
@@ -282,13 +283,13 @@ import { Audit } from './audit';
         >
           <option value="" [selected]="!bulkReassignTo()">Choose a person</option>
           @for (p of people(); track p.id) {
-            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ p.name }}</option>
+            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ (p.name) | figure }}</option>
           }
         </select>
         <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
         @if (bulkReassigned(); as result) {
-          Moved <span data-testid="bulk-reassigned">{{ result.reassigned }}</span>,
-          refused <span data-testid="bulk-reassign-refused">{{ result.refused }}</span>
+          Moved <span data-testid="bulk-reassigned">{{ (result.reassigned) | figure }}</span>,
+          refused <span data-testid="bulk-reassign-refused">{{ (result.refused) | figure }}</span>
         }
       </p>
 
@@ -303,8 +304,8 @@ import { Audit } from './audit';
         />
         <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
         @if (bulkRedated(); as result) {
-          Re-dated <span data-testid="bulk-redated">{{ result.redated }}</span>,
-          refused <span data-testid="bulk-redate-refused">{{ result.refused }}</span>
+          Re-dated <span data-testid="bulk-redated">{{ (result.redated) | figure }}</span>,
+          refused <span data-testid="bulk-redate-refused">{{ (result.refused) | figure }}</span>
         }
       </p>
 
@@ -317,7 +318,7 @@ import { Audit } from './audit';
           (change)="bulkGradeChoice.set(gradeOf($event)); bulkGradeError.set(null)"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="bulkGradeChoice() === g">{{ g }}</option>
+            <option [value]="g" [selected]="bulkGradeChoice() === g">{{ (g) | figure }}</option>
           }
         </select>
         <label for="bulk-grade-from">From</label>
@@ -330,10 +331,10 @@ import { Audit } from './audit';
         />
         <button type="button" data-testid="bulk-grade-apply" (click)="bulkGrade()">Grade selected people</button>
         @if (bulkGraded() !== null) {
-          Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span>
+          Changed <span data-testid="bulk-graded">{{ (bulkGraded()) | figure }}</span>
         }
         @if (bulkGradeError(); as message) {
-          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
+          <span role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</span>
         }
       </p>
 
@@ -348,10 +349,10 @@ import { Audit } from './audit';
         />
         <button type="button" data-testid="bulk-retire" (click)="bulkRetire()">Retire selected people</button>
         @if (bulkRetired() !== null) {
-          Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span>
+          Retired <span data-testid="bulk-retired">{{ (bulkRetired()) | figure }}</span>
         }
         @if (bulkRetireError(); as message) {
-          <span role="alert" class="error" data-testid="person-error">{{ message }}</span>
+          <span role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</span>
         }
       </p>
 
@@ -375,7 +376,7 @@ import { Audit } from './audit';
               <th scope="col">Settled due</th>
               <th scope="col">Open due</th>
               @for (pd of periods(); track pd.id) {
-                <th scope="col">Due in {{ pd.name }}</th>
+                <th scope="col">Due in {{ (pd.name) | figure }}</th>
               }
               <th scope="col">Excess</th>
               <th scope="col">Cut total</th>
@@ -412,45 +413,45 @@ import { Audit } from './audit';
                     (change)="selectPerson(p.id, checked($event))"
                   />
                 </td>
-                <td data-testid="person-name">{{ p.name }}</td>
-                <td data-testid="person-grade">{{ gradeNow(p) }}</td>
-                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
-                <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
-                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
-                <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
-                <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-                <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
-                <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                <td data-testid="person-name">{{ (p.name) | figure }}</td>
+                <td data-testid="person-grade">{{ (gradeNow(p)) | figure }}</td>
+                <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
+                <td data-testid="person-contact">{{ (p.contact ?? '') | figure }}</td>
+                <td data-testid="person-tags">{{ (p.tags.join(', ')) | figure }}</td>
+                <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | figure }}</td>
+                <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="person-origin">{{ (p.origin ?? '') | figure }}</td>
+                <td data-testid="person-claimed">{{ (claimedOf(p)) | figure }}</td>
+                <td data-testid="person-due-total">{{ (dueTotalOf(p) ?? 'n/a') | figure }}</td>
                 @let split = splitOf(p);
-                <td data-testid="person-settled-total">{{ money(split.settled) }}</td>
-                <td data-testid="person-open-total">{{ money(split.open) }}</td>
+                <td data-testid="person-settled-total">{{ (money(split.settled)) | figure }}</td>
+                <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
                 @for (pd of periods(); track pd.id) {
-                  <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ money(personPeriodCents().get(p.id)?.[pd.name] ?? 0) }}</td>
+                  <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (money(personPeriodCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
                 }
-                <td data-testid="person-excess">{{ excessOf(p) }}</td>
-                <td data-testid="person-cut-total">{{ money(cutCents().get(p.id) ?? 0) }}</td>
-                <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
-                <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
+                <td data-testid="person-excess">{{ (excessOf(p)) | figure }}</td>
+                <td data-testid="person-cut-total">{{ (money(cutCents().get(p.id) ?? 0)) | figure }}</td>
+                <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
+                <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
                 @let aged = agedOf(p);
-                <td data-testid="person-aged-0-30">{{ money(aged[0]) }}</td>
-                <td data-testid="person-aged-31-60">{{ money(aged[1]) }}</td>
-                <td data-testid="person-aged-61">{{ money(aged[2]) }}</td>
-                <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
-                <td data-testid="person-stated-total">{{ lastStatementOf(p.id)?.dueTotal ?? '' }}</td>
-                <td data-testid="person-statement-date">{{ lastStatementOf(p.id)?.date ?? '' }}</td>
-                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
-                <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-                <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
-                <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
-                <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
-                <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
+                <td data-testid="person-aged-0-30">{{ (money(aged[0])) | figure }}</td>
+                <td data-testid="person-aged-31-60">{{ (money(aged[1])) | figure }}</td>
+                <td data-testid="person-aged-61">{{ (money(aged[2])) | figure }}</td>
+                <td data-testid="person-statement-count">{{ (statementsOf(p.id).length) | figure }}</td>
+                <td data-testid="person-stated-total">{{ (lastStatementOf(p.id)?.dueTotal ?? '') | figure }}</td>
+                <td data-testid="person-statement-date">{{ (lastStatementOf(p.id)?.date ?? '') | figure }}</td>
+                <td data-testid="person-retired">{{ (p.retired ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
+                <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="person-active">{{ (isActive(p) ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="person-patrons">{{ (patronNamesOf(p.id)) | figure }}</td>
                 <td>
                   @for (line of snapshotLinesOf(p.id); track $index) {
-                    <div data-testid="person-snapshot-line">{{ line }}</div>
+                    <div data-testid="person-snapshot-line">{{ (line) | figure }}</div>
                   }
                 </td>
-                <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
+                <td data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</td>
                 <td>
                   <app-claims
                     [personId]="p.id"
@@ -530,7 +531,7 @@ import { Audit } from './audit';
                     (change)="setInlineGrade(p.id, value($event))"
                   >
                     @for (g of grades; track g) {
-                      <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ g }}</option>
+                      <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ (g) | figure }}</option>
                     }
                   </select>
                   <button
@@ -566,12 +567,12 @@ import { Audit } from './audit';
                   </button>
                   <ul class="retirements">
                     @for (r of p.retirements; track $index) {
-                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                      <li data-testid="person-retirement-line">{{ (r.from) | figure }} to {{ (r.to) | figure }}</li>
                     }
                   </ul>
                   <ul class="holds">
                     @for (h of p.holds; track $index) {
-                      <li data-testid="person-hold-line">held from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+                      <li data-testid="person-hold-line">held from {{ (h.from) | figure }}{{ (h.to ? ' to ' + h.to : '') | figure }}</li>
                     }
                   </ul>
                   <label [for]="'person-hold-from-' + p.id">Hold from</label>
@@ -618,10 +619,10 @@ import { Audit } from './audit';
                     [attr.aria-pressed]="watched().has(p.id)"
                     (click)="toggleWatch(p)"
                   >
-                    {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
+                    {{ (watched().has(p.id) ? 'Unwatch' : 'Watch') | figure }}
                   </button>
                   @if (rowErrors()[p.id]; as message) {
-                    <p role="alert" class="error" data-testid="person-error">{{ message }}</p>
+                    <p role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</p>
                   }
                   <label [for]="'person-patron-select-' + p.id">Patron</label>
                   <select
@@ -633,7 +634,7 @@ import { Audit } from './audit';
                     <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
                     @for (o of people(); track o.id) {
                       @if (o.id !== p.id) {
-                        <option [value]="o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                        <option [value]="o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ (o.name) | figure }}</option>
                       }
                     }
                   </select>
@@ -646,7 +647,7 @@ import { Audit } from './audit';
                     Add patron
                   </button>
                   @if (patronErrors()[p.id]; as message) {
-                    <p role="alert" class="error" data-testid="person-patron-error">{{ message }}</p>
+                    <p role="alert" class="error" data-testid="person-patron-error">{{ (message) | figure }}</p>
                   }
                   <label [for]="'person-merge-into-' + p.id">Merge into</label>
                   <select
@@ -657,7 +658,7 @@ import { Audit } from './audit';
                   >
                     <option value="" [selected]="!mergeChoices()[p.id]">Choose a person</option>
                     @for (o of people(); track o.id) {
-                      <option [value]="o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                      <option [value]="o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ (o.name) | figure }}</option>
                     }
                   </select>
                   <button
@@ -690,21 +691,21 @@ import { Audit } from './audit';
         </table>
       }
       <p>
-        Claimed in total: <span data-testid="rollup-claimed-total">{{ claimedTotal() }}</span>
+        Claimed in total: <span data-testid="rollup-claimed-total">{{ (claimedTotal()) | figure }}</span>
       </p>
       <p>
-        Due in total: <span data-testid="rollup-due-total">{{ dueTotal() }}</span>
+        Due in total: <span data-testid="rollup-due-total">{{ (dueTotal()) | figure }}</span>
       </p>
       <p>
-        Settled due in total: <span data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</span>,
-        open due in total: <span data-testid="rollup-open-total">{{ money(splitTotal().open) }}</span>
+        Settled due in total: <span data-testid="rollup-settled-total">{{ (money(splitTotal().settled)) | figure }}</span>,
+        open due in total: <span data-testid="rollup-open-total">{{ (money(splitTotal().open)) | figure }}</span>
       </p>
       <p>
-        Overdue: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span>,
-        due on them <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span>
+        Overdue: <span data-testid="rollup-overdue-count">{{ (overdueTotal().count) | figure }}</span>,
+        due on them <span data-testid="rollup-overdue-total">{{ (money(overdueTotal().cents)) | figure }}</span>
       </p>
       <p>
-        Cut in total: <span data-testid="rollup-cut-total">{{ money(cutTotal()) }}</span>
+        Cut in total: <span data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</span>
       </p>
     </section>
   `,

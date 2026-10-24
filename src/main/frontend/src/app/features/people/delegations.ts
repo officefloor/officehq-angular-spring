@@ -1,6 +1,7 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Delegation, DelegationsService } from './delegations.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -9,6 +10,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Read from the store every time a sheet is loaded.
 @Component({
   selector: 'app-delegations',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="delegations-heading">
       <h2 id="delegations-heading">Delegations</h2>
@@ -21,13 +23,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <input id="delegate-to" data-testid="delegate-to" [value]="to()" (input)="to.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="delegate-submit">Delegate</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="delegate-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="delegate-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (delegations().length > 0) {
         <ul data-testid="delegate-list">
           @for (d of delegations(); track d.id) {
-            <li data-testid="delegate-line">{{ d.user }} for {{ d.delegator }} from {{ d.from }} to {{ d.to }}</li>
+            <li data-testid="delegate-line">{{ (d.user) | figure }} for {{ (d.delegator) | figure }} from {{ (d.from) | figure }} to {{ (d.to) | figure }}</li>
           }
         </ul>
       }

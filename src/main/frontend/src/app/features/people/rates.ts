@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { Session } from '../../core/session';
 import { GRADES, Grade } from './people.service';
 import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
@@ -9,6 +10,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 // sheet's today, and the form that sets a grade's rate from a date.
 @Component({
   selector: 'app-rates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -21,7 +23,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           (change)="grade.set(gradeOf($event)); error.set(null)"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
           }
         </select>
         <label for="rate-form-pct">Rate (%)</label>
@@ -50,7 +52,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="rate-form-error">{{ (message) | figure }}</p>
         }
       </form>
       <form (submit)="importRates($event)" aria-label="Import rates" data-testid="import-rates-form">
@@ -64,10 +66,10 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         ></textarea>
         <button type="submit" data-testid="import-rates-submit">Import rates</button>
         @if (imported() !== null) {
-          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ imported() }}</span></span>
+          <span aria-live="polite">Set <span data-testid="import-rates-set">{{ (imported()) | figure }}</span></span>
         }
         @if (importError(); as message) {
-          <p role="alert" class="error" data-testid="import-rates-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="import-rates-error">{{ (message) | figure }}</p>
         }
       </form>
       <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
@@ -79,7 +81,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           (change)="previewGrade.set(gradeOf($event)); clearPreview()"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === previewGrade()">{{ (g) | figure }}</option>
           }
         </select>
         <label for="rate-preview-pct">Candidate rate (%)</label>
@@ -93,16 +95,16 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         <button type="submit" data-testid="rate-preview">Preview</button>
         @if (previewed(); as p) {
           <p aria-live="polite">
-            Claims changed: <span data-testid="rate-preview-count">{{ p.count }}</span>,
-            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            Claims changed: <span data-testid="rate-preview-count">{{ (p.count) | figure }}</span>,
+            difference: <span data-testid="rate-preview-diff">{{ (p.diff) | figure }}</span>
           </p>
         }
         @if (previewError(); as message) {
-          <p role="alert" class="error" data-testid="rate-preview-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="rate-preview-error">{{ (message) | figure }}</p>
         }
       </form>
       <table data-testid="rate-list">
-        <caption>Rate in force on {{ session.today() }}</caption>
+        <caption>Rate in force on {{ (session.today()) | figure }}</caption>
         <thead>
           <tr>
             <th scope="col">Grade</th>
@@ -112,9 +114,9 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         <tbody>
           @for (g of grades; track g) {
             <tr>
-              <td>{{ g }}</td>
+              <td>{{ (g) | figure }}</td>
               <td [attr.data-testid]="'rate-current-' + g">
-                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ currentOf(g) ?? 'n/a' }}</span>
+                <span [attr.data-testid]="currentOf(g) === null ? null : 'rate-pct'">{{ (currentOf(g) ?? 'n/a') | figure }}</span>
               </td>
             </tr>
           }
@@ -135,11 +137,11 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           <tbody>
             @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
               <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
-                <td>{{ r.grade }}</td>
-                <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
-                <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-                <td data-testid="rate-pct">{{ r.pct }}</td>
-                <td data-testid="rate-version">{{ r.version }}</td>
+                <td>{{ (r.grade) | figure }}</td>
+                <td data-testid="rate-from">{{ (r.from ?? 'the start') | figure }}</td>
+                <td data-testid="rate-to">{{ (r.to ?? '') | figure }}</td>
+                <td data-testid="rate-pct">{{ (r.pct) | figure }}</td>
+                <td data-testid="rate-version">{{ (r.version) | figure }}</td>
               </tr>
             }
           </tbody>

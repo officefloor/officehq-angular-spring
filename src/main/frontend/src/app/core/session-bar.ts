@@ -1,5 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
-import { Session } from './session';
+import { LOCALES, Session } from './session';
 
 // Sign-in by name (no password), the signed-in name, and the sheet chooser with the active id.
 @Component({
@@ -38,6 +38,26 @@ import { Session } from './session';
             />
             <button type="submit" data-testid="sheet-today-save">Set today</button>
           </form>
+          <form (submit)="saveLocale($event)">
+            <label for="user-locale">Locale</label>
+            <select
+              id="user-locale"
+              data-testid="user-locale"
+              [value]="localeInput() ?? session.locale()"
+              (change)="localeInput.set(value($event)); localeError.set(false)"
+            >
+              @for (l of locales; track l) {
+                <option [value]="l" [selected]="l === (localeInput() ?? session.locale())">{{ l }}</option>
+              }
+            </select>
+            <button type="submit" data-testid="user-locale-save">Save locale</button>
+          </form>
+          <span
+            >Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></span
+          >
+          @if (localeError()) {
+            <p role="alert" class="error" data-testid="user-locale-error">That locale could not be saved.</p>
+          }
           <span
             >Archived
             <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></span
@@ -150,6 +170,10 @@ export class SessionBar {
   protected readonly cloneError = signal(false);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal(false);
+  protected readonly locales = LOCALES;
+  /** The locale chosen in the select and not yet saved; null while it shows the saved one. */
+  protected readonly localeInput = signal<string | null>(null);
+  protected readonly localeError = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -160,12 +184,22 @@ export class SessionBar {
     this.signinError.set(!this.session.signIn(this.nameInput()));
   }
 
+  protected async saveLocale(event: Event): Promise<void> {
+    event.preventDefault();
+    this.localeError.set(false);
+    const ok = await this.session.setLocale(this.localeInput() ?? this.session.locale());
+    if (ok) this.localeInput.set(null);
+    this.localeError.set(!ok);
+  }
+
   protected async load(event: Event): Promise<void> {
     event.preventDefault();
     this.sheetError.set(false);
     this.todayError.set(false);
     this.archiveError.set(false);
     this.cloneError.set(false);
+    this.localeError.set(false);
+    this.localeInput.set(null);
     this.sheetError.set(!(await this.session.loadSheet(this.sheetInput())));
   }
 

@@ -1,6 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Plan, PlansService } from './plans.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,17 +13,18 @@ const DAY = /^\d{1,2}$/;
 // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
 @Component({
   selector: 'app-plans',
+  imports: [FigurePipe],
   template: `
     @if (plans().length > 0) {
       <ul class="plans" [attr.aria-label]="'Plans of ' + personName()">
         @for (pl of plans(); track pl.id) {
           <li [attr.data-testid]="'plan-row-' + pl.id">
-            {{ pl.amount }}
-            from {{ pl.start }}
-            @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
-            to {{ pl.end }}, made
-            <span data-testid="plan-generated">{{ pl.generated }}</span>, next
-            <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
+            {{ (pl.amount) | figure }}
+            from {{ (pl.start) | figure }}
+            @if (pl.day !== null) { monthly on day {{ (pl.day) | figure }} } @else { every {{ (pl.every) | figure }} days }
+            to {{ (pl.end) | figure }}, made
+            <span data-testid="plan-generated">{{ (pl.generated) | figure }}</span>, next
+            <span data-testid="plan-next-dates">{{ (pl.nextDates) | figure }}</span>
           </li>
         }
       </ul>
@@ -40,7 +42,7 @@ const DAY = /^\d{1,2}$/;
       <input [id]="'plan-form-end-' + personId()" data-testid="plan-form-end" placeholder="YYYY-MM-DD" [value]="end()" (input)="end.set(value($event)); error.set(null)" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
       @if (error(); as message) {
-        <p role="alert" class="error" data-testid="plan-error">{{ message }}</p>
+        <p role="alert" class="error" data-testid="plan-error">{{ (message) | figure }}</p>
       }
     </form>
   `,

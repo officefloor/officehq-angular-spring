@@ -1,6 +1,7 @@
 import { Component, computed, input } from '@angular/core';
 import { Claim } from './claims.service';
 import { STATUSES } from './summary';
+import { FigurePipe } from '../../core/figure.pipe';
 
 // The sheet's header, shown at all times: how many people are on the sheet (retired ones
 // included), how many claims are in each status (as the summary counts them), and the sheet's
@@ -8,34 +9,35 @@ import { STATUSES } from './summary';
 // overdue-total when a person on the sheet has their name or alias.
 @Component({
   selector: 'app-header',
+  imports: [FigurePipe],
   template: `
     <header aria-label="Sheet counters" data-testid="header">
       <dl>
         <div>
           <dt>People</dt>
-          <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
+          <dd data-testid="header-people-count">{{ (peopleCount()) | figure }}</dd>
         </div>
         @for (s of byStatus(); track s.status) {
           <div>
-            <dt>{{ s.status }}</dt>
-            <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
+            <dt>{{ (s.status) | figure }}</dt>
+            <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ (s.count) | figure }}</dd>
           </div>
         }
         <div>
           <dt>Due</dt>
-          <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+          <dd data-testid="header-due-total">{{ (dueTotal()) | figure }}</dd>
         </div>
         <div>
           <dt>Overdue</dt>
-          <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+          <dd data-testid="header-overdue-total">{{ (overdueTotal()) | figure }}</dd>
         </div>
         <div>
           <dt>My due</dt>
-          <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+          <dd data-testid="my-due-total">{{ (myDueTotal()) | figure }}</dd>
         </div>
         <div>
           <dt>My overdue</dt>
-          <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+          <dd data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</dd>
         </div>
       </dl>
     </header>

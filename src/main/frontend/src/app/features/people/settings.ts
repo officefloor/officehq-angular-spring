@@ -3,6 +3,7 @@ import { GRADES, Grade } from './people.service';
 import { Session } from '../../core/session';
 import { Graces } from './rates.service';
 import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
@@ -45,6 +46,7 @@ const STANDING: Record<PermAction, string> = {
 // they were last saved.
 @Component({
   selector: 'app-settings',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -67,7 +69,7 @@ const STANDING: Record<PermAction, string> = {
           (input)="limitFrom.set(value($event)); limitChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
+          In force: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span>
           @if (clerkLimit() === null) {
             (no limit)
           }
@@ -89,7 +91,7 @@ const STANDING: Record<PermAction, string> = {
           [value]="floorFrom()"
           (input)="floorFrom.set(value($event)); floorChanged = true; settingsError.set(null)"
         />
-        <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
+        <span>In force: <span data-testid="setting-floor-current">{{ (floor()) | figure }}</span></span>
         <label for="setting-cap">Cap</label>
         <input
           id="setting-cap"
@@ -108,7 +110,7 @@ const STANDING: Record<PermAction, string> = {
           (input)="capFrom.set(value($event)); capChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
+          In force: <span data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</span>
           @if (cap() === null) {
             (no cap)
           }
@@ -130,7 +132,7 @@ const STANDING: Record<PermAction, string> = {
           (input)="roundingFrom.set(value($event)); roundingChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span>
+          In force: <span data-testid="setting-rounding-current">{{ (rounding() ?? '') | figure }}</span>
           @if (rounding() === null) {
             (by the policy date)
           }
@@ -153,13 +155,13 @@ const STANDING: Record<PermAction, string> = {
           (input)="proofThresholdFrom.set(value($event)); proofThresholdChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span>
+          In force: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span>
           @if (proofThreshold() === null) {
             (none)
           }
         </span>
         @for (g of grades; track g) {
-          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }}</label>
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ (g) | figure }}</label>
           <input
             [id]="'setting-proof-threshold-' + g"
             [attr.data-testid]="'setting-proof-threshold-' + g"
@@ -168,7 +170,7 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeProofThresholdInput(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
             (keydown)="gradeProofThresholdChanged.add(g)"
           />
-          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from</label>
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ (g) | figure }} from</label>
           <input
             [id]="'setting-proof-threshold-' + g + '-from'"
             [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
@@ -177,7 +179,7 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeProofThresholdFrom(g, value($event)); gradeProofThresholdChanged.add(g); settingsError.set(null)"
           />
           <span>
-            In force: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholdShown(g) }}</span>
+            In force: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (gradeProofThresholdShown(g)) | figure }}</span>
             @if (gradeProofThresholds()[g] === undefined) {
               (the sheet's proof threshold)
             }
@@ -201,7 +203,7 @@ const STANDING: Record<PermAction, string> = {
           (input)="noteThresholdFrom.set(value($event)); noteThresholdChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span>
+          In force: <span data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</span>
           @if (noteThreshold() === null) {
             (none)
           }
@@ -224,7 +226,7 @@ const STANDING: Record<PermAction, string> = {
           (input)="reviewThresholdFrom.set(value($event)); reviewThresholdChanged = true; settingsError.set(null)"
         />
         <span>
-          In force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span>
+          In force: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span>
           @if (reviewThreshold() === null) {
             (none)
           }
@@ -246,9 +248,9 @@ const STANDING: Record<PermAction, string> = {
           [value]="termsFrom()"
           (input)="termsFrom.set(value($event)); termsChanged = true; settingsError.set(null)"
         />
-        <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
+        <span>In force: <span data-testid="setting-terms-current">{{ (terms()) | figure }}</span></span>
         @for (g of grades; track g) {
-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
+          <label [for]="'setting-terms-' + g">Terms for grade {{ (g) | figure }} (business days)</label>
           <input
             [id]="'setting-terms-' + g"
             [attr.data-testid]="'setting-terms-' + g"
@@ -257,7 +259,7 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeTermsInput(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
             (keydown)="gradeTermsChanged.add(g)"
           />
-          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from</label>
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ (g) | figure }} from</label>
           <input
             [id]="'setting-terms-' + g + '-from'"
             [attr.data-testid]="'setting-terms-' + g + '-from'"
@@ -266,14 +268,14 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeTermsFrom(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
           />
           <span>
-            In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsShown(g) }}</span>
+            In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ (gradeTermsShown(g)) | figure }}</span>
             @if (gradeTerms()[g] === undefined) {
               (the sheet's terms)
             }
           </span>
         }
         @for (g of grades; track g) {
-          <label [for]="'setting-grace-' + g">Grace for grade {{ g }} (days)</label>
+          <label [for]="'setting-grace-' + g">Grace for grade {{ (g) | figure }} (days)</label>
           <input
             [id]="'setting-grace-' + g"
             [attr.data-testid]="'setting-grace-' + g"
@@ -282,7 +284,7 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeGraceInput(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
             (keydown)="gradeGraceChanged.add(g)"
           />
-          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ g }} from</label>
+          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ (g) | figure }} from</label>
           <input
             [id]="'setting-grace-' + g + '-from'"
             [attr.data-testid]="'setting-grace-' + g + '-from'"
@@ -291,7 +293,7 @@ const STANDING: Record<PermAction, string> = {
             (input)="setGradeGraceFrom(g, value($event)); gradeGraceChanged.add(g); settingsError.set(null)"
           />
           <span>
-            In force: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraceShown(g) }}</span>
+            In force: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ (gradeGraceShown(g)) | figure }}</span>
             @if (gradeGraces()[g] === undefined) {
               (none)
             }
@@ -314,7 +316,7 @@ const STANDING: Record<PermAction, string> = {
           [value]="latePctFrom()"
           (input)="latePctFrom.set(value($event)); latePctChanged = true; settingsError.set(null)"
         />
-        <span>In force: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></span>
+        <span>In force: <span data-testid="setting-late-pct-current">{{ (latePct()) | figure }}</span></span>
         <label for="setting-policy-date">Policy date</label>
         <input
           id="setting-policy-date"
@@ -325,7 +327,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="policyDateChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span>
+          In force: <span data-testid="setting-policy-date-current">{{ (policyDate() ?? '') | figure }}</span>
           @if (policyDate() === null) {
             (the sheet's today)
           }
@@ -340,7 +342,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="periodNumberingFromChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span>
+          In force: <span data-testid="setting-period-numbering-from-current">{{ (periodNumberingFrom() ?? '') | figure }}</span>
           @if (periodNumberingFrom() === null) {
             (off)
           }
@@ -355,7 +357,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="graceDaysChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span>
+          In force: <span data-testid="setting-grace-days-current">{{ (graceDays() ?? '') | figure }}</span>
           @if (graceDays() === null) {
             (off)
           }
@@ -370,7 +372,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="entryDateChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span>
+          In force: <span data-testid="setting-entry-date-current">{{ (entryDate() ?? '') | figure }}</span>
           @if (entryDate() === null) {
             (off)
           }
@@ -385,7 +387,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="fiscalStartMonthChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</span>
+          In force: <span data-testid="setting-fiscal-start-month-current">{{ (fiscalStartMonth()) | figure }}</span>
         </span>
         <label for="setting-pot">Pot</label>
         <input
@@ -397,7 +399,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="potChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span>
+          In force: <span data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</span>
           @if (pot() === null) {
             (none)
           }
@@ -412,7 +414,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="alertThresholdChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span>
+          In force: <span data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</span>
           @if (alertThreshold() === null) {
             (off)
           }
@@ -426,7 +428,7 @@ const STANDING: Record<PermAction, string> = {
           (keydown)="parentChanged = true"
         />
         <span>
-          In force: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span>
+          In force: <span data-testid="setting-parent-current">{{ (parent() ?? '') | figure }}</span>
           @if (parent() === null) {
             (none)
           }
@@ -434,7 +436,7 @@ const STANDING: Record<PermAction, string> = {
         <fieldset>
           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
           @for (a of permActions; track a) {
-            <label [for]="'setting-perm-' + a">Who may {{ a }}</label>
+            <label [for]="'setting-perm-' + a">Who may {{ (a) | figure }}</label>
             <input
               [id]="'setting-perm-' + a"
               [attr.data-testid]="'setting-perm-' + a"
@@ -443,16 +445,16 @@ const STANDING: Record<PermAction, string> = {
               (keydown)="permChanged.add(a)"
             />
             <span>
-              In force: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ perms()[a] }}</span>
+              In force: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ (perms()[a]) | figure }}</span>
               @if (perms()[a] === '') {
-                ({{ standing[a] }})
+                ({{ (standing[a]) | figure }})
               }
             </span>
           }
         </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
-          <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="settings-error">{{ (message) | figure }}</p>
         }
       </form>
 
@@ -479,7 +481,7 @@ const STANDING: Record<PermAction, string> = {
         </datalist>
         <button type="submit" data-testid="role-form-submit">Set role</button>
         @if (roleError(); as message) {
-          <p role="alert" class="error" data-testid="role-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="role-form-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (given().length > 0) {
@@ -494,8 +496,8 @@ const STANDING: Record<PermAction, string> = {
           <tbody>
             @for (r of given(); track r.user) {
               <tr [attr.data-testid]="'role-row-' + r.user">
-                <td data-testid="role-user">{{ r.user }}</td>
-                <td data-testid="role-value">{{ r.role }}</td>
+                <td data-testid="role-user">{{ (r.user) | figure }}</td>
+                <td data-testid="role-value">{{ (r.role) | figure }}</td>
               </tr>
             }
           </tbody>

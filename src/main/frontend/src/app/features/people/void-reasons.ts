@@ -1,11 +1,13 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { VoidReasonsService } from './void-reasons.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 // The sheet's void reasons, one line each, in the order they were added, and the entry by which one is
 // added (a blank one, or one already on the list, is refused).
 @Component({
   selector: 'app-void-reasons',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="void-reasons-heading">
       <h2 id="void-reasons-heading">Void reasons</h2>
@@ -14,13 +16,13 @@ import { VoidReasonsService } from './void-reasons.service';
         <input id="void-reason-text" data-testid="void-reason-text" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="void-reason-add">Add void reason</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="void-reason-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="void-reason-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (service.reasons().length > 0) {
         <ul data-testid="void-reason-list">
           @for (r of service.reasons(); track r.id) {
-            <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason }}</li>
+            <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ (r.reason) | figure }}</li>
           }
         </ul>
       }

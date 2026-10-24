@@ -1,6 +1,7 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { TemplatesService } from './templates.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 
@@ -8,6 +9,7 @@ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 // amount the claim form would refuse, is refused; saving a name again replaces that template).
 @Component({
   selector: 'app-templates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -26,16 +28,16 @@ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
         <input id="template-form-note" data-testid="template-form-note" [value]="note()" (input)="note.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="template-form-submit">Save template</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="template-form-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="template-form-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (service.templates().length > 0) {
         <ul data-testid="template-list">
           @for (t of service.templates(); track t.id) {
             <li [attr.data-testid]="'template-row-' + t.name">
-              <span data-testid="template-name">{{ t.name }}</span>
-              <span data-testid="template-amount">{{ t.amount }}</span>
-              <span data-testid="template-note">{{ t.note }}</span>
+              <span data-testid="template-name">{{ (t.name) | figure }}</span>
+              <span data-testid="template-amount">{{ (t.amount) | figure }}</span>
+              <span data-testid="template-note">{{ (t.note) | figure }}</span>
             </li>
           }
         </ul>

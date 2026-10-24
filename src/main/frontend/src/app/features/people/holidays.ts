@@ -1,6 +1,7 @@
 import { Component, effect, inject, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Holiday, HolidaysService } from './holidays.service';
+import { FigurePipe } from '../../core/figure.pipe';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -9,6 +10,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // re-fixes the due-by of the sheet's claims on the server; `added` tells the screen to re-read them.
 @Component({
   selector: 'app-holidays',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="holidays-heading">
       <h2 id="holidays-heading">Holidays</h2>
@@ -17,13 +19,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <input id="holiday-date" data-testid="holiday-date" placeholder="YYYY-MM-DD" [value]="date()" (input)="date.set(value($event)); error.set(null)" />
         <button type="submit" data-testid="holiday-add">Add holiday</button>
         @if (error(); as message) {
-          <p role="alert" class="error" data-testid="holiday-error">{{ message }}</p>
+          <p role="alert" class="error" data-testid="holiday-error">{{ (message) | figure }}</p>
         }
       </form>
       @if (holidays().length > 0) {
         <ul data-testid="holiday-list">
           @for (h of holidays(); track h.id) {
-            <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
+            <li [attr.data-testid]="'holiday-row-' + h.date">{{ (h.date) | figure }}</li>
           }
         </ul>
       }
