@@ -1,0 +1,182 @@
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 7dd019e2..1d0daaf5 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -4,10 +4,10 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Grade } from './people.service';
+ 
+-/** A user's role on a sheet: every name is a clerk unless made a steward. */
+-export type Role = 'clerk' | 'steward';
++/** A user's role on a sheet: every name is a clerk unless made a steward or a viewer, who may change nothing. */
++export type Role = 'clerk' | 'steward' | 'viewer';
+ 
+-export const ROLES: readonly Role[] = ['clerk', 'steward'];
++export const ROLES: readonly Role[] = ['clerk', 'steward', 'viewer'];
+ 
+ export interface RoleGiven {
+   user: string;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index 334788a6..3f31a823 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -10,10 +10,13 @@ import java.util.Set;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.stereotype.Service;
+ 
+ /** Status changes asked of several claims at once. Each claim changes in its own transaction, through
+- * {@link ClaimService}, so a refused one changes (and records) nothing while the others go through. */
++ * {@link ClaimService}, so a refused one changes (and records) nothing while the others go through. A
++ * viewer's bulk change goes through with nothing done: every claim asked is refused. */
+ @Service
+ public class ClaimBulkService {
+ 
+@@ -24,11 +27,14 @@ public class ClaimBulkService {
+     private final ClaimService service;
+     private final ClaimRepository claims;
+     private final PersonRepository people;
++    private final SettingsService settings;
+ 
+-    public ClaimBulkService(ClaimService service, ClaimRepository claims, PersonRepository people) {
++    public ClaimBulkService(ClaimService service, ClaimRepository claims, PersonRepository people,
++            SettingsService settings) {
+         this.service = service;
+         this.claims = claims;
+         this.people = people;
++        this.settings = settings;
+     }
+ 
+     /** Open each of the claims that can be opened, in list order (people in the order they were
+@@ -47,6 +53,7 @@ public class ClaimBulkService {
+ 
+     private Outcome change(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+         Set<Long> asked = Set.copyOf(claimIds);
++        if (settings.roleOf(sheetId, user) == Role.VIEWER) return new Outcome(List.of(), asked.size());
+         Map<Long, Integer> personOrder = new HashMap<>();
+         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Role.java b/src/main/java/net/officefloor/hq/app/settings/Role.java
+index fb4f1261..ad92b484 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Role.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Role.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.settings;
+ 
+-/** A user's role on a sheet. Every name is a clerk unless made a steward. */
++/** A user's role on a sheet. Every name is a clerk unless made a steward or a viewer. */
+ public enum Role {
+     /** May settle a claim only when its due is at or below the sheet's clerk limit. */
+     CLERK,
+     /** May settle any claim. */
+-    STEWARD
++    STEWARD,
++    /** Sees every screen and figure and may change nothing. */
++    VIEWER
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 1c861f82..2633618e 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -56,8 +56,8 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** A role: clerk or steward. */
+-    public record RoleRequest(@NotNull @Pattern(regexp = "\\s*(clerk|steward)\\s*") String role) {
++    /** A role: clerk, steward or viewer. */
++    public record RoleRequest(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
+         Role roleValue() {
+             return Role.valueOf(role.trim().toUpperCase());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+new file mode 100644
+index 00000000..be08304a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+@@ -0,0 +1,49 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.util.Map;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** Refuses every change a viewer asks of a sheet before it reaches its controller, so it writes nothing.
++ * Reads go through, as does loading the sheet; a bulk change goes through to {@code ClaimBulkService},
++ * which refuses each claim a viewer asks of it. */
++@Configuration
++public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
++
++    private final SettingsService settings;
++
++    public ViewerGuard(SettingsService settings) {
++        this.settings = settings;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this)
++                .addPathPatterns("/api/sheets/*/**")
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())) return true;
++        String user = request.getHeader("X-User");
++        String sheetId = sheetId(request);
++        if (user == null || user.isBlank() || sheetId == null) return true;
++        if (settings.roleOf(sheetId.trim(), user.trim()) == Role.VIEWER) throw new ViewerRefusedException();
++        return true;
++    }
++
++    @SuppressWarnings("unchecked")
++    private static String sheetId(HttpServletRequest request) {
++        Object vars = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        if (!(vars instanceof Map<?, ?> map)) return null;
++        Object id = map.containsKey("sheetId") ? map.get("sheetId") : map.get("id");
++        return id == null ? null : id.toString();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerRefusedException.java b/src/main/java/net/officefloor/hq/app/settings/ViewerRefusedException.java
+new file mode 100644
+index 00000000..7f0c4a70
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.settings;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A change asked of a sheet by a user who is a viewer on it: a viewer may change nothing. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class ViewerRefusedException extends RuntimeException {
++}
+diff --git a/src/main/resources/db/migration/V41__role_viewer.sql b/src/main/resources/db/migration/V41__role_viewer.sql
+new file mode 100644
+index 00000000..597cc49d
+--- /dev/null
++++ b/src/main/resources/db/migration/V41__role_viewer.sql
+@@ -0,0 +1,12 @@
++-- A third role, VIEWER: sees the sheet and may change nothing. The role's check is rebuilt to allow it.
++CREATE TABLE sheet_role_new (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('CLERK', 'STEWARD', 'VIEWER'))
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++ALTER TABLE sheet_role ALTER COLUMN id RESTART WITH (SELECT COALESCE(MAX(id), 0) + 1 FROM sheet_role);
++CREATE UNIQUE INDEX sheet_role_sheet_user ON sheet_role (sheet_id, user_name);
