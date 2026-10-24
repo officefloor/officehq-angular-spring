@@ -1,0 +1,260 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index a120ad29..da8d78ab 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { Claim } from './claims.service';
+ 
+ export type Grade = 'A' | 'B' | 'C';
+ 
+@@ -15,6 +16,13 @@ export interface Person {
+   version: number;
+ }
+ 
++/** What a quick-add made: the person the claim is for (added just now when the name was new) and
++ *  the DRAFT claim. */
++export interface QuickAdded {
++  person: Person;
++  claim: Claim;
++}
++
+ export interface PersonFields {
+   name: string;
+   grade: Grade;
+@@ -48,6 +56,16 @@ export class PeopleService {
+     );
+   }
+ 
++  /** Add a DRAFT claim of `amount`, dated the sheet's today, for the person named `name`, adding
++   *  them with grade A first when no one on the sheet has that name; all or nothing. */
++  quickAdd(sheet: string, name: string, amount: string): Promise<QuickAdded> {
++    return firstValueFrom(
++      this.http.post<QuickAdded>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   private url(sheet: string): string {
+     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9edecefd..b7746c31 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -56,6 +56,28 @@ import { Statement, StatementsService } from './statements.service';
+         }
+       </form>
+ 
++      <form (submit)="quickAdd($event)" aria-label="Quick add a claim" data-testid="quick-form">
++        <label for="quick-name">Name</label>
++        <input
++          id="quick-name"
++          data-testid="quick-name"
++          [value]="quickName()"
++          (input)="quickName.set(value($event)); quickError.set(null)"
++        />
++        <label for="quick-amount">Amount</label>
++        <input
++          id="quick-amount"
++          data-testid="quick-amount"
++          inputmode="decimal"
++          [value]="quickAmount()"
++          (input)="quickAmount.set(value($event)); quickError.set(null)"
++        />
++        <button type="submit" data-testid="quick-submit">Quick add claim</button>
++        @if (quickError(); as message) {
++          <p role="alert" class="error" data-testid="quick-error">{{ message }}</p>
++        }
++      </form>
++
+       @if (people().length === 0) {
+         <p data-testid="home-empty">Nothing here yet.</p>
+       } @else {
+@@ -220,6 +242,11 @@ export class People {
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+   private submitting = false;
+   protected readonly error = signal<string | null>(null);
++  protected readonly quickName = signal('');
++  protected readonly quickAmount = signal('');
++  protected readonly quickError = signal<string | null>(null);
++  /** A quick-add is waiting for its answer; another meanwhile is ignored. */
++  private quickAdding = false;
+   private readonly sheet = computed(() => this.session.sheetId());
+ 
+   constructor() {
+@@ -234,6 +261,9 @@ export class People {
+       this.periods.set([]);
+       this.rowErrors.set({});
+       this.reset();
++      this.quickName.set('');
++      this.quickAmount.set('');
++      this.quickError.set(null);
+       if (sheet) void this.read(sheet);
+     });
+   }
+@@ -401,6 +431,40 @@ export class People {
+     }
+   }
+ 
++  /** Add a DRAFT claim for the named person, adding them (grade A) first when the name is new. */
++  protected async quickAdd(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.quickAdding) return;
++    this.quickError.set(null);
++    const sheet = this.sheet();
++    if (!sheet) return;
++    const name = this.quickName();
++    if (!name.trim()) {
++      this.quickError.set('Type a name for the claim.');
++      return;
++    }
++    this.quickAdding = true;
++    try {
++      const added = await this.service.quickAdd(sheet, name, this.quickAmount());
++      if (this.sheet() !== sheet) return;
++      this.people.update((list) =>
++        list.some((p) => p.id === added.person.id) ? list : [...list, added.person],
++      );
++      this.claimSaved(added.claim);
++      this.quickName.set('');
++      this.quickAmount.set('');
++    } catch (e) {
++      if (this.sheet() !== sheet) return;
++      this.quickError.set(
++        e instanceof HttpErrorResponse && e.status === 423
++          ? 'That claim falls in a closed period.'
++          : 'That claim could not be added.',
++      );
++    } finally {
++      this.quickAdding = false;
++    }
++  }
++
+   /** Put a saved person in place of their old row. */
+   private put(person: Person): void {
+     this.people.update((list) => list.map((p) => (p.id === person.id ? person : p)));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 68208b74..1730a54c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(long id, String name, String grade, long version) {
+-        static PersonView of(Person person) {
++        public static PersonView of(Person person) {
+             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+         }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+new file mode 100644
+index 00000000..c8266644
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.quickadd;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import net.officefloor.hq.app.claim.ClaimController.ClaimView;
++import net.officefloor.hq.app.person.PersonController.PersonView;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The quick-add bar of a sheet. The signed-in user's name travels in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/quick-add")
++@Validated
++public class QuickAddController {
++
++    /** A person's name, as on the person form, and a claim's amount, as on the claim form. */
++    public record QuickAddRequest(
++            @NotBlank @Size(max = 200) String name,
++            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2);
++        }
++    }
++
++    /** The person the claim was added for (perhaps added just now) and the claim. */
++    public record QuickAddView(PersonView person, ClaimView claim) {
++    }
++
++    private final QuickAddService service;
++
++    public QuickAddController(QuickAddService service) {
++        this.service = service;
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public QuickAddView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid QuickAddRequest request) {
++        QuickAddService.Added added = service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue());
++        return new QuickAddView(PersonView.of(added.person()), ClaimView.of(added.claim()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+new file mode 100644
+index 00000000..6410a09d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.quickadd;
++
++import java.math.BigDecimal;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Adds a DRAFT claim, dated the sheet's today with an empty note, for a person named on the sheet,
++ * first adding them with grade A when no one has that name. It is one change: when the claim is
++ * refused the person is not added either, and nothing is recorded. */
++@Service
++public class QuickAddService {
++
++    /** The grade a person added by a quick-add is given. */
++    static final String GRADE = "A";
++
++    public record Added(Person person, Claim claim) {
++    }
++
++    private final PersonRepository people;
++    private final PersonService personService;
++    private final ClaimService claimService;
++
++    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
++        this.people = people;
++        this.personService = personService;
++        this.claimService = claimService;
++    }
++
++    @Transactional
++    public Added add(String sheetId, String user, String name, BigDecimal amount) {
++        Person person = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
++                .orElseGet(() -> personService.add(sheetId, user, name, GRADE));
++        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "");
++        return new Added(person, claim);
++    }
++}
