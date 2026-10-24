@@ -263,6 +263,14 @@ import { Summary, SummaryPerson } from './summary';
                   >
                     Edit
                   </button>
+                  <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
+                  <input
+                    [id]="'person-statement-asof-' + p.id"
+                    data-testid="person-statement-asof"
+                    placeholder="YYYY-MM-DD"
+                    [value]="statementAsOfs()[p.id] ?? ''"
+                    (input)="setStatementAsOf(p.id, value($event))"
+                  />
                   <button
                     type="button"
                     data-testid="person-statement"
@@ -428,6 +436,8 @@ export class People {
   );
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The statement as-of date typed on each person's row, by person id. */
+  protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdFroms = signal<Record<number, string>>({});
   protected readonly holdTos = signal<Record<number, string>>({});
@@ -612,6 +622,7 @@ export class People {
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
       this.retireDates.set({});
+      this.statementAsOfs.set({});
       this.holdFroms.set({});
       this.holdTos.set({});
       this.patrons.set([]);
@@ -683,16 +694,28 @@ export class People {
     return this.statementsOf(personId).at(-1) ?? null;
   }
 
-  /** Take a statement of the person, and show their claims as it bound or unbound them. */
+  protected setStatementAsOf(id: number, date: string): void {
+    this.statementAsOfs.update((dates) => ({ ...dates, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /** Take a statement of the person, as of the date typed on their row (now when blank), and show their
+   *  claims as it bound or unbound them. */
   protected async takeStatement(person: Person): Promise<void> {
     this.clearRowError(person.id);
     const sheet = this.sheet();
     if (!sheet) return;
+    const asOf = (this.statementAsOfs()[person.id] ?? '').trim();
+    if (asOf !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Type a date as YYYY-MM-DD.' }));
+      return;
+    }
     try {
-      const taken = await this.statementsService.take(sheet, person.id);
+      const taken = await this.statementsService.take(sheet, person.id, asOf || null);
       if (this.sheet() !== sheet) return;
       for (const c of taken.claims) this.claimSaved(c);
       this.statements.update((list) => [...list, taken.statement]);
+      this.statementAsOfs.update(({ [person.id]: _, ...rest }) => rest);
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'A statement could not be taken.' }));

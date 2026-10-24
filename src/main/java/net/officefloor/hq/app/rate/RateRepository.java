@@ -24,7 +24,13 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
      * the one with no from-date when none has; empty when no rate applies yet, or when that rate's
      * to-date is before {@code date} (an earlier rate does not apply again). */
     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
-        return findBySheetIdAndGrade(sheetId, grade).stream()
+        return inForce(findBySheetIdAndGrade(sheetId, grade), grade, date);
+    }
+
+    /** The grade's rate in force on {@code date} among {@code rates} (see {@link #findInForce}). */
+    static Optional<Rate> inForce(List<Rate> rates, String grade, LocalDate date) {
+        return rates.stream()
+                .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
                 .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.getTo() == null || !r.getTo().isBefore(date));

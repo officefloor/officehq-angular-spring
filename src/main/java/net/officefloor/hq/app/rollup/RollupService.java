@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -162,6 +163,97 @@ public class RollupService {
         return bound || !(person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
+    /** What a sheet's figures are worked out from: its today, the policy date, rates and dated settings in
+     * force, and its claims. {@link #live} is the sheet as it stands; a sheet as it stood on an earlier
+     * date gives its own. */
+    public interface Basis {
+
+        /** The sheet's today; null when there is no sheet. */
+        LocalDate today();
+
+        /** The policy date in force (see {@link Sheet#policyDateInForce()}); null when there is no sheet. */
+        LocalDate policyDateInForce();
+
+        /** The grade's rate in force on the date (see {@link RateRepository#findInForce}). */
+        Optional<Rate> rateInForce(String grade, LocalDate date);
+
+        /** The floor in force on the date; 0.00 when there is no sheet. */
+        BigDecimal floorOn(LocalDate date);
+
+        /** The late percent in force on the date. */
+        BigDecimal latePctOn(LocalDate date);
+
+        /** The cap in force on the sheet's today; null when there is none. */
+        BigDecimal cap();
+
+        /** The person's claim with the number. */
+        Optional<Claim> claimNumbered(Long personId, String number);
+    }
+
+    /** The sheet as it stands. */
+    public Basis live(String sheetId) {
+        return new Basis() {
+            private Sheet sheet() {
+                return sheets.findById(sheetId).orElse(null);
+            }
+
+            @Override
+            public LocalDate today() {
+                Sheet sheet = sheet();
+                return sheet == null ? null : sheet.getToday();
+            }
+
+            @Override
+            public LocalDate policyDateInForce() {
+                Sheet sheet = sheet();
+                return sheet == null ? null : sheet.policyDateInForce();
+            }
+
+            @Override
+            public Optional<Rate> rateInForce(String grade, LocalDate date) {
+                return rates.findInForce(sheetId, grade, date);
+            }
+
+            @Override
+            public BigDecimal floorOn(LocalDate date) {
+                return sheet() == null ? zero() : dated.floorOn(sheetId, date);
+            }
+
+            @Override
+            public BigDecimal latePctOn(LocalDate date) {
+                return dated.latePctOn(sheetId, date);
+            }
+
+            @Override
+            public BigDecimal cap() {
+                return sheet() == null ? null : dated.cap(sheetId);
+            }
+
+            @Override
+            public Optional<Claim> claimNumbered(Long personId, String number) {
+                return claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, number);
+            }
+        };
+    }
+
+    /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
+     * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap; null (n/a)
+     * when none has a figure and no rate of their grade is in force on its today. */
+    public BigDecimal dueTotalOf(List<Claim> theirs, Person person, Basis basis) {
+        LocalDate today = basis.today();
+        BigDecimal due = zero();
+        boolean any = false;
+        for (Claim claim : theirs) {
+            if (!countsLive(claim, person, today)) continue;
+            BigDecimal figure = shownOf(claim, person, basis);
+            if (figure == null) continue;
+            due = due.add(figure);
+            any = true;
+        }
+        boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
+        return any || rated ? cappedOf(due, basis.cap()) : null;
+    }
+
     /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was
      * voided once settled, and has one. */
     private static boolean frozen(Claim claim) {
@@ -175,17 +267,27 @@ public class RollupService {
      * bound it to; otherwise what is due on it at its person's rate.
      * Null when it has no figure. */
     public BigDecimal figureOf(Claim claim, Person person) {
+        return figureOf(claim, person, live(claim.getSheetId()));
+    }
+
+    /** The figure the claim shows on {@code basis} (see {@link #figureOf(Claim, Person)}). */
+    public BigDecimal figureOf(Claim claim, Person person, Basis basis) {
         if (frozen(claim)) return claim.getSettledDue();
         if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) return claim.getStatedDue();
-        return dueOf(claim, person);
+        return dueOf(claim, person, basis);
     }
 
     /** What is due on the claim as it shows and totals now: what was fixed when it was settled at a
      * rate; otherwise its live due on its figure (see {@link #liveDueOf}); null when it has no figure. */
     public BigDecimal shownOf(Claim claim, Person person) {
-        BigDecimal figure = figureOf(claim, person);
+        return shownOf(claim, person, live(claim.getSheetId()));
+    }
+
+    /** What is due on the claim as it shows on {@code basis} (see {@link #shownOf(Claim, Person)}). */
+    public BigDecimal shownOf(Claim claim, Person person, Basis basis) {
+        BigDecimal figure = figureOf(claim, person, basis);
         if (frozen(claim)) return figure;
-        return liveDueOf(claim, figure);
+        return liveDueOf(claim, figure, basis);
     }
 
     /** The live due on the claim whose figure (at its rate, or as a statement bound it) is
@@ -193,16 +295,18 @@ public class RollupService {
      * its late charge (see {@link #lateChargeOf}); a correction has neither floor nor charge. Null when
      * {@code figure} is. */
     public BigDecimal liveDueOf(Claim claim, BigDecimal figure) {
+        return liveDueOf(claim, figure, live(claim.getSheetId()));
+    }
+
+    private BigDecimal liveDueOf(Claim claim, BigDecimal figure, Basis basis) {
         if (figure == null) return null;
         if (claim.isCorrection()) return figure;
-        return floored(claim, figure.add(lateChargeOf(claim, figure)));
+        return floored(claim, figure.add(lateChargeOf(claim, figure, basis)), basis);
     }
 
     /** {@code due}, at least the sheet's floor in force on the claim's date. */
-    private BigDecimal floored(Claim claim, BigDecimal due) {
-        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal floor = sheet == null ? zero() : dated.floorOn(sheet.getId(), claim.getDate());
-        return due.max(floor);
+    private static BigDecimal floored(Claim claim, BigDecimal due, Basis basis) {
+        return due.max(basis.floorOn(claim.getDate()));
     }
 
     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
@@ -210,29 +314,34 @@ public class RollupService {
      * 90 ... days) of that figure, rounded to two decimals as the claim rounds, the charges added up (a boundary whose percent is 0.00 adds nothing) (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue (a deferred claim is not), and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
+        return lateChargeOf(claim, figure, live(claim.getSheetId()));
+    }
+
+    private BigDecimal lateChargeOf(Claim claim, BigDecimal figure, Basis basis) {
         if (!claim.getStatus().isOpen()) return zero();
-        return overdueChargeOf(claim, figure);
+        return overdueChargeOf(claim, figure, basis);
     }
 
     /** What would be due on the claim now were it an OPEN claim bound by no statement: its due at its
      * person's rate (see {@link #dueOf}) plus the late charge it would have then, at least the sheet's
      * floor in force on its date (a correction has neither); null when it would have no figure. */
     public BigDecimal openShownOf(Claim claim, Person person) {
-        BigDecimal figure = dueOf(claim, person);
+        Basis basis = live(claim.getSheetId());
+        BigDecimal figure = dueOf(claim, person, basis);
         if (figure == null || claim.isCorrection()) return figure;
-        return floored(claim, figure.add(overdueChargeOf(claim, figure)));
+        return floored(claim, figure.add(overdueChargeOf(claim, figure, basis)), basis);
     }
 
     /** The late charge on a claim whose figure is {@code figure}, whatever its status (see {@link #lateChargeOf}). */
-    private BigDecimal overdueChargeOf(Claim claim, BigDecimal figure) {
+    private BigDecimal overdueChargeOf(Claim claim, BigDecimal figure, Basis basis) {
         if (claim.isCorrection()) return zero();
-        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        if (sheet == null || claim.isDeferredOn(sheet.getToday())) return zero();
-        long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday())) / 30;
-        RoundingMode rounding = roundingOf(claim, sheet);
+        LocalDate today = basis.today();
+        if (today == null || claim.isDeferredOn(today)) return zero();
+        long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), today)) / 30;
+        RoundingMode rounding = roundingOf(claim, basis);
         BigDecimal charge = zero();
         for (long k = 1; k <= periods; k++) {
-            BigDecimal pct = dated.latePctOn(sheet.getId(), claim.getDueBy().plusDays(30 * k));
+            BigDecimal pct = basis.latePctOn(claim.getDueBy().plusDays(30 * k));
             if (pct.signum() == 0) continue;
             charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
         }
@@ -244,9 +353,12 @@ public class RollupService {
      * figure alone, before any late charge or floor (see {@link #liveDueOf}); null when no
      * rate of the grade in force for them on the claim's date applies then. */
     public BigDecimal dueOf(Claim claim, Person person) {
-        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        RoundingMode rounding = roundingOf(claim, sheet);
-        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+        return dueOf(claim, person, live(claim.getSheetId()));
+    }
+
+    private BigDecimal dueOf(Claim claim, Person person, Basis basis) {
+        RoundingMode rounding = roundingOf(claim, basis);
+        return basis.rateInForce(person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);
@@ -254,14 +366,14 @@ public class RollupService {
 
     /** How the claim's live figures round: half up when it is dated before the sheet's policy date in
      * force, half to even when on or after it. A correction rounds by the date of the claim it corrects. */
-    public RoundingMode roundingOf(Claim claim, Sheet sheet) {
-        if (sheet == null) return RoundingMode.HALF_EVEN;
+    private static RoundingMode roundingOf(Claim claim, Basis basis) {
+        LocalDate policyDate = basis.policyDateInForce();
+        if (policyDate == null) return RoundingMode.HALF_EVEN;
         LocalDate dated = claim.getDate();
         if (claim.isCorrection() && claim.getCorrects() != null) {
-            dated = claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects())
-                    .map(Claim::getDate).orElse(dated);
+            dated = basis.claimNumbered(claim.getPersonId(), claim.getCorrects()).map(Claim::getDate).orElse(dated);
         }
-        return dated.isBefore(sheet.policyDateInForce()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+        return dated.isBefore(policyDate) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     private static BigDecimal zero() {

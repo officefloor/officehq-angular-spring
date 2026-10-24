@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -54,12 +55,18 @@ public class StatementController {
         return service.list(sheetId.trim()).stream().map(StatementView::of).toList();
     }
 
+    /** A statement to take: as of {@code asOf}, or now when it is null. */
+    public record TakeRequest(LocalDate asOf) {
+    }
+
     @PostMapping("/people/{personId}/statements")
     @ResponseStatus(HttpStatus.CREATED)
     public TakenView take(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) TakeRequest request) {
+        StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId,
+                request == null ? null : request.asOf());
         return new TakenView(StatementView.of(taken.statement()), ClaimView.allOf(taken.claims(), claimService));
     }
 

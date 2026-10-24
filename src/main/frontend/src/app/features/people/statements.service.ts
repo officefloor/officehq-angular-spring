@@ -7,7 +7,7 @@ import { Claim } from './claims.service';
 export interface Statement {
   id: number;
   personId: number;
-  /** The sheet's today when it was taken (YYYY-MM-DD). */
+  /** The sheet's today when it was taken, or the date it was taken as of (YYYY-MM-DD). */
   date: string;
   /** The person's due-total then, with two decimals, as text; "n/a" when they had none. */
   dueTotal: string;
@@ -34,9 +34,10 @@ export class StatementsService {
     );
   }
 
-  take(sheet: string, personId: number): Promise<Taken> {
+  /** Take the person's statement as of a date (YYYY-MM-DD) on or before the sheet's today; now when null. */
+  take(sheet: string, personId: number, asOf: string | null = null): Promise<Taken> {
     return firstValueFrom(
-      this.http.post<Taken>(`${this.url(sheet)}/people/${personId}/statements`, null, {
+      this.http.post<Taken>(`${this.url(sheet)}/people/${personId}/statements`, { asOf }, {
         headers: this.session.headers(),
       }),
     );
