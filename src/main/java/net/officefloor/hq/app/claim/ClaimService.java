@@ -20,6 +20,7 @@ import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,10 +47,12 @@ public class ClaimService {
     private final HolidayService holidays;
     private final Audit audit;
     private final SheetTagRepository tagRepository;
+    private final VoidReasonService voidReasons;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
-            Audit audit, SheetTagRepository tagRepository) {
+            Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons) {
+        this.voidReasons = voidReasons;
         this.tagRepository = tagRepository;
         this.holidays = holidays;
         this.watches = watches;
@@ -195,6 +198,14 @@ public class ClaimService {
      * is recorded as reversed. A voided claim keeps its number, if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+        return changeStatus(sheetId, user, claimId, next, null);
+    }
+
+    /** Move the claim to {@code next} as {@link #changeStatus(String, String, long, ClaimStatus)} does;
+     * a void is given {@code voidReason}, which while the sheet's list of void reasons is not empty must
+     * be one on it (see {@link VoidReasonService#refuseUnlisted}), and is kept on the claim. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         Action action = switch (next) {
             case OPEN -> Action.OPEN;
@@ -209,6 +220,7 @@ public class ClaimService {
         }
         boolean reversing = claim.getStatus() == ClaimStatus.SETTLED;
         if (reversing) refuseLateVoid(sheetId, user, claim);
+        String reason = next == ClaimStatus.VOID ? voidReasons.refuseUnlisted(sheetId, voidReason) : null;
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
@@ -229,6 +241,7 @@ public class ClaimService {
         }
         claim.setStatus(next);
         claim.setNumber(number);
+        if (next == ClaimStatus.VOID) claim.setVoidReason(reason);
         claims.flush();
         log(user, person, claim);
         String event = switch (next) {
@@ -241,10 +254,11 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
             notifyWatchers(user, person, claim);
-        } else if (reversing) {
-            record(event, user, person, claim, number, "reversed=" + dueText(claim.getSettledDue()));
         } else {
-            record(event, user, person, claim, number);
+            List<String> extra = new ArrayList<>();
+            if (reversing) extra.add("reversed=" + dueText(claim.getSettledDue()));
+            if (reason != null) extra.add("reason=" + reason);
+            record(event, user, person, claim, number, extra.toArray(String[]::new));
         }
         rollup.recordSince(sheetId, user, before);
         return claim;

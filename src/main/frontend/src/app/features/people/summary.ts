@@ -1,7 +1,8 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import { Claim, money } from './claims.service';
 import { GRADES, Grade } from './people.service';
 import { Period } from './periods.service';
+import { VoidReasonsService } from './void-reasons.service';
 
 /** The statuses the summary counts claims by. */
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
@@ -17,7 +18,8 @@ export interface SummaryPerson {
 
 // A summary of the sheet, worked from the same figures the list shows: per grade, how many people
 // not retired are on it today, how many of them are active, and their due-totals added up (a due-total that is n/a is skipped);
-// per period, its due-total; per tag ever used, its due-total; per status, how many of the sheet's claims have it.
+// per period, its due-total; per tag ever used, its due-total; per status, how many of the sheet's claims have it;
+// per reason on the sheet's void reasons, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -95,6 +97,24 @@ export interface SummaryPerson {
           }
         </tbody>
       </table>
+      @if (byVoidReason().length > 0) {
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Void reason</th>
+              <th scope="col">Claims</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (v of byVoidReason(); track v.reason) {
+              <tr>
+                <th scope="row">{{ v.reason }}</th>
+                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </section>
   `,
   styles: `
@@ -112,6 +132,8 @@ export interface SummaryPerson {
   `,
 })
 export class Summary {
+  private readonly voidReasons = inject(VoidReasonsService);
+
   /** Everyone on the sheet. */
   readonly people = input.required<SummaryPerson[]>();
   /** The sheet's periods. */
@@ -149,6 +171,13 @@ export class Summary {
     STATUSES.map((status) => ({
       status,
       count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
+
+  protected readonly byVoidReason = computed(() =>
+    this.voidReasons.reasons().map(({ reason }) => ({
+      reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
     })),
   );
 }

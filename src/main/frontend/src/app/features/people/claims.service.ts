@@ -49,6 +49,8 @@ export interface Claim {
   ref: string | null;
   /** The claim's tags, trimmed, lower-cased, without repeats and sorted; empty when it has none. */
   tags: string[];
+  /** The reason from the sheet's list the claim was voided with; null unless it was voided with one. */
+  voidReason: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -214,10 +216,12 @@ export class ClaimsService {
 
   /** Change the claim's status; refused (409) when its status does not allow the change, (403) when
    *  the user who opened it asks to settle or approve it or one who is not a steward asks to approve or
-   *  reject it, and (400) when a reject gives no one-word reason. */
+   *  reject it, (400) when a reject gives no one-word reason, and (422) when a void gives no reason
+   *  from the sheet's list while it is not empty. A reject's or void's reason travels with it. */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<Claim> {
+    const body = action === 'reject' || action === 'void' ? { reason: reason ?? null } : null;
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, action === 'reject' ? { reason } : null, {
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, body, {
         headers: this.session.headers(),
       }),
     );

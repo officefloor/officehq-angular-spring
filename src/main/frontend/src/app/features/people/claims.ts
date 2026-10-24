@@ -6,6 +6,7 @@ import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
+import { VoidReasonsService } from './void-reasons.service';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\S.{0,119}$/;
@@ -117,6 +118,19 @@ const PAST: Record<ClaimAction, string> = {
               [value]="rejectReasons()[c.id] ?? ''"
               (input)="setRejectReason(c.id, value($event))"
             />
+            @if (voidReasonList().length > 0) {
+              <label [for]="fieldId('void-reason-' + c.id)">Void reason</label>
+              <select
+                [id]="fieldId('void-reason-' + c.id)"
+                data-testid="claim-void-reason"
+                (change)="setVoidReason(c.id, value($event))"
+              >
+                <option value="" [selected]="!voidReasons()[c.id]">Choose a reason</option>
+                @for (r of voidReasonList(); track r.id) {
+                  <option [value]="r.reason" [selected]="voidReasons()[c.id] === r.reason">{{ r.reason }}</option>
+                }
+              </select>
+            }
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -276,6 +290,8 @@ const PAST: Record<ClaimAction, string> = {
 export class Claims {
   private readonly session = inject(Session);
   private readonly service = inject(ClaimsService);
+  /** The sheet's void reasons: while there are any, a void names one of them. */
+  protected readonly voidReasonList = inject(VoidReasonsService).reasons;
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -320,6 +336,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The reason chosen from the sheet's list for voiding each claim, by claim id. */
+  protected readonly voidReasons = signal<Record<number, string>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The date typed to re-date each claim to, by claim id. */
@@ -475,6 +493,11 @@ export class Claims {
     this.clearRowError(id);
   }
 
+  protected setVoidReason(id: number, reason: string): void {
+    this.voidReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    this.clearRowError(id);
+  }
+
   /** Change the claim's status; an open, settle or void the sheet's permission matrix does not allow
    *  the user's role, a change its status does not allow, a settle by the user who opened
    *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
@@ -491,10 +514,17 @@ export class Claims {
       this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Type a one-word reason to reject that claim.' }));
       return;
     }
+    const voidReason = this.voidReasons()[claim.id] ?? '';
+    if (action === 'void' && this.voidReasonList().length > 0 && voidReason === '') {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Choose a reason to void that claim.' }));
+      return;
+    }
     try {
-      const changed = await this.service.act(sheet, claim.id, action, action === 'reject' ? reason : undefined);
+      const given = action === 'reject' ? reason : action === 'void' && voidReason !== '' ? voidReason : undefined;
+      const changed = await this.service.act(sheet, claim.id, action, given);
       if (this.session.sheetId() !== sheet) return;
       if (action === 'reject') this.rejectReasons.update(({ [claim.id]: _, ...rest }) => rest);
+      if (action === 'void') this.voidReasons.update(({ [claim.id]: _, ...rest }) => rest);
       this.saved.emit(changed);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
@@ -514,6 +544,8 @@ export class Claims {
           ? 'A settled claim can only be voided within 7 days of its settlement.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+          ? 'Choose a reason from the sheet\'s list to void that claim.'
           : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
           ? 'That claim is due above the note threshold, so it needs a note before it can be opened.'
           : e instanceof HttpErrorResponse && e.status === 422

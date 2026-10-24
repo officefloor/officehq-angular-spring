@@ -43,7 +43,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags) {
+            String ref, List<String> tags, String voidReason) {
         /** The claims as views, each with its status log, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -62,7 +62,8 @@ public class ClaimController {
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags());
+                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
+                    claim.getVoidReason());
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -109,6 +110,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim: one word, as it is written into the audit. */
     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
+    }
+
+    /** The reason from the sheet's list a claim is voided with; none when null or blank. */
+    public record VoidRequest(@Size(max = 200) String reason) {
     }
 
     /** The date a claim is deferred until. */
@@ -239,8 +244,10 @@ public class ClaimController {
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid VoidRequest request) {
+        String reason = request == null ? null : request.reason();
+        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID, reason));
     }
 
     @PostMapping("/claims/{claimId}/proof")

@@ -137,6 +137,10 @@ public class Claim {
     @Column(name = "tags")
     private String tags;
 
+    /** The reason from its sheet's list the claim was voided with; null unless it was voided with one. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     protected Claim() {
     }
 
@@ -351,6 +355,14 @@ public class Claim {
     public void unlock() {
         this.lockedBy = null;
         this.lockedOn = null;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     public String getRef() {
