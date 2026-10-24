@@ -39,7 +39,7 @@ import { Statement, StatementsService } from './statements.service';
       (latePctSaved)="latePct.set($event)"
     />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
 
@@ -632,6 +632,7 @@ export class People {
     this.periods.update((list) => [...list, period]);
   }
 
+  /** Put a closed or reopened period in its place. */
   protected periodClosed(period: Period): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }

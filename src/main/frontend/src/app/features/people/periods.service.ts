@@ -49,6 +49,13 @@ export class PeriodsService {
     );
   }
 
+  /** Reopen the closed period, making its due-total live again. */
+  reopen(sheet: string, id: number): Promise<Period> {
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheet)}/${id}/reopen`, null, { headers: this.session.headers() }),
+    );
+  }
+
   private url(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}/periods`;
   }

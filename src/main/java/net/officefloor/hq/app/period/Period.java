@@ -12,7 +12,7 @@ import java.util.Locale;
 
 /** A sheet's period: a name, unique on the sheet without regard to case, and the dates it runs from
  * and to, both inclusive. A claim belongs to the period whose dates contain its date. Once closed, its
- * due-total is the one fixed when it was closed. */
+ * due-total is the one fixed when it was closed, until it is reopened. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -91,6 +91,12 @@ public class Period {
     public void close(BigDecimal total) {
         this.closed = true;
         this.closedTotal = total;
+    }
+
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
     }
 
     /** Whether this period shares a day with the dates {@code from} to {@code to}, both inclusive. */

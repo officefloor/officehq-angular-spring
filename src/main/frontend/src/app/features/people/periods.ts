@@ -6,8 +6,8 @@ import { Period, PeriodsService } from './periods.service';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The periods of the sheet, by from-date, each with the due-total of the counting claims dated in
-// it (fixed once it is closed), whether it is closed and the button that closes it, and the form that
-// adds a period.
+// it (fixed once it is closed), whether it is closed, the buttons that close and reopen it, and the
+// form that adds a period.
 @Component({
   selector: 'app-periods',
   template: `
@@ -73,6 +73,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                       Close
                     </button>
                   }
+                  <button
+                    type="button"
+                    data-testid="period-reopen"
+                    [attr.aria-label]="'Reopen period ' + p.name"
+                    (click)="reopen(p)"
+                  >
+                    Reopen
+                  </button>
                   @if (rowErrors()[p.id]; as message) {
                     <p role="alert" class="error" data-testid="period-error">{{ message }}</p>
                   }
@@ -127,6 +135,8 @@ export class Periods {
   readonly added = output<Period>();
   /** A period was closed. */
   readonly closed = output<Period>();
+  /** A period was reopened. */
+  readonly reopened = output<Period>();
 
   protected readonly sorted = computed(() => [...this.periods()].sort((a, b) => a.from.localeCompare(b.from)));
   protected readonly name = signal('');
@@ -153,6 +163,27 @@ export class Periods {
     } catch {
       if (this.session.sheetId() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [period.id]: 'That period could not be closed.' }));
+    }
+  }
+
+  /** Reopen the period, making its due-total live again; refused with an error unless the user is a
+   * steward and the period is closed. */
+  protected async reopen(period: Period): Promise<void> {
+    this.rowErrors.update(({ [period.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const reopened = await this.service.reopen(sheet, period.id);
+      if (this.session.sheetId() === sheet) this.reopened.emit(reopened);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [period.id]:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward can reopen a period.'
+            : 'That period could not be reopened.',
+      }));
     }
   }
 

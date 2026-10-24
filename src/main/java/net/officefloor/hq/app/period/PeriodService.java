@@ -12,13 +12,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The periods of each sheet: uniquely named, none overlapping another. A period can be closed, which
- * fixes its due-total then. */
+ * fixes its due-total then, and a steward can reopen it, which makes its due-total live again. */
 @Service
 public class PeriodService {
 
@@ -27,15 +29,17 @@ public class PeriodService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RollupService rollup;
+    private final SettingsService settings;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
-            PersonRepository people, RollupService rollup, Audit audit) {
+            PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -76,6 +80,23 @@ public class PeriodService {
         period.close(total);
         periods.flush();
         audit.change("PERIOD_CLOSED", sheetId, user, "period=" + period.getName(), "total=" + total.toPlainString());
+        return period;
+    }
+
+    /** Reopen the period, making its due-total live again; refused when the user is not a steward of
+     * the sheet or the period is not closed. */
+    @Transactional
+    public Period reopen(String sheetId, String user, long periodId) {
+        Period period = periods.lockByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodNotStewardException();
+        }
+        if (!period.isClosed()) {
+            throw new PeriodRefusedException("not closed");
+        }
+        period.reopen();
+        periods.flush();
+        audit.change("PERIOD_REOPENED", sheetId, user, "period=" + period.getName());
         return period;
     }
 
