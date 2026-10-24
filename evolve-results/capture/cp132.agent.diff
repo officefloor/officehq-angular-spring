@@ -1,0 +1,85 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index a9703783..91876c27 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Modifying;
+@@ -18,6 +19,15 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
+     int lastClaimNumber(String id);
+ 
++    /** The last claim number given on any of the sheets. */
++    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet WHERE id IN (:ids)", nativeQuery = true)
++    int lastClaimNumberIn(Collection<String> ids);
++
++    /** Set the sheet's last claim number. */
++    @Modifying(flushAutomatically = true)
++    @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
++    int setLastClaimNumber(String id, int number);
++
+     /** Lock the sheet's row until the transaction ends, so its per-period sequences advance one at a time. */
+     @Modifying(flushAutomatically = true)
+     @Query(value = "UPDATE sheet SET last_claim_number = last_claim_number WHERE id = :id", nativeQuery = true)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d28d20b0..4ca29055 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -3,6 +3,12 @@ package net.officefloor.hq.app.sheet;
+ import java.time.Clock;
+ import java.time.Instant;
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.history.HistoryListener;
+@@ -115,11 +121,37 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+     }
+ 
+-    /** The next claim number on the sheet: 1 for its first, then 2, and so on, never given twice. */
++    /** The next claim number on the sheet: the sheets of its tree (its topmost ancestor and every sheet
++     * below it) share one sequence, so it is the one after the last number given on any of them (1 for the
++     * tree's first), never given twice. The tree's rows are locked, in id order, until the transaction ends. */
+     @Transactional
+     public int nextClaimNumber(String id) {
+-        if (sheets.advanceClaimNumber(id) == 0) throw new SheetNotFoundException();
+-        return sheets.lastClaimNumber(id);
++        Set<String> tree = treeOf(id);
++        for (String member : tree) {
++            if (sheets.lockSheet(member) == 0 && member.equals(id)) throw new SheetNotFoundException();
++        }
++        int next = sheets.lastClaimNumberIn(tree) + 1;
++        sheets.setLastClaimNumber(id, next);
++        return next;
++    }
++
++    /** The ids of the sheets of the sheet's tree: its topmost ancestor and every sheet below it. */
++    private Set<String> treeOf(String id) {
++        Set<String> up = new LinkedHashSet<>();
++        String root = id;
++        for (Sheet sheet = sheets.findById(id).orElse(null); sheet != null && up.add(sheet.getId());
++                sheet = sheet.getParentId() == null ? null : sheets.findById(sheet.getParentId()).orElse(null)) {
++            root = sheet.getId();
++        }
++        Set<String> tree = new TreeSet<>(List.of(root));
++        Deque<String> below = new ArrayDeque<>(List.of(root));
++        while (!below.isEmpty()) {
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
++                if (tree.add(child.getId())) below.add(child.getId());
++            }
++        }
++        tree.add(id);
++        return tree;
+     }
+ 
+     /** The next number in the sheet's sequence named {@code key}: 1 for its first, then 2, and so on,
