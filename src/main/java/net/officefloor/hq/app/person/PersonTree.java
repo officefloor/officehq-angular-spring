@@ -34,10 +34,12 @@ public class PersonTree {
             root = up.getId();
         }
         Set<String> tree = new LinkedHashSet<>(seen);
+        Set<String> visited = new LinkedHashSet<>(List.of(root));
         Deque<String> below = new ArrayDeque<>(List.of(root));
         while (!below.isEmpty()) {
             for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
-                if (tree.add(child.getId())) below.add(child.getId());
+                tree.add(child.getId());
+                if (visited.add(child.getId())) below.add(child.getId());
             }
         }
         tree.remove(sheetId);

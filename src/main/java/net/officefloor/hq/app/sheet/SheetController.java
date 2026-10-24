@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetAsOf;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Sheet endpoints. The signed-in user's name travels in the {@code X-User} header. */
@@ -64,6 +66,14 @@ public class SheetController {
     public ConsolidatedService.Figures descendants(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedOf(id.trim());
+    }
+
+    /** The people of the sheet and the other sheets of its tree whose name or an alias contains
+     * {@code q} (see {@link ConsolidatedService#search}). */
+    @GetMapping("/{id}/search")
+    public List<ConsolidatedService.Found> search(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestParam(defaultValue = "") @Size(max = 200) String q) {
+        return consolidated.search(id.trim(), q);
     }
 
     /** Load a sheet by id, starting it empty if it has never been loaded; as it stood at the end of

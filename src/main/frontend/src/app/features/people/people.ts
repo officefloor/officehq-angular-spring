@@ -16,6 +16,7 @@ import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { Summary, SummaryPerson } from './summary';
 import { Templates } from './templates';
+import { TreeSearch } from './tree-search';
 import { VoidReasons } from './void-reasons';
 import { Pools } from './pools';
 import { Plans } from './plans';
@@ -59,7 +60,7 @@ import { Audit } from './audit';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, VoidReasons],
+  imports: [Audit, Claims, Delegations, Header, Holidays, Periods, Plans, Pools, Rates, Settings, Summary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -88,6 +89,7 @@ import { Audit } from './audit';
     <app-void-reasons />
     <app-pools [people]="people()" />
     <app-templates />
+    <app-tree-search />
     <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
