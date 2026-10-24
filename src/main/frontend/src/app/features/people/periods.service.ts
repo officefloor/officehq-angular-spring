@@ -76,6 +76,14 @@ export class PeriodsService {
     );
   }
 
+  /** Make the four calendar quarters of the year, named yyyy-Q1 to yyyy-Q4, leaving out a quarter whose
+   *  name is taken or whose days overlap a period: those made. */
+  generateQuarters(sheet: string, year: string): Promise<Period[]> {
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheet)}/generate-quarters`, { year }, { headers: this.session.headers() }),
+    );
+  }
+
   /** Close the period, fixing its due-total now. */
   close(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(

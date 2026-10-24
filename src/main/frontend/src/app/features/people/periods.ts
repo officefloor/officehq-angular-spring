@@ -12,7 +12,7 @@ const YEAR = /^\d{4}$/;
 // it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
 // that close, soft-close and reopen it, whether a steward has locked it (a locked period cannot be reopened) and the buttons that
 // lock and unlock it, and the
-// form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
+// form that adds a period. Monthly periods are generated between two dates, or for a fiscal year; quarterly ones for a calendar year.
 @Component({
   selector: 'app-periods',
   imports: [FigurePipe],
@@ -87,6 +87,18 @@ const YEAR = /^\d{4}$/;
         />
         <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">
           Generate fiscal year
+        </button>
+        <label for="period-generate-quarters-year">Quarters of year</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          placeholder="YYYY"
+          [value]="generateQuartersYear()"
+          (input)="generateQuartersYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()">
+          Generate quarters
         </button>
         @if (generateError(); as message) {
           <p role="alert" class="error" data-testid="period-generate-error">{{ (message) | figure }}</p>
@@ -248,6 +260,7 @@ export class Periods {
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
   protected readonly generateFyYear = signal('');
+  protected readonly generateQuartersYear = signal('');
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -465,6 +478,33 @@ export class Periods {
     } catch {
       if (this.session.sheetId() !== sheet) return;
       this.generateError.set('That fiscal year\'s periods could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the four calendar quarters of the year typed, showing how many were made; a year not
+   *  typed as four digits is refused with an error. */
+  protected async generateQuarters(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.generateQuartersYear().trim();
+    if (!YEAR.test(year)) {
+      this.generateError.set('Type the year as four digits, YYYY.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.service.generateQuarters(sheet, year);
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of made) this.added.emit(period);
+      this.generated.set(made.length);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set('That year\'s quarters could not be generated.');
     } finally {
       this.generating = false;
     }

@@ -78,6 +78,13 @@ public class PeriodController {
         }
     }
 
+    /** A calendar year: four digits. */
+    public record GenerateQuartersRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+        int yearValue() {
+            return Integer.parseInt(year.trim());
+        }
+    }
+
     /** The pasted lines of {@code name,period,amount}. */
     public record OpeningImportRequest(@NotNull @Size(max = 200_000) String text) {
     }
@@ -131,6 +138,15 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId.trim(), user.trim(), request.yearValue()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Generate the calendar year's four quarterly periods: the periods made, in order. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateQuartersRequest request) {
+        return service.generateQuarters(sheetId.trim(), user.trim(), request.yearValue()).stream()
                 .map(PeriodView::of).toList();
     }
 

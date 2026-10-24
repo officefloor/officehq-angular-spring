@@ -132,6 +132,31 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
+    /** Make the four calendar quarters of {@code year}, named yyyy-Q1 to yyyy-Q4, in order, each as
+     * {@link #add} would add it; a quarter whose name is already a period's or whose days overlap a
+     * period on the sheet is left out. */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        if (!sheets.existsById(sheetId)) {
+            throw new SheetNotFoundException();
+        }
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            LocalDate first = YearMonth.of(year, quarter * 3 - 2).atDay(1);
+            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
+            String key = Period.keyOf(name);
+            if (existing.stream().anyMatch(p -> Period.keyOf(p.getName()).equals(key) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period period = add(sheetId, user, name, first, last);
+            existing.add(period);
+            made.add(period);
+        }
+        return made;
+    }
+
     /** Close the period, fixing its due-total and each person's carried figure into it now (afresh when it was soft-closed); refused when the
      * user's role may not close (see {@link SettingsService#allowed}) or it is already closed, not
      * only soft-closed. */

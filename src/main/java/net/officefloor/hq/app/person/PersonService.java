@@ -146,7 +146,10 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheetService.today(sheetId);
         person.setName(name);
-        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        // A grade left as it is today, with no from-date, adds no dated grade.
+        if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
+            person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        }
         // The terms are recorded when the save moves the terms shown, those in force today.
         Integer termsBefore = person.termsOn(today);
         if (termsFrom == null) {
