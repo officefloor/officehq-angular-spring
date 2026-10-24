@@ -213,6 +213,9 @@ public class RollupService {
         /** The grade's grace days in force on the date; null when it has none then. */
         Integer graceOn(String grade, LocalDate date);
 
+        /** The rounding mode in force on the date; null when there is none then. */
+        RoundingMode roundingOn(LocalDate date);
+
         /** The date a claim's lateness counts from: its due-by plus the grace days in force on the claim's
          * date of its person's grade in force then (its due-by when that grade has none). */
         default LocalDate overdueFrom(Claim claim) {
@@ -277,6 +280,11 @@ public class RollupService {
             public Integer graceOn(String grade, LocalDate date) {
                 return dated.gradeGraceOn(sheetId, grade, date);
             }
+
+            @Override
+            public RoundingMode roundingOn(LocalDate date) {
+                return dated.roundingOn(sheetId, date);
+            }
         };
     }
 
@@ -327,6 +335,11 @@ public class RollupService {
             @Override
             public Integer graceOn(String g, LocalDate date) {
                 return base.graceOn(g, date);
+            }
+
+            @Override
+            public RoundingMode roundingOn(LocalDate date) {
+                return base.roundingOn(date);
             }
         };
     }
@@ -460,15 +473,18 @@ public class RollupService {
                 .orElse(null);
     }
 
-    /** How the claim's live figures round: half up when it is dated before the sheet's policy date in
-     * force, half to even when on or after it. A correction rounds by the date of the claim it corrects. */
+    /** How the claim's live figures round: by the rounding mode in force on its date when there is one;
+     * else half up when it is dated before the sheet's policy date in force, half to even when on or
+     * after it. A correction rounds by the date of the claim it corrects. */
     private static RoundingMode roundingOf(Claim claim, Basis basis) {
-        LocalDate policyDate = basis.policyDateInForce();
-        if (policyDate == null) return RoundingMode.HALF_EVEN;
         LocalDate dated = claim.getDate();
         if (claim.isCorrection() && claim.getCorrects() != null) {
             dated = basis.claimNumbered(claim.getPersonId(), claim.getCorrects()).map(Claim::getDate).orElse(dated);
         }
+        RoundingMode mode = basis.roundingOn(dated);
+        if (mode != null) return mode;
+        LocalDate policyDate = basis.policyDateInForce();
+        if (policyDate == null) return RoundingMode.HALF_EVEN;
         return dated.isBefore(policyDate) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 

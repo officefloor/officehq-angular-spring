@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and its grace days, how many days after its to-date an open period is closed when the sheet's today
  * is changed (off when null), and each grade's grace days, how many days past its due-by a claim of the
  * grade is overdue from (none when null).
- * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent, the proof threshold and the grades' grace days)
+ * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent, the proof threshold, the grades' grace days and the rounding mode)
  * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date, the
  * period numbering from, the fiscal start month and the grace days are not. Its permission matrix, also not dated, gives for each {@link Action}
  * the roles that may take it; a blank entry keeps the action's standing rule. */
@@ -157,6 +157,23 @@ public class SettingsService {
     @Transactional
     public void setFloor(String sheetId, String by, BigDecimal floor, LocalDate from) {
         record(sheetId, by, DatedSettings.FLOOR, floor.toPlainString(), from, true);
+    }
+
+    /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none. */
+    @Transactional(readOnly = true)
+    public String rounding(String sheetId) {
+        return dated.roundingValueOn(sheetId, today(sheetId));
+    }
+
+    /** Record the sheet's rounding mode (half-up or half-even) from {@code from} (the sheet's today when
+     * null); null records none. The live figures of the claims dated from then round by it, and so the
+     * figures follow; a claim with none in force on its date rounds by the policy date. */
+    @Transactional
+    public void setRounding(String sheetId, String by, String mode, LocalDate from) {
+        if (mode != null && DatedSettings.roundingMode(mode) == null) {
+            throw new IllegalArgumentException("Unknown rounding mode: " + mode);
+        }
+        record(sheetId, by, DatedSettings.ROUNDING, mode, from, true);
     }
 
     /** The cap in force on the sheet's today, the most a person's due-total can be; null when there is none. */

@@ -399,6 +399,8 @@ export class Claims {
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
    *  or after it half to even; null until read. */
   readonly policyDate = input.required<string | null>();
+  /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
+  readonly roundings = input.required<Dated<string | null>[]>();
   /** The other people on the sheet, whom a claim can be moved to. */
   readonly others = input.required<{ id: number; name: string }[]>();
   /** The ids of the claims selected for a bulk action. */
@@ -468,7 +470,7 @@ export class Claims {
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
     const late = { today: this.session.today(), latePcts: this.latePcts(), graces: this.graces() };
-    const rounding = { policyDate: this.policyDate(), claims: this.claims() };
+    const rounding = { modes: this.roundings(), policyDate: this.policyDate(), claims: this.claims() };
     const due = claimShownCents(claim, this.rates(), this.grades(), this.floors(), late, rounding);
     return due === null ? 'n/a' : money(due);
   }

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,9 @@ public class DatedSettings {
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
     public static final String GRACE = "grace";
+    public static final String ROUNDING = "rounding";
+    public static final String HALF_UP = "half-up";
+    public static final String HALF_EVEN = "half-even";
 
     public static final BigDecimal FLOOR_START = new BigDecimal("1.00");
     public static final BigDecimal LATE_PCT_START = new BigDecimal("0.00");
@@ -132,6 +136,27 @@ public class DatedSettings {
     @Transactional(readOnly = true)
     public BigDecimal noteThresholdOn(String sheetId, LocalDate date) {
         return valueOn(sheetId, NOTE_THRESHOLD, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The rounding mode recorded in force on the date, as text; null when there is none. */
+    @Transactional(readOnly = true)
+    public String roundingValueOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, ROUNDING, date).orElse(null);
+    }
+
+    /** The rounding mode in force on the date; null when there is none. */
+    @Transactional(readOnly = true)
+    public RoundingMode roundingOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, ROUNDING, date).map(DatedSettings::roundingMode).orElse(null);
+    }
+
+    /** The rounding mode a recorded rounding value names; null for any other. */
+    public static RoundingMode roundingMode(String value) {
+        return switch (value) {
+            case HALF_UP -> RoundingMode.HALF_UP;
+            case HALF_EVEN -> RoundingMode.HALF_EVEN;
+            default -> null;
+        };
     }
 
     /** The value of the key in force on the date; empty when none is recorded then, or the one

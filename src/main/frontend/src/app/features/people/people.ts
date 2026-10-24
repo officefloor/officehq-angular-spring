@@ -82,6 +82,7 @@ import { Audit } from './audit';
       (latePctSaved)="latePcts.set($event)"
       (graceSaved)="graces.set($event)"
       (policyDateSaved)="policyDate.set($event)"
+      (roundingSaved)="roundings.set($event)"
       (fiscalStartMonthSaved)="fiscalStartMonth.set($event)"
     />
     <app-delegations />
@@ -460,6 +461,7 @@ import { Audit } from './audit';
                     [latePcts]="latePcts()"
                     [graces]="graces()"
                     [policyDate]="policyDateInForce()"
+                    [roundings]="roundings()"
                     [others]="othersOf(p.id)"
                     [selected]="selectedClaims()"
                     (selectToggled)="selectClaim($event.id, $event.selected)"
@@ -891,6 +893,8 @@ export class People {
   protected readonly graces = signal<Graces>({});
   /** The sheet's policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
+  /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
+  protected readonly roundings = signal<Dated<string | null>[]>([]);
   /** The month (1 to 12) the sheet's fiscal year starts in. */
   protected readonly fiscalStartMonth = signal(1);
   /** The policy date in force: the one set, or the sheet's today. */
@@ -1133,6 +1137,7 @@ export class People {
       this.latePcts.set([]);
       this.graces.set({});
       this.policyDate.set(null);
+      this.roundings.set([]);
       this.fiscalStartMonth.set(1);
       this.statements.set([]);
       this.periods.set([]);
@@ -1619,7 +1624,7 @@ export class People {
 
   /** What decides how the person's claims round. */
   private roundingOf(personId: number): Rounding {
-    return { policyDate: this.policyDateInForce(), claims: this.claimsOf(personId) };
+    return { modes: this.roundings(), policyDate: this.policyDateInForce(), claims: this.claimsOf(personId) };
   }
 
   /** Download everyone, retired people included, in list order as a CSV file: name, grade in force
@@ -2284,6 +2289,7 @@ export class People {
         this.latePcts.set(settings.latePcts);
         this.graces.set(settings.graces ?? {});
         this.policyDate.set(settings.policyDate);
+        this.roundings.set(settings.roundings ?? []);
         this.fiscalStartMonth.set(settings.fiscalStartMonth ?? 1);
         this.rates.set(rates);
         this.periods.set(periods);

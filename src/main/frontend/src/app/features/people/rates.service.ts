@@ -54,21 +54,26 @@ function levelRateOn(rates: Rate[], grade: Grade, date: string): string | null {
   return best?.pct ?? null;
 }
 
-/** What decides how a claim's live figures round: the sheet's policy date in force (the one set, or
- *  the sheet's today; null until read) and the claims of the claim's person, which a correction
- *  looks up the claim it corrects in. */
+/** What decides how a claim's live figures round: every rounding mode recorded (half-up or
+ *  half-even), each from its date, oldest first (null records none from then), the sheet's policy
+ *  date in force (the one set, or the sheet's today; null until read) and the claims of the claim's
+ *  person, which a correction looks up the claim it corrects in. */
 export interface Rounding {
+  modes: readonly Dated<string | null>[];
   policyDate: string | null;
   claims: Claim[];
 }
 
-/** Whether the claim's live figures round half up: it is dated before the policy date (a correction
- *  by the date of the claim it corrects); otherwise they round half to even. */
+/** Whether the claim's live figures round half up: by the rounding mode in force on its date when
+ *  there is one; else when it is dated before the policy date (a correction by the date of the claim
+ *  it corrects); otherwise they round half to even. */
 export function roundsHalfUp(claim: Claim, rounding: Rounding): boolean {
   let date = claim.date;
   if (isCorrection(claim) && claim.corrects !== null) {
     date = rounding.claims.find((c) => c.number === claim.corrects)?.date ?? date;
   }
+  const mode = inForce(rounding.modes, date, null);
+  if (mode !== null) return mode === 'half-up';
   return rounding.policyDate !== null && date < rounding.policyDate;
 }
 

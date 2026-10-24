@@ -9,6 +9,6 @@ public interface PersonSnapshotRepository extends JpaRepository<PersonSnapshot, 
     /** The sheet's snapshots in the order they were written. */
     List<PersonSnapshot> findBySheetIdOrderByIdAsc(String sheetId);
 
-    /** The sheet's snapshots of the days before {@code date}, in the order they were written. */
-    List<PersonSnapshot> findBySheetIdAndDayBeforeOrderByIdAsc(String sheetId, LocalDate date);
+    /** The sheet's snapshots of the days on or before {@code date}, in the order they were written. */
+    List<PersonSnapshot> findBySheetIdAndDayLessThanEqualOrderByIdAsc(String sheetId, LocalDate date);
 }

@@ -7,6 +7,7 @@ import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsServic
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ROUNDING = /^(half-up|half-even)$/;
 const MONTH = /^(0?[1-9]|1[0-2])$/;
 const PERM = /^((clerk|steward)\s*(,\s*(clerk|steward)\s*)*)?$/;
 const STANDING: Record<PermAction, string> = {
@@ -34,7 +35,9 @@ const STANDING: Record<PermAction, string> = {
 // Each grade's grace days (a claim of a person of that grade on its date, dated on or after the
 // grace's from-date, is overdue only once its due-by plus them is past, and its late charge counts from
 // there; blank for none) and each grade's own proof threshold (used in place of the sheet's for a claim
-// of a person of that grade on its date; blank for the sheet's) are dated too.
+// of a person of that grade on its date; blank for the sheet's) are dated too, and so is its rounding
+// mode (half-up or half-even: a claim dated on or after its from-date rounds every live figure by it in
+// place of by the policy date; blank for none).
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -108,6 +111,28 @@ const STANDING: Record<PermAction, string> = {
           In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
           @if (cap() === null) {
             (no cap)
+          }
+        </span>
+        <label for="setting-rounding">Rounding</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="roundingInput()"
+          (input)="roundingInput.set(value($event)); roundingChanged = true; settingsError.set(null)"
+          (keydown)="roundingChanged = true"
+        />
+        <label for="setting-rounding-from">Rounding from</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          type="date"
+          [value]="roundingFrom()"
+          (input)="roundingFrom.set(value($event)); roundingChanged = true; settingsError.set(null)"
+        />
+        <span>
+          In force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span>
+          @if (rounding() === null) {
+            (by the policy date)
           }
         </span>
         <label for="setting-proof-threshold">Proof threshold</label>
@@ -493,6 +518,10 @@ export class Settings {
   protected readonly floor = signal('');
   /** The cap in force, with two decimals; null when there is none. */
   protected readonly cap = signal<string | null>(null);
+  /** The rounding mode in force (half-up or half-even); null when there is none. */
+  protected readonly rounding = signal<string | null>(null);
+  /** Every rounding mode recorded, each from its date, oldest first, once one is saved. */
+  readonly roundingSaved = output<Dated<string | null>[]>();
   /** Every cap recorded, each from its date, oldest first, once one is saved. */
   readonly capSaved = output<Dated<string | null>[]>();
   protected readonly given = signal<RoleGiven[]>([]);
@@ -549,6 +578,7 @@ export class Settings {
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
   protected readonly capInput = signal('');
+  protected readonly roundingInput = signal('');
   protected readonly proofThresholdInput = signal('');
   protected readonly noteThresholdInput = signal('');
   protected readonly termsInput = signal('');
@@ -568,6 +598,7 @@ export class Settings {
   protected readonly limitFrom = signal('');
   protected readonly floorFrom = signal('');
   protected readonly capFrom = signal('');
+  protected readonly roundingFrom = signal('');
   protected readonly proofThresholdFrom = signal('');
   protected readonly noteThresholdFrom = signal('');
   protected readonly termsFrom = signal('');
@@ -581,6 +612,7 @@ export class Settings {
   protected limitChanged = false;
   protected floorChanged = false;
   protected capChanged = false;
+  protected roundingChanged = false;
   protected proofThresholdChanged = false;
   protected noteThresholdChanged = false;
   protected termsChanged = false;
@@ -618,6 +650,10 @@ export class Settings {
       this.cap.set(null);
       this.capInput.set('');
       this.capChanged = false;
+      this.rounding.set(null);
+      this.roundingInput.set('');
+      this.roundingChanged = false;
+      this.roundingFrom.set('');
       this.proofThreshold.set(null);
       this.proofThresholdInput.set('');
       this.proofThresholdChanged = false;
@@ -758,6 +794,8 @@ export class Settings {
     const saveFloor = this.floorChanged || floor !== this.floor();
     const cap = this.capInput().trim();
     const saveCap = this.capChanged || cap !== (this.cap() ?? '');
+    const rounding = this.roundingInput().trim();
+    const saveRounding = this.roundingChanged || rounding !== (this.rounding() ?? '');
     const proofThreshold = this.proofThresholdInput().trim();
     const saveProofThreshold = this.proofThresholdChanged || proofThreshold !== (this.proofThreshold() ?? '');
     const noteThreshold = this.noteThresholdInput().trim();
@@ -798,6 +836,7 @@ export class Settings {
     const limitFrom = this.limitFrom().trim();
     const floorFrom = this.floorFrom().trim();
     const capFrom = this.capFrom().trim();
+    const roundingFrom = this.roundingFrom().trim();
     const proofThresholdFrom = this.proofThresholdFrom().trim();
     const noteThresholdFrom = this.noteThresholdFrom().trim();
     const termsFrom = this.termsFrom().trim();
@@ -809,6 +848,7 @@ export class Settings {
       saveLimit ? limitFrom : '',
       saveFloor ? floorFrom : '',
       saveCap ? capFrom : '',
+      saveRounding ? roundingFrom : '',
       saveProofThreshold ? proofThresholdFrom : '',
       saveNoteThreshold ? noteThresholdFrom : '',
       saveTerms ? termsFrom : '',
@@ -831,6 +871,10 @@ export class Settings {
     }
     if (saveCap && cap !== '' && !LIMIT.test(cap)) {
       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (saveRounding && rounding !== '' && !ROUNDING.test(rounding)) {
+      this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (saveProofThreshold && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
@@ -935,6 +979,16 @@ export class Settings {
         }
         this.show(settings);
         this.capSaved.emit(settings.caps);
+      }
+      if (saveRounding) {
+        const settings = await this.service.setRounding(sheet, rounding || null, roundingFrom || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.roundingInput().trim() === rounding && this.roundingFrom().trim() === roundingFrom) {
+          this.roundingChanged = false;
+          this.roundingFrom.set('');
+        }
+        this.show(settings);
+        this.roundingSaved.emit(settings.roundings);
       }
       if (saveProofThreshold) {
         const settings = await this.service.setProofThreshold(sheet, proofThreshold || null, proofThresholdFrom || null);
@@ -1065,6 +1119,7 @@ export class Settings {
       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
       if (!this.floorChanged) this.floorInput.set(this.floor());
       if (!this.capChanged) this.capInput.set(this.cap() ?? '');
+      if (!this.roundingChanged) this.roundingInput.set(this.rounding() ?? '');
       if (!this.proofThresholdChanged) this.proofThresholdInput.set(this.proofThreshold() ?? '');
       if (!this.noteThresholdChanged) this.noteThresholdInput.set(this.noteThreshold() ?? '');
       if (!this.termsChanged) this.termsInput.set(this.terms());
@@ -1132,6 +1187,7 @@ export class Settings {
         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
         if (!this.floorChanged) this.floorInput.set(settings.floor);
         if (!this.capChanged) this.capInput.set(settings.cap ?? '');
+        if (!this.roundingChanged) this.roundingInput.set(settings.rounding ?? '');
         if (!this.proofThresholdChanged) this.proofThresholdInput.set(settings.proofThreshold ?? '');
         if (!this.noteThresholdChanged) this.noteThresholdInput.set(settings.noteThreshold ?? '');
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
@@ -1197,6 +1253,7 @@ export class Settings {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
     this.cap.set(settings.cap);
+    this.rounding.set(settings.rounding ?? null);
     this.proofThreshold.set(settings.proofThreshold);
     this.noteThreshold.set(settings.noteThreshold);
     this.terms.set(String(settings.terms));

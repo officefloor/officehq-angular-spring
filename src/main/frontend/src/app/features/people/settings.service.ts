@@ -98,6 +98,11 @@ export interface SheetSettings {
   /** The alert threshold a person's due-total going above is alerted at, with two decimals; null when
    *  it is off. */
   alertThreshold: string | null;
+  /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none:
+   *  a claim with none in force on its date rounds by the policy date. */
+  rounding: string | null;
+  /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
+  roundings: Dated<string | null>[];
 }
 
 /** The fiscal year (FYyyyy, by the calendar year its first day falls in) the date (YYYY-MM-DD) falls
@@ -112,7 +117,7 @@ export function fiscalYearOf(date: string, startMonth: number): string {
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its fiscal start month, its entry date, its pot, its alert threshold and its parent), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its fiscal start month, its entry date, its pot, its alert threshold, its parent and its rounding mode), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -139,6 +144,12 @@ export class SettingsService {
   setPermission(sheet: string, action: PermAction, value: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/perm/${action}`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  setRounding(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/rounding`, { value, from }, { headers: this.session.headers() }),
     );
   }
 

@@ -231,11 +231,11 @@ public class PersonService {
     }
 
     /** The sheet's snapshots in the order they were written; as of {@code asOf}, only those of the days
-     * before it (all of them when null). */
+     * on or before it, the day it stood at the end of (all of them when null). */
     @Transactional(readOnly = true)
     public List<PersonSnapshot> snapshots(String sheetId, LocalDate asOf) {
         return asOf == null ? snapshots.findBySheetIdOrderByIdAsc(sheetId)
-                : snapshots.findBySheetIdAndDayBeforeOrderByIdAsc(sheetId, asOf);
+                : snapshots.findBySheetIdAndDayLessThanEqualOrderByIdAsc(sheetId, asOf);
     }
 
     /** The sheet's patrons in the order they were named. */

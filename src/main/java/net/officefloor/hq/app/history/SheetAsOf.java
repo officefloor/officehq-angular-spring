@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.history;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -256,6 +257,11 @@ public class SheetAsOf implements RollupService.Basis {
     @Override
     public Integer graceOn(String grade, LocalDate on) {
         return valueOn(DatedSettings.gradeGraceKey(grade), on).map(Integer::valueOf).orElse(null);
+    }
+
+    @Override
+    public RoundingMode roundingOn(LocalDate on) {
+        return valueOn(DatedSettings.ROUNDING, on).map(DatedSettings::roundingMode).orElse(null);
     }
 
     /** The key's value in force on the date (see {@link DatedSettings}); empty when none is recorded then,
