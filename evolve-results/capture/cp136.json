@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "619c54a4fab7ae8a9c401ce1dc17904b6cab1b68",
+  "reset_sha": "",
+  "preagent_sha": "c85eb3c98d5689f0918e52ec6b81ed4612c58a62",
+  "prev_sha": "c85eb3c98d5689f0918e52ec6b81ed4612c58a62",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.777022,
+    "input_tokens": 34,
+    "output_tokens": 10126,
+    "cache_read_tokens": 713310,
+    "cache_creation_tokens": 53963,
+    "num_turns": 18,
+    "duration_ms": 249781,
+    "duration_api_ms": 102658,
+    "model": "claude-opus-5-5",
+    "session_id": "883df5f6-5b4b-4f4d-a84a-3557550d4643",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` passes all 4 tests.\n\n**What now happens on a merge or a transfer**\n- **Claims keep their stated figure.** A merge no longer unbinds the claims it moves. A transfer copies each claim's binding (`stated`, `statedDue`, `statedBy`) to its copy on the other sheet.\n- **Statements move instead of being deleted.** The moving person's statements are reassigned to the receiving person, on the target sheet for a transfer. They keep their ids, so the moved claims still point at the statement that bound them, and cancelling a statement still unbinds the right claims.\n- **Statement count** becomes the receiving person's own plus the other's. The screen already counts statements per person, so this follows from the move.\n- **Last statement:** if the receiving person has statements of their own, the moved ones are placed before them, so their last statement stays theirs. If they have none, the moved statements keep their places and the other person's last becomes theirs.\n\n**How the ordering works**\n- A statement is no longer ordered purely by id. It now has a position: its id by default, or the place it was given when it moved.\n- New migration `V77__statement_position.sql` adds a nullable `list_position` column and fills it with the id for existing rows. Older history rows have no position, so they fall back to the id.\n- `Statement.ORDER` sorts by position, then id. The statement list, \"last statement\" (used when cancelling), and the as-of history view (`SheetAsOf`) all use it.\n- The shared move logic is `PersonMergeService.carryStatements`, and the transfer service calls it too.\n\nI left sheet cloning unchanged: a clone still copies no statements and no bindings. I didn't add anything to the front end; it already shows the count and the last statement from the list the server sends, in that order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.777022,
+        "num_turns": 18,
+        "duration_ms": 249781,
+        "duration_api_ms": 102658,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
