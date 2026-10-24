@@ -1,0 +1,64 @@
+{
+  "checkpoint": 58,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp58_watch-and-notify",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A user can watch a person (a toggle on the row, per user; PERSON_WATCHED name=<name>,\nPERSON_UNWATCHED name=<name>); show watched yes/no for the signed-in user. When a watched\nperson's claim is settled, approved or re-settled, one line NOTIFY user=<watcher> person=<name>\nnumber=<number> is written per watching user, in the order they started watching, after the\nclaim's own line and before the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA user can watch a person (a toggle on the row, per user; PERSON_WATCHED name=<name>,\nPERSON_UNWATCHED name=<name>); show watched yes/no for the signed-in user. When a watched\nperson's claim is settled, approved or re-settled, one line NOTIFY user=<watcher> person=<name>\nnumber=<number> is written per watching user, in the order they started watching, after the\nclaim's own line and before the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7db0c374c2cc194d136b2597ac7490d79d4cc7aa",
+  "reset_sha": "",
+  "preagent_sha": "a37cb16289ded4e88253cc2e6e181f04d4800bc6",
+  "prev_sha": "a37cb16289ded4e88253cc2e6e181f04d4800bc6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9311088000000001,
+    "input_tokens": 38,
+    "output_tokens": 10798,
+    "cache_read_tokens": 890024,
+    "cache_creation_tokens": 67124,
+    "num_turns": 21,
+    "duration_ms": 224290,
+    "duration_api_ms": 152582,
+    "model": "claude-opus-5-5",
+    "session_id": "973722c9-00b0-489e-9a8b-58145349c048",
+    "stop_reason": "success",
+    "result_text": "Watching is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- Each person's row has a Watch/Unwatch button (`person-watch`) and a `person-watched` cell. The cell shows yes/no for the signed-in user only.\n- Watching writes `PERSON_WATCHED name=<name>` to the audit file and unwatching writes `PERSON_UNWATCHED name=<name>`. Watching someone you already watch, or unwatching someone you don't, is refused: the row's `person-error` appears and nothing is written.\n- When a watched person's claim is settled, approved or re-settled, the app writes one `NOTIFY user=<watcher> person=<name> number=<number>` line per watcher. The lines go in the order the watchers started watching, right after the claim's own line and before the rollup lines. This covers bulk settle too, since it settles each claim the same way as a single settle.\n- A clerk's settle that leaves a claim PENDING notifies no one; the watchers are notified when a steward approves it.\n\n**How it's stored**\n- A new `person_watch` table (migration `V44__person_watch.sql`) holds one row per user per person.\n- If someone unwatches and then watches again, they move to the end of the notification order.\n\n**Changes**\n- **Server:** a new `PersonWatch` entity, repository and exception. `PersonService` gets the watch/unwatch logic, and `PersonController` gets three endpoints: `GET /people/watched`, `POST` and `DELETE /people/{id}/watch`. `ClaimService` writes the NOTIFY lines.\n- **Front end:** `people.service.ts` calls the new endpoints, and `people.ts` reads the watched list each time a sheet loads.\n\n**Decision for you:** users with the viewer role can't watch anyone, because the app's existing viewer check blocks every write request. The request didn't say either way. If viewers should be able to watch, it's a small change: add the watch path to the check's exclusions.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9311088000000001,
+        "num_turns": 21,
+        "duration_ms": 224290,
+        "duration_api_ms": 152582,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp58.agent.jsonl",
+  "agent_diff_file": "cp58.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
