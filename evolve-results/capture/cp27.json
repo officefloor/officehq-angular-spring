@@ -1,0 +1,64 @@
+{
+  "checkpoint": 27,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp27_patrons-and-backing",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "90737dd5cecc54c6c730d3e16704cc1febd18276",
+  "reset_sha": "",
+  "preagent_sha": "af9cdf4d2b9e5bd24311652d439f70e3449ed31c",
+  "prev_sha": "af9cdf4d2b9e5bd24311652d439f70e3449ed31c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7304155999999999,
+    "input_tokens": 26,
+    "output_tokens": 9491,
+    "cache_read_tokens": 490898,
+    "cache_creation_tokens": 55289,
+    "num_turns": 14,
+    "duration_ms": 179663,
+    "duration_api_ms": 100638,
+    "model": "claude-opus-5-5",
+    "session_id": "5f9e7f2a-e0c4-44ef-bd2d-77ec77db5948",
+    "stop_reason": "success",
+    "result_text": "People can now name patrons from their row, and each row shows their patrons and backing. All 4 acceptance tests pass under `bin/e2e`.\n\n**How it works on screen:** each person's row has a **Patron** dropdown and an **Add patron** button. The dropdown lists everyone on the sheet except the person themselves, retired people included. Two new columns show:\n- `person-patrons`: the patrons' names, sorted, separated by \", \".\n- `person-backing`: the patrons' due-totals added up, skipping any that are n/a. It shows 0.00 when there are no patrons.\n\nBacking is worked out on screen from the same due-totals the rows show, so it changes with them (for example, it drops when a patron is put on hold).\n\n**Refusals:**\n- A person can't pick themselves, because they aren't in the dropdown.\n- Naming someone already a patron is refused by the server. The row shows `person-patron-error` and nothing is stored or audited.\n- Pressing **Add patron** with nothing chosen also shows the error.\n- The error clears as soon as you change the dropdown or take any other action on that row.\n\n**Storage and server:**\n- **Table:** a new `person_patron` table (migration `V24__person_patron.sql`), with a database rule against naming the same patron twice. I kept patrons out of the person record so that adding one doesn't count as an edit, which would otherwise make another user's open editor out of date.\n- **Endpoints:** `GET /api/sheets/{id}/people/patrons` lists them and `POST /api/sheets/{id}/people/{personId}/patrons` adds one. Both are in `PersonController`, and the server logic is in `PersonService.addPatron`.\n- **Audit:** a successful add writes `PATRON_ADDED sheet=<id> by=<user> name=<name> patron=<patron name>`.\n\n**Front end:** the changes are in `people.ts` and `people.service.ts`. Patrons are re-read from the store whenever the sheet is loaded.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7304155999999999,
+        "num_turns": 14,
+        "duration_ms": 179663,
+        "duration_api_ms": 100638,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp27.agent.jsonl",
+  "agent_diff_file": "cp27.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
