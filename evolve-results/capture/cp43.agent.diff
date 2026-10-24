@@ -1,0 +1,529 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 14e7f046..b0e3a328 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -32,7 +32,9 @@ import { Summary, SummaryPerson } from './summary';
+ // full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
+ // A person can name other people on the sheet as their patrons, one at a time from their row; the
+ // row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
+-// (a due-total that is n/a is skipped).
++// (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
++// sum of their figures is above it, the row shows the cap and the difference as their excess; every
++// total of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
+ @Component({
+   selector: 'app-people',
+   imports: [Claims, Header, Periods, Rates, Settings, Summary],
+@@ -45,6 +47,7 @@ import { Summary, SummaryPerson } from './summary';
+     />
+     <app-settings
+       (floorSaved)="floor.set($event)"
++      (capSaved)="cap.set($event)"
+       (latePctSaved)="latePct.set($event)"
+       (policyDateSaved)="policyDate.set($event)"
+     />
+@@ -148,6 +151,7 @@ import { Summary, SummaryPerson } from './summary';
+               <th scope="col">Grade</th>
+               <th scope="col">Claimed</th>
+               <th scope="col">Due</th>
++              <th scope="col">Excess</th>
+               <th scope="col">Overdue</th>
+               <th scope="col">Overdue due</th>
+               <th scope="col">Statements</th>
+@@ -169,6 +173,7 @@ import { Summary, SummaryPerson } from './summary';
+                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
+                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
+                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
++                <td data-testid="person-excess">{{ excessOf(p) }}</td>
+                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
+                 <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
+                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
+@@ -406,6 +411,8 @@ export class People {
+   protected readonly rates = signal<Rate[]>([]);
+   /** The sheet's floor, in cents: the least a claim's live due can be. */
+   protected readonly floor = signal(FLOOR_CENTS);
++  /** The sheet's cap, in cents: the most a person's due-total can be; null when there is none. */
++  protected readonly cap = signal<number | null>(null);
+   /** The sheet's late percent, with two decimals. */
+   protected readonly latePct = signal(LATE_PCT);
+   /** The sheet's policy date as set; null when it is the sheet's today. */
+@@ -460,6 +467,8 @@ export class People {
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion = 0;
++  /** Counts the times the editor was opened, so a save answered after it was opened again leaves it open. */
++  private editorOpenings = 0;
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+   private submitting = false;
+   protected readonly error = signal<string | null>(null);
+@@ -485,6 +494,7 @@ export class People {
+       this.claims.set([]);
+       this.rates.set([]);
+       this.floor.set(FLOOR_CENTS);
++      this.cap.set(null);
+       this.latePct.set(LATE_PCT);
+       this.policyDate.set(null);
+       this.statements.set([]);
+@@ -697,14 +707,30 @@ export class People {
+   }
+ 
+   /** The sum of what is due on each of the person's OPEN and SETTLED claims, as each claim shows
+-   *  it (a claim with nothing due is skipped); n/a when no rate of their grade applies on the
+-   *  sheet's today and none of their claims has a figure. */
++   *  it (a claim with nothing due is skipped), at most the sheet's cap; n/a when no rate of their
++   *  grade applies on the sheet's today and none of their claims has a figure. */
+   protected dueTotalOf(person: Person): string | null {
+     const due = this.dueCentsOf(person);
+     return due === null ? null : money(due);
+   }
+ 
++  /** How far the sum of the person's figures is above the sheet's cap; 0.00 when it is not, or when
++   *  their due-total is n/a. */
++  protected excessOf(person: Person): string {
++    const sum = this.sumCentsOf(person);
++    const cap = this.cap();
++    return money(sum === null || cap === null ? 0 : Math.max(0, sum - cap));
++  }
++
++  /** The person's due-total in cents, capped; null when it is n/a. */
+   private dueCentsOf(person: Person): number | null {
++    const sum = this.sumCentsOf(person);
++    const cap = this.cap();
++    return sum === null || cap === null ? sum : Math.min(sum, cap);
++  }
++
++  /** The sum of the person's figures in cents, before the cap; null when it is n/a. */
++  private sumCentsOf(person: Person): number | null {
+     let sum = 0;
+     let any = false;
+     for (const c of this.claimsOf(person.id)) {
+@@ -798,6 +824,7 @@ export class People {
+     this.clearRowError(person.id);
+     this.editingId.set(person.id);
+     this.editingVersion = person.version;
++    this.editorOpenings++;
+     this.name.set(person.name);
+     this.grade.set(this.gradeNow(person));
+     this.gradeFrom.set('');
+@@ -824,6 +851,7 @@ export class People {
+       return;
+     }
+     const id = this.editingId();
++    const opening = this.editorOpenings;
+     this.submitting = true;
+     try {
+       if (id === null) {
+@@ -834,7 +862,13 @@ export class People {
+           ...fields,
+           gradeFrom: this.gradeFrom() || null,
+         });
+-        if (this.sheet() === sheet) this.put(saved);
++        if (this.sheet() !== sheet) return;
++        this.put(saved);
++        if (this.editorOpenings !== opening) {
++          // The editor was opened again while the save waited: keep it, from the version just saved.
++          if (this.editingId() === saved.id) this.editingVersion = saved.version;
++          return;
++        }
+       }
+       if (this.sheet() === sheet) this.reset();
+     } catch (e) {
+@@ -922,6 +956,7 @@ export class People {
+       ]);
+       if (this.sheet() === sheet) {
+         this.floor.set(cents(settings.floor));
++        this.cap.set(settings.cap === null ? null : cents(settings.cap));
+         this.latePct.set(settings.latePct);
+         this.policyDate.set(settings.policyDate);
+         this.rates.set(rates);
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 40f3b472..68f8bc3e 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -25,6 +25,8 @@ export interface SheetSettings {
+   clerkLimit: string | null;
+   /** The least a claim's live due can be, with two decimals. */
+   floor: string;
++  /** The most a person's due-total can be, with two decimals; null when there is no cap. */
++  cap: string | null;
+   /** How many days after its date a claim is due by. */
+   terms: number;
+   /** The grades given terms of their own, in days, by grade; a grade not in it uses the sheet's terms. */
+@@ -41,7 +43,7 @@ export interface SheetSettings {
+   periodNumberingFrom: string | null;
+ }
+ 
+-// The settings of a sheet (its roles, its clerk limit, its floor, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
++// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsService {
+   private readonly http = inject(HttpClient);
+@@ -70,6 +72,13 @@ export class SettingsService {
+     );
+   }
+ 
++  /** A null value removes the cap. */
++  setCap(sheet: string, value: string | null): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/cap`, { value }, { headers: this.session.headers() }),
++    );
++  }
++
+   setTerms(sheet: string, value: string): Promise<SheetSettings> {
+     return firstValueFrom(
+       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value }, { headers: this.session.headers() }),
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 351eb5ea..5b6afcd1 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -9,7 +9,8 @@ const TERMS = /^\d{1,4}$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
+-// limit), its floor (the least a claim's live due can be), its terms (how many days after its date
++// limit), its floor (the least a claim's live due can be), its cap (the most a person's due-total
++// can be; blank for no cap), its terms (how many days after its date
+ // a claim is due by), each grade's own terms (used in place of the sheet's for a person of that
+ // grade; blank for the sheet's), its late percent (the percent of its figure an overdue claim's due gains for
+ // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
+@@ -48,6 +49,21 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (keydown)="floorChanged = true"
+         />
+         <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
++        <label for="setting-cap">Cap</label>
++        <input
++          id="setting-cap"
++          data-testid="setting-cap"
++          inputmode="decimal"
++          [value]="capInput()"
++          (input)="capInput.set(value($event)); capChanged = true; settingsError.set(null)"
++          (keydown)="capChanged = true"
++        />
++        <span>
++          In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
++          @if (cap() === null) {
++            (no cap)
++          }
++        </span>
+         <label for="setting-terms">Terms (days)</label>
+         <input
+           id="setting-terms"
+@@ -204,6 +220,10 @@ export class Settings {
+   protected readonly clerkLimit = signal<string | null>(null);
+   /** The floor in force, with two decimals; empty until read. */
+   protected readonly floor = signal('');
++  /** The cap in force, with two decimals; null when there is none. */
++  protected readonly cap = signal<string | null>(null);
++  /** The cap saved, in cents; null when there is none. */
++  readonly capSaved = output<number | null>();
+   protected readonly given = signal<RoleGiven[]>([]);
+   /** The terms in force, in days, as text; empty until read. */
+   protected readonly terms = signal('');
+@@ -226,6 +246,7 @@ export class Settings {
+ 
+   protected readonly limit = signal('');
+   protected readonly floorInput = signal('');
++  protected readonly capInput = signal('');
+   protected readonly termsInput = signal('');
+   protected readonly latePctInput = signal('');
+   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
+@@ -236,6 +257,7 @@ export class Settings {
+    *  from the value in force. */
+   protected limitChanged = false;
+   protected floorChanged = false;
++  protected capChanged = false;
+   protected termsChanged = false;
+   protected latePctChanged = false;
+   protected readonly gradeTermsChanged = new Set<Grade>();
+@@ -260,6 +282,9 @@ export class Settings {
+       this.given.set([]);
+       this.limit.set('');
+       this.floorInput.set('');
++      this.cap.set(null);
++      this.capInput.set('');
++      this.capChanged = false;
+       this.terms.set('');
+       this.termsInput.set('');
+       this.limitChanged = false;
+@@ -312,6 +337,8 @@ export class Settings {
+     const floor = this.floorInput().trim();
+     const saveLimit = this.limitChanged || limit !== (this.clerkLimit() ?? '');
+     const saveFloor = this.floorChanged || floor !== this.floor();
++    const cap = this.capInput().trim();
++    const saveCap = this.capChanged || cap !== (this.cap() ?? '');
+     const terms = this.termsInput().trim();
+     const saveTerms = this.termsChanged || terms !== this.terms();
+     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
+@@ -332,6 +359,10 @@ export class Settings {
+       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    if (saveCap && cap !== '' && !LIMIT.test(cap)) {
++      this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
++      return;
++    }
+     if (saveTerms && !TERMS.test(terms)) {
+       this.settingsError.set('Type terms as a whole number of days, 0 or more.');
+       return;
+@@ -370,6 +401,13 @@ export class Settings {
+         this.show(settings);
+         this.floorSaved.emit(cents(settings.floor));
+       }
++      if (saveCap) {
++        const settings = await this.service.setCap(sheet, cap || null);
++        if (this.session.sheetId() !== sheet) return;
++        if (this.capInput().trim() === cap) this.capChanged = false;
++        this.show(settings);
++        this.capSaved.emit(settings.cap === null ? null : cents(settings.cap));
++      }
+       if (saveTerms) {
+         const settings = await this.service.setTerms(sheet, terms);
+         if (this.session.sheetId() !== sheet) return;
+@@ -405,6 +443,7 @@ export class Settings {
+       // Show what is in force in each field, but keep what was typed in one while the save was waiting.
+       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
+       if (!this.floorChanged) this.floorInput.set(this.floor());
++      if (!this.capChanged) this.capInput.set(this.cap() ?? '');
+       if (!this.termsChanged) this.termsInput.set(this.terms());
+       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
+       this.showGradeTermsInputs();
+@@ -460,6 +499,7 @@ export class Settings {
+         this.show(settings);
+         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
+         if (!this.floorChanged) this.floorInput.set(settings.floor);
++        if (!this.capChanged) this.capInput.set(settings.cap ?? '');
+         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
+         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
+         this.showGradeTermsInputs();
+@@ -483,6 +523,7 @@ export class Settings {
+   private show(settings: SheetSettings): void {
+     this.clerkLimit.set(settings.clerkLimit);
+     this.floor.set(settings.floor);
++    this.cap.set(settings.cap);
+     this.terms.set(String(settings.terms));
+     this.gradeTerms.set(settings.gradeTerms ?? {});
+     this.latePct.set(settings.latePct);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index e089a41e..55483dc6 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -26,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
+  * claims, leaving out the OPEN and PENDING ones dated within one of their holds that no statement binds)
+  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
+- * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
++ * their grade is in force on the sheet's today, and at most the sheet's cap when it has one) — and the sheet's
++ * totals of them. A change that moves
+  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
+  * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
+  * {@link #recordSince} it after the change has recorded its own lines.
+@@ -63,7 +64,9 @@ public class RollupService {
+     /** The figures the sheet shows now. */
+     @Transactional(propagation = Propagation.MANDATORY)
+     public Snapshot snapshot(String sheetId) {
+-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        LocalDate today = sheet == null ? null : sheet.getToday();
++        BigDecimal cap = sheet == null ? null : sheet.getCap();
+         List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = zero();
+@@ -80,6 +83,7 @@ public class RollupService {
+                 due = due.add(figure);
+                 any = true;
+             }
++            due = cappedOf(due, cap);
+             boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+             claimedTotal = claimedTotal.add(claimed);
+             if (any || rated) dueTotal = dueTotal.add(due);
+@@ -105,6 +109,11 @@ public class RollupService {
+         }
+     }
+ 
++    /** A due-total as shown: at most {@code cap}, when there is one. */
++    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap) {
++        return cap == null ? due : due.min(cap);
++    }
++
+     /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING
+      * when it is dated within one of its person's holds and no statement binds it (a PENDING claim is
+      * bound by none while it is). */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index f55abfda..827f37b6 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** A sheet's settings: its roles, its clerk limit, its floor, its terms, its late percent and its policy date. The signed-in user's name travels in the
++/** A sheet's settings: its roles, its clerk limit, its floor, its cap, its terms, its late percent and its policy date. The signed-in user's name travels in the
+  * {@code X-User} header. */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}")
+@@ -33,8 +33,8 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
+-    public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
++    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
++    public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
+             List<RoleView> roles, LocalDate periodNumberingFrom) {
+     }
+ 
+@@ -59,6 +59,13 @@ public class SettingsController {
+         }
+     }
+ 
++    /** A cap: 0.00 or more, with up to two decimals; blank or null for no cap. */
++    public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value) {
++        BigDecimal capValue() {
++            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
++        }
++    }
++
+     /** Terms: a whole number of days, 0 or more. */
+     public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+         int termsValue() {
+@@ -104,7 +111,8 @@ public class SettingsController {
+     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         String sheet = sheetId.trim();
+-        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
++        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
++                text(service.cap(sheet)), service.terms(sheet),
+                 service.gradeTerms(sheet),
+                 text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList(),
+                 service.periodNumberingFrom(sheet));
+@@ -119,6 +127,15 @@ public class SettingsController {
+         return get(sheet, user);
+     }
+ 
++    @PutMapping("/settings/cap")
++    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid CapRequest request) {
++        String sheet = sheetId.trim();
++        service.setCap(sheet, user.trim(), request.capValue());
++        return get(sheet, user);
++    }
++
+     @PutMapping("/settings/floor")
+     public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 30344105..4b487116 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
+  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
+- * live due can be, and its terms, how many days after its date a claim is due by (each grade may have its own
++ * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many days after its date a claim is due by (each grade may have its own
+  * terms in their place), and its late percent, the
+  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
+  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
+@@ -99,6 +99,24 @@ public class SettingsService {
+         return sheet;
+     }
+ 
++    /** The sheet's cap, the most a person's due-total can be; null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal cap(String sheetId) {
++        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getCap();
++    }
++
++    /** Set the sheet's cap; null removes it. The due-totals, and so the figures, follow it. */
++    @Transactional
++    public Sheet setCap(String sheetId, String by, BigDecimal cap) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        sheet.setCap(cap);
++        sheets.flush();
++        audit.change("SETTING_CHANGED", sheetId, by, "key=cap", "value=" + (cap == null ? "" : cap.toPlainString()));
++        rollup.recordSince(sheetId, by, before);
++        return sheet;
++    }
++
+     /** The sheet's terms, in days. */
+     @Transactional(readOnly = true)
+     public int terms(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 970a8af1..5bf9d58c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -34,6 +34,10 @@ public class Sheet {
+     @Column(name = "due_floor", nullable = false, precision = 12, scale = 2)
+     private BigDecimal floor = new BigDecimal("1.00");
+ 
++    /** The most a person's due-total can be; null when there is no cap. */
++    @Column(name = "due_cap", precision = 12, scale = 2)
++    private BigDecimal cap;
++
+     /** How many days after its date a claim is due by. */
+     @Column(name = "terms", nullable = false)
+     private int terms = 14;
+@@ -89,6 +93,14 @@ public class Sheet {
+         this.clerkLimit = clerkLimit;
+     }
+ 
++    public BigDecimal getCap() {
++        return cap;
++    }
++
++    public void setCap(BigDecimal cap) {
++        this.cap = cap;
++    }
++
+     public BigDecimal getFloor() {
+         return floor;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 1ecf7a3c..f5f6470e 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * counts (OPEN, PENDING or SETTLED, but not an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
+  * each that does not count unbound;
+  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
+- * charges included (a claim with no figure is skipped). A late charge is never bound: it keeps following
++ * charges included (a claim with no figure is skipped), at most the sheet's cap. A late charge is never bound: it keeps following
+  * the sheet's today.
+  */
+ @Service
+@@ -59,22 +59,20 @@ public class StatementService {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+         int counted = 0;
+         for (Claim claim : theirs) {
+             if (!RollupService.countsLive(claim, person)) {
+                 claim.unbind();
+                 continue;
+             }
+-            BigDecimal due = claimService.shownOf(claim, person);
+             claim.bind(claimService.figureOf(claim, person));
+-            if (due != null) total = total.add(due);
+             counted++;
+         }
+         claims.flush();
+-        // The person's due-total as shown: n/a when none of their claims has a figure and no rate applies.
++        // The person's due-total as shown (the sum of those claims' figures, at most the sheet's cap): n/a
++        // when none of their claims has a figure and no rate applies.
+         String shown = before.people().get(personId).dueTotal();
+-        BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : total;
++        BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : new BigDecimal(shown);
+         Statement statement = statements.saveAndFlush(
+                 new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counted));
+         audit.change("STATEMENT", sheetId, user, "name=" + person.getName(),
+diff --git a/src/main/resources/db/migration/V35__sheet_cap.sql b/src/main/resources/db/migration/V35__sheet_cap.sql
+new file mode 100644
+index 00000000..c4132430
+--- /dev/null
++++ b/src/main/resources/db/migration/V35__sheet_cap.sql
+@@ -0,0 +1,3 @@
++-- The most a person's due-total can be: a sum of their figures above it shows the cap, and the
++-- difference as their excess. Null means no cap.
++ALTER TABLE sheet ADD COLUMN due_cap DECIMAL(12, 2) CHECK (due_cap >= 0);
