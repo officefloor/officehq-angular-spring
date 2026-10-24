@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLine;
+import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -51,7 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
  * A steward's clone of a sheet to another id, one never used. The clone gets the sheet's today, settings,
  * roles, permissions, rates, holidays, void reasons, templates, tags, people (grades, terms, contacts,
  * aliases, holds and retirements, patrons), pools and periods (all open), and its claims with their status,
- * frozen figures, dates, notes and logs; each claim that had a number is given the next number of the
+ * frozen figures, dates, notes, lines and logs; each claim that had a number is given the next number of the
  * clone, in the order the claims were opened (by the sheet's today when each was opened, then by the order
  * they were added to the clone: by person in list order, each person's oldest first). Statements are not
  * copied, so no figure is bound; nor are watches, delegations, comments, locks or settle batches.
@@ -76,6 +78,7 @@ public class SheetCloneService {
     private final PeriodRepository periods;
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
+    private final ClaimLineRepository lines;
     private final ClaimService claimService;
     private final SheetService sheetService;
     private final RollupService rollup;
@@ -87,7 +90,7 @@ public class SheetCloneService {
             SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons, ClaimTemplateRepository templates,
             SheetTagRepository tags, PersonRepository people, PersonPatronRepository patrons,
             SheetPoolRepository pools, SheetPoolMemberRepository poolMembers, PeriodRepository periods,
-            ClaimRepository claims, ClaimLogRepository logs, ClaimService claimService, SheetService sheetService,
+            ClaimRepository claims, ClaimLogRepository logs, ClaimLineRepository lines, ClaimService claimService, SheetService sheetService,
             RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.settings = settings;
@@ -106,6 +109,7 @@ public class SheetCloneService {
         this.periods = periods;
         this.claims = claims;
         this.logs = logs;
+        this.lines = lines;
         this.claimService = claimService;
         this.sheetService = sheetService;
         this.rollup = rollup;
@@ -197,6 +201,8 @@ public class SheetCloneService {
                 .thenComparingLong(Claim::getListed).thenComparing(Claim::getId));
         Map<Long, List<ClaimLog>> logsOf = logs.findByClaimIdInOrderByIdAsc(all.stream().map(Claim::getId).toList())
                 .stream().collect(Collectors.groupingBy(ClaimLog::getClaimId));
+        Map<Long, List<ClaimLine>> linesOf = lines.findByClaimIdInOrderByIdAsc(all.stream().map(Claim::getId).toList())
+                .stream().collect(Collectors.groupingBy(ClaimLine::getClaimId));
 
         Map<Claim, Claim> copies = new HashMap<>();
         for (Claim claim : added) copies.put(claim, claim.clonedTo(toSheetId, personIds.get(claim.getPersonId())));
@@ -229,7 +235,9 @@ public class SheetCloneService {
         for (Claim claim : added) {
             Claim copy = claims.saveAndFlush(copies.get(claim));
             logsOf.getOrDefault(claim.getId(), List.of()).forEach(line -> logs.save(line.copyFor(copy.getId())));
+            linesOf.getOrDefault(claim.getId(), List.of()).forEach(line -> lines.save(line.copyFor(copy.getId())));
         }
         logs.flush();
+        lines.flush();
     }
 }

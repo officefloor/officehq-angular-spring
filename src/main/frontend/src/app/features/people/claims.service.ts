@@ -58,6 +58,16 @@ export interface Claim {
   voidReason: string | null;
   /** The claim's comments, oldest first, each as `<user> on <date>: <text>`. */
   comments: string[];
+  /** The claim's lines, in the order they were added, each as `<label> <qty> x <unit>`; a claim with
+   *  lines has the amount they add up to. */
+  lines: string[];
+}
+
+/** A line typed for a claim: its label, quantity and unit amount, as text. */
+export interface LineFields {
+  label: string;
+  qty: string;
+  unit: string;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -271,6 +281,18 @@ export class ClaimsService {
   addProof(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Add a line to a DRAFT claim, making its amount what its lines add up to; refused (400) when the
+   *  label is blank, the quantity not a whole number of at least 1 or the unit amount not one with up to
+   *  two decimals, (409) when it is not a DRAFT, (412) when another user's editor holds it and (423)
+   *  when it is dated in a closed period. */
+  addLine(sheet: string, id: number, line: LineFields): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/lines`, line, {
         headers: this.session.headers(),
       }),
     );

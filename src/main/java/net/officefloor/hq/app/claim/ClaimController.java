@@ -39,19 +39,21 @@ public class ClaimController {
      * the figure it is bound to (null when unbound or bound to no figure), and the date it was last reminded
      * (null when never), are sent as text with two
      * decimals so they are never rounded on the way. Its comments follow, oldest first, each as
-     * {@code <user> on <date>: <text>}. */
+     * {@code <user> on <date>: <text>}. Its lines follow, in the order they were added, each as
+     * {@code <label> <qty> x <unit>}. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
-            Integer settleBatch) {
+            Integer settleBatch, List<String> lines) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
             Map<Long, List<ClaimComment>> comments = service.commentsOf(claims);
+            Map<Long, List<ClaimLine>> lines = service.linesOf(claims);
             return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()),
-                    comments.getOrDefault(c.getId(), List.of()))).toList();
+                    comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()))).toList();
         }
 
         /** The claim as a view, with its status log. */
@@ -59,7 +61,7 @@ public class ClaimController {
             return allOf(List.of(claim), service).get(0);
         }
 
-        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments) {
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -68,7 +70,12 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch());
+                    claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList());
+        }
+
+        /** A line as shown: {@code <label> <qty> x <unit>}. */
+        private static String line(ClaimLine line) {
+            return line.getLabel() + " " + line.getQty() + " x " + line.unitText();
         }
 
         /** A comment as shown: {@code <user> on <date>: <text>}. */
@@ -128,6 +135,22 @@ public class ClaimController {
 
     /** A comment on a claim: its text, which may not be blank. */
     public record CommentRequest(@NotBlank @Size(max = 1000) String text) {
+    }
+
+    /** A line added to a claim: its label (not blank), its quantity (a whole number, at least 1) and its
+     * unit amount (with up to two decimals). */
+    public record LineRequest(
+            @NotBlank @Size(max = 200) String label,
+            @NotNull @Pattern(regexp = "\\s*0*[1-9]\\d{0,5}\\s*") String qty,
+            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String unit) {
+
+        int qtyValue() {
+            return Integer.parseInt(qty.trim());
+        }
+
+        BigDecimal unitValue() {
+            return new BigDecimal(unit.trim()).setScale(2);
+        }
     }
 
     /** The date a claim is deferred until. */
@@ -190,10 +213,12 @@ public class ClaimController {
             SheetAsOf then = history.read(sheetId.trim(), asOf);
             Map<Long, List<ClaimLog>> logs = service.logsOf(then.claims());
             Map<Long, List<ClaimComment>> comments = service.commentsOf(then.claims());
+            Map<Long, List<ClaimLine>> lines = service.linesOf(then.claims());
             return then.claims().stream()
                     .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())),
                             comments.getOrDefault(c.getId(), List.of()).stream()
-                                    .filter(k -> !k.getDate().isAfter(asOf)).toList()))
+                                    .filter(k -> !k.getDate().isAfter(asOf)).toList(),
+                            lines.getOrDefault(c.getId(), List.of())))
                     .toList();
         }
         return views(service.list(sheetId.trim()));
@@ -304,6 +329,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid CommentRequest request) {
         return view(service.comment(sheetId.trim(), user.trim(), claimId, request.text().trim()));
+    }
+
+    @PostMapping("/claims/{claimId}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LineRequest request) {
+        return view(service.addLine(sheetId.trim(), user.trim(), claimId, request.label().trim(),
+                request.qtyValue(), request.unitValue()));
     }
 
     @PostMapping("/claims/{claimId}/remind")

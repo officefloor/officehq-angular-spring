@@ -32,13 +32,15 @@ import org.springframework.transaction.annotation.Transactional;
  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
  * change status, nor be edited to a date whose due-by, with its terms, would; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
- * person; a claim that is not a correction names none. */
+ * person; a claim that is not a correction names none. A DRAFT claim may have lines (see {@link ClaimLine}):
+ * then its amount is what they add up to, and an edit to any other amount is refused. */
 @Service
 public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
@@ -53,8 +55,9 @@ public class ClaimService {
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
             Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons,
-            ClaimCommentRepository comments) {
+            ClaimCommentRepository comments, ClaimLineRepository lines) {
         this.comments = comments;
+        this.lines = lines;
         this.voidReasons = voidReasons;
         this.tagRepository = tagRepository;
         this.holidays = holidays;
@@ -89,6 +92,41 @@ public class ClaimService {
         if (of.isEmpty()) return Map.of();
         return comments.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
                 .collect(Collectors.groupingBy(ClaimComment::getClaimId));
+    }
+
+    /** The lines of the claims, by claim id, each in the order they were added. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimLine>> linesOf(List<Claim> of) {
+        if (of.isEmpty()) return Map.of();
+        return lines.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
+                .collect(Collectors.groupingBy(ClaimLine::getClaimId));
+    }
+
+    /** Add a line to a DRAFT claim: {@code label} (not blank), {@code qty} (at least 1) of {@code unit}
+     * each; the claim's amount becomes its lines' quantities times their unit amounts, added up. It counts
+     * as an edit of the claim. Refused when the claim is not a DRAFT, when its due-by is in a closed period
+     * and when another user's editor holds its lock. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.isLockedFor(user, sheets.today(sheetId))) throw new ClaimLockedException();
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimNotEditableException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        lines.saveAndFlush(new ClaimLine(claim.getId(), label, qty, unit.setScale(2)));
+        List<ClaimLine> all = lines.findByClaimIdInOrderByIdAsc(List.of(claim.getId()));
+        BigDecimal total = ClaimLine.totalOf(all);
+        if (total.precision() - total.scale() > 10) throw new ClaimLinedAmountException();
+        claim.setAmount(total);
+        claim.setEditedBy(user);
+        claims.flush();
+        ClaimLine line = all.get(all.size() - 1);
+        record("CLAIM_LINE_ADDED", user, person, claim, claim.getNumber(), "label=" + line.getLabel(),
+                "qty=" + line.getQty(), "unit=" + line.unitText());
+        rollup.recordSince(sheetId, user, before);
+        return claim;
     }
 
     /** Make the claims, settled (or left PENDING) by one bulk settle, the sheet's next settle batch,
@@ -190,6 +228,8 @@ public class ClaimService {
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, person.getId(), amount, corrects);
         refuseRefTaken(sheetId, claim.getId(), ref);
+        List<ClaimLine> lined = lines.findByClaimIdInOrderByIdAsc(List.of(claim.getId()));
+        if (!lined.isEmpty() && ClaimLine.totalOf(lined).compareTo(amount) != 0) throw new ClaimLinedAmountException();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrects);

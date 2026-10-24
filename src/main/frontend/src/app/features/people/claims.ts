@@ -1,13 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked, type WritableSignal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, cents, deferred, money, overdue } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, LineFields, cents, deferred, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
 import { TemplatesService } from './templates.service';
 import { VoidReasonsService } from './void-reasons.service';
+
+/** The fields of the claim form. */
+type FormField = 'amount' | 'date' | 'note' | 'corrects' | 'ref' | 'tags';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\S.{0,119}$/;
@@ -134,6 +137,42 @@ const PAST: Record<ClaimAction, string> = {
                 <li data-testid="claim-comments-line">{{ line }}</li>
               }
             </ol>
+            <ol class="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+              @for (line of c.lines; track $index) {
+                <li data-testid="claim-lines-line">{{ line }}</li>
+              }
+            </ol>
+            <label [for]="fieldId('line-label-' + c.id)">Line label</label>
+            <input
+              [id]="fieldId('line-label-' + c.id)"
+              data-testid="claim-line-label"
+              [value]="lineFields()[c.id]?.label ?? ''"
+              (input)="setLineField(c.id, 'label', value($event))"
+            />
+            <label [for]="fieldId('line-qty-' + c.id)">Quantity</label>
+            <input
+              [id]="fieldId('line-qty-' + c.id)"
+              data-testid="claim-line-qty"
+              inputmode="numeric"
+              [value]="lineFields()[c.id]?.qty ?? ''"
+              (input)="setLineField(c.id, 'qty', value($event))"
+            />
+            <label [for]="fieldId('line-unit-' + c.id)">Unit amount</label>
+            <input
+              [id]="fieldId('line-unit-' + c.id)"
+              data-testid="claim-line-unit"
+              inputmode="decimal"
+              [value]="lineFields()[c.id]?.unit ?? ''"
+              (input)="setLineField(c.id, 'unit', value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-line-add"
+              [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date"
+              (click)="addLine(c)"
+            >
+              Add line
+            </button>
             <label [for]="fieldId('comment-' + c.id)">Comment</label>
             <input
               [id]="fieldId('comment-' + c.id)"
@@ -389,6 +428,8 @@ export class Claims {
   protected readonly voidReasons = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The line typed on each draft claim, by claim id. */
+  protected readonly lineFields = signal<Record<number, LineFields>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The date typed to re-date each claim to, by claim id. */
@@ -497,9 +538,10 @@ export class Claims {
     const was = this.editingId();
     // The form shows the claim once the lock is answered, so it never shows as open before a refusal.
     this.release(sheet, was, claim.id);
+    const before = this.formFields();
     try {
       await this.service.lock(sheet, claim.id);
-      if (this.session.sheetId() === sheet) this.fill(claim);
+      if (this.session.sheetId() === sheet) this.fill(claim, before);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
@@ -528,17 +570,34 @@ export class Claims {
     if (was !== null && was !== now) this.service.unlock(sheet, was).catch(() => undefined);
   }
 
-  /** Show the claim in the form, its editor open. */
-  private fill(claim: Claim): void {
+  /** The form's fields as they are now. */
+  private formFields(): Record<FormField, string> {
+    return {
+      amount: this.amount(),
+      date: this.date(),
+      note: this.note(),
+      corrects: this.corrects(),
+      ref: this.ref(),
+      tags: this.tags(),
+    };
+  }
+
+  /** Show the claim in the form, its editor open. Given the fields as they were when the editor was
+   *  asked for, a field typed into while its lock was being answered keeps what was typed. */
+  private fill(claim: Claim, before?: Record<FormField, string>): void {
     const sheet = this.session.sheetId();
     if (sheet) this.service.setEditing(sheet, this.personId(), claim.id);
     this.editingId.set(claim.id);
-    this.amount.set(claim.amount);
-    this.date.set(claim.date);
-    this.note.set(claim.note);
-    this.corrects.set(claim.corrects ?? '');
-    this.ref.set(claim.ref ?? '');
-    this.tags.set(claim.tags.join(', '));
+    const now = this.formFields();
+    const set = (field: FormField, value: string, into: WritableSignal<string>) => {
+      if (!before || now[field] === before[field]) into.set(value);
+    };
+    set('amount', claim.amount, this.amount);
+    set('date', claim.date, this.date);
+    set('note', claim.note, this.note);
+    set('corrects', claim.corrects ?? '', this.corrects);
+    set('ref', claim.ref ?? '', this.ref);
+    set('tags', claim.tags.join(', '), this.tags);
     this.error.set(null);
   }
 
@@ -692,6 +751,58 @@ export class Claims {
           ? 'That claim is dated in a closed period.'
           : 'Only a settled claim can be re-settled.',
       }));
+    }
+  }
+
+  protected setLineField(id: number, field: keyof LineFields, text: string): void {
+    this.lineFields.update((lines) => ({
+      ...lines,
+      [id]: { ...{ label: '', qty: '', unit: '' }, ...lines[id], [field]: text },
+    }));
+    this.clearRowError(id);
+  }
+
+  /** Add the line typed on its row to the claim: a label, a whole quantity of at least 1 and a unit
+   *  amount with up to two decimals, on a DRAFT not dated in a closed period nor held by another user's
+   *  editor; anything else is refused with an error on the claim. */
+  protected async addLine(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const refuse = (message: string) => this.rowErrors.update((errors) => ({ ...errors, [claim.id]: message }));
+    const typed = this.lineFields()[claim.id] ?? { label: '', qty: '', unit: '' };
+    const line = { label: typed.label.trim(), qty: typed.qty.trim(), unit: typed.unit.trim() };
+    if (line.label === '') {
+      refuse('Type a label for the line.');
+      return;
+    }
+    if (!/^0*[1-9]\d{0,5}$/.test(line.qty)) {
+      refuse('Type a whole quantity of at least 1.');
+      return;
+    }
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(line.unit)) {
+      refuse('Type a unit amount with up to two decimals.');
+      return;
+    }
+    try {
+      const changed = await this.service.addLine(sheet, claim.id, line);
+      if (this.session.sheetId() !== sheet) return;
+      this.lineFields.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      refuse(
+        status === 403
+          ? 'Your role may not edit a claim on this sheet.'
+          : status === 423
+          ? 'That claim is dated in a closed period.'
+          : status === 412
+          ? 'Another user is editing that claim; a line cannot be added until they save or cancel it.'
+          : status === 409
+          ? 'Only a draft claim can have lines added.'
+          : 'That line could not be added.',
+      );
     }
   }
 
@@ -849,6 +960,8 @@ export class Claims {
           ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
           : status === 422
           ? 'A claim cannot be dated after the person retired.'
+          : status === 417
+          ? 'A claim with lines has the amount its lines add up to; add a line to change it.'
           : 'That claim could not be saved.',
       );
     }
@@ -1022,6 +1135,8 @@ export class Claims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'A claim dated in a closed period cannot be changed.'
+          : e instanceof HttpErrorResponse && e.status === 417
+            ? 'A claim with lines has the amount its lines add up to; add a line to change it.'
           : e instanceof HttpErrorResponse && e.status === 422
             ? 'A claim cannot be dated after the person retired.'
           : e instanceof HttpErrorResponse && e.status === 400

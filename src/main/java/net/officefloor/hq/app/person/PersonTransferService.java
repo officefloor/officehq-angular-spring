@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimCommentRepository;
+import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -46,6 +47,7 @@ public class PersonTransferService {
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final SheetPoolMemberRepository poolMembers;
@@ -57,7 +59,7 @@ public class PersonTransferService {
 
     public PersonTransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
-            ClaimCommentRepository comments, ClaimService claimService, StatementRepository statements,
+            ClaimCommentRepository comments, ClaimLineRepository lines, ClaimService claimService, StatementRepository statements,
             SheetPoolMemberRepository poolMembers, PeriodRepository periods, SettingsService settings,
             SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
@@ -66,6 +68,7 @@ public class PersonTransferService {
         this.claims = claims;
         this.logs = logs;
         this.comments = comments;
+        this.lines = lines;
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
@@ -154,6 +157,7 @@ public class PersonTransferService {
             claimService.keepTags(copy);
             logs.moveClaim(claim.getId(), copy.getId());
             comments.moveClaim(claim.getId(), copy.getId());
+            lines.moveClaim(claim.getId(), copy.getId());
         }
         claims.deleteAll(moving);
         claims.flush();
