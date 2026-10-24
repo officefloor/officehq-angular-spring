@@ -16,6 +16,8 @@ export interface Rate {
   to: string | null;
   /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for its parent's parent's, and so on. */
   level: number;
+  /** The newest version's number (the one in force), which is how many versions the rate has. */
+  version: number;
 }
 
 /** How a rate import went: how many rates it set, and the rates, in the order of their lines. */

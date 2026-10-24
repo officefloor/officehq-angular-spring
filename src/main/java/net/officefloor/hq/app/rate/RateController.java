@@ -33,15 +33,16 @@ public class RateController {
     /** A grade's rate, the date it applies from (null: from the beginning of time) and the date it applies
      * through (null: with no end); the percent is
      * sent as text with two decimals so it is never rounded on the way; its level is 0 for the sheet's own
-     * rate, 1 for its parent's, 2 for its parent's parent's, and so on (see {@link RateChain}). */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level) {
+     * rate, 1 for its parent's, 2 for its parent's parent's, and so on (see {@link RateChain}); its version is
+     * the newest version's number, which is how many versions it has. */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level, int version) {
         static RateView of(Rate rate) {
             return of(rate, 0);
         }
 
         static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    rate.getFrom(), rate.getTo(), level);
+                    rate.getFrom(), rate.getTo(), level, rate.getVersion());
         }
     }
 

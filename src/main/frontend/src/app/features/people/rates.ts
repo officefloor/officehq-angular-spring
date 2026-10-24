@@ -129,6 +129,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
               <th scope="col">From</th>
               <th scope="col">To</th>
               <th scope="col">Rate (%)</th>
+              <th scope="col">Versions</th>
             </tr>
           </thead>
           <tbody>
@@ -138,6 +139,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
                 <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
                 <td data-testid="rate-to">{{ r.to ?? '' }}</td>
                 <td data-testid="rate-pct">{{ r.pct }}</td>
+                <td data-testid="rate-version">{{ r.version }}</td>
               </tr>
             }
           </tbody>

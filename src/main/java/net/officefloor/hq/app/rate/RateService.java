@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time)
  * through its to-date (or with no end).
- * Setting a grade's rate for a from-date it already has a rate for replaces that rate. */
+ * Setting a grade's rate for a from-date it already has a rate for adds a new version of that rate, which is
+ * the one in force, and keeps the value it replaces as an older version. */
 @Service
 public class RateService {
 
@@ -33,9 +34,11 @@ public class RateService {
     private final RollupService rollup;
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateVersionRepository versions;
 
-    public RateService(RateRepository rates, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
+    public RateService(RateRepository rates, RateVersionRepository versions, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
             ClaimRepository claims, PersonRepository people) {
+        this.versions = versions;
         this.chain = chain;
         this.claims = claims;
         this.people = people;
@@ -72,6 +75,8 @@ public class RateService {
         if (rate == null) {
             rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, pct));
         } else {
+            versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
+            rate.setVersion(rate.getVersion() + 1);
             rate.setPct(pct);
             rate.setTo(to);
             rates.flush();

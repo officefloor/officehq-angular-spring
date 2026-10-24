@@ -32,6 +32,8 @@ import net.officefloor.hq.app.pool.SheetPoolMemberRepository;
 import net.officefloor.hq.app.pool.SheetPoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersion;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -51,7 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A steward's clone of a sheet to another id, one never used. The clone gets the sheet's today, settings,
- * roles, permissions, rates, holidays, void reasons, templates, tags, people (grades, terms, contacts,
+ * roles, permissions, rates (with their older versions), holidays, void reasons, templates, tags, people (grades, terms, contacts,
  * aliases, holds and retirements, patrons), pools and periods (all open), and its claims with their status,
  * frozen figures, dates, notes, lines and logs; each claim that had a number is given the next number of the
  * clone, in the order the claims were opened (by the sheet's today when each was opened, then by the order
@@ -67,6 +69,7 @@ public class SheetCloneService {
     private final SheetRoleRepository roles;
     private final SheetPermissionRepository permissions;
     private final RateRepository rates;
+    private final RateVersionRepository rateVersions;
     private final SheetHolidayRepository holidays;
     private final SheetVoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
@@ -87,6 +90,7 @@ public class SheetCloneService {
 
     public SheetCloneService(SheetRepository sheets, SettingsService settings, SheetSettingRepository settingRows,
             SheetRoleRepository roles, SheetPermissionRepository permissions, RateRepository rates,
+            RateVersionRepository rateVersions,
             SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons, ClaimTemplateRepository templates,
             SheetTagRepository tags, PersonRepository people, PersonPatronRepository patrons,
             SheetPoolRepository pools, SheetPoolMemberRepository poolMembers, PeriodRepository periods,
@@ -98,6 +102,7 @@ public class SheetCloneService {
         this.roles = roles;
         this.permissions = permissions;
         this.rates = rates;
+        this.rateVersions = rateVersions;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
         this.templates = templates;
@@ -140,8 +145,13 @@ public class SheetCloneService {
         roles.findBySheetIdOrderByUser(sheetId).forEach(r -> roles.save(new SheetRole(toSheetId, r.getUser(), r.getRole())));
         permissions.findBySheetId(sheetId).forEach(p ->
                 permissions.save(new SheetPermission(toSheetId, p.getAction(), p.getRoles())));
-        rates.findBySheetIdOrderByGradeAndFrom(sheetId).forEach(r ->
-                rates.save(new Rate(toSheetId, r.getGrade(), r.getFrom(), r.getTo(), r.getPct())));
+        rates.findBySheetIdOrderByGradeAndFrom(sheetId).forEach(r -> {
+            Rate copy = new Rate(toSheetId, r.getGrade(), r.getFrom(), r.getTo(), r.getPct());
+            copy.setVersion(r.getVersion());
+            Long copyId = rates.save(copy).getId();
+            rateVersions.findByRateIdOrderByVersionAsc(r.getId()).forEach(v ->
+                    rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo())));
+        });
         holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new SheetHoliday(toSheetId, h.getDate())));
         voidReasons.findBySheetIdOrderByIdAsc(sheetId).forEach(v ->
                 voidReasons.save(new SheetVoidReason(toSheetId, v.getReason())));

@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A sheet's rate for a grade: a percent (0.00 or more, two decimals), in force from its from-date on
- * (from the beginning of time when it has none) through its to-date (with no end when it has none). */
+ * (from the beginning of time when it has none) through its to-date (with no end when it has none).
+ * It holds its newest version, the one in force; its older versions are {@link RateVersion}s. */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -33,6 +34,10 @@ public class Rate {
 
     @Column(name = "to_date")
     private LocalDate to;
+
+    /** The newest version's number: 1 for a rate never replaced; also how many versions it has. */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
 
     protected Rate() {
     }
@@ -77,5 +82,13 @@ public class Rate {
 
     public void setPct(BigDecimal pct) {
         this.pct = pct;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
     }
 }
