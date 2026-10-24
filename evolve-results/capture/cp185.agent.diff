@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index 5918ae6d..85edfa0f 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -393,6 +393,16 @@ export class ClaimsService {
+     );
+   }
+ 
++  /** Split an amount off an OPEN claim and settle the new claim (or leave it PENDING): the claim as it
++   *  is now, then the new claim; refused as a split or a settle of the claim would be. */
++  settlePart(sheet: string, id: number, amount: string): Promise<Claim[]> {
++    return firstValueFrom(
++      this.http.post<Claim[]>(`${this.url(sheet)}/claims/${id}/settle-part`, { amount }, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Move the claim to another person on the sheet; refused (403) when the user is not a steward,
+    *  (409) when it is SETTLED or VOID, a correction or already theirs, (423) when it is dated in a
+    *  closed period and (422) when it is dated after the person retired. */
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 5826e00d..08f9f714 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -342,6 +342,22 @@ const PAST: Record<ClaimAction, string> = {
+             >
+               Split
+             </button>
++            <label [for]="fieldId('settle-part-amount-' + c.id)">Settle part</label>
++            <input
++              [id]="fieldId('settle-part-amount-' + c.id)"
++              data-testid="claim-settle-part-amount"
++              inputmode="decimal"
++              [value]="settlePartAmounts()[c.id] ?? ''"
++              (input)="setSettlePartAmount(c.id, value($event))"
++            />
++            <button
++              type="button"
++              data-testid="claim-settle-part"
++              [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date"
++              (click)="settlePart(c)"
++            >
++              Settle part
++            </button>
+             <label [for]="fieldId('reassign-to-' + c.id)">Move to</label>
+             <select
+               [id]="fieldId('reassign-to-' + c.id)"
+@@ -497,6 +513,8 @@ export class Claims {
+   protected readonly redates = signal<Record<number, string>>({});
+   /** The amount typed to split off each claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  /** The amount typed to part-settle on each claim, by claim id. */
++  protected readonly settlePartAmounts = signal<Record<number, string>>({});
+   /** The amount typed to change each draft claim to in its row, by claim id. */
+   protected readonly inlineAmounts = signal<Record<number, string>>({});
+   /** The person chosen to move each claim to, by claim id: their id as text. */
+@@ -1156,6 +1174,45 @@ export class Claims {
+     }
+   }
+ 
++  protected setSettlePartAmount(id: number, amount: string): void {
++    this.settlePartAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    this.clearRowError(id);
++  }
++
++  /** Split the amount typed on its row off the claim, as a split does, and settle the new claim at once,
++   *  as a settle does (left PENDING over the clerk limit); a split or settle that would be refused
++   *  refuses the whole action with an error. */
++  protected async settlePart(claim: Claim): Promise<void> {
++    this.clearRowError(claim.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
++    if (!/^\d{1,10}(\.\d{1,2})?$/.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
++      this.rowErrors.update((errors) => ({
++        ...errors,
++        [claim.id]: 'Type an amount more than 0.00 and less than the claim\'s amount to settle.',
++      }));
++      return;
++    }
++    try {
++      const [kept, made] = await this.service.settlePart(sheet, claim.id, amount);
++      if (this.session.sheetId() !== sheet) return;
++      this.settlePartAmounts.update(({ [claim.id]: _, ...rest }) => rest);
++      this.saved.emit(kept);
++      this.saved.emit(made);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      this.rowErrors.update((errors) => ({
++        ...errors,
++        [claim.id]: e instanceof HttpErrorResponse && e.status === 423
++          ? 'That claim is dated in a closed period.'
++          : e instanceof HttpErrorResponse && (e.status === 422 || e.status === 400)
++          ? 'Type an amount more than 0.00 and less than the claim\'s amount to settle.'
++          : 'That claim cannot be part-settled by you now.',
++      }));
++    }
++  }
++
+   protected setReassignTo(id: number, personId: string): void {
+     this.reassignTos.update((chosen) => ({ ...chosen, [id]: personId }));
+     this.clearRowError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 910f970b..64e63284 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -438,6 +438,16 @@ public class ClaimController {
+         return views(service.split(sheetId.trim(), user.trim(), claimId, request.amountValue()));
+     }
+ 
++    /** Part-settle the claim: split an amount off it and settle the new claim; the claim as it is now,
++     * then the new claim. */
++    @PostMapping("/claims/{claimId}/settle-part")
++    public List<ClaimView> settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid SplitRequest request) {
++        return views(service.partSettle(sheetId.trim(), user.trim(), claimId, request.amountValue()));
++    }
++
+     @PostMapping("/claims/{claimId}/redate")
+     public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index acbc83a9..b5858e4a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -307,6 +307,34 @@ public class ClaimService {
+      * be one on it (see {@link VoidReasonService#refuseUnlisted}), and is kept on the claim. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
++        return changeStatus(sheetId, user, claimId, next, voidReason, false);
++    }
++
++    /** Part-settle an OPEN claim: split {@code amount} off it as {@link #split} does, then settle the new
++     * claim as {@link #changeStatus(String, String, long, ClaimStatus)} does (left PENDING when the clerk
++     * limit says so). Who may settle and the proof rule are judged on the claim as it was before the split,
++     * so the user, who opens the new claim, may still settle it. Refused, changing nothing, when the split
++     * or the settle would be. Both claims are returned, the original first. */
++    @Transactional
++    public List<Claim> partSettle(String sheetId, String user, long claimId, BigDecimal amount) {
++        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!settings.allowed(sheetId, user, Action.SETTLE)) throw new ClaimNotStewardException();
++        if (claim.getStatus() != ClaimStatus.OPEN || claim.isDeferredOn(sheets.today(sheetId))) {
++            throw new ClaimStatusChangeException();
++        }
++        if (claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        refuseUnproved(claim, person, rollup.shownOf(claim, person));
++        List<Claim> split = split(sheetId, user, claimId, amount);
++        Claim settled = changeStatus(sheetId, user, split.get(1).getId(), ClaimStatus.SETTLED, null, true);
++        return List.of(split.get(0), settled);
++    }
++
++    /** Move the claim to {@code next}; with {@code judged}, who may settle it and the proof rule have
++     * already been judged (on the claim a part-settle split it from). */
++    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
++            boolean judged) {
+         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+         Action action = switch (next) {
+             case OPEN -> Action.OPEN;
+@@ -324,7 +352,7 @@ public class ClaimService {
+         if (reversing) refuseLateVoid(sheetId, user, claim);
+         String reason = next == ClaimStatus.VOID ? voidReasons.refuseUnlisted(sheetId, voidReason) : null;
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimStatusChangeException();
+-        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
++        if (next == ClaimStatus.SETTLED && !judged && claim.isOpenedOrEditedBy(user)) throw new ClaimSelfSettleException();
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         if (next == ClaimStatus.OPEN && person.isFlaggedOn(sheets.today(sheetId))
+@@ -344,7 +372,7 @@ public class ClaimService {
+         }
+         if (next == ClaimStatus.SETTLED) {
+             BigDecimal due = rollup.shownOf(claim, person);
+-            refuseUnproved(claim, person, due);
++            if (!judged) refuseUnproved(claim, person, due);
+             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
+             else claim.setSettledDue(due);
+         }
