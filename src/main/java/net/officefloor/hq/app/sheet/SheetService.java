@@ -13,6 +13,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.history.HistoryListener;
 import net.officefloor.hq.app.period.PeriodService;
+import net.officefloor.hq.app.person.PersonSnapshot;
+import net.officefloor.hq.app.person.PersonSnapshotRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -34,11 +36,13 @@ public class SheetService {
     private final SettingsService settings;
     private final Audit audit;
     private final ClaimRepository claims;
+    private final PersonSnapshotRepository snapshots;
     private final Clock clock = Clock.systemDefaultZone();
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods,
-            SettingsService settings, Audit audit, ClaimRepository claims) {
+            SettingsService settings, Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots) {
         this.sheets = sheets;
+        this.snapshots = snapshots;
         this.claims = claims;
         this.rollup = rollup;
         this.periods = periods;
@@ -86,15 +90,18 @@ public class SheetService {
     /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
      * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
      * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
-     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left. */
+     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left,
+     * and keeps each as one of the person's snapshots. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
         LocalDate left = sheet.getToday();
         if (!today.equals(sheet.getToday())) {
-            before.people().values().forEach(figures -> audit.change("SNAPSHOT", id, user,
-                    "name=" + figures.name(), "due-total=" + figures.dueTotal()));
+            before.people().forEach((personId, figures) -> {
+                audit.change("SNAPSHOT", id, user, "name=" + figures.name(), "due-total=" + figures.dueTotal());
+                snapshots.save(new PersonSnapshot(id, personId, left, figures.dueTotal()));
+            });
             claims.unlockBySheetId(id);
         }
         sheet.setToday(today);

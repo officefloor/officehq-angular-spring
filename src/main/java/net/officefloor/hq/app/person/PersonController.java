@@ -82,6 +82,13 @@ public class PersonController {
         }
     }
 
+    /** A SNAPSHOT line written for a person: the day being left and their due-total on it. */
+    public record SnapshotView(long personId, LocalDate day, String dueTotal) {
+        public static SnapshotView of(PersonSnapshot snapshot) {
+            return new SnapshotView(snapshot.getPersonId(), snapshot.getDay(), snapshot.getDueTotal());
+        }
+    }
+
     /** The person to be named as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -214,6 +221,13 @@ public class PersonController {
         List<PersonPatron> patrons = asOf == null ? service.patrons(sheetId.trim())
                 : history.read(sheetId.trim(), asOf).patrons();
         return patrons.stream().map(PatronView::of).toList();
+    }
+
+    @GetMapping("/snapshots")
+    public List<SnapshotView> snapshots(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return service.snapshots(sheetId.trim(), asOf).stream().map(SnapshotView::of).toList();
     }
 
     @PostMapping("/{personId}/patrons")

@@ -29,11 +29,13 @@ public class PersonService {
     private final PersonWatchRepository watches;
     private final PersonTree tree;
     private final SheetTagRepository tagRepository;
+    private final PersonSnapshotRepository snapshots;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
             SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
-            SheetTagRepository tagRepository) {
+            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots) {
         this.people = people;
+        this.snapshots = snapshots;
         this.tagRepository = tagRepository;
         this.tree = tree;
         this.patrons = patrons;
@@ -223,6 +225,14 @@ public class PersonService {
         audit.change("PERSON_HELD", sheetId, user, "name=" + person.getName(), "from=" + dated);
         rollup.recordSince(sheetId, user, before);
         return person;
+    }
+
+    /** The sheet's snapshots in the order they were written; as of {@code asOf}, only those of the days
+     * before it (all of them when null). */
+    @Transactional(readOnly = true)
+    public List<PersonSnapshot> snapshots(String sheetId, LocalDate asOf) {
+        return asOf == null ? snapshots.findBySheetIdOrderByIdAsc(sheetId)
+                : snapshots.findBySheetIdAndDayBeforeOrderByIdAsc(sheetId, asOf);
     }
 
     /** The sheet's patrons in the order they were named. */

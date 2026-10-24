@@ -74,6 +74,13 @@ export function heldOn(holds: PersonHold[], date: string): boolean {
   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
+/** A SNAPSHOT line written for a person: the day being left and their due-total on it (or n/a). */
+export interface Snapshot {
+  personId: number;
+  day: string;
+  dueTotal: string;
+}
+
 /** A patron a person has named: another person on the same sheet. */
 export interface Patron {
   id: number;
@@ -274,6 +281,13 @@ export class PeopleService {
       this.http.post<void>(`${this.url(sheet)}/${id}/transfer`, { toSheet }, {
         headers: this.session.headers(),
       }),
+    );
+  }
+
+  /** The sheet's snapshots, in the order they were written. */
+  snapshots(sheet: string): Promise<Snapshot[]> {
+    return firstValueFrom(
+      this.http.get<Snapshot[]>(`${this.url(sheet)}/snapshots`, { headers: this.session.headers() }),
     );
   }
 

@@ -6,7 +6,7 @@ import { Delegations } from './delegations';
 import { Holidays } from './holidays';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
+import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -388,6 +388,7 @@ import { Audit } from './audit';
               <th scope="col">Active</th>
               <th scope="col">Watched</th>
               <th scope="col">Patrons</th>
+              <th scope="col">Snapshots</th>
               <th scope="col">Backing</th>
               <th scope="col">Claims</th>
               <th scope="col">Plans</th>
@@ -439,6 +440,11 @@ import { Audit } from './audit';
                 <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
                 <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
                 <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
+                <td>
+                  @for (line of snapshotLinesOf(p.id); track $index) {
+                    <div data-testid="person-snapshot-line">{{ line }}</div>
+                  }
+                </td>
                 <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
                 <td>
                   <app-claims
@@ -796,6 +802,14 @@ export class People {
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The sheet's patrons, in the order they were named. */
   protected readonly patrons = signal<Patron[]>([]);
+  /** The sheet's snapshots, in the order they were written. */
+  protected readonly snapshots = signal<Snapshot[]>([]);
+  /** Each person's snapshot lines as "<day> <due-total>", oldest first, by person id. */
+  private readonly snapshotLines = computed(() => {
+    const by = new Map<number, string[]>();
+    for (const s of this.snapshots()) by.set(s.personId, [...(by.get(s.personId) ?? []), `${s.day} ${s.dueTotal}`]);
+    return by;
+  });
   /** The patron chosen on each person's row (a person id), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into (a person id), by person id. */
@@ -1144,6 +1158,7 @@ export class People {
       this.holdTos.set({});
       this.aliasInputs.set({});
       this.patrons.set([]);
+      this.snapshots.set([]);
       this.watched.set(new Set());
       this.patronChoices.set({});
       this.mergeChoices.set({});
@@ -1378,6 +1393,10 @@ export class People {
         [person.id]: on ? 'That person could not be watched.' : 'That person could not be unwatched.',
       }));
     }
+  }
+
+  protected snapshotLinesOf(personId: number): string[] {
+    return this.snapshotLines().get(personId) ?? [];
   }
 
   protected patronNamesOf(personId: number): string {
@@ -2239,7 +2258,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans] = await Promise.all([
+      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots] = await Promise.all([
         this.service.list(sheet),
         this.claimsService.list(sheet),
         this.ratesService.list(sheet),
@@ -2252,6 +2271,7 @@ export class People {
         // Without its descendants' figures the sheet shows only its own as consolidated.
         this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
         this.plansService.list(sheet),
+        this.service.snapshots(sheet),
       ]);
       if (this.sheet() === sheet) {
         this.floors.set(settings.floors);
@@ -2266,6 +2286,7 @@ export class People {
         this.claims.set(claims);
         this.sheetTags.set(tags);
         this.patrons.set(patrons);
+        this.snapshots.set(snapshots);
         this.watched.set(new Set(watched));
         this.descendants.set(descendants);
         this.plans.set(plans);
