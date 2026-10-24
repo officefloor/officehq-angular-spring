@@ -13,6 +13,8 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -34,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
  * cuts, nor has a pool whose every member is retired. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
  * at most three deep. A membership may carry a from-date and a to-date (each optional, both included); a member
  * whose dates do not include the sheet's today is left out entirely: not in the total share, not in the balance,
- * and no cut. */
+ * and no cut. Worked out as of an earlier date, the pot and the people are as they stood then. */
 @Service
 public class PoolService {
 
@@ -59,14 +61,16 @@ public class PoolService {
     private final SheetPoolRepository pools;
     private final SheetPoolMemberRepository members;
     private final PersonRepository people;
+    private final SheetHistory history;
     private final Audit audit;
 
     public PoolService(SheetRepository sheets, SheetPoolRepository pools, SheetPoolMemberRepository members,
-            PersonRepository people, Audit audit) {
+            PersonRepository people, SheetHistory history, Audit audit) {
         this.sheets = sheets;
         this.pools = pools;
         this.members = members;
         this.people = people;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -76,16 +80,27 @@ public class PoolService {
         return pools(sheetId, null);
     }
 
-    /** The sheet's pools, in the order they were added, worked out on {@code on} (the sheet's today when null). */
+    /** The sheet's pools, in the order they were added, worked out on {@code on} (the sheet's today when null):
+     * as of that date, with the pot and the people as they stood at its end. */
     @Transactional(readOnly = true)
     public List<Pooled> pools(String sheetId, LocalDate on) {
         List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         if (all.isEmpty()) return List.of();
-        Sheet sheet = sheets.findById(sheetId).orElse(null);
-        BigDecimal pot = sheet == null ? null : sheet.getPot();
-        LocalDate today = on != null ? on : sheet == null ? null : sheet.getToday();
-        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        BigDecimal pot;
+        LocalDate today;
+        List<Person> listed;
+        if (on != null) {
+            SheetAsOf then = history.asOf(sheetId, on);
+            pot = then.pot();
+            today = on;
+            listed = then.people();
+        } else {
+            Sheet sheet = sheets.findById(sheetId).orElse(null);
+            pot = sheet == null ? null : sheet.getPot();
+            today = sheet == null ? null : sheet.getToday();
+            listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        }
+        Map<Long, Person> byId = listed.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, SheetPool> poolsById = all.stream().collect(Collectors.toMap(SheetPool::getId, Function.identity()));
         Map<Long, List<SheetPoolMember>> byPool = new LinkedHashMap<>();
         Map<Long, SheetPoolMember> memberOf = new HashMap<>();

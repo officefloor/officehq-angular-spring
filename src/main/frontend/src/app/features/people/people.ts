@@ -1266,12 +1266,16 @@ export class People {
   protected readonly bulkRetireError = signal<string | null>(null);
   /** A bulk retire is waiting for its answer; another meanwhile is ignored. */
   private bulkRetiring = false;
+  /** The read of the sheet last loaded (as of the date set, when one is); done once it is shown. */
+  private reading: Promise<void> = Promise.resolve();
+  /** The sheet load {@link reading} was started for. */
+  private readLoad = -1;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
     effect(() => {
       const sheet = this.sheet();
-      this.session.loads();
+      this.readLoad = this.session.loads();
       this.people.set([]);
       this.claims.set([]);
       this.sheetTags.set([]);
@@ -1329,7 +1333,7 @@ export class People {
       this.importAdded.set(null);
       this.importUpdated.set(null);
       this.importError.set(null);
-      if (sheet) void this.read(sheet);
+      this.reading = sheet ? this.read(sheet) : Promise.resolve();
     });
     // A change of the sheet's today may close periods its grace days have passed: re-read them.
     let shownToday: string | null = null;
@@ -1783,7 +1787,8 @@ export class People {
 
   /** Download everyone, retired people included, in list order as a CSV file: name, grade in force
    *  today, retired-from date (blank when not retired) and due-total as shown. */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    if (!(await this.readDone())) return;
     const lines = [['name', 'grade', 'retired-from', 'due-total']];
     for (const p of this.people()) {
       lines.push([p.name, this.gradeNow(p), p.retiredFrom ?? '', this.dueTotalOf(p) ?? 'n/a']);
@@ -1794,7 +1799,8 @@ export class People {
   /** Download every claim as a CSV file: people in list order, retired people included, and each
    *  person's claims oldest first, with number, date, amount, due, status and period as each claim
    *  shows them (a blank number or period, and a due of n/a, as they show). */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    if (!(await this.readDone())) return;
     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
     for (const p of this.people()) {
       for (const c of [...this.claimsOf(p.id)].reverse()) {
@@ -1804,6 +1810,19 @@ export class People {
       }
     }
     this.downloadCsv('claims.csv', lines);
+  }
+
+  /** Wait for the sheet's last read, as of the date set when one is, to be shown, so an export taken
+   *  just after a load shows what it read; false when no sheet is loaded. */
+  private async readDone(): Promise<boolean> {
+    // A load just made starts its read once the view next updates.
+    while (this.readLoad !== this.session.loads()) await new Promise((done) => setTimeout(done));
+    let reading: Promise<void>;
+    do {
+      reading = this.reading;
+      await reading;
+    } while (reading !== this.reading);
+    return this.sheet() !== null;
   }
 
   /** Download the lines as a CSV file of the name, each field quoted when it needs to be. */
