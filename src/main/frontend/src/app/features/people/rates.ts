@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { GRADES, Grade } from './people.service';
-import { Rate, RatesService, rateOn } from './rates.service';
+import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
@@ -51,6 +51,37 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" class="error" data-testid="rate-form-error">{{ message }}</p>
+        }
+      </form>
+      <form (submit)="preview($event)" aria-label="Rate preview" data-testid="rate-preview-form">
+        <label for="rate-preview-grade">Grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(gradeOf($event)); clearPreview()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); clearPreview()"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewed(); as p) {
+          <p aria-live="polite">
+            Claims changed: <span data-testid="rate-preview-count">{{ p.count }}</span>,
+            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
+        }
+        @if (previewError(); as message) {
+          <p role="alert" class="error" data-testid="rate-preview-error">{{ message }}</p>
         }
       </form>
       <table data-testid="rate-list">
@@ -145,6 +176,12 @@ export class Rates {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly previewGrade = signal<Grade>('A');
+  protected readonly previewPct = signal('');
+  protected readonly previewed = signal<RatePreview | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+  /** Counts previews, so only the answer to the latest one shows. */
+  private previewSeq = 0;
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
 
@@ -199,6 +236,32 @@ export class Rates {
       this.error.set('That rate could not be set.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  protected clearPreview(): void {
+    this.previewSeq++;
+    this.previewed.set(null);
+    this.previewError.set(null);
+  }
+
+  /** Show what the candidate rate would change; nothing is saved. */
+  protected async preview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.clearPreview();
+    const seq = this.previewSeq;
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const pct = this.previewPct().trim();
+    if (!PCT.test(pct)) {
+      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    try {
+      const result = await this.service.preview(sheet, this.previewGrade(), pct);
+      if (seq === this.previewSeq && this.session.sheetId() === sheet) this.previewed.set(result);
+    } catch {
+      if (seq === this.previewSeq) this.previewError.set('That rate could not be previewed.');
     }
   }
 }

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** The rates of a sheet's grades. The signed-in user's name travels in the {@code X-User} header. */
@@ -70,5 +71,19 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+    }
+
+    /** A rate preview: how many claims would show a different due, and the sum of the differences as
+     * text with two decimals. */
+    public record PreviewView(int count, String diff) {
+    }
+
+    @GetMapping("/{grade}/preview")
+    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
+        RateService.Preview preview = service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2));
+        return new PreviewView(preview.count(), preview.diff().toPlainString());
     }
 }

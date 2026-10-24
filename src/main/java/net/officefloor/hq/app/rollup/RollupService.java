@@ -264,6 +264,57 @@ public class RollupService {
         };
     }
 
+    /** {@code base}, but with the grade's rate {@code pct} in force on every date. */
+    public static Basis withRate(Basis base, String grade, BigDecimal pct) {
+        Rate rate = new Rate(null, grade, null, null, pct);
+        return new Basis() {
+            @Override
+            public LocalDate today() {
+                return base.today();
+            }
+
+            @Override
+            public LocalDate policyDateInForce() {
+                return base.policyDateInForce();
+            }
+
+            @Override
+            public Optional<Rate> rateInForce(String g, LocalDate date) {
+                return grade.equals(g) ? Optional.of(rate) : base.rateInForce(g, date);
+            }
+
+            @Override
+            public BigDecimal floorOn(LocalDate date) {
+                return base.floorOn(date);
+            }
+
+            @Override
+            public BigDecimal latePctOn(LocalDate date) {
+                return base.latePctOn(date);
+            }
+
+            @Override
+            public BigDecimal cap() {
+                return base.cap();
+            }
+
+            @Override
+            public Optional<Claim> claimNumbered(Long personId, String number) {
+                return base.claimNumbered(personId, number);
+            }
+
+            @Override
+            public Optional<Person> personOf(Long personId) {
+                return base.personOf(personId);
+            }
+
+            @Override
+            public Integer graceOn(String g, LocalDate date) {
+                return base.graceOn(g, date);
+            }
+        };
+    }
+
     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
      * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap; null (n/a)
      * when none has a figure and no rate of their grade is in force on its today. */

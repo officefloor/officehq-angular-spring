@@ -5,7 +5,15 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -22,8 +30,13 @@ public class RateService {
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final ClaimRepository claims;
+    private final PersonRepository people;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup) {
+    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup,
+            ClaimRepository claims, PersonRepository people) {
+        this.claims = claims;
+        this.people = people;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -61,5 +74,32 @@ public class RateService {
         audit.change("RATE_SET", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return rate;
+    }
+
+    /** How many OPEN and PENDING claims would show a different due, and by how much in all (new minus
+     * current), were {@code pct} the grade's rate on every date. */
+    public record Preview(int count, BigDecimal diff) {
+    }
+
+    /** A preview of the grade's rate at {@code pct} on every date over the OPEN and PENDING claims of the
+     * people on the grade on each claim's date; a claim a statement binds does not change. Saves nothing. */
+    @Transactional(readOnly = true)
+    public Preview preview(String sheetId, String grade, BigDecimal pct) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        RollupService.Basis live = rollup.live(sheetId);
+        RollupService.Basis previewed = RollupService.withRate(live, grade, pct);
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) continue;
+            BigDecimal now = rollup.shownOf(claim, person, live);
+            BigDecimal then = rollup.shownOf(claim, person, previewed);
+            if (Objects.equals(now, then) || (now != null && then != null && now.compareTo(then) == 0)) continue;
+            count++;
+            diff = diff.add(then == null ? BigDecimal.ZERO : then).subtract(now == null ? BigDecimal.ZERO : now);
+        }
+        return new Preview(count, diff.setScale(2, RoundingMode.HALF_EVEN));
     }
 }

@@ -16,6 +16,12 @@ export interface Rate {
   to: string | null;
 }
 
+/** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
+export interface RatePreview {
+  count: number;
+  diff: string;
+}
+
 /** The grade's rate in force on a date: the one with the latest from-date on or before it, or the
  *  one with no from-date when none has; null when no rate applies yet, or when that rate's to-date
  *  is before the date (an earlier rate does not apply again). */
@@ -163,6 +169,17 @@ export class RatesService {
   set(sheet: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<Rate> {
     return firstValueFrom(
       this.http.put<Rate>(`${this.url(sheet)}/${grade}`, { pct, from, to }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** How many OPEN and PENDING claims of people on the grade would show a different due, and the sum
+   *  of the differences, were pct the grade's rate on every date. Saves nothing. */
+  preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
+    return firstValueFrom(
+      this.http.get<RatePreview>(`${this.url(sheet)}/${grade}/preview`, {
+        params: { pct },
+        headers: this.session.headers(),
+      }),
     );
   }
 
