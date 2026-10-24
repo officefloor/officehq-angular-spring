@@ -997,6 +997,8 @@ export class Claims {
       tags: this.tags().trim() || null,
     };
     const id = this.editingId();
+    // A save is the next action on the claim being edited: an error left on its row goes.
+    if (id !== null) this.clearRowError(id);
     this.submitting = true;
     try {
       const claim =
