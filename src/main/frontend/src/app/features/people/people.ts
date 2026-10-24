@@ -438,6 +438,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 <th scope="col">Patrons</th>
               }
               <th scope="col">Snapshots</th>
+              <th scope="col">Statement lines</th>
               @if (shows('backing')) {
                 <th scope="col">Backing</th>
               }
@@ -523,6 +524,11 @@ import { FigurePipe } from '../../core/figure.pipe';
                 <td>
                   @for (line of snapshotLinesOf(p.id); track $index) {
                     <div data-testid="person-snapshot-line">{{ (line) | figure }}</div>
+                  }
+                </td>
+                <td>
+                  @for (s of statementLinesOf(p.id); track s.id) {
+                    <div data-testid="person-statement-line-line">{{ (s.date + ' ' + s.dueTotal) | figure }}</div>
                   }
                 </td>
                 @if (shows('backing')) {
@@ -1558,6 +1564,12 @@ export class People {
         [person.id]: on ? 'That person could not be watched.' : 'That person could not be unwatched.',
       }));
     }
+  }
+
+  /** The person's statements still standing, by date, oldest first; those of a day keep their order
+   *  among the person's statements (those a merge or a transfer brought over before their own). */
+  protected statementLinesOf(personId: number): Statement[] {
+    return [...this.statementsOf(personId)].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   protected snapshotLinesOf(personId: number): string[] {
