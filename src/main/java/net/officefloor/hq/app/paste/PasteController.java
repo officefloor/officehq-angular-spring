@@ -27,7 +27,7 @@ public class PasteController {
     public record PasteRequest(@NotNull @Size(max = 200_000) String text) {
     }
 
-    /** How many claims were added, and the claims, in the order of their lines. */
+    /** How many lines went through (each claim added or updated, and opened), and the claims, in the order of their lines. */
     public record PasteView(int added, List<ClaimView> claims) {
     }
 

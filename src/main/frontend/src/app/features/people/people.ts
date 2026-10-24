@@ -219,7 +219,7 @@ import { Audit } from './audit';
         ></textarea>
         <button type="submit" data-testid="paste-submit">Paste claims</button>
         @if (pasteAdded() !== null) {
-          Added <span data-testid="paste-added">{{ pasteAdded() }}</span>
+          Pasted and opened <span data-testid="paste-added">{{ pasteAdded() }}</span>
         }
         @if (pasteError(); as message) {
           <p role="alert" class="error" data-testid="paste-error">{{ message }}</p>
@@ -2156,8 +2156,8 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim per pasted line, in order; when any line is refused nothing is added. Shows
-   *  how many were added; the old count is gone while it runs. */
+  /** Add (or update a matching DRAFT) and open a claim per pasted line, in order; when any line is
+   *  refused nothing changes. Shows how many lines went through; the old count is gone while it runs. */
   protected async paste(event: Event): Promise<void> {
     event.preventDefault();
     if (this.pasting) return;
@@ -2183,11 +2183,13 @@ export class People {
           ? 'A line names someone not on the sheet.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? 'A line falls in a closed period.'
-            : e instanceof HttpErrorResponse && e.status === 422
-              ? 'A line is dated after the person retired.'
-              : e instanceof HttpErrorResponse && e.status === 409
-                ? 'A line gives a reference already used on the sheet or in the paste.'
-                : 'Those claims could not be added.',
+            : e instanceof HttpErrorResponse && e.status === 403
+              ? 'You may not open claims on this sheet.'
+              : e instanceof HttpErrorResponse && e.status === 422
+                ? 'A line needs a note, or is dated after the person retired.'
+                : e instanceof HttpErrorResponse && e.status === 409
+                  ? 'A line matches a claim that is not a draft, is over a period\'s cap, or reuses a reference.'
+                  : 'Those claims could not be pasted and opened.',
       );
     } finally {
       this.pasting = false;

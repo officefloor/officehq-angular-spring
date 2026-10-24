@@ -145,7 +145,7 @@ export interface BulkReassigned {
   claims: Claim[];
 }
 
-/** How a paste of claims went: how many it added, and the claims, in the order of their lines. */
+/** How a paste of claims went: how many lines went through, and the claims, in the order of their lines. */
 export interface Pasted {
   added: number;
   claims: Claim[];
@@ -400,8 +400,9 @@ export class ClaimsService {
     );
   }
 
-  /** Add a DRAFT claim per line of name,amount,date,note, in order, for the person named; refused
-   *  (400, 404, 422, 423) with nothing added when any line breaks the claim form's rules. */
+  /** Add (or update a matching DRAFT) and open a claim per line of name,amount,date,note, in order,
+   *  for the person named; refused (400, 403, 404, 409, 412, 422, 423) with nothing changed when any
+   *  line breaks the claim form's or the open button's rules. */
   paste(sheet: string, text: string): Promise<Pasted> {
     return firstValueFrom(
       this.http.post<Pasted>(`${this.url(sheet)}/claims/paste`, { text }, {
