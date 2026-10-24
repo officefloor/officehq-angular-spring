@@ -1,0 +1,190 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index 102b71d9..563ac104 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -53,6 +53,18 @@ export function counts(claim: Claim): boolean {
+   return isOpen(claim) || claim.status === 'SETTLED';
+ }
+ 
++/** The status the claim had at the end of the day (YYYY-MM-DD), as its status log records it
++ *  (each line dated with the sheet's today when the change was made); null when it was added after. */
++export function statusOn(claim: Claim, day: string): ClaimStatus | null {
++  let status: ClaimStatus | null = null;
++  for (const line of claim.log) {
++    const [, logged, on] = /^(\S+) by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line) ?? [];
++    if (on === undefined || on > day) break;
++    status = logged as ClaimStatus;
++  }
++  return status;
++}
++
+ /** Whether a claim is still open: OPEN, or PENDING, which is handled like OPEN (it goes overdue,
+  *  bears the late charge and leaves the totals while its person is on hold). */
+ export function isOpen(claim: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6b17b28d..ce48504b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
+ import { Session } from '../../core/session';
+ import { Claims } from './claims';
+ import { Header } from './header';
+-import { Claim, ClaimsService, cents, counts, deferred, isOpen, money, overdue } from './claims.service';
++import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
+ import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+@@ -467,8 +467,8 @@ export class People {
+   /** The sheet's periods. */
+   protected readonly periods = signal<Period[]>([]);
+   /** Each person's due-total for each period, in cents, by person id and period name. While a period
+-   *  is open it is what is due on their counting claims dated in it, as each claim shows it (a claim
+-   *  with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
++   *  is open it is what is due on their claims dated in it that counted at the end of its last day,
++   *  as each claim shows it now (a claim with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
+    *  added later). */
+   protected readonly personPeriodCents = computed(() => {
+     const by = new Map<number, Record<string, number>>();
+@@ -478,9 +478,8 @@ export class People {
+         sums[p.name] = p.closed ? cents(p.closedPersonTotals[person.id] ?? '0.00') : 0;
+       }
+       for (const c of this.claimsOf(person.id)) {
+-        if (!this.countsLive(c, person)) continue;
+         const period = periodOn(this.periods(), c.date);
+-        if (period === null || period.closed) continue;
++        if (period === null || period.closed || !this.countsAtEnd(c, person, period.to)) continue;
+         sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+       }
+       by.set(person.id, sums);
+@@ -728,13 +727,26 @@ export class People {
+    *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
+    *  holds and no statement binds it (a PENDING claim is bound by none while it is). */
+   private countsLive(claim: Claim, person: Person): boolean {
+-    if (!counts(claim)) return false;
+-    if (!isOpen(claim)) return true;
++    return this.countsAs(claim, claim.status, person);
++  }
++
++  /** Whether the claim would count in the live totals were its status `status` (see countsLive). */
++  private countsAs(claim: Claim, status: ClaimStatus, person: Person): boolean {
++    const as = { ...claim, status };
++    if (!counts(as)) return false;
++    if (!isOpen(as)) return true;
+     if (deferred(claim, this.session.today())) return false;
+-    const bound = claim.stated && claim.status !== 'PENDING';
++    const bound = claim.stated && status !== 'PENDING';
+     return bound || !heldOn(person.holds, claim.date);
+   }
+ 
++  /** Whether the claim counts in a period ending on `end`: by the status it had at the end of
++   *  that day (a claim added after does not count), otherwise as the live rules say. */
++  private countsAtEnd(claim: Claim, person: Person, end: string): boolean {
++    const status = statusOn(claim, end);
++    return status !== null && this.countsAs(claim, status, person);
++  }
++
+   protected claimedOf(person: Person): string {
+     return money(this.claimedCentsOf(person));
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 19b49618..ff953e92 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -9,7 +9,10 @@ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLog;
++import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -29,16 +32,18 @@ public class PeriodService {
+     private final PeriodRepository periods;
+     private final SheetRepository sheets;
+     private final ClaimRepository claims;
++    private final ClaimLogRepository logs;
+     private final PersonRepository people;
+     private final RollupService rollup;
+     private final SettingsService settings;
+     private final Audit audit;
+ 
+     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
+-            PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
++            ClaimLogRepository logs, PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
+         this.periods = periods;
+         this.sheets = sheets;
+         this.claims = claims;
++        this.logs = logs;
+         this.people = people;
+         this.rollup = rollup;
+         this.settings = settings;
+@@ -103,7 +108,8 @@ public class PeriodService {
+     }
+ 
+     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
+-     * what is due on their counting claims dated in it, as each shows it, late charges included (a
++     * what is due on their claims dated in it that counted by the status each had at the end of the
++     * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
+      * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds). */
+     private Map<Long, BigDecimal> personTotalsOf(Period period) {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
+@@ -111,13 +117,29 @@ public class PeriodService {
+         Map<Long, BigDecimal> totals = new HashMap<>();
+         for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));
+         LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
+-        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId())) {
+-            if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
++        List<Claim> dated = claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId()).stream()
++                .filter(claim -> period.overlaps(claim.getDate(), claim.getDate())).toList();
++        Map<Long, List<ClaimLog>> logsOf = dated.isEmpty() ? Map.of()
++                : logs.findByClaimIdInOrderByIdAsc(dated.stream().map(Claim::getId).toList()).stream()
++                        .collect(Collectors.groupingBy(ClaimLog::getClaimId));
++        for (Claim claim : dated) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || !RollupService.countsLive(claim, person, today)) continue;
++            ClaimStatus status = statusAt(logsOf.getOrDefault(claim.getId(), List.of()), period.getTo());
++            if (person == null || status == null || !RollupService.countsAs(claim, status, person, today)) continue;
+             BigDecimal figure = rollup.shownOf(claim, person);
+             if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
+         }
+         return totals;
+     }
++
++    /** The status a claim had at the end of {@code day}, by its status log, oldest first, whose lines
++     * are dated with the sheet's today when each change was made; null when it was added after. */
++    private static ClaimStatus statusAt(List<ClaimLog> log, LocalDate day) {
++        ClaimStatus status = null;
++        for (ClaimLog line : log) {
++            if (line.getDate().isAfter(day)) break;
++            status = line.getStatus();
++        }
++        return status;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index c182ed65..56eeba98 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -137,10 +137,16 @@ public class RollupService {
+      * within one of its person's holds and no statement binds it (a PENDING claim is bound by none while
+      * it is). */
+     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
+-        if (!claim.getStatus().counts()) return false;
+-        if (!claim.getStatus().isOpen()) return true;
++        return countsAs(claim, claim.getStatus(), person, today);
++    }
++
++    /** Whether the claim would count in the live totals on the sheet's {@code today} were its status
++     * {@code status} (see {@link #countsLive}). */
++    public static boolean countsAs(Claim claim, ClaimStatus status, Person person, LocalDate today) {
++        if (!status.counts()) return false;
++        if (!status.isOpen()) return true;
+         if (claim.isDeferredOn(today)) return false;
+-        boolean bound = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
++        boolean bound = claim.isStated() && status != ClaimStatus.PENDING;
+         return bound || !person.isHeldOn(claim.getDate());
+     }
+ 
