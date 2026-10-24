@@ -1,0 +1,288 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3daec7fd..a62bcab2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -271,6 +271,14 @@ import { Summary, SummaryPerson } from './summary';
+                   >
+                     Statement
+                   </button>
++                  <button
++                    type="button"
++                    data-testid="person-unstate"
++                    [attr.aria-label]="'Cancel the last statement of ' + p.name"
++                    (click)="cancelStatement(p)"
++                  >
++                    Cancel statement
++                  </button>
+                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                   <input
+                     [id]="'person-retire-date-' + p.id"
+@@ -691,6 +699,22 @@ export class People {
+     }
+   }
+ 
++  /** Cancel the person's last statement, and show their claims live again where it bound them. */
++  protected async cancelStatement(person: Person): Promise<void> {
++    this.clearRowError(person.id);
++    const sheet = this.sheet();
++    if (!sheet) return;
++    try {
++      const cancelled = await this.statementsService.cancelLast(sheet, person.id);
++      if (this.sheet() !== sheet) return;
++      for (const c of cancelled.claims) this.claimSaved(c);
++      this.statements.update((list) => list.filter((s) => s.id !== cancelled.statement.id));
++    } catch {
++      if (this.sheet() !== sheet) return;
++      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That statement could not be cancelled.' }));
++    }
++  }
++
+   protected setRetireDate(id: number, date: string): void {
+     this.retireDates.update((dates) => ({ ...dates, [id]: date }));
+     this.clearRowError(id);
+diff --git a/src/main/frontend/src/app/features/people/statements.service.ts b/src/main/frontend/src/app/features/people/statements.service.ts
+index 35b5d21f..cbf4b992 100644
+--- a/src/main/frontend/src/app/features/people/statements.service.ts
++++ b/src/main/frontend/src/app/features/people/statements.service.ts
+@@ -42,6 +42,15 @@ export class StatementsService {
+     );
+   }
+ 
++  /** Cancel the person's last statement; answers the statement cancelled, with their claims as it left them. */
++  cancelLast(sheet: string, personId: number): Promise<Taken> {
++    return firstValueFrom(
++      this.http.delete<Taken>(`${this.url(sheet)}/people/${personId}/statements/last`, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   private url(sheet: string): string {
+     return `/api/sheets/${encodeURIComponent(sheet)}`;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 01790451..3a9f05fa 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -69,6 +69,10 @@ public class Claim {
+     @Column(name = "stated_due", precision = 12, scale = 2)
+     private BigDecimal statedDue;
+ 
++    /** The id of the statement that bound the claim; null while unbound. */
++    @Column(name = "stated_by")
++    private Long statedBy;
++
+     /** The number of the SETTLED claim of the same person this correction corrects; null on a claim
+      * that is not a correction. */
+     @Column(name = "corrects")
+@@ -205,16 +209,22 @@ public class Claim {
+         return statedDue;
+     }
+ 
+-    /** Bind the claim to {@code due}, the figure it has now. */
+-    public void bind(BigDecimal due) {
++    public Long getStatedBy() {
++        return statedBy;
++    }
++
++    /** Bind the claim to {@code due}, the figure it has now, by the statement {@code statementId}. */
++    public void bind(BigDecimal due, Long statementId) {
+         this.stated = true;
+         this.statedDue = due;
++        this.statedBy = statementId;
+     }
+ 
+     /** Leave the claim unbound: its figure follows the rates again. */
+     public void unbind() {
+         this.stated = false;
+         this.statedDue = null;
++        this.statedBy = null;
+     }
+ 
+     public String getOpenedBy() {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 9798ec9c..733fdc7b 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -61,4 +62,14 @@ public class StatementController {
+         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
+         return new TakenView(StatementView.of(taken.statement()), ClaimView.allOf(taken.claims(), claimService));
+     }
++
++    /** Cancel the person's last statement; answers the statement cancelled, with the person's claims as
++     * it left them, newest first. */
++    @DeleteMapping("/people/{personId}/statements/last")
++    public TakenView cancelLast(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        StatementService.Taken cancelled = service.cancelLast(sheetId.trim(), user.trim(), personId);
++        return new TakenView(StatementView.of(cancelled.statement()), ClaimView.allOf(cancelled.claims(), claimService));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementNotFoundException.java b/src/main/java/net/officefloor/hq/app/statement/StatementNotFoundException.java
+new file mode 100644
+index 00000000..a69e46b8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementNotFoundException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.statement;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A cancel of the last statement of a person who has none. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class StatementNotFoundException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementNotStewardException.java b/src/main/java/net/officefloor/hq/app/statement/StatementNotStewardException.java
+new file mode 100644
+index 00000000..c2aabcb2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementNotStewardException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.statement;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A cancel of a statement asked by a user who is not a steward of the sheet. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class StatementNotStewardException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+index 3fb782e1..76a18ac2 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+@@ -1,10 +1,14 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface StatementRepository extends JpaRepository<Statement, Long> {
+ 
+     /** The sheet's statements in the order they were taken. */
+     List<Statement> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The person's last statement. */
++    Optional<Statement> findFirstBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2f7d4474..def32e5d 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+@@ -11,6 +12,8 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -22,6 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
+  * charges included (a claim with no figure is skipped), at most the sheet's cap. A late charge is never bound: it keeps following
+  * the sheet's today.
++ * <p>
++ * A steward can cancel a person's last statement: the claims it bound become live again (a figure a
++ * statement before it bound is not restored), and the person's statement before it is their last again.
+  */
+ @Service
+ public class StatementService {
+@@ -33,9 +39,12 @@ public class StatementService {
+     private final SheetService sheets;
+     private final Audit audit;
+     private final RollupService rollup;
++    private final SettingsService settings;
+ 
+     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
+-            PersonRepository people, SheetService sheets, Audit audit, RollupService rollup) {
++            PersonRepository people, SheetService sheets, Audit audit, RollupService rollup,
++            SettingsService settings) {
++        this.settings = settings;
+         this.statements = statements;
+         this.claims = claims;
+         this.claimService = claimService;
+@@ -61,25 +70,47 @@ public class StatementService {
+         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate today = sheets.today(sheetId);
+-        int counted = 0;
++        List<Claim> counting = new ArrayList<>();
+         for (Claim claim : theirs) {
+-            if (!RollupService.countsLive(claim, person, today)) {
+-                claim.unbind();
+-                continue;
+-            }
+-            claim.bind(claimService.figureOf(claim, person));
+-            counted++;
++            if (RollupService.countsLive(claim, person, today)) counting.add(claim);
+         }
+-        claims.flush();
++        int counted = counting.size();
+         // The person's due-total as shown (the sum of those claims' figures, at most the sheet's cap): n/a
+         // when none of their claims has a figure and no rate applies.
+         String shown = before.people().get(personId).dueTotal();
+         BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : new BigDecimal(shown);
+         Statement statement = statements.saveAndFlush(
+                 new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counted));
++        for (Claim claim : theirs) {
++            if (counting.contains(claim)) claim.bind(claimService.figureOf(claim, person), statement.getId());
++            else claim.unbind();
++        }
++        claims.flush();
+         audit.change("STATEMENT", sheetId, user, "name=" + person.getName(),
+                 "due-total=" + (dueTotal == null ? RollupService.NONE : dueTotal.toPlainString()), "claims=" + counted);
+         rollup.recordSince(sheetId, user, before);
+         return new Taken(statement, theirs);
+     }
++
++    /** Cancel the person's last statement: the claims it bound become live again. Refused when the user is
++     * not a steward of the sheet, and when the person has no statement. */
++    @Transactional
++    public Taken cancelLast(String sheetId, String user, long personId) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new StatementNotStewardException();
++        List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
++        Statement last = statements.findFirstBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)
++                .orElseThrow(StatementNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        for (Claim claim : theirs) {
++            if (claim.isStated() && last.getId().equals(claim.getStatedBy())) claim.unbind();
++        }
++        claims.flush();
++        statements.delete(last);
++        statements.flush();
++        audit.change("STATEMENT_CANCELLED", sheetId, user, "name=" + person.getName(), "due-total="
++                + (last.getDueTotal() == null ? RollupService.NONE : last.getDueTotal().toPlainString()));
++        rollup.recordSince(sheetId, user, before);
++        return new Taken(last, theirs);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V50__claim_stated_by.sql b/src/main/resources/db/migration/V50__claim_stated_by.sql
+new file mode 100644
+index 00000000..fe5fcc1a
+--- /dev/null
++++ b/src/main/resources/db/migration/V50__claim_stated_by.sql
+@@ -0,0 +1,3 @@
++-- The statement that bound a claim to stated_due; null while the claim is unbound. Cancelling a
++-- person's last statement unbinds the claims it bound.
++ALTER TABLE claim ADD COLUMN stated_by BIGINT;
