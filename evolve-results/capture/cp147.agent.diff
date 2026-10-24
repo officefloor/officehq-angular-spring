@@ -1,0 +1,346 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index f72ef47c..4d757127 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -74,6 +74,13 @@ export function heldOn(holds: PersonHold[], date: string): boolean {
+   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+ }
+ 
++/** A SNAPSHOT line written for a person: the day being left and their due-total on it (or n/a). */
++export interface Snapshot {
++  personId: number;
++  day: string;
++  dueTotal: string;
++}
++
+ /** A patron a person has named: another person on the same sheet. */
+ export interface Patron {
+   id: number;
+@@ -277,6 +284,13 @@ export class PeopleService {
+     );
+   }
+ 
++  /** The sheet's snapshots, in the order they were written. */
++  snapshots(sheet: string): Promise<Snapshot[]> {
++    return firstValueFrom(
++      this.http.get<Snapshot[]>(`${this.url(sheet)}/snapshots`, { headers: this.session.headers() }),
++    );
++  }
++
+   /** The sheet's patrons, in the order they were named. */
+   patrons(sheet: string): Promise<Patron[]> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 74f2e226..8fe53eae 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,7 @@ import { Delegations } from './delegations';
+ import { Holidays } from './holidays';
+ import { Header } from './header';
+ import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
+-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
++import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+@@ -388,6 +388,7 @@ import { Audit } from './audit';
+               <th scope="col">Active</th>
+               <th scope="col">Watched</th>
+               <th scope="col">Patrons</th>
++              <th scope="col">Snapshots</th>
+               <th scope="col">Backing</th>
+               <th scope="col">Claims</th>
+               <th scope="col">Plans</th>
+@@ -439,6 +440,11 @@ import { Audit } from './audit';
+                 <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+                 <td data-testid="person-patrons">{{ patronNamesOf(p.id) }}</td>
++                <td>
++                  @for (line of snapshotLinesOf(p.id); track $index) {
++                    <div data-testid="person-snapshot-line">{{ line }}</div>
++                  }
++                </td>
+                 <td data-testid="person-backing">{{ backingOf(p.id) }}</td>
+                 <td>
+                   <app-claims
+@@ -796,6 +802,14 @@ export class People {
+   protected readonly watched = signal<ReadonlySet<number>>(new Set());
+   /** The sheet's patrons, in the order they were named. */
+   protected readonly patrons = signal<Patron[]>([]);
++  /** The sheet's snapshots, in the order they were written. */
++  protected readonly snapshots = signal<Snapshot[]>([]);
++  /** Each person's snapshot lines as "<day> <due-total>", oldest first, by person id. */
++  private readonly snapshotLines = computed(() => {
++    const by = new Map<number, string[]>();
++    for (const s of this.snapshots()) by.set(s.personId, [...(by.get(s.personId) ?? []), `${s.day} ${s.dueTotal}`]);
++    return by;
++  });
+   /** The patron chosen on each person's row (a person id), by person id. */
+   protected readonly patronChoices = signal<Record<number, string>>({});
+   /** The person chosen on each person's row to merge them into (a person id), by person id. */
+@@ -1144,6 +1158,7 @@ export class People {
+       this.holdTos.set({});
+       this.aliasInputs.set({});
+       this.patrons.set([]);
++      this.snapshots.set([]);
+       this.watched.set(new Set());
+       this.patronChoices.set({});
+       this.mergeChoices.set({});
+@@ -1380,6 +1395,10 @@ export class People {
+     }
+   }
+ 
++  protected snapshotLinesOf(personId: number): string[] {
++    return this.snapshotLines().get(personId) ?? [];
++  }
++
+   protected patronNamesOf(personId: number): string {
+     return this.patronNames().get(personId) ?? '';
+   }
+@@ -2239,7 +2258,7 @@ export class People {
+ 
+   private async read(sheet: string): Promise<void> {
+     try {
+-      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans] = await Promise.all([
++      const [list, claims, rates, statements, periods, settings, patrons, watched, tags, descendants, plans, snapshots] = await Promise.all([
+         this.service.list(sheet),
+         this.claimsService.list(sheet),
+         this.ratesService.list(sheet),
+@@ -2252,6 +2271,7 @@ export class People {
+         // Without its descendants' figures the sheet shows only its own as consolidated.
+         this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
+         this.plansService.list(sheet),
++        this.service.snapshots(sheet),
+       ]);
+       if (this.sheet() === sheet) {
+         this.floors.set(settings.floors);
+@@ -2266,6 +2286,7 @@ export class People {
+         this.claims.set(claims);
+         this.sheetTags.set(tags);
+         this.patrons.set(patrons);
++        this.snapshots.set(snapshots);
+         this.watched.set(new Set(watched));
+         this.descendants.set(descendants);
+         this.plans.set(plans);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index df7cafea..aa492e5d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -82,6 +82,13 @@ public class PersonController {
+         }
+     }
+ 
++    /** A SNAPSHOT line written for a person: the day being left and their due-total on it. */
++    public record SnapshotView(long personId, LocalDate day, String dueTotal) {
++        public static SnapshotView of(PersonSnapshot snapshot) {
++            return new SnapshotView(snapshot.getPersonId(), snapshot.getDay(), snapshot.getDueTotal());
++        }
++    }
++
+     /** The person to be named as a patron. */
+     public record PatronRequest(@NotNull Long patronId) {
+     }
+@@ -216,6 +223,13 @@ public class PersonController {
+         return patrons.stream().map(PatronView::of).toList();
+     }
+ 
++    @GetMapping("/snapshots")
++    public List<SnapshotView> snapshots(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return service.snapshots(sheetId.trim(), asOf).stream().map(SnapshotView::of).toList();
++    }
++
+     @PostMapping("/{personId}/patrons")
+     @ResponseStatus(HttpStatus.CREATED)
+     public PatronView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7115d078..55de055c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -29,11 +29,13 @@ public class PersonService {
+     private final PersonWatchRepository watches;
+     private final PersonTree tree;
+     private final SheetTagRepository tagRepository;
++    private final PersonSnapshotRepository snapshots;
+ 
+     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
+             SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
+-            SheetTagRepository tagRepository) {
++            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots) {
+         this.people = people;
++        this.snapshots = snapshots;
+         this.tagRepository = tagRepository;
+         this.tree = tree;
+         this.patrons = patrons;
+@@ -225,6 +227,14 @@ public class PersonService {
+         return person;
+     }
+ 
++    /** The sheet's snapshots in the order they were written; as of {@code asOf}, only those of the days
++     * before it (all of them when null). */
++    @Transactional(readOnly = true)
++    public List<PersonSnapshot> snapshots(String sheetId, LocalDate asOf) {
++        return asOf == null ? snapshots.findBySheetIdOrderByIdAsc(sheetId)
++                : snapshots.findBySheetIdAndDayBeforeOrderByIdAsc(sheetId, asOf);
++    }
++
+     /** The sheet's patrons in the order they were named. */
+     @Transactional(readOnly = true)
+     public List<PersonPatron> patrons(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java b/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java
+new file mode 100644
+index 00000000..e7f2ae26
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A SNAPSHOT line written for a person when the sheet's today moved on: the day being left and their
++ * due-total on it (a figure, or n/a). Kept apart from the person so that writing one does not count as
++ * saving them. */
++@Entity
++@Table(name = "person_snapshot")
++public class PersonSnapshot {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "snapshot_day", nullable = false)
++    private LocalDate day;
++
++    @Column(name = "due_total", nullable = false)
++    private String dueTotal;
++
++    protected PersonSnapshot() {
++    }
++
++    public PersonSnapshot(String sheetId, Long personId, LocalDate day, String dueTotal) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.day = day;
++        this.dueTotal = dueTotal;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public LocalDate getDay() {
++        return day;
++    }
++
++    public String getDueTotal() {
++        return dueTotal;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java
+new file mode 100644
+index 00000000..d782fc43
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonSnapshotRepository extends JpaRepository<PersonSnapshot, Long> {
++
++    /** The sheet's snapshots in the order they were written. */
++    List<PersonSnapshot> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The sheet's snapshots of the days before {@code date}, in the order they were written. */
++    List<PersonSnapshot> findBySheetIdAndDayBeforeOrderByIdAsc(String sheetId, LocalDate date);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index f77bdb5f..b6a288e6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -13,6 +13,8 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.history.HistoryListener;
+ import net.officefloor.hq.app.period.PeriodService;
++import net.officefloor.hq.app.person.PersonSnapshot;
++import net.officefloor.hq.app.person.PersonSnapshotRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.settings.Role;
+ import net.officefloor.hq.app.settings.SettingsService;
+@@ -34,11 +36,13 @@ public class SheetService {
+     private final SettingsService settings;
+     private final Audit audit;
+     private final ClaimRepository claims;
++    private final PersonSnapshotRepository snapshots;
+     private final Clock clock = Clock.systemDefaultZone();
+ 
+     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods,
+-            SettingsService settings, Audit audit, ClaimRepository claims) {
++            SettingsService settings, Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots) {
+         this.sheets = sheets;
++        this.snapshots = snapshots;
+         this.claims = claims;
+         this.rollup = rollup;
+         this.periods = periods;
+@@ -86,15 +90,18 @@ public class SheetService {
+     /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
+      * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
+      * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
+-     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left. */
++     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left,
++     * and keeps each as one of the person's snapshots. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+         RollupService.Snapshot before = rollup.snapshot(id);
+         LocalDate left = sheet.getToday();
+         if (!today.equals(sheet.getToday())) {
+-            before.people().values().forEach(figures -> audit.change("SNAPSHOT", id, user,
+-                    "name=" + figures.name(), "due-total=" + figures.dueTotal()));
++            before.people().forEach((personId, figures) -> {
++                audit.change("SNAPSHOT", id, user, "name=" + figures.name(), "due-total=" + figures.dueTotal());
++                snapshots.save(new PersonSnapshot(id, personId, left, figures.dueTotal()));
++            });
+             claims.unlockBySheetId(id);
+         }
+         sheet.setToday(today);
+diff --git a/src/main/resources/db/migration/V82__person_snapshot.sql b/src/main/resources/db/migration/V82__person_snapshot.sql
+new file mode 100644
+index 00000000..3b3e6121
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__person_snapshot.sql
+@@ -0,0 +1,11 @@
++-- The SNAPSHOT lines written for a person as the sheet's today moves on: the day being left and their
++-- due-total on it (a figure, or n/a), in the order they were written. Not tied to the person row, so
++-- a person merged or transferred away leaves theirs behind unseen.
++CREATE TABLE person_snapshot (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    person_id    BIGINT       NOT NULL,
++    snapshot_day DATE         NOT NULL,
++    due_total    VARCHAR(20)  NOT NULL
++);
++CREATE INDEX person_snapshot_sheet ON person_snapshot (sheet_id, id);
