@@ -1,0 +1,24 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8b11e2b3..e34ab510 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -474,8 +474,9 @@ public class ClaimService {
+     }
+ 
+     /** A move, by a role the permission matrix allows to reassign (a steward by default), of a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+-     * number and date, loses any figure a statement bound it to (it is live again until its new
+-     * person's next statement), and is listed as its new person's newest claim. Refused when the user's
++     * date but, unless a draft (which has no number), is given the next number in the sequence it is
++     * numbered in (as when opened now), its old number never used again; it loses
++     * any figure a statement bound it to (it is live again until its new person's next statement), and is listed as its new person's newest claim. Refused when the user's
+      * role may not reassign, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
+      * own person) or already belongs to the person, when it is dated in a closed period, and when it
+      * is dated after the new person's retirement date. */
+@@ -508,6 +509,7 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setPersonId(to.getId());
+         claim.unbind();
++        if (claim.getNumber() != null) claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
+         claims.flush();
+         record("CLAIM_REASSIGNED", user, to, claim, claim.getNumber(), "from=" + from.getName(), "to=" + to.getName());
