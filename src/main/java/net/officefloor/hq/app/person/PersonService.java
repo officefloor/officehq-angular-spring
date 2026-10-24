@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -14,11 +15,13 @@ public class PersonService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup) {
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** The sheet's people in the order they were added. */
@@ -38,8 +41,10 @@ public class PersonService {
             throw new SheetNotFoundException();
         }
         requireFree(sheetId, name, null);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, name, grade));
         audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        rollup.recordSince(sheetId, user, before);
         return person;
     }
 
@@ -51,10 +56,12 @@ public class PersonService {
             throw new PersonStaleException(person);
         }
         requireFree(sheetId, name, person.getId());
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         person.setName(name);
         person.setGrade(grade);
         people.flush();
         audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        rollup.recordSince(sheetId, user, before);
         return person;
     }
 

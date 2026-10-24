@@ -9,8 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,15 +20,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RollupService rollup;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
-        this.rates = rates;
+        this.rollup = rollup;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -43,15 +42,18 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
+        rollup.recordSince(sheetId, user, before);
         return claim;
     }
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(date != null ? date : sheets.today(sheetId));
         claim.setNote(noteOf(note));
@@ -59,6 +61,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         record("CLAIM_EDITED", user, person, claim, claim.getNumber());
+        rollup.recordSince(sheetId, user, before);
         return claim;
     }
 
@@ -70,6 +73,7 @@ public class ClaimService {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Integer number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
@@ -77,7 +81,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));
+        if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person));
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
         claims.flush();
@@ -93,25 +97,14 @@ public class ClaimService {
         } else {
             record(event, user, person, claim, number);
         }
+        rollup.recordSince(sheetId, user, before);
         return claim;
     }
 
-    /** The figure the claim shows and totals now: what was fixed when it was settled at a rate;
-     * otherwise the figure a statement bound it to; otherwise what is due on it at its person's rate.
-     * Null when it has no figure. */
+    /** The figure the claim shows and totals now; null when it has no figure (see
+     * {@link RollupService#figureOf}). */
     public BigDecimal figureOf(Claim claim, Person person) {
-        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) return claim.getSettledDue();
-        if (claim.isStated()) return claim.getStatedDue();
-        return dueOf(claim, person);
-    }
-
-    /** What is due on the claim at its person's rate in force on the claim's date: amount times pct,
-     * divided by 100, rounded half to even to two decimals; null when no rate of their grade applies then. */
-    private BigDecimal dueOf(Claim claim, Person person) {
-        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
-                .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .orElse(null);
+        return rollup.figureOf(claim, person);
     }
 
     /** Record a change to the claim; {@code number}, the number it has (or had), follows when there is one,

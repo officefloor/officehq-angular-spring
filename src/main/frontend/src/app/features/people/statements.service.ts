@@ -9,7 +9,7 @@ export interface Statement {
   personId: number;
   /** The sheet's today when it was taken (YYYY-MM-DD). */
   date: string;
-  /** The person's due-total then, with two decimals, as text. */
+  /** The person's due-total then, with two decimals, as text; "n/a" when they had none. */
   dueTotal: string;
   /** How many of the person's claims counted toward it. */
   claims: number;

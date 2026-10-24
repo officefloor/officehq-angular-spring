@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final RollupService rollup;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, RollupService rollup) {
         this.sheets = sheets;
+        this.rollup = rollup;
     }
 
     @Transactional
@@ -40,11 +43,14 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today; the figures it moves are recorded as {@code user}'s change. */
     @Transactional
-    public Sheet setToday(String id, LocalDate today) {
+    public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
+        sheets.flush();
+        rollup.recordSince(id, user, before);
         return sheet;
     }
 

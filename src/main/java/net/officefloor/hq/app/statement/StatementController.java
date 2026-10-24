@@ -23,11 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class StatementController {
 
-    /** A statement; its due-total is sent as text with two decimals so it is never rounded on the way. */
+    /** A statement; its due-total is sent as text with two decimals so it is never rounded on the way,
+     * "n/a" when it had none. */
     public record StatementView(long id, long personId, LocalDate date, String dueTotal, int claims) {
         static StatementView of(Statement statement) {
             return new StatementView(statement.getId(), statement.getPersonId(), statement.getDate(),
-                    statement.getDueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    statement.getDueTotal() == null ? "n/a"
+                            : statement.getDueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     statement.getClaimCount());
         }
     }

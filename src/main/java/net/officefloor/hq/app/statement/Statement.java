@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A statement taken of a person: the sheet's today when it was taken, the person's due-total then
- * (two decimals) and how many of their claims counted toward it. */
+ * (two decimals; null when it was n/a) and how many of their claims counted toward it. */
 @Entity
 @Table(name = "statement")
 public class Statement {
@@ -28,7 +28,7 @@ public class Statement {
     @Column(name = "statement_date", nullable = false)
     private LocalDate date;
 
-    @Column(name = "due_total", nullable = false, precision = 14, scale = 2)
+    @Column(name = "due_total", precision = 14, scale = 2)
     private BigDecimal dueTotal;
 
     @Column(name = "claim_count", nullable = false)

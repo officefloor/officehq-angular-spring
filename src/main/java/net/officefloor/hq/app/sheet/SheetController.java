@@ -48,6 +48,6 @@ public class SheetController {
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TodayRequest request) {
-        return SheetView.of(service.setToday(id.trim(), request.today()));
+        return SheetView.of(service.setToday(id.trim(), user.trim(), request.today()));
     }
 }

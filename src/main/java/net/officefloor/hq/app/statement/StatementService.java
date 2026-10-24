@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,15 +28,17 @@ public class StatementService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
-            PersonRepository people, SheetService sheets, Audit audit) {
+            PersonRepository people, SheetService sheets, Audit audit, RollupService rollup) {
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** A statement taken, with the person's claims as it left them, newest first. */
@@ -52,6 +55,7 @@ public class StatementService {
     public Taken take(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
@@ -65,10 +69,14 @@ public class StatementService {
             counted++;
         }
         claims.flush();
+        // The person's due-total as shown: n/a when none of their claims has a figure and no rate applies.
+        String shown = before.people().get(personId).dueTotal();
+        BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : total;
         Statement statement = statements.saveAndFlush(
-                new Statement(sheetId, personId, sheets.today(sheetId), total, counted));
+                new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counted));
         audit.change("STATEMENT", sheetId, user, "name=" + person.getName(),
-                "due-total=" + total.toPlainString(), "claims=" + counted);
+                "due-total=" + (dueTotal == null ? RollupService.NONE : dueTotal.toPlainString()), "claims=" + counted);
+        rollup.recordSince(sheetId, user, before);
         return new Taken(statement, theirs);
     }
 }

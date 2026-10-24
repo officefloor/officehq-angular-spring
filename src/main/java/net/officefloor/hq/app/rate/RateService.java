@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -19,11 +20,13 @@ public class RateService {
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup) {
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** The sheet's rates, by grade, then by from-date. */
@@ -37,6 +40,7 @@ public class RateService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = (from == null ? rates.findUndated(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElse(null);
         if (rate == null) {
@@ -49,6 +53,7 @@ public class RateService {
                 "rate=" + rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
         if (from != null) fields.add("from=" + from);
         audit.change("RATE_SET", sheetId, user, fields.toArray(String[]::new));
+        rollup.recordSince(sheetId, user, before);
         return rate;
     }
 }
