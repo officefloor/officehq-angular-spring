@@ -6,6 +6,7 @@ import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
 import { Dated } from './settings.service';
+import { AuditService } from './audit.service';
 import { TemplatesService } from './templates.service';
 import { VoidReasonsService } from './void-reasons.service';
 import { FigurePipe } from '../../core/figure.pipe';
@@ -135,6 +136,21 @@ const PAST: Record<ClaimAction, string> = {
                 <li data-testid="claim-log-line">{{ (line) | figure }}</li>
               }
             </ol>
+            <button
+              type="button"
+              data-testid="claim-timeline"
+              [attr.aria-label]="'Show timeline of claim of ' + c.amount + ' on ' + c.date"
+              (click)="showTimeline(c)"
+            >
+              Timeline
+            </button>
+            @if (timelines()[c.id]; as timeline) {
+              <ol class="claim-timeline" [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+                @for (line of timeline; track $index) {
+                  <li data-testid="claim-timeline-line">{{ (line) | figure }}</li>
+                }
+              </ol>
+            }
             <ol class="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.comments; track $index) {
                 <li data-testid="claim-comments-line">{{ (line) | figure }}</li>
@@ -376,6 +392,7 @@ const PAST: Record<ClaimAction, string> = {
 export class Claims {
   private readonly session = inject(Session);
   private readonly service = inject(ClaimsService);
+  private readonly audit = inject(AuditService);
   /** The sheet's void reasons: while there are any, a void names one of them. */
   protected readonly voidReasonList = inject(VoidReasonsService).reasons;
   private readonly templates = inject(TemplatesService);
@@ -427,6 +444,8 @@ export class Claims {
   private submitting = false;
   /** The error of the last refused action on each claim, by claim id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The timeline shown for each claim, by claim id: its audit lines, newest first. */
+  protected readonly timelines = signal<Record<number, string[]>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The reason chosen from the sheet's list for voiding each claim, by claim id. */
@@ -718,6 +737,22 @@ export class Claims {
   /** Write a reminder of the OPEN or PENDING claim, once per sheet's today; a viewer's, one on a claim
    *  in any other status or dated in a closed period, and a second one the same day are refused with an
    *  error. */
+  /** Read the claim's timeline afresh; the one shown before is gone while it is read. */
+  protected async showTimeline(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.timelines.update(({ [claim.id]: _, ...rest }) => rest);
+    try {
+      const lines = await this.audit.claimLines(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.timelines.update((all) => ({ ...all, [claim.id]: lines }));
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'The timeline could not be read.' }));
+    }
+  }
+
   protected async remind(claim: Claim): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();

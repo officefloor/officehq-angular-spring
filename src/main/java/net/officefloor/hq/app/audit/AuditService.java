@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.audit;
 
+import java.math.RoundingMode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -7,6 +8,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimNotFoundException;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -21,9 +25,11 @@ public class AuditService {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
 
-    public AuditService(Audit audit, PersonRepository people, SheetRepository sheets) {
+    public AuditService(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
         this.audit = audit;
+        this.claims = claims;
         this.people = people;
         this.sheets = sheets;
     }
@@ -46,6 +52,21 @@ public class AuditService {
                     .ifPresent(origin -> lines.addAll(audit.lines(origin, name)));
         }
         return lines;
+    }
+
+    /**
+     * The claim's timeline: the sheet's lines about the claim, newest first — those carrying its number,
+     * or for a claim with no number those naming its person, amount and date together.
+     */
+    @Transactional(readOnly = true)
+    public List<String> claimLines(String sheetId, long claimId) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(ClaimNotFoundException::new);
+        String number = claim.getNumber() == null || claim.getNumber().isBlank() ? null : claim.getNumber();
+        return audit.claimLines(sheetId, number, person.getName(),
+                claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                String.valueOf(claim.getDate()));
     }
 
     /** The ids of the sheet's children, their children, and so on, in id order. */

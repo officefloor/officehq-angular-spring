@@ -18,4 +18,13 @@ export class AuditService {
       }),
     );
   }
+
+  /** The claim's timeline: the sheet's lines about it, newest first. */
+  claimLines(sheet: string, claimId: number): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/claims/${claimId}`, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
 }

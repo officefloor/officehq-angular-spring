@@ -7,8 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.settings.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -97,6 +99,47 @@ public class Audit {
             if (ofSheet(line, sheetId) && (key.isEmpty() || isAbout(line, key))) found.add(line);
         }
         return found;
+    }
+
+    /**
+     * The lines the file holds for a sheet about one claim, exactly as written, newest first: with a
+     * {@code number}, those whose {@code number=} field is it; without one, those carrying no number
+     * whose {@code person=} (compared as names are), {@code amount=} and {@code date=} fields are the
+     * claim's.
+     */
+    public synchronized List<String> claimLines(String sheetId, String number, String person, String amount,
+            String date) {
+        String key = person.trim().toLowerCase(Locale.ROOT);
+        List<String> found = new ArrayList<>();
+        for (String line : lines(sheetId, "")) {
+            Map<String, String> fields = fieldsOf(line);
+            boolean about = number != null
+                    ? number.equals(fields.get("number"))
+                    : !fields.containsKey("number")
+                            && key.equals(fields.getOrDefault("person", "").trim().toLowerCase(Locale.ROOT))
+                            && amount.equals(fields.get("amount")) && date.equals(fields.get("date"));
+            if (about) found.add(line);
+        }
+        return found;
+    }
+
+    /** A line's fields by name, each the first of that name (a value runs to the next field). */
+    private static Map<String, String> fieldsOf(String line) {
+        Map<String, String> fields = new HashMap<>();
+        String field = null;
+        StringBuilder value = new StringBuilder();
+        for (String token : (line + " end=").split(" ")) {
+            int eq = token.indexOf('=');
+            if (eq > 0) {
+                if (field != null) fields.putIfAbsent(field, value.toString());
+                field = token.substring(0, eq);
+                value.setLength(0);
+                value.append(token.substring(eq + 1));
+            } else if (field != null) {
+                value.append(' ').append(token);
+            }
+        }
+        return fields;
     }
 
     private static boolean ofSheet(String line, String sheetId) {
