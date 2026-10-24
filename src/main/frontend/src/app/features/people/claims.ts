@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claim, ClaimAction, ClaimsService, money } from './claims.service';
@@ -52,6 +53,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span data-testid="claim-status">{{ c.status }}</span>
+            <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -154,7 +156,8 @@ export class Claims {
     this.error.set(null);
   }
 
-  /** Change the claim's status; a change its status does not allow is refused with an error. */
+  /** Change the claim's status; a change its status does not allow, or a settle by the user who opened
+   *  the claim, is refused with an error. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
@@ -162,11 +165,13 @@ export class Claims {
     try {
       const changed = await this.service.act(sheet, claim.id, action);
       if (this.session.sheetId() === sheet) this.saved.emit(changed);
-    } catch {
+    } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.rowErrors.update((errors) => ({
         ...errors,
-        [claim.id]: `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 403
+          ? 'You opened that claim, so another user must settle it.'
+          : `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
       }));
     }
   }

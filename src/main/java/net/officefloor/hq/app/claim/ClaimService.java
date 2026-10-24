@@ -63,13 +63,17 @@ public class ClaimService {
     }
 
     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
-     * fixes what is due on it at its person's rate then. */
+     * fixes what is due on it at its person's rate then; the user who opened it cannot settle it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!claim.getStatus().canBecome(next)) throw new ClaimStatusChangeException();
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) throw new ClaimSelfSettleException();
         Integer number = claim.getNumber();
-        if (next == ClaimStatus.OPEN) number = sheets.nextClaimNumber(sheetId);
+        if (next == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+            claim.setOpenedBy(user);
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueOf(claim, person));

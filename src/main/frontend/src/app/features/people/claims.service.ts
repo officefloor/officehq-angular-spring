@@ -17,6 +17,8 @@ export interface Claim {
   /** What was due on the claim when it was settled, with two decimals; null otherwise, and when its
    *  person's grade had no rate then. */
   settledDue: string | null;
+  /** The user who opened the claim; null until it is opened. */
+  openedBy: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
@@ -75,7 +77,8 @@ export class ClaimsService {
     );
   }
 
-  /** Change the claim's status; refused (409) when its status does not allow the change. */
+  /** Change the claim's status; refused (409) when its status does not allow the change, and (403)
+   *  when the user who opened it asks to settle it. */
   act(sheet: string, id: number, action: ClaimAction): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, null, {

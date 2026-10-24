@@ -27,16 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** A claim; its amount, and what was due on it when settled (null otherwise), are sent as text with
+    /** A claim, with who opened it (null until opened); its amount, and what was due on it when settled (null otherwise), are sent as text with
      * two decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue) {
+            ClaimStatus status, Integer number, String settledDue,
+            String openedBy) {
         static ClaimView of(Claim claim) {
             BigDecimal settledDue = claim.getSettledDue();
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    settledDue == null ? null : settledDue.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    settledDue == null ? null : settledDue.setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    claim.getOpenedBy());
         }
     }
 
