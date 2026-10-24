@@ -6,7 +6,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 // The sheet's header, shown at all times: how many people are on the sheet (retired ones
 // included), how many claims are in each status (as the summary counts them), and the sheet's
 // due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
-// overdue-total when a person on the sheet has their name or alias.
+// overdue-total when a person on the sheet has their name or alias, and their crew total (the due-totals
+// of the crews that person leads, added up) when they lead one.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -39,6 +40,10 @@ import { FigurePipe } from '../../core/figure.pipe';
           <dt>My overdue</dt>
           <dd data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</dd>
         </div>
+        <div>
+          <dt>My crew due</dt>
+          <dd data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</dd>
+        </div>
       </dl>
     </header>
   `,
@@ -70,6 +75,8 @@ export class Header {
   readonly myDueTotal = input.required<string>();
   /** The signed-in user's own overdue-total; blank when there is no such person. */
   readonly myOverdueTotal = input.required<string>();
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+  readonly myCrewDueTotal = input.required<string>();
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({

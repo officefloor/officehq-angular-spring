@@ -2,7 +2,7 @@ import { Component, effect, inject, input, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Person } from './people.service';
 import { money } from './claims.service';
-import { Crew, CrewsService } from './crews.service';
+import { Crew, CrewsService, crewDueCents } from './crews.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
 // The sheet's crews, one row each in the order they were added, with the form by which one is added with
@@ -112,8 +112,7 @@ export class Crews {
 
   /** The crew's due-total: the lead's and the members' due-totals added up, n/a ones skipped. */
   protected dueTotalOf(crew: Crew): string {
-    const due = this.dueCents();
-    return money([crew.lead, ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0));
+    return money(crewDueCents(crew, this.dueCents()));
   }
 
   protected value(event: Event): string {

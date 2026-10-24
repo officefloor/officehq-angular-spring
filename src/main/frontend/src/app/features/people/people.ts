@@ -20,7 +20,7 @@ import { TreeSearch } from './tree-search';
 import { VoidReasons } from './void-reasons';
 import { Pools } from './pools';
 import { Crews } from './crews';
-import { CrewsService } from './crews.service';
+import { CrewsService, crewDueCents } from './crews.service';
 import { Plans } from './plans';
 import { Plan, PlansService } from './plans.service';
 import { PoolsService } from './pools.service';
@@ -72,6 +72,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       [overdueTotal]="money(overdueTotal().cents)"
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+      [myCrewDueTotal]="myCrewDueTotal()"
     />
     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
       <span>Over this sheet and the sheets below it:</span>
@@ -1170,14 +1171,28 @@ export class People {
   /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet who
    *  has the user's name, or else has it as an alias (as names are compared); null when there is none. */
   protected readonly myFigures = computed(() => {
+    const me = this.me();
+    if (!me) return null;
+    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
+  });
+  /** The signed-in user's crew total: the due-totals of the crews led by the person who is the user (as
+   *  their own figures find them), added up; blank when there is no such person or they lead no crew. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    if (!me) return '';
+    const led = this.crewsService.crews().filter((c) => c.lead.personId === me.id);
+    if (led.length === 0) return '';
+    const due = this.dueCentsById();
+    return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));
+  });
+  /** The person on the sheet who has the signed-in user's name, or else has it as an alias (as names are
+   *  compared); null when there is none. */
+  private readonly me = computed(() => {
     const user = this.session.user();
     if (user === null) return null;
     const key = nameKey(user);
     const people = this.people();
-    const me =
-      people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key));
-    if (!me) return null;
-    return { dueTotal: this.dueTotalOf(me) ?? 'n/a', overdueTotal: money(this.overdueOf(me).cents) };
+    return people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key)) ?? null;
   });
   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
   protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });

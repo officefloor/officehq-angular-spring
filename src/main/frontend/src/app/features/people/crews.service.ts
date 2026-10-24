@@ -17,6 +17,12 @@ export interface Crew {
   members: CrewPerson[];
 }
 
+/** A crew's due-total in cents: its lead's and its members' due-totals (in cents, by person id; null
+ *  when n/a) added up, n/a ones skipped. */
+export function crewDueCents(crew: Crew, due: Map<number, number | null>): number {
+  return [crew.lead, ...crew.members].reduce((sum, m) => sum + (due.get(m.personId) ?? 0), 0);
+}
+
 // The crews on a sheet, read from and written to the server, and kept for the sheet loaded: re-read
 // from the store every time a sheet is loaded.
 @Injectable({ providedIn: 'root' })
