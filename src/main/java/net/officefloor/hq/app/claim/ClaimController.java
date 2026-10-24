@@ -194,6 +194,14 @@ public class ClaimController {
     public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims a bulk re-date is asked of, by id, and the date they are re-dated to. */
+    public record BulkRedateRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull LocalDate date) {
+    }
+
+    /** How a bulk re-date went: how many claims it re-dated and refused, and the claims it re-dated. */
+    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
 
@@ -418,6 +426,17 @@ public class ClaimController {
         if (asOf != null) return new BulkReassignView(0, Set.copyOf(request.claimIds()).size(), List.of());
         ClaimBulkService.Outcome outcome = bulk.reassign(sheetId.trim(), user.trim(), request.claimIds(), request.personId());
         return new BulkReassignView(outcome.changed().size(), outcome.refused(),
+                views(outcome.changed()));
+    }
+
+    @PostMapping("/claims/bulk-redate")
+    public BulkRedateView bulkRedate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestBody @Valid BulkRedateRequest request) {
+        if (asOf != null) return new BulkRedateView(0, Set.copyOf(request.claimIds()).size(), List.of());
+        ClaimBulkService.Outcome outcome = bulk.redate(sheetId.trim(), user.trim(), request.claimIds(), request.date());
+        return new BulkRedateView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));
     }
 

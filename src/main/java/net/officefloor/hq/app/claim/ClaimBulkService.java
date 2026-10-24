@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -95,6 +96,26 @@ public class ClaimBulkService {
             try {
                 changed.add(service.reassignOfBulk(sheetId, user, claim.getId(), personId));
             } catch (ClaimReassignException | ClaimPeriodClosedException | ClaimNotFoundException | ClaimNotStewardException
+                    | PersonNotFoundException | PersonRetiredException e) {
+                refused++;
+            }
+        }
+        return new Outcome(changed, refused);
+    }
+
+    /** Re-date each of the claims that can be re-dated to the date, in list order, by exactly the rules
+     * of re-dating one claim (each re-date records its CLAIM_REDATED and rollup lines); any that cannot
+     * be re-dated (or is not on the sheet) is left as it is and counted as refused. */
+    public Outcome redate(String sheetId, String user, Collection<Long> claimIds, LocalDate date) {
+        Set<Long> asked = Set.copyOf(claimIds);
+        if (refusesAll(sheetId, user)) return new Outcome(List.of(), asked.size());
+        List<Claim> found = inListOrder(sheetId, asked);
+        int refused = asked.size() - found.size();
+        List<Claim> changed = new ArrayList<>();
+        for (Claim claim : found) {
+            try {
+                changed.add(service.redate(sheetId, user, claim.getId(), date));
+            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimNotFoundException | ClaimNotStewardException
                     | PersonNotFoundException | PersonRetiredException e) {
                 refused++;
             }

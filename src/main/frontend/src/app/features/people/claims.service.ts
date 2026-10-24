@@ -131,6 +131,13 @@ export interface BulkSettled {
   batch: number | null;
 }
 
+/** How a bulk re-date went: how many claims it re-dated and refused, and the claims it re-dated. */
+export interface BulkRedated {
+  redated: number;
+  refused: number;
+  claims: Claim[];
+}
+
 /** How a bulk move went: how many claims it moved and refused, and the claims it moved. */
 export interface BulkReassigned {
   reassigned: number;
@@ -378,6 +385,16 @@ export class ClaimsService {
   bulkReassign(sheet: string, claimIds: number[], personId: number): Promise<BulkReassigned> {
     return firstValueFrom(
       this.http.post<BulkReassigned>(`${this.url(sheet)}/claims/bulk-reassign`, { claimIds, personId }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Re-date each of the claims that can be re-dated to the date, in list order, by the rules of
+   *  re-dating one; the rest are left as they are and counted as refused. */
+  bulkRedate(sheet: string, claimIds: number[], date: string): Promise<BulkRedated> {
+    return firstValueFrom(
+      this.http.post<BulkRedated>(`${this.url(sheet)}/claims/bulk-redate`, { claimIds, date }, {
         headers: this.session.headers(),
       }),
     );

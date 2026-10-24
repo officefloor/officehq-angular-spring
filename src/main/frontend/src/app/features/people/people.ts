@@ -288,6 +288,22 @@ import { Audit } from './audit';
       </p>
 
       <p>
+        <label for="bulk-redate-date">Re-date selected claims to</label>
+        <input
+          id="bulk-redate-date"
+          data-testid="bulk-redate-date"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkRedateDate()"
+          (input)="bulkRedateDate.set(value($event))"
+        />
+        <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
+        @if (bulkRedated(); as result) {
+          Re-dated <span data-testid="bulk-redated">{{ result.redated }}</span>,
+          refused <span data-testid="bulk-redate-refused">{{ result.refused }}</span>
+        }
+      </p>
+
+      <p>
         <label for="bulk-grade">Grade for selected people</label>
         <select
           id="bulk-grade"
@@ -1062,6 +1078,12 @@ export class People {
   protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
   /** A bulk move is waiting for its answer; another meanwhile is ignored. */
   private bulkReassigning = false;
+  /** The date a bulk re-date re-dates the selected claims to. */
+  protected readonly bulkRedateDate = signal('');
+  /** How the last bulk re-date went; null before one, and while one runs. */
+  protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
+  /** A bulk re-date is waiting for its answer; another meanwhile is ignored. */
+  private bulkRedating = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The grade a bulk grade gives. */
@@ -1105,6 +1127,8 @@ export class People {
       this.bulkSettled.set(null);
       this.bulkReassignTo.set('');
       this.bulkReassigned.set(null);
+      this.bulkRedateDate.set('');
+      this.bulkRedated.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGradeChoice.set('A');
       this.bulkGradeFrom.set('');
@@ -1819,6 +1843,34 @@ export class People {
       }
     } finally {
       this.bulkReassigning = false;
+    }
+  }
+
+  /** Re-date the selected claims together to the date typed, in list order, each by the rules of
+   *  re-dating one; those that cannot be re-dated are left as they are. Shows how many were re-dated
+   *  and refused; the old counts are gone while it runs. */
+  protected async bulkRedate(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || this.bulkRedating) return;
+    this.bulkRedated.set(null);
+    const date = this.bulkRedateDate().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.bulkRedated.set({ redated: 0, refused: this.selectedClaims().size });
+      return;
+    }
+    this.bulkRedating = true;
+    try {
+      const result = await this.claimsService.bulkRedate(sheet, [...this.selectedClaims()], date);
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.claims) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkRedated.set({ redated: result.redated, refused: result.refused });
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.bulkRedated.set({ redated: 0, refused: this.selectedClaims().size });
+      }
+    } finally {
+      this.bulkRedating = false;
     }
   }
 
