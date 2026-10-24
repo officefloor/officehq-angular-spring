@@ -137,10 +137,16 @@ public class RollupService {
      * within one of its person's holds and no statement binds it (a PENDING claim is bound by none while
      * it is). */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
-        if (!claim.getStatus().counts()) return false;
-        if (!claim.getStatus().isOpen()) return true;
+        return countsAs(claim, claim.getStatus(), person, today);
+    }
+
+    /** Whether the claim would count in the live totals on the sheet's {@code today} were its status
+     * {@code status} (see {@link #countsLive}). */
+    public static boolean countsAs(Claim claim, ClaimStatus status, Person person, LocalDate today) {
+        if (!status.counts()) return false;
+        if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
-        boolean bound = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+        boolean bound = claim.isStated() && status != ClaimStatus.PENDING;
         return bound || !person.isHeldOn(claim.getDate());
     }
 

@@ -9,7 +9,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -29,16 +32,18 @@ public class PeriodService {
     private final PeriodRepository periods;
     private final SheetRepository sheets;
     private final ClaimRepository claims;
+    private final ClaimLogRepository logs;
     private final PersonRepository people;
     private final RollupService rollup;
     private final SettingsService settings;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
-            PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
+            ClaimLogRepository logs, PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
+        this.logs = logs;
         this.people = people;
         this.rollup = rollup;
         this.settings = settings;
@@ -103,7 +108,8 @@ public class PeriodService {
     }
 
     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
-     * what is due on their counting claims dated in it, as each shows it, late charges included (a
+     * what is due on their claims dated in it that counted by the status each had at the end of the
+     * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
      * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(period.getSheetId()).stream()
@@ -111,13 +117,29 @@ public class PeriodService {
         Map<Long, BigDecimal> totals = new HashMap<>();
         for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));
         LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
-        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId())) {
-            if (!period.overlaps(claim.getDate(), claim.getDate())) continue;
+        List<Claim> dated = claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId()).stream()
+                .filter(claim -> period.overlaps(claim.getDate(), claim.getDate())).toList();
+        Map<Long, List<ClaimLog>> logsOf = dated.isEmpty() ? Map.of()
+                : logs.findByClaimIdInOrderByIdAsc(dated.stream().map(Claim::getId).toList()).stream()
+                        .collect(Collectors.groupingBy(ClaimLog::getClaimId));
+        for (Claim claim : dated) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !RollupService.countsLive(claim, person, today)) continue;
+            ClaimStatus status = statusAt(logsOf.getOrDefault(claim.getId(), List.of()), period.getTo());
+            if (person == null || status == null || !RollupService.countsAs(claim, status, person, today)) continue;
             BigDecimal figure = rollup.shownOf(claim, person);
             if (figure != null) totals.merge(person.getId(), figure, BigDecimal::add);
         }
         return totals;
+    }
+
+    /** The status a claim had at the end of {@code day}, by its status log, oldest first, whose lines
+     * are dated with the sheet's today when each change was made; null when it was added after. */
+    private static ClaimStatus statusAt(List<ClaimLog> log, LocalDate day) {
+        ClaimStatus status = null;
+        for (ClaimLog line : log) {
+            if (line.getDate().isAfter(day)) break;
+            status = line.getStatus();
+        }
+        return status;
     }
 }

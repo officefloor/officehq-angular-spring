@@ -53,6 +53,18 @@ export function counts(claim: Claim): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';
 }
 
+/** The status the claim had at the end of the day (YYYY-MM-DD), as its status log records it
+ *  (each line dated with the sheet's today when the change was made); null when it was added after. */
+export function statusOn(claim: Claim, day: string): ClaimStatus | null {
+  let status: ClaimStatus | null = null;
+  for (const line of claim.log) {
+    const [, logged, on] = /^(\S+) by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line) ?? [];
+    if (on === undefined || on > day) break;
+    status = logged as ClaimStatus;
+  }
+  return status;
+}
+
 /** Whether a claim is still open: OPEN, or PENDING, which is handled like OPEN (it goes overdue,
  *  bears the late charge and leaves the totals while its person is on hold). */
 export function isOpen(claim: Claim): boolean {

@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Header } from './header';
-import { Claim, ClaimsService, cents, counts, deferred, isOpen, money, overdue } from './claims.service';
+import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
@@ -467,8 +467,8 @@ export class People {
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
   /** Each person's due-total for each period, in cents, by person id and period name. While a period
-   *  is open it is what is due on their counting claims dated in it, as each claim shows it (a claim
-   *  with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
+   *  is open it is what is due on their claims dated in it that counted at the end of its last day,
+   *  as each claim shows it now (a claim with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
    *  added later). */
   protected readonly personPeriodCents = computed(() => {
     const by = new Map<number, Record<string, number>>();
@@ -478,9 +478,8 @@ export class People {
         sums[p.name] = p.closed ? cents(p.closedPersonTotals[person.id] ?? '0.00') : 0;
       }
       for (const c of this.claimsOf(person.id)) {
-        if (!this.countsLive(c, person)) continue;
         const period = periodOn(this.periods(), c.date);
-        if (period === null || period.closed) continue;
+        if (period === null || period.closed || !this.countsAtEnd(c, person, period.to)) continue;
         sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
       }
       by.set(person.id, sums);
@@ -728,11 +727,24 @@ export class People {
    *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
    *  holds and no statement binds it (a PENDING claim is bound by none while it is). */
   private countsLive(claim: Claim, person: Person): boolean {
-    if (!counts(claim)) return false;
-    if (!isOpen(claim)) return true;
+    return this.countsAs(claim, claim.status, person);
+  }
+
+  /** Whether the claim would count in the live totals were its status `status` (see countsLive). */
+  private countsAs(claim: Claim, status: ClaimStatus, person: Person): boolean {
+    const as = { ...claim, status };
+    if (!counts(as)) return false;
+    if (!isOpen(as)) return true;
     if (deferred(claim, this.session.today())) return false;
-    const bound = claim.stated && claim.status !== 'PENDING';
+    const bound = claim.stated && status !== 'PENDING';
     return bound || !heldOn(person.holds, claim.date);
+  }
+
+  /** Whether the claim counts in a period ending on `end`: by the status it had at the end of
+   *  that day (a claim added after does not count), otherwise as the live rules say. */
+  private countsAtEnd(claim: Claim, person: Person, end: string): boolean {
+    const status = statusOn(claim, end);
+    return status !== null && this.countsAs(claim, status, person);
   }
 
   protected claimedOf(person: Person): string {
