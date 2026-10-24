@@ -1,0 +1,730 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 3a3b39cf..ab0f3504 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -178,8 +178,8 @@ export class Claims {
+     this.error.set(null);
+   }
+ 
+-  /** Change the claim's status; a change its status does not allow, or a settle by the user who opened
+-   *  the claim, is refused with an error. */
++  /** Change the claim's status; a change its status does not allow, a settle by the user who opened
++   *  the claim, or a clerk's settle of a claim whose due is above the clerk limit, is refused with an error. */
+   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+     this.clearRowError(claim.id);
+     const sheet = this.session.sheetId();
+@@ -193,6 +193,8 @@ export class Claims {
+         ...errors,
+         [claim.id]: e instanceof HttpErrorResponse && e.status === 403
+           ? 'You opened that claim, so another user must settle it.'
++          : e instanceof HttpErrorResponse && e.status === 422
++          ? 'What is due on that claim is above the clerk limit, so a steward must settle it.'
+           : e instanceof HttpErrorResponse && e.status === 423
+           ? 'That claim is dated in a closed period.'
+           : `That claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'} in its status.`,
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 57197df0..2d85b473 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -8,6 +8,7 @@ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+ import { Rate, RatesService, claimDueCents, rateOn } from './rates.service';
++import { Settings } from './settings';
+ import { Statement, StatementsService } from './statements.service';
+ 
+ // The people on the active sheet, in the order they were added, and the form that adds a person
+@@ -22,8 +23,9 @@ import { Statement, StatementsService } from './statements.service';
+ // their OPEN claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods, Rates],
++  imports: [Claims, Periods, Rates, Settings],
+   template: `
++    <app-settings />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" />
+     <section aria-labelledby="people-heading">
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+new file mode 100644
+index 00000000..a449f484
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -0,0 +1,59 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A user's role on a sheet: every name is a clerk unless made a steward. */
++export type Role = 'clerk' | 'steward';
++
++export const ROLES: readonly Role[] = ['clerk', 'steward'];
++
++export interface RoleGiven {
++  user: string;
++  role: Role;
++}
++
++export interface SheetSettings {
++  /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
++  clerkLimit: string | null;
++  /** The roles given on the sheet, by user name. */
++  roles: RoleGiven[];
++}
++
++// The settings of a sheet (its roles and its clerk limit), read from and written to the server.
++@Injectable({ providedIn: 'root' })
++export class SettingsService {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  get(sheet: string): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.get<SheetSettings>(`${this.url(sheet)}/settings`, { headers: this.session.headers() }),
++    );
++  }
++
++  /** A null value removes the limit. */
++  setClerkLimit(sheet: string, value: string | null): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(
++        `${this.url(sheet)}/settings/clerk-limit`,
++        { value },
++        { headers: this.session.headers() },
++      ),
++    );
++  }
++
++  setRole(sheet: string, user: string, role: Role): Promise<RoleGiven> {
++    return firstValueFrom(
++      this.http.put<RoleGiven>(
++        `${this.url(sheet)}/roles/${encodeURIComponent(user)}`,
++        { role },
++        { headers: this.session.headers() },
++      ),
++    );
++  }
++
++  private url(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+new file mode 100644
+index 00000000..4bb46fe3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -0,0 +1,214 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { ROLES, Role, RoleGiven, SettingsService } from './settings.service';
++
++const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
++
++// The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
++// limit) and the role each user name has been given (any other name is a clerk). Read from the
++// store every time a sheet is loaded.
++@Component({
++  selector: 'app-settings',
++  template: `
++    <section aria-labelledby="settings-heading">
++      <h2 id="settings-heading">Settings</h2>
++      <form (submit)="saveSettings($event)" aria-label="Settings" data-testid="settings-form">
++        <label for="setting-clerk-limit">Clerk limit</label>
++        <input
++          id="setting-clerk-limit"
++          data-testid="setting-clerk-limit"
++          inputmode="decimal"
++          [value]="limit()"
++          (input)="limit.set(value($event)); settingsError.set(null)"
++        />
++        <span>
++          In force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span>
++          @if (clerkLimit() === null) {
++            (no limit)
++          }
++        </span>
++        <button type="submit" data-testid="settings-save">Save settings</button>
++        @if (settingsError(); as message) {
++          <p role="alert" class="error" data-testid="settings-error">{{ message }}</p>
++        }
++      </form>
++
++      <form (submit)="saveRole($event)" aria-label="Role" data-testid="role-form">
++        <label for="role-form-user">User</label>
++        <input
++          id="role-form-user"
++          data-testid="role-form-user"
++          [value]="roleUser()"
++          (input)="roleUser.set(value($event)); roleError.set(null)"
++        />
++        <label for="role-form-role">Role</label>
++        <input
++          id="role-form-role"
++          data-testid="role-form-role"
++          list="role-form-roles"
++          [value]="role()"
++          (input)="role.set(value($event)); roleError.set(null)"
++        />
++        <datalist id="role-form-roles">
++          @for (r of roles; track r) {
++            <option [value]="r"></option>
++          }
++        </datalist>
++        <button type="submit" data-testid="role-form-submit">Set role</button>
++        @if (roleError(); as message) {
++          <p role="alert" class="error" data-testid="role-form-error">{{ message }}</p>
++        }
++      </form>
++      @if (given().length > 0) {
++        <table data-testid="role-list">
++          <caption>Roles (anyone else is a clerk)</caption>
++          <thead>
++            <tr>
++              <th scope="col">User</th>
++              <th scope="col">Role</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (r of given(); track r.user) {
++              <tr [attr.data-testid]="'role-row-' + r.user">
++                <td data-testid="role-user">{{ r.user }}</td>
++                <td data-testid="role-value">{{ r.role }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++    </section>
++  `,
++  styles: `
++    form {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 0.5rem;
++      align-items: center;
++      margin-bottom: 0.5rem;
++    }
++    .error {
++      color: #a40000;
++      margin: 0;
++    }
++    table {
++      border-collapse: collapse;
++      margin-bottom: 1rem;
++    }
++    caption {
++      text-align: left;
++      font-weight: bold;
++    }
++    th,
++    td {
++      text-align: left;
++      padding: 0.25rem 0.75rem 0.25rem 0;
++    }
++  `,
++})
++export class Settings {
++  private readonly session = inject(Session);
++  private readonly service = inject(SettingsService);
++
++  protected readonly roles = ROLES;
++  /** The clerk limit in force; null when there is none. */
++  protected readonly clerkLimit = signal<string | null>(null);
++  protected readonly given = signal<RoleGiven[]>([]);
++
++  protected readonly limit = signal('');
++  protected readonly settingsError = signal<string | null>(null);
++  protected readonly roleUser = signal('');
++  protected readonly role = signal('');
++  protected readonly roleError = signal<string | null>(null);
++  /** A submit is waiting for its answer; another submit of the same form meanwhile is ignored. */
++  private savingSettings = false;
++  private savingRole = false;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheetId();
++      this.session.loads();
++      this.clerkLimit.set(null);
++      this.given.set([]);
++      this.limit.set('');
++      this.settingsError.set(null);
++      this.roleUser.set('');
++      this.role.set('');
++      this.roleError.set(null);
++      if (sheet) void this.read(sheet);
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async saveSettings(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.savingSettings) return;
++    this.settingsError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const limit = this.limit().trim();
++    if (limit !== '' && !LIMIT.test(limit)) {
++      this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
++      return;
++    }
++    this.savingSettings = true;
++    try {
++      const settings = await this.service.setClerkLimit(sheet, limit || null);
++      if (this.session.sheetId() !== sheet) return;
++      this.clerkLimit.set(settings.clerkLimit);
++      this.given.set(settings.roles);
++    } catch {
++      this.settingsError.set('Those settings could not be saved.');
++    } finally {
++      this.savingSettings = false;
++    }
++  }
++
++  protected async saveRole(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.savingRole) return;
++    this.roleError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const user = this.roleUser().trim();
++    const role = this.role().trim();
++    if (user === '') {
++      this.roleError.set('Type a user name.');
++      return;
++    }
++    if (!ROLES.includes(role as Role)) {
++      this.roleError.set(`Choose a role: ${ROLES.join(' or ')}.`);
++      return;
++    }
++    this.savingRole = true;
++    try {
++      const saved = await this.service.setRole(sheet, user, role as Role);
++      if (this.session.sheetId() !== sheet) return;
++      this.given.update((list) =>
++        [...list.filter((r) => r.user !== saved.user), saved].sort((a, b) => a.user.localeCompare(b.user)),
++      );
++      this.roleUser.set('');
++      this.role.set('');
++    } catch {
++      this.roleError.set('That role could not be set.');
++    } finally {
++      this.savingRole = false;
++    }
++  }
++
++  private async read(sheet: string): Promise<void> {
++    try {
++      const settings = await this.service.get(sheet);
++      if (this.session.sheetId() === sheet) {
++        this.clerkLimit.set(settings.clerkLimit);
++        this.given.set(settings.roles);
++      }
++    } catch {
++      // The settings could not be read; they show as none.
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimOverLimitException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimOverLimitException.java
+new file mode 100644
+index 00000000..73619db0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimOverLimitException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A settle asked by a clerk of a claim whose due is above the sheet's clerk limit: a steward must settle it. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
++public class ClaimOverLimitException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index d38b85e8..3f129d7e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -11,6 +11,8 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -26,15 +28,17 @@ public class ClaimService {
+     private final RollupService rollup;
+     private final SheetService sheets;
+     private final PeriodRepository periods;
++    private final SettingsService settings;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
+-            PeriodRepository periods, Audit audit) {
++            PeriodRepository periods, SettingsService settings, Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.rollup = rollup;
+         this.sheets = sheets;
+         this.periods = periods;
++        this.settings = settings;
+         this.audit = audit;
+     }
+ 
+@@ -79,7 +83,8 @@ public class ClaimService {
+ 
+     /** Move the claim to {@code next}; refused when its current status does not allow it. Settling it
+      * fixes what is due on it then (the figure it is bound to, when a statement bound it, otherwise
+-     * its person's rate then); the user who opened it cannot settle it. A voided claim keeps its number,
++     * its person's rate then); the user who opened it cannot settle it, and a clerk cannot settle it when
++     * that due is above the sheet's clerk limit (a due that is n/a is within any limit). A voided claim keeps its number,
+      * if it had one. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+@@ -95,7 +100,11 @@ public class ClaimService {
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person));
++        if (next == ClaimStatus.SETTLED) {
++            BigDecimal due = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
++            refuseOverLimit(sheetId, user, due);
++            claim.setSettledDue(due);
++        }
+         claim.setStatus(next);
+         claim.setNumber(number);
+         claims.flush();
+@@ -132,6 +141,13 @@ public class ClaimService {
+         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
+     }
+ 
++    /** Refuse a clerk's settle of a claim whose due is above the sheet's clerk limit. */
++    private void refuseOverLimit(String sheetId, String user, BigDecimal due) {
++        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
++        BigDecimal limit = settings.clerkLimit(sheetId);
++        if (limit != null && due.compareTo(limit) > 0) throw new ClaimOverLimitException();
++    }
++
+     /** Refuse a change that touches {@code date} when a closed period of the sheet contains it. */
+     private void refuseClosed(String sheetId, LocalDate date) {
+         if (periods.closedOn(sheetId, date)) throw new ClaimPeriodClosedException();
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Role.java b/src/main/java/net/officefloor/hq/app/settings/Role.java
+new file mode 100644
+index 00000000..fb4f1261
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/Role.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.settings;
++
++/** A user's role on a sheet. Every name is a clerk unless made a steward. */
++public enum Role {
++    /** May settle a claim only when its due is at or below the sheet's clerk limit. */
++    CLERK,
++    /** May settle any claim. */
++    STEWARD
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+new file mode 100644
+index 00000000..8ce90037
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -0,0 +1,86 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A sheet's settings: its roles and its clerk limit. The signed-in user's name travels in the
++ * {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class SettingsController {
++
++    /** A user name and the role it has on the sheet (clerk or steward). */
++    public record RoleView(String user, String role) {
++        static RoleView of(SheetRole role) {
++            return new RoleView(role.getUser(), role.getRole().name().toLowerCase());
++        }
++    }
++
++    /** The sheet's settings; the clerk limit is sent as text with two decimals, null when there is none. */
++    public record SettingsView(String clerkLimit, List<RoleView> roles) {
++    }
++
++    /** A role: clerk or steward. */
++    public record RoleRequest(@NotNull @Pattern(regexp = "\\s*(clerk|steward)\\s*") String role) {
++        Role roleValue() {
++            return Role.valueOf(role.trim().toUpperCase());
++        }
++    }
++
++    /** A clerk limit: 0.00 or more, with up to two decimals; blank or null for no limit. */
++    public record ClerkLimitRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value) {
++        BigDecimal limitValue() {
++            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
++        }
++    }
++
++    private final SettingsService service;
++
++    public SettingsController(SettingsService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/settings")
++    public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        String sheet = sheetId.trim();
++        return new SettingsView(text(service.clerkLimit(sheet)),
++                service.roles(sheet).stream().map(RoleView::of).toList());
++    }
++
++    @PutMapping("/settings/clerk-limit")
++    public SettingsView setClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ClerkLimitRequest request) {
++        String sheet = sheetId.trim();
++        service.setClerkLimit(sheet, user.trim(), request.limitValue());
++        return get(sheet, user);
++    }
++
++    @PutMapping("/roles/{name}")
++    public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @NotBlank @Size(max = 100) String name,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid RoleRequest request) {
++        return RoleView.of(service.setRole(sheetId.trim(), user.trim(), name.trim(), request.roleValue()));
++    }
++
++    private static String text(BigDecimal figure) {
++        return figure == null ? null : figure.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+new file mode 100644
+index 00000000..dd2ef1cb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -0,0 +1,69 @@
++package net.officefloor.hq.app.settings;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
++ * limit, the most a clerk may settle a claim for (none when null). */
++@Service
++public class SettingsService {
++
++    private final SheetRepository sheets;
++    private final SheetRoleRepository roles;
++    private final Audit audit;
++
++    public SettingsService(SheetRepository sheets, SheetRoleRepository roles, Audit audit) {
++        this.sheets = sheets;
++        this.roles = roles;
++        this.audit = audit;
++    }
++
++    /** The roles given on the sheet, by user name. */
++    @Transactional(readOnly = true)
++    public List<SheetRole> roles(String sheetId) {
++        return roles.findBySheetIdOrderByUser(sheetId);
++    }
++
++    /** The user's role on the sheet: a clerk unless made something else. */
++    @Transactional(readOnly = true)
++    public Role roleOf(String sheetId, String user) {
++        return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
++    }
++
++    @Transactional
++    public SheetRole setRole(String sheetId, String by, String user, Role role) {
++        if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
++        SheetRole given = roles.findBySheetIdAndUser(sheetId, user).orElse(null);
++        if (given == null) {
++            given = roles.saveAndFlush(new SheetRole(sheetId, user, role));
++        } else {
++            given.setRole(role);
++            roles.flush();
++        }
++        audit.change("ROLE_SET", sheetId, by, "user=" + user, "role=" + role.name().toLowerCase());
++        return given;
++    }
++
++    /** The sheet's clerk limit; null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal clerkLimit(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getClerkLimit).orElseThrow(SheetNotFoundException::new);
++    }
++
++    /** Set the sheet's clerk limit; null removes it. */
++    @Transactional
++    public Sheet setClerkLimit(String sheetId, String by, BigDecimal limit) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        sheet.setClerkLimit(limit);
++        sheets.flush();
++        audit.change("SETTING_CHANGED", sheetId, by, "key=clerk-limit",
++                "value=" + (limit == null ? "" : limit.toPlainString()));
++        return sheet;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SheetRole.java b/src/main/java/net/officefloor/hq/app/settings/SheetRole.java
+new file mode 100644
+index 00000000..3bcf5c3e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SheetRole.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** The role a user name has been given on a sheet. */
++@Entity
++@Table(name = "sheet_role")
++public class SheetRole {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    @Enumerated(EnumType.STRING)
++    @Column(name = "role", nullable = false)
++    private Role role;
++
++    protected SheetRole() {
++    }
++
++    public SheetRole(String sheetId, String user, Role role) {
++        this.sheetId = sheetId;
++        this.user = user;
++        this.role = role;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public Role getRole() {
++        return role;
++    }
++
++    public void setRole(Role role) {
++        this.role = role;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SheetRoleRepository.java b/src/main/java/net/officefloor/hq/app/settings/SheetRoleRepository.java
+new file mode 100644
+index 00000000..f5f1ee62
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SheetRoleRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.settings;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetRoleRepository extends JpaRepository<SheetRole, Long> {
++
++    List<SheetRole> findBySheetIdOrderByUser(String sheetId);
++
++    Optional<SheetRole> findBySheetIdAndUser(String sheetId, String user);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 51b51fe6..bad48cd6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
+ import java.time.Instant;
+ import java.time.LocalDate;
+ 
+@@ -25,6 +26,10 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
++    /** The most a clerk may settle a claim for; null when there is no limit. */
++    @Column(name = "clerk_limit", precision = 12, scale = 2)
++    private BigDecimal clerkLimit;
++
+     protected Sheet() {
+     }
+ 
+@@ -54,4 +59,12 @@ public class Sheet {
+     public void setToday(LocalDate today) {
+         this.today = today;
+     }
++
++    public BigDecimal getClerkLimit() {
++        return clerkLimit;
++    }
++
++    public void setClerkLimit(BigDecimal clerkLimit) {
++        this.clerkLimit = clerkLimit;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V20__roles_clerk_limit.sql b/src/main/resources/db/migration/V20__roles_clerk_limit.sql
+new file mode 100644
+index 00000000..10e97db5
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__roles_clerk_limit.sql
+@@ -0,0 +1,11 @@
++-- The role each user name has on a sheet: CLERK or STEWARD. A name with no row is a clerk.
++CREATE TABLE sheet_role (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('CLERK', 'STEWARD'))
++);
++CREATE UNIQUE INDEX sheet_role_sheet_user ON sheet_role (sheet_id, user_name);
++
++-- The most a clerk may settle a claim for: its due must be at or below it. Null means no limit.
++ALTER TABLE sheet ADD COLUMN clerk_limit DECIMAL(12, 2) CHECK (clerk_limit >= 0);
