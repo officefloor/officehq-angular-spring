@@ -84,7 +84,8 @@ const PAST: Record<ClaimAction, string> = {
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             <span>Deferred <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span></span>
-            <span>Until <span data-testid="claim-deferred-until">{{ isDeferred(c) ? c.deferredUntil : '' }}</span></span>
+            <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+            <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ line }}</li>
@@ -107,6 +108,14 @@ const PAST: Record<ClaimAction, string> = {
                 {{ a.label }}
               </button>
             }
+            <button
+              type="button"
+              data-testid="claim-proof"
+              [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date"
+              (click)="addProof(c)"
+            >
+              Add proof
+            </button>
             <button
               type="button"
               data-testid="claim-resettle"
@@ -312,7 +321,8 @@ export class Claims {
   /** Change the claim's status; a change its status does not allow, a settle by the user who opened
    *  the claim, an approve by a user who is not a steward or who opened the claim, a reject by a user
    *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
-   *  a claim whose due is above the clerk limit leaves it PENDING for a steward. */
+   *  a claim whose due is above the clerk limit leaves it PENDING for a steward. A settle or approve of a
+   *  claim without proofs whose due is above the proof threshold in force on its date is refused. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
@@ -339,9 +349,32 @@ export class Claims {
           ? 'Type a one-word reason to reject that claim.'
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? `That claim is due above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
           : action === 'settle' && this.isDeferred(claim)
           ? `That claim is deferred until ${claim.deferredUntil}.`
           : `That claim cannot be ${PAST[action]} in its status.`,
+      }));
+    }
+  }
+
+  /** Raise the claim's proofs count by one; a SETTLED or VOID claim, or one dated in a closed period,
+   *  is refused with an error. */
+  protected async addProof(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.addProof(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: e instanceof HttpErrorResponse && e.status === 423
+          ? 'That claim is dated in a closed period.'
+          : 'A settled or void claim cannot be given a proof.',
       }));
     }
   }

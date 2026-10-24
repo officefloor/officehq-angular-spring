@@ -20,8 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
  * terms in their place), and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
- * period numbering from, the date from which a claim opened is numbered within its period (off when null).
- * The settings that carry a figure (the clerk limit, the floor, the cap, the terms and the late percent)
+ * period numbering from, the date from which a claim opened is numbered within its period (off when null),
+ * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null).
+ * The settings that carry a figure (the clerk limit, the floor, the cap, the terms, the late percent and the proof threshold)
  * are dated: each value is recorded from a date (see {@link DatedSettings}); the policy date and the
  * period numbering from are not. */
 @Service
@@ -161,6 +162,26 @@ public class SettingsService {
     @Transactional
     public void setLatePct(String sheetId, String by, BigDecimal latePct, LocalDate from) {
         record(sheetId, by, DatedSettings.LATE_PCT, latePct.toPlainString(), from, true);
+    }
+
+    /** The proof threshold in force on the sheet's today; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String sheetId) {
+        return dated.proofThresholdOn(sheetId, today(sheetId));
+    }
+
+    /** The proof threshold in force on {@code date}: a claim dated then whose due is above it cannot be
+     * settled or approved while it has no proofs; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
+        return dated.proofThresholdOn(sheetId, date);
+    }
+
+    /** Record the sheet's proof threshold from {@code from} (the sheet's today when null); null records
+     * no threshold. */
+    @Transactional
+    public void setProofThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
+        record(sheetId, by, DatedSettings.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from, false);
     }
 
     /** Every value recorded for the dated setting {@code key}, oldest from-date first. */

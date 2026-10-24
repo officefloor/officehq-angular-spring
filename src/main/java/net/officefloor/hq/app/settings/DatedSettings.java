@@ -11,8 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
- * percent 0.00, terms 14 days; no clerk limit, no cap, and no grade's own terms). A claim's floor, late
- * percent and terms are those in force on its date; the clerk limit and the cap those on the sheet's
+ * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold and no grade's own terms). A claim's floor, late
+ * percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those on the sheet's
  * today. */
 @Service
 public class DatedSettings {
@@ -22,6 +22,7 @@ public class DatedSettings {
     public static final String TERMS = "terms";
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String CAP = "cap";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     public static final BigDecimal FLOOR_START = new BigDecimal("1.00");
     public static final BigDecimal LATE_PCT_START = new BigDecimal("0.00");
@@ -86,6 +87,12 @@ public class DatedSettings {
     @Transactional(readOnly = true)
     public BigDecimal cap(String sheetId) {
         return valueOn(sheetId, CAP, today(sheetId)).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The proof threshold in force on the date; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, PROOF_THRESHOLD, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The value of the key in force on the date; empty when none is recorded then, or the one

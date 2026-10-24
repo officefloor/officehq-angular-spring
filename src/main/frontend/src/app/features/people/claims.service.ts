@@ -36,6 +36,8 @@ export interface Claim {
   log: string[];
   /** The date (YYYY-MM-DD) the claim was last deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has been given. */
+  proofs: number;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -156,6 +158,16 @@ export class ClaimsService {
   defer(sheet: string, id: number, until: string): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/defer`, { until }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Raise the claim's proofs count by one; refused (409) when it is SETTLED or VOID and (423) when it
+   *  is dated in a closed period. */
+  addProof(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
         headers: this.session.headers(),
       }),
     );

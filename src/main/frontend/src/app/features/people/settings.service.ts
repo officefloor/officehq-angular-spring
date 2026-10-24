@@ -64,6 +64,9 @@ export interface SheetSettings {
   latePcts: Dated[];
   /** Every cap recorded, each from its date, oldest first; null records no cap from then. */
   caps: Dated<string | null>[];
+  /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
+   *  null when there is none. */
+  proofThreshold: string | null;
 }
 
 // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
@@ -99,6 +102,17 @@ export class SettingsService {
   setCap(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/cap`, { value, from }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value records no proof threshold; a null from records it from the sheet's today. */
+  setProofThreshold(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/proof-threshold`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
     );
   }
 

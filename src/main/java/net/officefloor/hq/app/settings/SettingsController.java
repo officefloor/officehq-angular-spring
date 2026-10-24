@@ -33,9 +33,10 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null). */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows. */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
-            List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps) {
+            List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
+            String proofThreshold) {
     }
 
     /** A value of a dated setting, as text, and the date it is recorded from. */
@@ -80,6 +81,18 @@ public class SettingsController {
     public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
         BigDecimal capValue() {
+            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+
+        LocalDate fromValue() {
+            return fromOf(from);
+        }
+    }
+
+    /** A proof threshold: 0.00 or more, with up to two decimals; blank or null for none. */
+    public record ProofThresholdRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+        BigDecimal thresholdValue() {
             return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
         }
 
@@ -160,7 +173,8 @@ public class SettingsController {
                 service.periodNumberingFrom(sheet),
                 service.history(sheet, DatedSettings.FLOOR).stream().map(DatedView::of).toList(),
                 service.history(sheet, DatedSettings.LATE_PCT).stream().map(DatedView::of).toList(),
-                service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList());
+                service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
+                text(service.proofThreshold(sheet)));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -178,6 +192,15 @@ public class SettingsController {
             @RequestBody @Valid CapRequest request) {
         String sheet = sheetId.trim();
         service.setCap(sheet, user.trim(), request.capValue(), request.fromValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/proof-threshold")
+    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setProofThreshold(sheet, user.trim(), request.thresholdValue(), request.fromValue());
         return get(sheet, user);
     }
 

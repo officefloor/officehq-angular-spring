@@ -111,7 +111,8 @@ public class ClaimService {
      * together with its late charge then (none on a correction); the user who opened it cannot settle it,
      * and a clerk's settle of it when that due is above the sheet's clerk limit (a due that is n/a is
      * within any limit) leaves it PENDING instead, fixing nothing, until a steward approves or rejects
-     * it. A claim deferred on the sheet's today cannot be settled. A voided claim keeps its number, if it had one. */
+     * it. A claim deferred on the sheet's today cannot be settled, nor one without proofs whose due is
+     * above the proof threshold in force on its date (refused before the clerk limit is considered). A voided claim keeps its number, if it had one. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -132,6 +133,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : rollup.dueOf(claim, person);
             BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+            refuseUnproved(claim, due);
             if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
         }
@@ -177,7 +179,8 @@ public class ClaimService {
 
     /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (its
      * live figure, which no statement binds while it is PENDING, together with its late charge then).
-     * Refused unless the claim is PENDING, and when the user is not a steward or opened the claim. */
+     * Refused unless the claim is PENDING, when the user is not a steward or opened the claim, and when it
+     * has no proofs and that due is above the proof threshold in force on its date. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = lockPending(sheetId, user, claimId);
@@ -187,12 +190,30 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal figure = rollup.dueOf(claim, person);
         BigDecimal due = figure == null ? null : figure.add(rollup.lateChargeOf(claim, figure));
+        refuseUnproved(claim, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         claims.flush();
         log(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), "due=" + dueText(due));
         rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
+    /** Raise the claim's proofs count by one. Refused when the claim is SETTLED or VOID, and when it is
+     * dated in a closed period. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ClaimStatusChangeException();
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.addProof();
+        claims.flush();
+        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), "proofs=" + claim.getProofs());
         return claim;
     }
 
@@ -327,6 +348,14 @@ public class ClaimService {
         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
         BigDecimal limit = settings.clerkLimit(sheetId);
         return limit != null && due.compareTo(limit) > 0;
+    }
+
+    /** Refuse a settle or approval of the claim, whose due is {@code due}, while it has no proofs and that
+     * due is above the proof threshold in force on its date (a due that is n/a is within any threshold). */
+    private void refuseUnproved(Claim claim, BigDecimal due) {
+        if (due == null || claim.getProofs() > 0) return;
+        BigDecimal threshold = settings.proofThresholdOn(claim.getSheetId(), claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
     }
 
     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
