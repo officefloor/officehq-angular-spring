@@ -9,7 +9,8 @@ const TERMS = /^\d{1,4}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
-// limit), its floor (the least a claim's live due can be), its terms (how many days after its date
+// limit), its floor (the least a claim's live due can be), its cap (the most a person's due-total
+// can be; blank for no cap), its terms (how many days after its date
 // a claim is due by), each grade's own terms (used in place of the sheet's for a person of that
 // grade; blank for the sheet's), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
@@ -48,6 +49,21 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (keydown)="floorChanged = true"
         />
         <span>In force: <span data-testid="setting-floor-current">{{ floor() }}</span></span>
+        <label for="setting-cap">Cap</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="capInput()"
+          (input)="capInput.set(value($event)); capChanged = true; settingsError.set(null)"
+          (keydown)="capChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span>
+          @if (cap() === null) {
+            (no cap)
+          }
+        </span>
         <label for="setting-terms">Terms (days)</label>
         <input
           id="setting-terms"
@@ -204,6 +220,10 @@ export class Settings {
   protected readonly clerkLimit = signal<string | null>(null);
   /** The floor in force, with two decimals; empty until read. */
   protected readonly floor = signal('');
+  /** The cap in force, with two decimals; null when there is none. */
+  protected readonly cap = signal<string | null>(null);
+  /** The cap saved, in cents; null when there is none. */
+  readonly capSaved = output<number | null>();
   protected readonly given = signal<RoleGiven[]>([]);
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
@@ -226,6 +246,7 @@ export class Settings {
 
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
+  protected readonly capInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
@@ -236,6 +257,7 @@ export class Settings {
    *  from the value in force. */
   protected limitChanged = false;
   protected floorChanged = false;
+  protected capChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
   protected readonly gradeTermsChanged = new Set<Grade>();
@@ -260,6 +282,9 @@ export class Settings {
       this.given.set([]);
       this.limit.set('');
       this.floorInput.set('');
+      this.cap.set(null);
+      this.capInput.set('');
+      this.capChanged = false;
       this.terms.set('');
       this.termsInput.set('');
       this.limitChanged = false;
@@ -312,6 +337,8 @@ export class Settings {
     const floor = this.floorInput().trim();
     const saveLimit = this.limitChanged || limit !== (this.clerkLimit() ?? '');
     const saveFloor = this.floorChanged || floor !== this.floor();
+    const cap = this.capInput().trim();
+    const saveCap = this.capChanged || cap !== (this.cap() ?? '');
     const terms = this.termsInput().trim();
     const saveTerms = this.termsChanged || terms !== this.terms();
     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
@@ -330,6 +357,10 @@ export class Settings {
     }
     if (saveFloor && !LIMIT.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (saveCap && cap !== '' && !LIMIT.test(cap)) {
+      this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (saveTerms && !TERMS.test(terms)) {
@@ -370,6 +401,13 @@ export class Settings {
         this.show(settings);
         this.floorSaved.emit(cents(settings.floor));
       }
+      if (saveCap) {
+        const settings = await this.service.setCap(sheet, cap || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.capInput().trim() === cap) this.capChanged = false;
+        this.show(settings);
+        this.capSaved.emit(settings.cap === null ? null : cents(settings.cap));
+      }
       if (saveTerms) {
         const settings = await this.service.setTerms(sheet, terms);
         if (this.session.sheetId() !== sheet) return;
@@ -405,6 +443,7 @@ export class Settings {
       // Show what is in force in each field, but keep what was typed in one while the save was waiting.
       if (!this.limitChanged) this.limit.set(this.clerkLimit() ?? '');
       if (!this.floorChanged) this.floorInput.set(this.floor());
+      if (!this.capChanged) this.capInput.set(this.cap() ?? '');
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
@@ -460,6 +499,7 @@ export class Settings {
         this.show(settings);
         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
         if (!this.floorChanged) this.floorInput.set(settings.floor);
+        if (!this.capChanged) this.capInput.set(settings.cap ?? '');
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
@@ -483,6 +523,7 @@ export class Settings {
   private show(settings: SheetSettings): void {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
+    this.cap.set(settings.cap);
     this.terms.set(String(settings.terms));
     this.gradeTerms.set(settings.gradeTerms ?? {});
     this.latePct.set(settings.latePct);

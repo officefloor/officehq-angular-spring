@@ -32,7 +32,9 @@ import { Summary, SummaryPerson } from './summary';
 // full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
 // A person can name other people on the sheet as their patrons, one at a time from their row; the
 // row shows their patrons' names, sorted, and their backing: their patrons' due-totals added up
-// (a due-total that is n/a is skipped).
+// (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
+// sum of their figures is above it, the row shows the cap and the difference as their excess; every
+// total of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
 @Component({
   selector: 'app-people',
   imports: [Claims, Header, Periods, Rates, Settings, Summary],
@@ -45,6 +47,7 @@ import { Summary, SummaryPerson } from './summary';
     />
     <app-settings
       (floorSaved)="floor.set($event)"
+      (capSaved)="cap.set($event)"
       (latePctSaved)="latePct.set($event)"
       (policyDateSaved)="policyDate.set($event)"
     />
@@ -148,6 +151,7 @@ import { Summary, SummaryPerson } from './summary';
               <th scope="col">Grade</th>
               <th scope="col">Claimed</th>
               <th scope="col">Due</th>
+              <th scope="col">Excess</th>
               <th scope="col">Overdue</th>
               <th scope="col">Overdue due</th>
               <th scope="col">Statements</th>
@@ -169,6 +173,7 @@ import { Summary, SummaryPerson } from './summary';
                 <td data-testid="person-grade">{{ gradeNow(p) }}</td>
                 <td data-testid="person-claimed">{{ claimedOf(p) }}</td>
                 <td data-testid="person-due-total">{{ dueTotalOf(p) ?? 'n/a' }}</td>
+                <td data-testid="person-excess">{{ excessOf(p) }}</td>
                 <td data-testid="person-overdue-count">{{ overdueOf(p).count }}</td>
                 <td data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</td>
                 <td data-testid="person-statement-count">{{ statementsOf(p.id).length }}</td>
@@ -406,6 +411,8 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor, in cents: the least a claim's live due can be. */
   protected readonly floor = signal(FLOOR_CENTS);
+  /** The sheet's cap, in cents: the most a person's due-total can be; null when there is none. */
+  protected readonly cap = signal<number | null>(null);
   /** The sheet's late percent, with two decimals. */
   protected readonly latePct = signal(LATE_PCT);
   /** The sheet's policy date as set; null when it is the sheet's today. */
@@ -460,6 +467,8 @@ export class People {
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
+  /** Counts the times the editor was opened, so a save answered after it was opened again leaves it open. */
+  private editorOpenings = 0;
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
@@ -485,6 +494,7 @@ export class People {
       this.claims.set([]);
       this.rates.set([]);
       this.floor.set(FLOOR_CENTS);
+      this.cap.set(null);
       this.latePct.set(LATE_PCT);
       this.policyDate.set(null);
       this.statements.set([]);
@@ -697,14 +707,30 @@ export class People {
   }
 
   /** The sum of what is due on each of the person's OPEN and SETTLED claims, as each claim shows
-   *  it (a claim with nothing due is skipped); n/a when no rate of their grade applies on the
-   *  sheet's today and none of their claims has a figure. */
+   *  it (a claim with nothing due is skipped), at most the sheet's cap; n/a when no rate of their
+   *  grade applies on the sheet's today and none of their claims has a figure. */
   protected dueTotalOf(person: Person): string | null {
     const due = this.dueCentsOf(person);
     return due === null ? null : money(due);
   }
 
+  /** How far the sum of the person's figures is above the sheet's cap; 0.00 when it is not, or when
+   *  their due-total is n/a. */
+  protected excessOf(person: Person): string {
+    const sum = this.sumCentsOf(person);
+    const cap = this.cap();
+    return money(sum === null || cap === null ? 0 : Math.max(0, sum - cap));
+  }
+
+  /** The person's due-total in cents, capped; null when it is n/a. */
   private dueCentsOf(person: Person): number | null {
+    const sum = this.sumCentsOf(person);
+    const cap = this.cap();
+    return sum === null || cap === null ? sum : Math.min(sum, cap);
+  }
+
+  /** The sum of the person's figures in cents, before the cap; null when it is n/a. */
+  private sumCentsOf(person: Person): number | null {
     let sum = 0;
     let any = false;
     for (const c of this.claimsOf(person.id)) {
@@ -798,6 +824,7 @@ export class People {
     this.clearRowError(person.id);
     this.editingId.set(person.id);
     this.editingVersion = person.version;
+    this.editorOpenings++;
     this.name.set(person.name);
     this.grade.set(this.gradeNow(person));
     this.gradeFrom.set('');
@@ -824,6 +851,7 @@ export class People {
       return;
     }
     const id = this.editingId();
+    const opening = this.editorOpenings;
     this.submitting = true;
     try {
       if (id === null) {
@@ -834,7 +862,13 @@ export class People {
           ...fields,
           gradeFrom: this.gradeFrom() || null,
         });
-        if (this.sheet() === sheet) this.put(saved);
+        if (this.sheet() !== sheet) return;
+        this.put(saved);
+        if (this.editorOpenings !== opening) {
+          // The editor was opened again while the save waited: keep it, from the version just saved.
+          if (this.editingId() === saved.id) this.editingVersion = saved.version;
+          return;
+        }
       }
       if (this.sheet() === sheet) this.reset();
     } catch (e) {
@@ -922,6 +956,7 @@ export class People {
       ]);
       if (this.sheet() === sheet) {
         this.floor.set(cents(settings.floor));
+        this.cap.set(settings.cap === null ? null : cents(settings.cap));
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.rates.set(rates);

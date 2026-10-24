@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
- * live due can be, and its terms, how many days after its date a claim is due by (each grade may have its own
+ * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many days after its date a claim is due by (each grade may have its own
  * terms in their place), and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
@@ -95,6 +95,24 @@ public class SettingsService {
         sheet.setFloor(floor);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=floor", "value=" + floor.toPlainString());
+        rollup.recordSince(sheetId, by, before);
+        return sheet;
+    }
+
+    /** The sheet's cap, the most a person's due-total can be; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getCap();
+    }
+
+    /** Set the sheet's cap; null removes it. The due-totals, and so the figures, follow it. */
+    @Transactional
+    public Sheet setCap(String sheetId, String by, BigDecimal cap) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setCap(cap);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=cap", "value=" + (cap == null ? "" : cap.toPlainString()));
         rollup.recordSince(sheetId, by, before);
         return sheet;
     }

@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
  * counts (OPEN, PENDING or SETTLED, but not an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
  * each that does not count unbound;
  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
- * charges included (a claim with no figure is skipped). A late charge is never bound: it keeps following
+ * charges included (a claim with no figure is skipped), at most the sheet's cap. A late charge is never bound: it keeps following
  * the sheet's today.
  */
 @Service
@@ -59,22 +59,20 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         List<Claim> theirs = claims.lockBySheetIdAndPersonId(sheetId, personId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
             if (!RollupService.countsLive(claim, person)) {
                 claim.unbind();
                 continue;
             }
-            BigDecimal due = claimService.shownOf(claim, person);
             claim.bind(claimService.figureOf(claim, person));
-            if (due != null) total = total.add(due);
             counted++;
         }
         claims.flush();
-        // The person's due-total as shown: n/a when none of their claims has a figure and no rate applies.
+        // The person's due-total as shown (the sum of those claims' figures, at most the sheet's cap): n/a
+        // when none of their claims has a figure and no rate applies.
         String shown = before.people().get(personId).dueTotal();
-        BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : total;
+        BigDecimal dueTotal = shown.equals(RollupService.NONE) ? null : new BigDecimal(shown);
         Statement statement = statements.saveAndFlush(
                 new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counted));
         audit.change("STATEMENT", sheetId, user, "name=" + person.getName(),

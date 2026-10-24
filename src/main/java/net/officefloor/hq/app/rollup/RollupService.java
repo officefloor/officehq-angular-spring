@@ -26,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The figures each person on a sheet shows — what they have claimed (their OPEN, PENDING and SETTLED
  * claims, leaving out the OPEN and PENDING ones dated within one of their holds that no statement binds)
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
- * their grade is in force on the sheet's today) — and the sheet's totals of them. A change that moves
+ * their grade is in force on the sheet's today, and at most the sheet's cap when it has one) — and the sheet's
+ * totals of them. A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
  * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
  * {@link #recordSince} it after the change has recorded its own lines.
@@ -63,7 +64,9 @@ public class RollupService {
     /** The figures the sheet shows now. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Snapshot snapshot(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        BigDecimal cap = sheet == null ? null : sheet.getCap();
         List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
@@ -80,6 +83,7 @@ public class RollupService {
                 due = due.add(figure);
                 any = true;
             }
+            due = cappedOf(due, cap);
             boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             if (any || rated) dueTotal = dueTotal.add(due);
@@ -103,6 +107,11 @@ public class RollupService {
             audit.change("TOTALS", sheetId, user, "claimed-total=" + after.claimedTotal(),
                     "due-total=" + after.dueTotal());
         }
+    }
+
+    /** A due-total as shown: at most {@code cap}, when there is one. */
+    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap) {
+        return cap == null ? due : due.min(cap);
     }
 
     /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not OPEN or PENDING

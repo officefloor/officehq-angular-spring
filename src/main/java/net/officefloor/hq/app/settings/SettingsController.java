@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A sheet's settings: its roles, its clerk limit, its floor, its terms, its late percent and its policy date. The signed-in user's name travels in the
+/** A sheet's settings: its roles, its clerk limit, its floor, its cap, its terms, its late percent and its policy date. The signed-in user's name travels in the
  * {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -33,8 +33,8 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
-    public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
+    public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom) {
     }
 
@@ -56,6 +56,13 @@ public class SettingsController {
     public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String value) {
         BigDecimal floorValue() {
             return new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
+    /** A cap: 0.00 or more, with up to two decimals; blank or null for no cap. */
+    public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String value) {
+        BigDecimal capValue() {
+            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
         }
     }
 
@@ -104,7 +111,8 @@ public class SettingsController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
-        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
+        return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
+                text(service.cap(sheet)), service.terms(sheet),
                 service.gradeTerms(sheet),
                 text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList(),
                 service.periodNumberingFrom(sheet));
@@ -116,6 +124,15 @@ public class SettingsController {
             @RequestBody @Valid ClerkLimitRequest request) {
         String sheet = sheetId.trim();
         service.setClerkLimit(sheet, user.trim(), request.limitValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/cap")
+    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CapRequest request) {
+        String sheet = sheetId.trim();
+        service.setCap(sheet, user.trim(), request.capValue());
         return get(sheet, user);
     }
 

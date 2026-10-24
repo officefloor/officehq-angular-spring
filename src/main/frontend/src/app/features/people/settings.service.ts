@@ -25,6 +25,8 @@ export interface SheetSettings {
   clerkLimit: string | null;
   /** The least a claim's live due can be, with two decimals. */
   floor: string;
+  /** The most a person's due-total can be, with two decimals; null when there is no cap. */
+  cap: string | null;
   /** How many days after its date a claim is due by. */
   terms: number;
   /** The grades given terms of their own, in days, by grade; a grade not in it uses the sheet's terms. */
@@ -41,7 +43,7 @@ export interface SheetSettings {
   periodNumberingFrom: string | null;
 }
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -67,6 +69,13 @@ export class SettingsService {
   setFloor(sheet: string, value: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/floor`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value removes the cap. */
+  setCap(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/cap`, { value }, { headers: this.session.headers() }),
     );
   }
 
