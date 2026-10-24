@@ -1,0 +1,179 @@
+diff --git a/src/main/frontend/src/app/features/people/periods.service.ts b/src/main/frontend/src/app/features/people/periods.service.ts
+index 8afdf9c2..cabda600 100644
+--- a/src/main/frontend/src/app/features/people/periods.service.ts
++++ b/src/main/frontend/src/app/features/people/periods.service.ts
+@@ -76,6 +76,14 @@ export class PeriodsService {
+     );
+   }
+ 
++  /** Make the four calendar quarters of the year, named yyyy-Q1 to yyyy-Q4, leaving out a quarter whose
++   *  name is taken or whose days overlap a period: those made. */
++  generateQuarters(sheet: string, year: string): Promise<Period[]> {
++    return firstValueFrom(
++      this.http.post<Period[]>(`${this.url(sheet)}/generate-quarters`, { year }, { headers: this.session.headers() }),
++    );
++  }
++
+   /** Close the period, fixing its due-total now. */
+   close(sheet: string, id: number): Promise<Period> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/periods.ts b/src/main/frontend/src/app/features/people/periods.ts
+index 405bec42..ea088c1d 100644
+--- a/src/main/frontend/src/app/features/people/periods.ts
++++ b/src/main/frontend/src/app/features/people/periods.ts
+@@ -12,7 +12,7 @@ const YEAR = /^\d{4}$/;
+ // it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
+ // that close, soft-close and reopen it, whether a steward has locked it (a locked period cannot be reopened) and the buttons that
+ // lock and unlock it, and the
+-// form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
++// form that adds a period. Monthly periods are generated between two dates, or for a fiscal year; quarterly ones for a calendar year.
+ @Component({
+   selector: 'app-periods',
+   imports: [FigurePipe],
+@@ -88,6 +88,18 @@ const YEAR = /^\d{4}$/;
+         <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">
+           Generate fiscal year
+         </button>
++        <label for="period-generate-quarters-year">Quarters of year</label>
++        <input
++          id="period-generate-quarters-year"
++          data-testid="period-generate-quarters-year"
++          inputmode="numeric"
++          placeholder="YYYY"
++          [value]="generateQuartersYear()"
++          (input)="generateQuartersYear.set(value($event)); generateError.set(null)"
++        />
++        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()">
++          Generate quarters
++        </button>
+         @if (generateError(); as message) {
+           <p role="alert" class="error" data-testid="period-generate-error">{{ (message) | figure }}</p>
+         }
+@@ -248,6 +260,7 @@ export class Periods {
+   protected readonly generateFrom = signal('');
+   protected readonly generateTo = signal('');
+   protected readonly generateFyYear = signal('');
++  protected readonly generateQuartersYear = signal('');
+   /** How many periods the last generate made; null while one runs or before the first. */
+   protected readonly generated = signal<number | null>(null);
+   protected readonly generateError = signal<string | null>(null);
+@@ -470,6 +483,33 @@ export class Periods {
+     }
+   }
+ 
++  /** Generate the four calendar quarters of the year typed, showing how many were made; a year not
++   *  typed as four digits is refused with an error. */
++  protected async generateQuarters(): Promise<void> {
++    if (this.generating) return;
++    this.generateError.set(null);
++    this.generated.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const year = this.generateQuartersYear().trim();
++    if (!YEAR.test(year)) {
++      this.generateError.set('Type the year as four digits, YYYY.');
++      return;
++    }
++    this.generating = true;
++    try {
++      const made = await this.service.generateQuarters(sheet, year);
++      if (this.session.sheetId() !== sheet) return;
++      for (const period of made) this.added.emit(period);
++      this.generated.set(made.length);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.generateError.set('That year\'s quarters could not be generated.');
++    } finally {
++      this.generating = false;
++    }
++  }
++
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.submitting) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 193ee478..fa75f920 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -78,6 +78,13 @@ public class PeriodController {
+         }
+     }
+ 
++    /** A calendar year: four digits. */
++    public record GenerateQuartersRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
++        int yearValue() {
++            return Integer.parseInt(year.trim());
++        }
++    }
++
+     /** The pasted lines of {@code name,period,amount}. */
+     public record OpeningImportRequest(@NotNull @Size(max = 200_000) String text) {
+     }
+@@ -134,6 +141,15 @@ public class PeriodController {
+                 .map(PeriodView::of).toList();
+     }
+ 
++    /** Generate the calendar year's four quarterly periods: the periods made, in order. */
++    @PostMapping("/generate-quarters")
++    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid GenerateQuartersRequest request) {
++        return service.generateQuarters(sheetId.trim(), user.trim(), request.yearValue()).stream()
++                .map(PeriodView::of).toList();
++    }
++
+     @PostMapping("/{periodId}/close")
+     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long periodId,
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index be143c57..a0ddff48 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -132,6 +132,31 @@ public class PeriodService {
+         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+     }
+ 
++    /** Make the four calendar quarters of {@code year}, named yyyy-Q1 to yyyy-Q4, in order, each as
++     * {@link #add} would add it; a quarter whose name is already a period's or whose days overlap a
++     * period on the sheet is left out. */
++    @Transactional
++    public List<Period> generateQuarters(String sheetId, String user, int year) {
++        if (!sheets.existsById(sheetId)) {
++            throw new SheetNotFoundException();
++        }
++        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
++        List<Period> made = new ArrayList<>();
++        for (int quarter = 1; quarter <= 4; quarter++) {
++            String name = year + "-Q" + quarter;
++            LocalDate first = YearMonth.of(year, quarter * 3 - 2).atDay(1);
++            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
++            String key = Period.keyOf(name);
++            if (existing.stream().anyMatch(p -> Period.keyOf(p.getName()).equals(key) || p.overlaps(first, last))) {
++                continue;
++            }
++            Period period = add(sheetId, user, name, first, last);
++            existing.add(period);
++            made.add(period);
++        }
++        return made;
++    }
++
+     /** Close the period, fixing its due-total and each person's carried figure into it now (afresh when it was soft-closed); refused when the
+      * user's role may not close (see {@link SettingsService#allowed}) or it is already closed, not
+      * only soft-closed. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 2037d4bc..d17d9528 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -146,7 +146,10 @@ public class PersonService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate today = sheetService.today(sheetId);
+         person.setName(name);
+-        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
++        // A grade left as it is today, with no from-date, adds no dated grade.
++        if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
++            person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
++        }
+         // The terms are recorded when the save moves the terms shown, those in force today.
+         Integer termsBefore = person.termsOn(today);
+         if (termsFrom == null) {
