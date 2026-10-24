@@ -1,0 +1,392 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index 386f2067..d55734bf 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -10,8 +10,8 @@ export interface Claim {
+   amount: string;
+   /** YYYY-MM-DD */
+   date: string;
+-  /** The date (YYYY-MM-DD) the claim is due by, fixed when it was added: its date plus the terms of
+-   *  its person's grade in force then (the sheet's terms when the grade has none of its own). */
++  /** The date (YYYY-MM-DD) the claim is due by: the terms-th business day after its date when it was
++   *  added, with the terms fixed then, skipping weekends and the sheet's holidays now. */
+   dueBy: string;
+   note: string;
+   status: ClaimStatus;
+diff --git a/src/main/frontend/src/app/features/people/holidays.service.ts b/src/main/frontend/src/app/features/people/holidays.service.ts
+index ad3348b2..73bab7af 100644
+--- a/src/main/frontend/src/app/features/people/holidays.service.ts
++++ b/src/main/frontend/src/app/features/people/holidays.service.ts
+@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+-/** A holiday on the sheet (YYYY-MM-DD): a claim added is not due by one, but by the next day that is not. */
++/** A holiday on the sheet (YYYY-MM-DD): not a business day, so no claim's terms count it and none is due by it. */
+ export interface Holiday {
+   id: number;
+   date: string;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bdfad72a..be224685 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -101,7 +101,7 @@ import { Summary, SummaryPerson } from './summary';
+           [value]="gradeFrom()"
+           (input)="gradeFrom.set(value($event)); error.set(null)"
+         />
+-        <label for="person-form-terms">Terms (days)</label>
++        <label for="person-form-terms">Terms (business days)</label>
+         <input
+           id="person-form-terms"
+           inputmode="numeric"
+@@ -1258,7 +1258,7 @@ export class People {
+     if (!/^\d{0,4}$/.test(fields.terms)) {
+       // Nothing is saved: the editor closes, so the form is ready for the next person.
+       this.reset();
+-      this.error.set('Terms are a whole number of days, or blank for none.');
++      this.error.set('Terms are a whole number of business days, or blank for none.');
+       return;
+     }
+     const id = this.editingId();
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index ba851d0c..810b5eb2 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -150,7 +150,7 @@ const STANDING: Record<PermAction, string> = {
+             (none)
+           }
+         </span>
+-        <label for="setting-terms">Terms (days)</label>
++        <label for="setting-terms">Terms (business days)</label>
+         <input
+           id="setting-terms"
+           data-testid="setting-terms"
+@@ -169,7 +169,7 @@ const STANDING: Record<PermAction, string> = {
+         />
+         <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
+         @for (g of grades; track g) {
+-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
++          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
+           <input
+             [id]="'setting-terms-' + g"
+             [attr.data-testid]="'setting-terms-' + g"
+@@ -635,13 +635,13 @@ export class Settings {
+       return;
+     }
+     if (saveTerms && !TERMS.test(terms)) {
+-      this.settingsError.set('Type terms as a whole number of days, 0 or more.');
++      this.settingsError.set('Type terms as a whole number of business days, 0 or more.');
+       return;
+     }
+     const badGrade = gradeTerms.find(({ text }) => text !== '' && !TERMS.test(text));
+     if (badGrade) {
+       this.settingsError.set(
+-        `Type terms for grade ${badGrade.grade} as a whole number of days, 0 or more, or leave them blank for the sheet's terms.`,
++        `Type terms for grade ${badGrade.grade} as a whole number of business days, 0 or more, or leave them blank for the sheet's terms.`,
+       );
+       return;
+     }
+diff --git a/src/main/java/db/migration/V56__claim_due_by_business_days.java b/src/main/java/db/migration/V56__claim_due_by_business_days.java
+new file mode 100644
+index 00000000..574b0cc2
+--- /dev/null
++++ b/src/main/java/db/migration/V56__claim_due_by_business_days.java
+@@ -0,0 +1,49 @@
++package db.migration;
++
++import java.sql.Date;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/** Works the due-by of every claim already kept out again in business days: the terms-th day after its
++ * due-from that is not a Saturday, a Sunday or a holiday on its sheet. */
++public class V56__claim_due_by_business_days extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Map<String, Set<LocalDate>> off = new HashMap<>();
++        try (PreparedStatement select = context.getConnection()
++                .prepareStatement("SELECT sheet_id, holiday_date FROM sheet_holiday");
++                ResultSet rows = select.executeQuery()) {
++            while (rows.next()) {
++                off.computeIfAbsent(rows.getString(1), sheet -> new HashSet<>()).add(rows.getDate(2).toLocalDate());
++            }
++        }
++        try (PreparedStatement select = context.getConnection()
++                .prepareStatement("SELECT id, sheet_id, due_from, terms FROM claim");
++                PreparedStatement update = context.getConnection()
++                        .prepareStatement("UPDATE claim SET due_by = ? WHERE id = ?");
++                ResultSet rows = select.executeQuery()) {
++            while (rows.next()) {
++                Set<LocalDate> holidays = off.getOrDefault(rows.getString(2), Set.of());
++                LocalDate on = rows.getDate(3).toLocalDate();
++                for (int counted = 0, terms = rows.getInt(4); counted < terms;) {
++                    on = on.plusDays(1);
++                    DayOfWeek day = on.getDayOfWeek();
++                    if (day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !holidays.contains(on)) counted++;
++                }
++                update.setDate(1, Date.valueOf(on));
++                update.setLong(2, rows.getLong(1));
++                update.addBatch();
++            }
++            update.executeBatch();
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 55fdce93..b53b862e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -34,12 +34,22 @@ public class Claim {
+     @Column(name = "claim_date", nullable = false)
+     private LocalDate date;
+ 
+-    /** The date the claim is due by, fixed when it is added: its date plus the terms of its person's
+-     * grade in force on that date, moved past the sheet's holidays then to the next day that is not one.
+-     * Later changes to the terms, to its date or to the holidays leave it as it is. */
++    /** The date the claim is due by: the terms-th business day after its due-from (see
++     * {@link net.officefloor.hq.app.holiday.HolidayService#dueBy}), skipping weekends and the sheet's
++     * holidays now; worked out again whenever the sheet's holidays change. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
++    /** The date the claim's due-by counts from: its date when it was added. Later changes to its date
++     * leave it as it is. */
++    @Column(name = "due_from", nullable = false)
++    private LocalDate dueFrom;
++
++    /** The terms, in business days, the claim was fixed with when it was added: those of its person, else
++     * of their grade in force on its date, else the sheet's then. Later changes to the terms leave it. */
++    @Column(name = "terms", nullable = false)
++    private int terms;
++
+     @Column(name = "note", nullable = false)
+     private String note;
+ 
+@@ -174,6 +184,20 @@ public class Claim {
+         this.dueBy = dueBy;
+     }
+ 
++    public LocalDate getDueFrom() {
++        return dueFrom;
++    }
++
++    public int getTerms() {
++        return terms;
++    }
++
++    /** Fix the date the claim's due-by counts from and the terms it is due by. */
++    public void fixTerms(LocalDate dueFrom, int terms) {
++        this.dueFrom = dueFrom;
++        this.terms = terms;
++    }
++
+     public String getNote() {
+         return note;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7d8d2059..e8ac2874 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -25,8 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The claims people on each sheet make. A claim left without a date is dated the sheet's entry date,
+  * or its today when that is off. A claim's
+- * due-by is fixed when it is added, from the terms of its person's grade in force on its date, moved
+- * past the holidays on the sheet then to the next day that is not one, and the
++ * terms are fixed when it is added, from those of its person's grade in force on its date, and its due-by
++ * is the terms-th business day after that date, skipping weekends and the holidays on the sheet now; the
+  * claim belongs to the period containing that due-by (not its date). Only a DRAFT claim can be edited.
+  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
+  * change status; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
+@@ -81,11 +81,13 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
+-        LocalDate dueBy = dueByOf(sheetId, person, dated);
++        int terms = termsOf(sheetId, person, dated);
++        LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
+         refuseClosed(sheetId, dueBy);
+         person.requireClaimable(dated);
+         refuseBadCorrection(sheetId, personId, amount, corrects);
+         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
++        claim.fixTerms(dated, terms);
+         claim.setDueBy(dueBy);
+         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
+         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
+@@ -299,7 +301,9 @@ public class ClaimService {
+         claim.setAmount(claim.getAmount().subtract(amount));
+         claim.unbind();
+         Claim split = new Claim(sheetId, person.getId(), amount, claim.getDate(), claim.getNote(), null);
+-        split.setDueBy(dueByOf(sheetId, person, claim.getDate()));
++        int terms = termsOf(sheetId, person, claim.getDate());
++        split.fixTerms(claim.getDate(), terms);
++        split.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
+         refuseClosed(sheetId, split.getDueBy());
+         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
+         split.setListed(sheets.nextInSequence(sheetId, "listed"));
+@@ -549,12 +553,6 @@ public class ClaimService {
+         return note == null ? "" : note.trim();
+     }
+ 
+-    /** The due-by fixed for a claim of the person dated {@code date} added now: its date plus its terms,
+-     * moved past the holidays on the sheet now to the next day that is not one. */
+-    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
+-        return holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheetId, person, date)));
+-    }
+-
+     /** The terms a claim of the person dated {@code date} is due by: the person's own terms, else those
+      * of their grade in force on that date, else the sheet's then. */
+     private int termsOf(String sheetId, Person person, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index 78e892be..2dff76e6 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -1,27 +1,37 @@
+ package net.officefloor.hq.app.holiday;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** The holidays on a sheet. A claim's due-by, when it is fixed as the claim is added, is moved past the
+- * holidays on the sheet then (see {@link #pastHolidays}); a holiday added later leaves it as it is. */
++/** The holidays on a sheet. A claim's due-by is the terms-th business day after the date it counts from,
++ * skipping every Saturday, Sunday and holiday on the sheet (see {@link #dueBy}); when a holiday is added
++ * the due-by of every claim on the sheet is worked out again with the holidays then. */
+ @Service
+ public class HolidayService {
+ 
+     private final SheetRepository sheets;
+     private final SheetHolidayRepository holidays;
++    private final ClaimRepository claims;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, Audit audit) {
++    public HolidayService(SheetRepository sheets, SheetHolidayRepository holidays, ClaimRepository claims,
++            RollupService rollup, Audit audit) {
+         this.sheets = sheets;
+         this.holidays = holidays;
++        this.claims = claims;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -36,18 +46,43 @@ public class HolidayService {
+     public SheetHoliday add(String sheetId, String by, LocalDate date) {
+         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+         if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new HolidayTakenException();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetHoliday added = holidays.saveAndFlush(new SheetHoliday(sheetId, date));
++        Set<LocalDate> off = offOn(sheetId);
++        for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
++            LocalDate dueBy = dueBy(off, claim.getDueFrom(), claim.getTerms());
++            if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
++        }
++        claims.flush();
+         audit.change("HOLIDAY_ADDED", sheetId, by, "date=" + date);
++        rollup.recordSince(sheetId, by, before);
+         return added;
+     }
+ 
+-    /** {@code date} when it is not a holiday on the sheet, else the next day after it that is not. */
++    /** The due-by of a claim counting from {@code from} with {@code terms}: the terms-th business day
++     * after it, counting forward from the day after and skipping every Saturday, Sunday and holiday on
++     * the sheet; with terms of 0, {@code from} itself. */
+     @Transactional(readOnly = true)
+-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
+-        Set<LocalDate> off = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
++    public LocalDate dueBy(String sheetId, LocalDate from, int terms) {
++        return dueBy(offOn(sheetId), from, terms);
++    }
++
++    private Set<LocalDate> offOn(String sheetId) {
++        return holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(SheetHoliday::getDate)
+                 .collect(Collectors.toSet());
+-        LocalDate on = date;
+-        while (off.contains(on)) on = on.plusDays(1);
++    }
++
++    private static LocalDate dueBy(Set<LocalDate> off, LocalDate from, int terms) {
++        LocalDate on = from;
++        for (int counted = 0; counted < terms;) {
++            on = on.plusDays(1);
++            if (isBusinessDay(off, on)) counted++;
++        }
+         return on;
+     }
++
++    private static boolean isBusinessDay(Set<LocalDate> off, LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !off.contains(date);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index b34f0d7a..cc4b3f95 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -116,7 +116,7 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** Terms: a whole number of days, 0 or more. */
++    /** Terms: a whole number of business days, 0 or more. */
+     public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value,
+             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+         int termsValue() {
+@@ -128,7 +128,7 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** A grade's own terms: a whole number of days, 0 or more; blank or null to use the sheet's terms. */
++    /** A grade's own terms: a whole number of business days, 0 or more; blank or null to use the sheet's terms. */
+     public record GradeTermsRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+         Integer termsValue() {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 8f7dbacc..c448bb8a 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
+  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
+- * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many days after its date a claim is due by (each grade may have its own
++ * live due can be, and its cap, the most a person's due-total can be (none when null), and its terms, how many business days after its date a claim is due by (each grade may have its own
+  * terms in their place), and its late percent, the
+  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
+  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
+diff --git a/src/main/resources/db/migration/V55__claim_business_day_terms.sql b/src/main/resources/db/migration/V55__claim_business_day_terms.sql
+new file mode 100644
+index 00000000..757d9a60
+--- /dev/null
++++ b/src/main/resources/db/migration/V55__claim_business_day_terms.sql
+@@ -0,0 +1,9 @@
++-- A claim's terms now count business days. Each claim keeps the terms it was fixed with and the date
++-- its due-by counts from (its date when it was added); its due-by is the terms-th business day after
++-- that date, skipping weekends and the sheet's holidays. The claims already kept count from their date,
++-- with the days their due-by was fixed after it; V56 works their due-by out again in business days.
++ALTER TABLE claim ADD COLUMN due_from DATE;
++ALTER TABLE claim ADD COLUMN terms INTEGER;
++UPDATE claim SET due_from = claim_date, terms = GREATEST(0, DATEDIFF(DAY, claim_date, due_by));
++ALTER TABLE claim ALTER COLUMN due_from SET NOT NULL;
++ALTER TABLE claim ALTER COLUMN terms SET NOT NULL;
