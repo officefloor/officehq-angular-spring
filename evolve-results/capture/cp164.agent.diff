@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 125478df..2b5b6e91 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -1004,7 +1004,7 @@ export class Claims {
+           : status === 409
+           ? 'Only a draft claim can be edited; void it and add a new one instead.'
+           : status === 400
+-          ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
++          ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects, for no more than what remains of it.'
+           : status === 422
+           ? 'A claim cannot be dated after the person retired.'
+           : status === 417
+@@ -1187,7 +1187,7 @@ export class Claims {
+           : e instanceof HttpErrorResponse && e.status === 422
+             ? 'A claim cannot be dated after the person retired.'
+           : e instanceof HttpErrorResponse && e.status === 400
+-            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects (and only a correction names one).'
++            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects, for no more than what remains of it (and only a correction names one).'
+           : fields.ref !== null && e instanceof HttpErrorResponse && e.status === 409
+             ? id === null
+               ? 'That reference is already used on this sheet.'
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index ce93489d..36203a8e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -22,6 +22,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     /** The person's claim with the number. */
+     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
+ 
++    /** The person's corrections of the claim with the number. */
++    List<Claim> findBySheetIdAndPersonIdAndCorrects(String sheetId, Long personId, String corrects);
++
+     /** The sheet's claim with the reference (as compared). */
+     Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3bd4cffc..1adff314 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -33,7 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * No claim whose due-by falls inside a closed period (not only soft-closed) can be added, edited or
+  * change status, nor be edited to a date whose due-by, with its terms, would; one added with its due-by inside a soft-closed period is a late entry, and none can be added or edited to a date after its person's retirement date. A claim with a
+  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
+- * person; a claim that is not a correction names none. A DRAFT claim may have lines (see {@link ClaimLine}):
++ * person, and for no more than what remains of it (its amount less the corrections already made against
++ * it, VOID and DELETED ones left out); a claim that is not a correction names none. A DRAFT claim may have lines (see {@link ClaimLine}):
+  * then its amount is what they add up to, and an edit to any other amount is refused. */
+ @Service
+ public class ClaimService {
+@@ -194,7 +195,7 @@ public class ClaimService {
+         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
+         refuseClosed(sheetId, dueBy);
+         person.requireClaimable(dated);
+-        refuseBadCorrection(sheetId, personId, amount, corrects);
++        refuseBadCorrection(sheetId, personId, null, amount, corrects);
+         refuseRefTaken(sheetId, null, ref);
+         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+         claim.setRef(ref);
+@@ -227,7 +228,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         person.requireClaimable(dated);
+-        refuseBadCorrection(sheetId, person.getId(), amount, corrects);
++        refuseBadCorrection(sheetId, person.getId(), claim.getId(), amount, corrects);
+         refuseRefTaken(sheetId, claim.getId(), ref);
+         List<ClaimLine> lined = lines.findByClaimIdInOrderByIdAsc(List.of(claim.getId()));
+         if (!lined.isEmpty() && ClaimLine.totalOf(lined).compareTo(amount) != 0) throw new ClaimLinedAmountException();
+@@ -774,16 +775,26 @@ public class ClaimService {
+     }
+ 
+     /** Refuse a correction (a negative {@code amount}) that does not name, by number, a SETTLED claim of
+-     * the person, and a claim that names one without being a correction. */
+-    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
++     * the person, or that exceeds what remains of it: its amount less the corrections already made
++     * against it (other than {@code claimId}, the one being edited; VOID and DELETED ones left out); and
++     * a claim that names one without being a correction. */
++    private void refuseBadCorrection(String sheetId, Long personId, Long claimId, BigDecimal amount,
++            String corrects) {
+         if (amount.signum() >= 0) {
+             if (corrects != null) throw new ClaimCorrectionException();
+             return;
+         }
+         if (corrects == null) throw new ClaimCorrectionException();
+-        claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+-                .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
++        Claim corrected = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
++                .filter(target -> target.getStatus() == ClaimStatus.SETTLED)
+                 .orElseThrow(ClaimCorrectionException::new);
++        BigDecimal remains = corrected.getAmount();
++        for (Claim made : claims.findBySheetIdAndPersonIdAndCorrects(sheetId, personId, corrects)) {
++            if (made.getId().equals(claimId) || made.getStatus() == ClaimStatus.VOID
++                    || made.getStatus() == ClaimStatus.DELETED) continue;
++            remains = remains.add(made.getAmount());
++        }
++        if (amount.negate().compareTo(remains) > 0) throw new ClaimCorrectionException();
+     }
+ 
+     /** Refuse the external reference {@code ref} when a claim on the sheet other than {@code claimId} has
