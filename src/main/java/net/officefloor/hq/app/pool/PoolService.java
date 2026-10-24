@@ -23,14 +23,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The pools on a sheet and their members: people, or other pools. A pool's total share adds up its members'
- * shares, a retired person's (one with a retirement date set, whatever the date) counting as 0.00; the pool is
+ * shares, a retired person's (one with a retirement date set, whatever the date) counted as given; the pool is
  * balanced when the total is exactly 100.00. A pool that is a member of none has the sheet's pot; a pool that is
  * a member of another has its cut in that pool as its pot (none when that pool has no cuts). Each member of a
  * balanced pool with a pot cuts the pot times their share over the shares of the members with a cut added up,
  * rounded half to even to two decimals (a retired person, or one with a hold in force on the sheet's today, 0.00),
  * and the remainder of the pot over the cuts goes to the member with a cut with the largest share, the earliest
  * added on a tie, so the cuts add up to the pot exactly; a hold changes neither the total share nor the balance; an unbalanced pool, or one with no pot, has no
- * cuts. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
+ * cuts, nor has a pool whose every member is retired. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
  * at most three deep. A membership may carry a from-date and a to-date (each optional, both included); a member
  * whose dates do not include the sheet's today is left out entirely: not in the total share, not in the balance,
  * and no cut. */
@@ -95,7 +95,7 @@ public class PoolService {
         for (SheetPool pool : all) {
             BigDecimal total = BigDecimal.ZERO.setScale(2);
             for (SheetPoolMember m : byPool.getOrDefault(pool.getId(), List.of())) {
-                if (!retired(m, byId) && m.isOn(today)) total = total.add(m.getShare());
+                if (m.isOn(today)) total = total.add(m.getShare());
             }
             totals.put(pool.getId(), total.setScale(2, RoundingMode.UNNECESSARY));
         }
@@ -156,9 +156,10 @@ public class PoolService {
     /** The cuts of a balanced pool's members, in their order: the pot times each share over the shares of the
      * members with a cut, half to even to two decimals (a retired or held person's 0.00), the remainder going to the
      * largest share with a cut, the earliest added on a tie; a member whose dates leave out {@code today} has
-     * none (null). */
+     * none (null); null when every member is retired. */
     private static List<BigDecimal> cuts(BigDecimal pot, List<SheetPoolMember> kept, Map<Long, Person> byId,
             LocalDate today) {
+        if (kept.stream().filter(m -> m.isOn(today)).allMatch(m -> retired(m, byId))) return null;
         BigDecimal shares = BigDecimal.ZERO.setScale(2);
         for (SheetPoolMember m : kept) {
             if (m.isOn(today) && !retired(m, byId) && !held(m, byId, today)) shares = shares.add(m.getShare());

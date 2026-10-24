@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 /** A member of a pool: a person on the sheet or another pool (the other id null), its share percent and
- *  its cut of the pool's pot (two decimals; the cut null when the pool is unbalanced or has no pot, or the
+ *  its cut of the pool's pot (two decimals; the cut null when the pool is unbalanced, has no pot or only retired members, or the
  *  member's dates leave out the sheet's today). A pool
  *  that is a member of none has the sheet's pot; one that is a member of another has its cut there. */
 export interface PoolMember {
