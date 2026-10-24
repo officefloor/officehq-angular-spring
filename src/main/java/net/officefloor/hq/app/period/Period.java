@@ -18,9 +18,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /** A sheet's period: a name, unique on the sheet without regard to case, and the dates it runs from
- * and to, both inclusive. A claim belongs to the period whose dates contain its date. Once closed, its
+ * and to, both inclusive. A claim belongs to the period whose dates contain its due-by. Once closed, its
  * due-total, and each person's due-total for it, are the ones fixed when it was closed, until it is
- * reopened. A soft-closed period is closed and its figures fixed the same way, but claims dated in it can
+ * reopened. A soft-closed period is closed and its figures fixed the same way, but claims due by a date in it can
  * still change. */
 @Entity
 @Table(name = "period")

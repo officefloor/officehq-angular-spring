@@ -326,9 +326,9 @@ export class Claims {
     return deferred(claim, this.session.today());
   }
 
-  /** The name of the period whose dates contain the claim's date; empty when none does. */
+  /** The name of the period whose dates contain the claim's due-by; empty when none does. */
   protected periodOf(claim: Claim): string {
-    return periodOn(this.periods(), claim.date)?.name ?? '';
+    return periodOn(this.periods(), claim.dueBy)?.name ?? '';
   }
 
   constructor() {
@@ -361,7 +361,7 @@ export class Claims {
       refuse('Only a draft claim can be edited; void it and add a new one instead.');
       return;
     }
-    const period = periodOn(this.periods(), claim.date);
+    const period = periodOn(this.periods(), claim.dueBy);
     if (period?.closed && !period.soft) {
       refuse('That claim is dated in a closed period.');
       return;

@@ -566,7 +566,7 @@ export class People {
   /** The sheet's periods. */
   protected readonly periods = signal<Period[]>([]);
   /** Each person's due-total for each period, in cents, by person id and period name. While a period
-   *  is open it is what is due on their claims dated in it that counted at the end of its last day,
+   *  is open it is what is due on their claims whose due-by falls in it that counted at the end of its last day,
    *  as each claim shows it now (a claim with nothing due is skipped); once it is closed it is the figure fixed then (0 for a person
    *  added later). */
   protected readonly personPeriodCents = computed(() => {
@@ -577,7 +577,7 @@ export class People {
         sums[p.name] = p.closed ? cents(p.closedPersonTotals[person.id] ?? '0.00') : 0;
       }
       for (const c of this.claimsOf(person.id)) {
-        const period = periodOn(this.periods(), c.date);
+        const period = periodOn(this.periods(), c.dueBy);
         if (period === null || period.closed || !this.countsAtEnd(c, person, period.to)) continue;
         sums[period.name] += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
       }

@@ -189,7 +189,7 @@ public class PeriodService {
     }
 
     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
-     * what is due on their claims dated in it that counted by the status each had at the end of the
+     * what is due on their claims whose due-by falls in it that counted by the status each had at the end of the
      * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
      * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds, while the claim is still OPEN or PENDING now). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
@@ -199,7 +199,7 @@ public class PeriodService {
         for (Long id : byId.keySet()) totals.put(id, BigDecimal.ZERO.setScale(2));
         LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
         List<Claim> dated = claims.findBySheetIdOrderByListedDescIdDesc(period.getSheetId()).stream()
-                .filter(claim -> period.overlaps(claim.getDate(), claim.getDate())).toList();
+                .filter(claim -> period.overlaps(claim.getDueBy(), claim.getDueBy())).toList();
         Map<Long, List<ClaimLog>> logsOf = dated.isEmpty() ? Map.of()
                 : logs.findByClaimIdInOrderByIdAsc(dated.stream().map(Claim::getId).toList()).stream()
                         .collect(Collectors.groupingBy(ClaimLog::getClaimId));
