@@ -74,11 +74,13 @@ export interface LineFields {
  *  until a steward approves it (SETTLED) or rejects it (back to OPEN). A DRAFT, OPEN or PENDING claim
  *  can be VOID, and a SETTLED one by a steward within 7 days of its settlement (it keeps its settled
  *  figure, which leaves every total). A DRAFT can be DELETED (it counts nowhere), and restored to a
- *  DRAFT on the same sheet-today it was deleted. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  DRAFT on the same sheet-today it was deleted. An open of a claim whose due is above the review
+ *  threshold in force on its date leaves it in REVIEW (counted nowhere, no number yet) until a steward
+ *  reviews it (OPEN); a REVIEW claim can be voided. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A status change asked of a claim. */
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'review' | 'settle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
 /** Whether a claim in this status counts toward what is claimed and due. */
 export function counts(claim: Claim): boolean {
@@ -250,7 +252,7 @@ export class ClaimsService {
 
   /** Change the claim's status; refused (409) when its status does not allow the change, (403) when
    *  the user who opened it asks to settle or approve it or one who is not a steward asks to approve or
-   *  reject it, (400) when a reject gives no one-word reason, and (422) when a void gives no reason
+   *  reject it or review a REVIEW claim, (400) when a reject gives no one-word reason, and (422) when a void gives no reason
    *  from the sheet's list while it is not empty, and (410) when a restore is asked on a later
    *  sheet-today than the claim was deleted on. A reject's or void's reason travels with it. */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<Claim> {

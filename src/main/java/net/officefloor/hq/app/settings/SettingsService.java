@@ -330,6 +330,26 @@ public class SettingsService {
         record(sheetId, by, DatedSettings.NOTE_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from, false);
     }
 
+    /** The review threshold in force on the sheet's today; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThreshold(String sheetId) {
+        return dated.reviewThresholdOn(sheetId, today(sheetId));
+    }
+
+    /** The review threshold in force on {@code date}: a claim dated then whose due is above it goes to
+     * REVIEW when opened, until a steward reviews it; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThresholdOn(String sheetId, LocalDate date) {
+        return dated.reviewThresholdOn(sheetId, date);
+    }
+
+    /** Record the sheet's review threshold from {@code from} (the sheet's today when null); null records
+     * no threshold. */
+    @Transactional
+    public void setReviewThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
+        record(sheetId, by, DatedSettings.REVIEW_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from, false);
+    }
+
     /** Every value recorded for the dated setting {@code key}, oldest from-date first. */
     @Transactional(readOnly = true)
     public List<SheetSetting> history(String sheetId, String key) {

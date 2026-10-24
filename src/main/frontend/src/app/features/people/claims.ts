@@ -16,6 +16,7 @@ const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\S.{0,119}$/;
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
+  review: 'reviewed',
   settle: 'settled',
   approve: 'approved',
   reject: 'rejected',
@@ -444,6 +445,7 @@ export class Claims {
   protected readonly reassignTos = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
+    { action: 'review', label: 'Review' },
     { action: 'settle', label: 'Settle' },
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
@@ -627,7 +629,9 @@ export class Claims {
    *  who is not a steward or without a one-word reason, is refused with an error. A clerk's settle of
    *  a claim whose due is above the clerk limit leaves it PENDING for a steward. A settle or approve of a
    *  claim without proofs whose due is above the proof threshold in force on its date is refused, and so
-   *  is an open of a claim with an empty note whose due is above the note threshold in force then. */
+   *  is an open of a claim with an empty note whose due is above the note threshold in force then. An
+   *  open of a claim whose due is above the review threshold in force then leaves it in REVIEW, and only
+   *  a steward's review makes it OPEN. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(claim.id);
     const sheet = this.session.sheetId();
@@ -660,6 +664,8 @@ export class Claims {
             ? 'You last edited that claim, so another user must settle it.'
             : action === 'void' && claim.status === 'SETTLED'
             ? 'Only a steward can void a settled claim.'
+            : action === 'review'
+            ? 'Only a steward can review that claim.'
             : action === 'approve' || action === 'reject'
             ? `Only a steward${action === 'approve' ? ' who did not open or last edit that claim' : ''} can ${action} it.`
             : `Your role may not ${action} a claim on this sheet.`

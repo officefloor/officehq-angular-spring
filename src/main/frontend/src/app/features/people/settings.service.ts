@@ -84,6 +84,9 @@ export interface SheetSettings {
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
+  /** The due above which a claim goes to REVIEW when opened, with two decimals; null when there is
+   *  none. */
+  reviewThreshold: string | null;
   /** The date (YYYY-MM-DD) a claim added without a date is dated in place of the sheet's today;
    *  null when off. */
   entryDate: string | null;
@@ -194,6 +197,17 @@ export class SettingsService {
     return firstValueFrom(
       this.http.put<SheetSettings>(
         `${this.url(sheet)}/settings/note-threshold`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
+    );
+  }
+
+  /** A null value records no review threshold; a null from records it from the sheet's today. */
+  setReviewThreshold(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/review-threshold`,
         { value, from },
         { headers: this.session.headers() },
       ),

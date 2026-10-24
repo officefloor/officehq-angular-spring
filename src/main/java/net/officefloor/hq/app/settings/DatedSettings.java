@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
- * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no grade's own terms and no grade's grace days). A claim's floor, late
- * percent, terms, proof threshold and note threshold are those in force on its date; the clerk limit and the cap those on the sheet's
+ * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no review threshold, no grade's own terms and no grade's grace days). A claim's floor, late
+ * percent, terms, proof threshold, note threshold and review threshold are those in force on its date; the clerk limit and the cap those on the sheet's
  * today. */
 @Service
 public class DatedSettings {
@@ -25,6 +25,7 @@ public class DatedSettings {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     public static final String GRACE = "grace";
     public static final String ROUNDING = "rounding";
     public static final String HALF_UP = "half-up";
@@ -136,6 +137,12 @@ public class DatedSettings {
     @Transactional(readOnly = true)
     public BigDecimal noteThresholdOn(String sheetId, LocalDate date) {
         return valueOn(sheetId, NOTE_THRESHOLD, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The review threshold in force on the date; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThresholdOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, REVIEW_THRESHOLD, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The rounding mode recorded in force on the date, as text; null when there is none. */

@@ -286,6 +286,13 @@ public class ClaimController {
         return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
     }
 
+    @PostMapping("/claims/{claimId}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.review(sheetId.trim(), user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/approve")
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

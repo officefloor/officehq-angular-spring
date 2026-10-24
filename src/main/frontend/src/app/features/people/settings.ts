@@ -206,6 +206,29 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-review-threshold">Review threshold</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThresholdInput()"
+          (input)="reviewThresholdInput.set(value($event)); reviewThresholdChanged = true; settingsError.set(null)"
+          (keydown)="reviewThresholdChanged = true"
+        />
+        <label for="setting-review-threshold-from">Review threshold from</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          type="date"
+          [value]="reviewThresholdFrom()"
+          (input)="reviewThresholdFrom.set(value($event)); reviewThresholdChanged = true; settingsError.set(null)"
+        />
+        <span>
+          In force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span>
+          @if (reviewThreshold() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-terms">Terms (business days)</label>
         <input
           id="setting-terms"
@@ -529,6 +552,8 @@ export class Settings {
   protected readonly proofThreshold = signal<string | null>(null);
   /** The note threshold in force, with two decimals; null when there is none. */
   protected readonly noteThreshold = signal<string | null>(null);
+  /** The review threshold in force, with two decimals; null when there is none. */
+  protected readonly reviewThreshold = signal<string | null>(null);
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
   protected readonly grades = GRADES;
@@ -581,6 +606,7 @@ export class Settings {
   protected readonly roundingInput = signal('');
   protected readonly proofThresholdInput = signal('');
   protected readonly noteThresholdInput = signal('');
+  protected readonly reviewThresholdInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
@@ -601,6 +627,7 @@ export class Settings {
   protected readonly roundingFrom = signal('');
   protected readonly proofThresholdFrom = signal('');
   protected readonly noteThresholdFrom = signal('');
+  protected readonly reviewThresholdFrom = signal('');
   protected readonly termsFrom = signal('');
   protected readonly latePctFrom = signal('');
   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
@@ -615,6 +642,7 @@ export class Settings {
   protected roundingChanged = false;
   protected proofThresholdChanged = false;
   protected noteThresholdChanged = false;
+  protected reviewThresholdChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
   protected readonly gradeTermsChanged = new Set<Grade>();
@@ -662,6 +690,10 @@ export class Settings {
       this.noteThresholdInput.set('');
       this.noteThresholdChanged = false;
       this.noteThresholdFrom.set('');
+      this.reviewThreshold.set(null);
+      this.reviewThresholdInput.set('');
+      this.reviewThresholdChanged = false;
+      this.reviewThresholdFrom.set('');
       this.terms.set('');
       this.termsInput.set('');
       this.limitChanged = false;
@@ -800,6 +832,8 @@ export class Settings {
     const saveProofThreshold = this.proofThresholdChanged || proofThreshold !== (this.proofThreshold() ?? '');
     const noteThreshold = this.noteThresholdInput().trim();
     const saveNoteThreshold = this.noteThresholdChanged || noteThreshold !== (this.noteThreshold() ?? '');
+    const reviewThreshold = this.reviewThresholdInput().trim();
+    const saveReviewThreshold = this.reviewThresholdChanged || reviewThreshold !== (this.reviewThreshold() ?? '');
     const terms = this.termsInput().trim();
     const saveTerms = this.termsChanged || terms !== this.terms();
     const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
@@ -839,6 +873,7 @@ export class Settings {
     const roundingFrom = this.roundingFrom().trim();
     const proofThresholdFrom = this.proofThresholdFrom().trim();
     const noteThresholdFrom = this.noteThresholdFrom().trim();
+    const reviewThresholdFrom = this.reviewThresholdFrom().trim();
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom = { ...this.gradeTermsFrom() };
@@ -851,6 +886,7 @@ export class Settings {
       saveRounding ? roundingFrom : '',
       saveProofThreshold ? proofThresholdFrom : '',
       saveNoteThreshold ? noteThresholdFrom : '',
+      saveReviewThreshold ? reviewThresholdFrom : '',
       saveTerms ? termsFrom : '',
       saveLatePct ? latePctFrom : '',
       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
@@ -890,6 +926,10 @@ export class Settings {
     }
     if (saveNoteThreshold && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (saveReviewThreshold && reviewThreshold !== '' && !LIMIT.test(reviewThreshold)) {
+      this.settingsError.set('Type a review threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (saveTerms && !TERMS.test(terms)) {
@@ -1018,6 +1058,15 @@ export class Settings {
         }
         this.show(settings);
       }
+      if (saveReviewThreshold) {
+        const settings = await this.service.setReviewThreshold(sheet, reviewThreshold || null, reviewThresholdFrom || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.reviewThresholdInput().trim() === reviewThreshold && this.reviewThresholdFrom().trim() === reviewThresholdFrom) {
+          this.reviewThresholdChanged = false;
+          this.reviewThresholdFrom.set('');
+        }
+        this.show(settings);
+      }
       if (saveTerms) {
         const settings = await this.service.setTerms(sheet, terms, termsFrom || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1122,6 +1171,7 @@ export class Settings {
       if (!this.roundingChanged) this.roundingInput.set(this.rounding() ?? '');
       if (!this.proofThresholdChanged) this.proofThresholdInput.set(this.proofThreshold() ?? '');
       if (!this.noteThresholdChanged) this.noteThresholdInput.set(this.noteThreshold() ?? '');
+      if (!this.reviewThresholdChanged) this.reviewThresholdInput.set(this.reviewThreshold() ?? '');
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
       this.showGradeTermsInputs();
@@ -1190,6 +1240,7 @@ export class Settings {
         if (!this.roundingChanged) this.roundingInput.set(settings.rounding ?? '');
         if (!this.proofThresholdChanged) this.proofThresholdInput.set(settings.proofThreshold ?? '');
         if (!this.noteThresholdChanged) this.noteThresholdInput.set(settings.noteThreshold ?? '');
+        if (!this.reviewThresholdChanged) this.reviewThresholdInput.set(settings.reviewThreshold ?? '');
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
         this.showGradeTermsInputs();
@@ -1256,6 +1307,7 @@ export class Settings {
     this.rounding.set(settings.rounding ?? null);
     this.proofThreshold.set(settings.proofThreshold);
     this.noteThreshold.set(settings.noteThreshold);
+    this.reviewThreshold.set(settings.reviewThreshold);
     this.terms.set(String(settings.terms));
     this.gradeTerms.set(settings.gradeTerms ?? {});
     this.gradeGraces.set(settings.gradeGraces ?? {});
