@@ -1,0 +1,64 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Anyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAnyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "23a9b66bc91c9991058e059e4806fd1cbc4eb604",
+  "reset_sha": "",
+  "preagent_sha": "f38d1d7078fc12d7b3e0d1282ca85390d1ac166f",
+  "prev_sha": "f38d1d7078fc12d7b3e0d1282ca85390d1ac166f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.39954639999999997,
+    "input_tokens": 20,
+    "output_tokens": 6922,
+    "cache_read_tokens": 256572,
+    "cache_creation_tokens": 26214,
+    "num_turns": 10,
+    "duration_ms": 159540,
+    "duration_api_ms": 78075,
+    "model": "claude-opus-5-5",
+    "session_id": "30b03d81-2d18-4830-992e-8f7c62cee601",
+    "stop_reason": "success",
+    "result_text": "Sign-in and sheet loading are in, and `bin/e2e` passes (1 test passed).\n\n**How it works:**\n- **Sign-in:** at `/` you type a name (`signin-name`) and press `signin-submit`; there's no password. The name then shows in `current-user`. A blank name shows `signin-error`. The name only lives in the page: it isn't saved on the server, but every request sends it in an `X-User` header.\n- **Sheets:** once signed in, you type an id (`sheet-id-input`) and press `sheet-load`. The server returns that sheet, creating it if it has never been used, and the id shows in `sheet-current-id`. A refused load shows `sheet-load-error`, which clears when you edit the field or try again. Signing in as another name clears the active sheet.\n- **Stored data:** a new database migration (`V1__sheet.sql`) adds a `sheet` table holding the id, who created it and when. Later per-sheet data can hang off it.\n\n**Server:** a new `sheet` package with the entity, repository, service and controller, plus one endpoint, `POST /api/sheets/{id}/load`. The id and user name must be non-blank and at most 100 characters. If two users load the same new sheet at once, both get the same sheet.\n\n**Front end:**\n- `core/session.ts` holds the signed-in name and the active sheet.\n- `core/session-bar.ts` is the sign-in and sheet bar, added to the app shell.\n- The home page now shows its content only once a sheet is loaded.\n\nTwo things to know:\n- **Throwaway sheets:** the test helper's re-load step loads an extra `<id>-reload` sheet, so each re-load leaves an empty sheet row in the database.\n- **Angular version:** the project is on Angular 21.2, but `DESIGN.md` assumes v22. I used `@Injectable({ providedIn: 'root' })` because the `@Service` decorator it asks for doesn't exist in 21, and plain signal-bound inputs instead of Signal Forms.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.39954639999999997,
+        "num_turns": 10,
+        "duration_ms": 159540,
+        "duration_api_ms": 78075,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
