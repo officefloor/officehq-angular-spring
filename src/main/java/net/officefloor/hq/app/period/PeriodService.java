@@ -239,6 +239,7 @@ public class PeriodService {
     /** Each person's carried figure into the period now, by person id, for everyone on the sheet: the sum
      * of what is due on their claims whose due-by falls in a period of the sheet ending before this one
      * starts and that were still OPEN or PENDING at the end of this one's last day (see {@link #statusAt}),
+     * and their opening balance for it,
      * as each shows it now (a claim with no figure adds nothing, nor does one that would not count then,
      * as {@link #personTotalsOf} counts). */
     private Map<Long, BigDecimal> personCarriedOf(Period period) {
@@ -246,6 +247,9 @@ public class PeriodService {
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, BigDecimal> carried = new HashMap<>();
         for (Long id : byId.keySet()) carried.put(id, BigDecimal.ZERO.setScale(2));
+        period.getPersonOpenings().forEach((id, opening) -> {
+            if (byId.containsKey(id)) carried.merge(id, opening, BigDecimal::add);
+        });
         LocalDate today = sheets.findById(period.getSheetId()).map(Sheet::getToday).orElse(null);
         List<Period> all = periods.findBySheetIdOrderByFromAsc(period.getSheetId());
         if (all.stream().noneMatch(p -> p.getTo().isBefore(period.getFrom()))) return carried;

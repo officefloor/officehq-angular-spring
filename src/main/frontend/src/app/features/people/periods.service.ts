@@ -25,6 +25,9 @@ export interface Period {
   /** Each person's carried figure into the period fixed when it was closed, with two decimals, by
    *  person id; empty while it is open. A person not in it (added later) has 0.00 carried. */
   closedPersonCarried: Record<string, string>;
+  /** Each person's opening balance for the period, pasted in, with two decimals, by person id: added
+   *  to their carried figure into it (into the fixed one when it is closed). */
+  personOpenings: Record<string, string>;
 }
 
 export interface PeriodFields {
@@ -89,6 +92,14 @@ export class PeriodsService {
   reopen(sheet: string, id: number): Promise<Period> {
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheet)}/${id}/reopen`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Add an opening balance per pasted line of name,period,amount; when any line is refused none is
+   *  added: how many lines went through. */
+  importOpenings(sheet: string, text: string): Promise<{ set: number }> {
+    return firstValueFrom(
+      this.http.post<{ set: number }>(`${this.url(sheet)}/openings/import`, { text }, { headers: this.session.headers() }),
     );
   }
 

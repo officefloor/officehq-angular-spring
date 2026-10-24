@@ -98,7 +98,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-tree-search />
     <app-audit />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-summary
       [people]="summaryPeople()"
       [periods]="periods()"
@@ -1047,13 +1047,16 @@ export class People {
   /** Each person's carried figure for each period, in cents, by person id and period name: what is due
    *  on their claims that count whose due-by falls in a period ending before this one starts and that
    *  were still OPEN or PENDING at the end of this one's last day, by the status log, as each claim
-   *  shows it now; once the period is closed it is the figure fixed then (0 for a person added later). */
+   *  shows it now, and their opening balance for it; once the period is closed it is the figure fixed
+   *  then (0 for a person added later). */
   protected readonly personCarriedCents = computed(() => {
     const by = new Map<number, Record<string, number>>();
     for (const person of this.people()) {
       const sums: Record<string, number> = {};
       for (const p of this.periods()) {
-        sums[p.name] = p.closed ? cents(p.closedPersonCarried?.[person.id] ?? '0.00') : 0;
+        sums[p.name] = p.closed
+          ? cents(p.closedPersonCarried?.[person.id] ?? '0.00')
+          : cents(p.personOpenings?.[person.id] ?? '0.00');
       }
       for (const c of this.claimsOf(person.id)) {
         const own = periodOn(this.periods(), c.dueBy);

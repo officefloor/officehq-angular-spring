@@ -76,6 +76,14 @@ public class Period {
     @Column(name = "carried", precision = 12, scale = 2, nullable = false)
     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
 
+    /** Each person's opening balance for the period, pasted in, by person id: added to their carried
+     * figure into it. Kept whether it is open or closed. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "opening", precision = 12, scale = 2, nullable = false)
+    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
     protected Period() {
     }
 
@@ -141,6 +149,15 @@ public class Period {
         return Map.copyOf(closedPersonCarried);
     }
 
+    public Map<Long, BigDecimal> getPersonOpenings() {
+        return Map.copyOf(personOpenings);
+    }
+
+    /** Add {@code amount} to the opening balance of the person {@code personId} for the period. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        personOpenings.merge(personId, amount, BigDecimal::add);
+    }
+
     /** Close the period, fixing each person's due-total for it at {@code personTotals} and their carried
      * figure into it at {@code personCarried}, by person id, and its own due-total at the totals' sum. */
     public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
@@ -158,14 +175,15 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Forget the due-total and carried figure fixed for the person {@code personId}, who leaves the
+    /** Forget the due-total and carried figure fixed, and the opening balance, for the person {@code personId}, who leaves the
      * sheet. The period's own due-total is unchanged. */
     public void dropPersonTotal(Long personId) {
         closedPersonTotals.remove(personId);
         closedPersonCarried.remove(personId);
+        personOpenings.remove(personId);
     }
 
-    /** Fold the due-total and carried figure fixed for the person {@code from} into the ones fixed for
+    /** Fold the due-total and carried figure fixed, and the opening balance, for the person {@code from} into the ones for
      * {@code into}: the person {@code from} is merged into {@code into}. The period's own due-total is
      * unchanged. */
     public void mergePersonTotal(Long from, Long into) {
@@ -173,6 +191,8 @@ public class Period {
         if (moved != null) closedPersonTotals.merge(into, moved, BigDecimal::add);
         BigDecimal carried = closedPersonCarried.remove(from);
         if (carried != null) closedPersonCarried.merge(into, carried, BigDecimal::add);
+        BigDecimal opening = personOpenings.remove(from);
+        if (opening != null) personOpenings.merge(into, opening, BigDecimal::add);
     }
 
     /** Reopen the period: its due-total is live again. */

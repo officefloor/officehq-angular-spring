@@ -33,18 +33,20 @@ public class PeriodController {
 
     /** A period, with whether it is closed, whether that is only a soft close, and the due-total fixed when it was closed (null while it is
      * open) and each person's due-total for it and carried figure into it fixed then, by person id (empty while it is open), sent
-     * as text with two decimals so they are never rounded on the way. */
+     * and each person's opening balance for it, by person id, sent as text with two decimals so they are never rounded on the way. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
             boolean soft, String closedTotal, Map<Long, String> closedPersonTotals,
-            Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, text(total)));
             Map<Long, String> personCarried = new TreeMap<>();
             period.getClosedPersonCarried().forEach((id, carried) -> personCarried.put(id, text(carried)));
+            Map<Long, String> openings = new TreeMap<>();
+            period.getPersonOpenings().forEach((id, opening) -> openings.put(id, text(opening)));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(), period.getCap(),
                     period.isClosed(), period.isSoft(), period.getClosedTotal() == null ? null : text(period.getClosedTotal()),
-                    personTotals, personCarried);
+                    personTotals, personCarried, openings);
         }
 
         private static String text(BigDecimal amount) {
@@ -76,12 +78,23 @@ public class PeriodController {
         }
     }
 
+    /** The pasted lines of {@code name,period,amount}. */
+    public record OpeningImportRequest(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How many lines went through. */
+    public record OpeningImportView(int set) {
+    }
+
     private final PeriodService service;
+
+    private final OpeningImportService openings;
 
     private final SheetHistory history;
 
-    public PeriodController(PeriodService service, SheetHistory history) {
+    public PeriodController(PeriodService service, OpeningImportService openings, SheetHistory history) {
         this.service = service;
+        this.openings = openings;
         this.history = history;
     }
 
@@ -140,5 +153,13 @@ public class PeriodController {
             @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
+
+    /** Paste opening balances: how many lines went through. */
+    @PostMapping("/openings/import")
+    public OpeningImportView importOpenings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid OpeningImportRequest request) {
+        return new OpeningImportView(openings.importOpenings(sheetId.trim(), user.trim(), request.text()));
     }
 }

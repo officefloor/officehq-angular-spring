@@ -91,6 +91,21 @@ const YEAR = /^\d{4}$/;
           <p role="alert" class="error" data-testid="period-generate-error">{{ (message) | figure }}</p>
         }
       </form>
+      <form (submit)="importOpenings($event)" aria-label="Paste opening balances" data-testid="opening-import-form">
+        <label for="opening-import">Opening balances, one per line: name,period,amount</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          rows="3"
+          [value]="openingText()"
+          (input)="openingText.set(value($event)); openingError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+        <span aria-live="polite">Went through: <span data-testid="opening-import-done">{{ (openingsDone() ?? '') | figure }}</span></span>
+        @if (openingError(); as message) {
+          <p role="alert" class="error" data-testid="opening-error">{{ (message) | figure }}</p>
+        }
+      </form>
       @if (sorted().length > 0) {
         <table data-testid="period-list">
           <thead>
@@ -200,6 +215,8 @@ export class Periods {
   readonly closed = output<Period>();
   /** A period was reopened. */
   readonly reopened = output<Period>();
+  /** The sheet's periods were re-read: opening balances were pasted. */
+  readonly reloaded = output<Period[]>();
 
   protected readonly sorted = computed(() => [...this.periods()].sort((a, b) => a.from.localeCompare(b.from)));
   protected readonly name = signal('');
@@ -213,6 +230,12 @@ export class Periods {
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
+  protected readonly openingText = signal('');
+  /** How many lines the last opening balance paste put through; null while one runs or before the first. */
+  protected readonly openingsDone = signal<number | null>(null);
+  protected readonly openingError = signal<string | null>(null);
+  /** An opening balance paste is waiting for its answer; another meanwhile is ignored. */
+  private importingOpenings = false;
   /** The error of the last refused action on each period, by period id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
@@ -289,6 +312,35 @@ export class Periods {
             ? 'Your role may not reopen a period on this sheet.'
             : 'That period could not be reopened.',
       }));
+    }
+  }
+
+  /** Add an opening balance per pasted line of name,period,amount; when any line is refused none is
+   *  added. Shows how many lines went through; the old count is gone while it runs. */
+  protected async importOpenings(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importingOpenings) return;
+    this.openingError.set(null);
+    this.openingsDone.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!this.openingText().trim()) {
+      this.openingError.set('Paste a line of name,period,amount.');
+      return;
+    }
+    this.importingOpenings = true;
+    try {
+      const result = await this.service.importOpenings(sheet, this.openingText());
+      const periods = await this.service.list(sheet);
+      if (this.session.sheetId() !== sheet) return;
+      this.reloaded.emit(periods);
+      this.openingText.set('');
+      this.openingsDone.set(result.set);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.openingError.set('Those opening balances could not be added: each line needs a person on the sheet by name or alias, a period on the sheet, and an amount of 0.00 or more with two decimals.');
+    } finally {
+      this.importingOpenings = false;
     }
   }
 
