@@ -109,6 +109,10 @@ public class Claim {
     @Column(name = "locked_on")
     private LocalDate lockedOn;
 
+    /** The sheet's today on which a reminder of the claim was last written; null when none ever was. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     protected Claim() {
     }
 
@@ -270,6 +274,14 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     public int getProofs() {

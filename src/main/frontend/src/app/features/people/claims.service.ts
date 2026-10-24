@@ -42,6 +42,9 @@ export interface Claim {
   splitFrom: string | null;
   /** Whether the claim was added while the period its date falls in was soft-closed. */
   lateEntry: boolean;
+  /** The sheet's today (YYYY-MM-DD) on which a reminder of the claim was last written; null when
+   *  none ever was. */
+  remindedOn: string | null;
 }
 
 /** Added as DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -230,6 +233,17 @@ export class ClaimsService {
   addProof(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/proof`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Write a reminder of an OPEN or PENDING claim, reminding it on the sheet's today; refused (403)
+   *  for a viewer, (409) when it is not OPEN or PENDING, (422) when it was already reminded on the
+   *  sheet's today and (423) when it is dated in a closed period. */
+  remind(sheet: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/remind`, null, {
         headers: this.session.headers(),
       }),
     );

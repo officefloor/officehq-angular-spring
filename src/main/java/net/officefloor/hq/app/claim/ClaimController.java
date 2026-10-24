@@ -36,12 +36,13 @@ public class ClaimController {
     /** A claim, with who opened it (null until opened), whether it is bound to the figure it had at its
      * person's last statement, its status log and the date it was last deferred until (null when never
      * deferred; it is deferred while OPEN and the sheet's today is before that date), its proofs count, whether it was added while its period was soft-closed (one line per status it has had, oldest first); its amount, what was due on it when settled (null otherwise) and
-     * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
+     * the figure it is bound to (null when unbound or bound to no figure), and the date it was last reminded
+     * (null when never), are sent as text with two
      * decimals so they are never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, List<String> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry) {
+            LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn) {
         /** The claims as views, each with its status log, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -60,7 +61,7 @@ public class ClaimController {
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
                     claim.getCorrects(), log.stream().map(ClaimView::line).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.isLateEntry());
+                    claim.isLateEntry(), claim.getRemindedOn());
         }
 
         /** A log line as shown: {@code <STATUS> by <user> on <date> due=<due>}. */
@@ -226,6 +227,13 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.addProof(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/remind")
+    public ClaimView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.remind(sheetId.trim(), user.trim(), claimId));
     }
 
     @PostMapping("/claims/{claimId}/resettle")

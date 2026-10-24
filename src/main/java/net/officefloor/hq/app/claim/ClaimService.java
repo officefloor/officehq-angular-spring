@@ -229,6 +229,26 @@ public class ClaimService {
         return claim;
     }
 
+    /** Remind an OPEN or PENDING claim: a reminder is written and the claim is reminded on the sheet's
+     * today. Refused unless the claim is OPEN or PENDING, when it was already reminded on the sheet's
+     * today, and when its due-by is in a closed period. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long claimId) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimStatusChangeException();
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) throw new ClaimRemindedException();
+        refuseClosed(sheetId, claim.getDueBy());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setRemindedOn(today);
+        claims.flush();
+        record("REMIND", user, person, claim, claim.getNumber());
+        return claim;
+    }
+
     /** A steward's re-date of an OPEN or PENDING claim to {@code date}. Its due-by stays as it was fixed,
      * so its period and number stay too, and a figure a statement bound it to stays bound. Refused when the
      * user is not a steward, unless the claim is OPEN or PENDING, when its due-by is in a closed period,

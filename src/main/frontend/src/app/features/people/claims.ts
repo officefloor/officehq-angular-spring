@@ -88,6 +88,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
             <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+            <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (line of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ line }}</li>
@@ -117,6 +118,14 @@ const PAST: Record<ClaimAction, string> = {
               (click)="addProof(c)"
             >
               Add proof
+            </button>
+            <button
+              type="button"
+              data-testid="claim-remind"
+              [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date"
+              (click)="remind(c)"
+            >
+              Remind
             </button>
             <button
               type="button"
@@ -495,6 +504,33 @@ export class Claims {
         [claim.id]: e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : 'A settled or void claim cannot be given a proof.',
+      }));
+    }
+  }
+
+  /** Write a reminder of the OPEN or PENDING claim, once per sheet's today; a viewer's, one on a claim
+   *  in any other status or dated in a closed period, and a second one the same day are refused with an
+   *  error. */
+  protected async remind(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const changed = await this.service.remind(sheet, claim.id);
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: status === 403
+          ? 'You may not remind a claim.'
+          : status === 422
+          ? "That claim was already reminded on the sheet's today."
+          : status === 423
+          ? 'That claim is dated in a closed period.'
+          : 'Only an open or pending claim can be reminded.',
       }));
     }
   }
