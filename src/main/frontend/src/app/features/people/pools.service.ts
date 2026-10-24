@@ -3,10 +3,12 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A member of a pool: a person on the sheet, their share percent and their cut of the sheet's pot
- *  (two decimals; the cut null when the pool is unbalanced or there is no pot). */
+/** A member of a pool: a person on the sheet or another pool (the other id null), its share percent and
+ *  its cut of the pool's pot (two decimals; the cut null when the pool is unbalanced or has no pot). A pool
+ *  that is a member of none has the sheet's pot; one that is a member of another has its cut there. */
 export interface PoolMember {
-  personId: number;
+  personId: number | null;
+  poolId: number | null;
   name: string;
   share: string;
   cut: string | null;
@@ -49,10 +51,12 @@ export class PoolsService {
     if (this.session.sheetId() === sheet) this.pools.set(all);
   }
 
-  /** Add a person to a pool with a share. Refused (409) when they are already in it and (400) for a bad share. */
-  async addMember(sheet: string, poolId: number, personId: number, share: string): Promise<void> {
+  /** Add a person, or another pool, to a pool with a share. Refused (409) when the person is already in it,
+   *  or the other pool is already in a pool, contains it, or would make a chain more than three deep; and (400)
+   *  for a bad share. */
+  async addMember(sheet: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
     const all = await firstValueFrom(
-      this.http.post<Pool[]>(`${this.url(sheet)}/${poolId}/members`, { personId, share }, { headers: this.session.headers() }),
+      this.http.post<Pool[]>(`${this.url(sheet)}/${poolId}/members`, { ...member, share }, { headers: this.session.headers() }),
     );
     if (this.session.sheetId() === sheet) this.pools.set(all);
   }

@@ -1,7 +1,7 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Person } from './people.service';
-import { Pool, PoolsService } from './pools.service';
+import { Pool, PoolMember, PoolsService } from './pools.service';
 
 /** A share as typed: a percent with at most two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -9,8 +9,10 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // The sheet's pools, one row each in the order they were added, with the form by which one is added
 // (a blank name, or one already on the sheet, is refused). Each row shows its members with their
 // shares, its total share (a retired member's counting as 0.00) and whether it is balanced (exactly
-// 100.00) and, while it is balanced and the sheet has a pot, each member's cut of the pot; and has the entry by which a person is added to it with a share (more than 0.00, at most
-// 100.00, two decimals); a person already in the pool, or a bad share, is refused.
+// 100.00) and, while it is balanced and has a pot, each member's cut of the pot; and has the entry by which a person, or
+// another pool (as pool:<name>), is added to it with a share (more than 0.00, at most 100.00, two decimals); a person already
+// in the pool, a pool already in one, a pool that would contain itself or make a chain more than three deep, or a bad share,
+// is refused. A pool that is a member of none has the sheet's pot; one that is a member of another has its cut there.
 @Component({
   selector: 'app-pools',
   template: `
@@ -33,8 +35,8 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
           </p>
           @if (pool.members.length > 0) {
             <ul>
-              @for (m of pool.members; track m.personId) {
-                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + m.personId">
+              @for (m of pool.members; track memberKey(m)) {
+                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
                   {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>
                   cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
                 </li>
@@ -42,15 +44,20 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
             </ul>
           }
           <form (submit)="addMember($event, pool)" [attr.aria-label]="'Member of ' + pool.name">
-            <label [for]="'pool-member-select-' + pool.id">Person</label>
+            <label [for]="'pool-member-select-' + pool.id">Member</label>
             <select
               [id]="'pool-member-select-' + pool.id"
               data-testid="pool-member-select"
               (change)="pick(pool.id, value($event))"
             >
-              <option value="" [selected]="!picked()[pool.id]">Choose a person</option>
+              <option value="" [selected]="!picked()[pool.id]">Choose a person or pool</option>
               @for (p of people(); track p.id) {
                 <option [value]="p.id" [selected]="picked()[pool.id] === String(p.id)">{{ p.name }}</option>
+              }
+              @for (other of service.pools(); track other.id) {
+                @if (other.id !== pool.id) {
+                  <option [value]="'pool:' + other.id" [selected]="picked()[pool.id] === 'pool:' + other.id">pool:{{ other.name }}</option>
+                }
               }
             </select>
             <label [for]="'pool-member-share-' + pool.id">Share</label>
@@ -97,7 +104,7 @@ export class Pools {
   protected readonly String = String;
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
-  /** By pool id: the person chosen, the share typed and the error shown for the pool. */
+  /** By pool id: the person (its id) or pool (pool:<id>) chosen, the share typed and the error shown for the pool. */
   protected readonly picked = signal<Record<number, string>>({});
   protected readonly shares = signal<Record<number, string>>({});
   protected readonly memberErrors = signal<Record<number, string | null>>({});
@@ -113,6 +120,11 @@ export class Pools {
       this.shares.set({});
       this.memberErrors.set({});
     });
+  }
+
+  /** A member's key in its pool: the person's id, or pool-<name> for a pool. */
+  protected memberKey(m: PoolMember): string {
+    return m.poolId !== null ? `pool-${m.name}` : String(m.personId);
   }
 
   protected value(event: Event): string {
@@ -161,13 +173,15 @@ export class Pools {
     this.clearMemberError(pool.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const personId = Number(this.picked()[pool.id] ?? '');
+    const picked = this.picked()[pool.id] ?? '';
+    const memberPoolId = picked.startsWith('pool:') ? Number(picked.slice('pool:'.length)) : null;
+    const personId = memberPoolId === null ? Number(picked) : null;
     const share = (this.shares()[pool.id] ?? '').trim();
-    if (!personId) {
-      this.setMemberError(pool.id, 'Choose a person.');
+    if (!memberPoolId && !personId) {
+      this.setMemberError(pool.id, 'Choose a person or pool.');
       return;
     }
-    if (pool.members.some((m) => m.personId === personId)) {
+    if (personId && pool.members.some((m) => m.personId === personId)) {
       this.setMemberError(pool.id, 'That person is already in the pool.');
       return;
     }
@@ -178,13 +192,20 @@ export class Pools {
     }
     this.saving = true;
     try {
-      await this.service.addMember(sheet, pool.id, personId, share);
+      await this.service.addMember(sheet, pool.id, memberPoolId ? { poolId: memberPoolId } : { personId: personId! }, share);
       if (this.session.sheetId() === sheet) {
         this.picked.update((all) => ({ ...all, [pool.id]: '' }));
         this.shares.update((all) => ({ ...all, [pool.id]: '' }));
       }
     } catch {
-      if (this.session.sheetId() === sheet) this.setMemberError(pool.id, 'That member could not be added.');
+      if (this.session.sheetId() === sheet) {
+        this.setMemberError(
+          pool.id,
+          memberPoolId
+            ? 'That pool could not be added: it is already in a pool, contains this one, or would make a chain more than three deep.'
+            : 'That member could not be added.',
+        );
+      }
     } finally {
       this.saving = false;
     }

@@ -13,5 +13,7 @@ public interface SheetPoolMemberRepository extends JpaRepository<SheetPoolMember
 
     Optional<SheetPoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
 
+    boolean existsByMemberPoolId(Long memberPoolId);
+
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
 }

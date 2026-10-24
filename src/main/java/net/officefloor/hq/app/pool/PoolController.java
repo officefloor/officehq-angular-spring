@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -20,10 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member of a pool: the person, their name, their share and their cut (two decimals; the cut null when none). */
-    public record MemberView(long personId, String name, String share, String cut) {
+    /** A member of a pool: the person (or the pool, the other null), its name, its share and its cut (two
+     * decimals; the cut null when none). */
+    public record MemberView(Long personId, Long poolId, String name, String share, String cut) {
         static MemberView of(PoolService.Member m) {
-            return new MemberView(m.personId(), m.name(), m.share().toPlainString(),
+            return new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(),
                     m.cut() == null ? null : m.cut().toPlainString());
         }
     }
@@ -40,8 +42,12 @@ public class PoolController {
     public record PoolRequest(@NotNull @Size(max = 200) String name) {
     }
 
-    /** A member asked: the person and their share as typed. */
-    public record MemberRequest(@NotNull Long personId, @NotNull @Size(max = 20) String share) {
+    /** A member asked: the person or the pool (exactly one) and the share as typed. */
+    public record MemberRequest(Long personId, Long poolId, @NotNull @Size(max = 20) String share) {
+        @AssertTrue
+        public boolean isOneMember() {
+            return (personId == null) != (poolId == null);
+        }
     }
 
     private final PoolService service;
@@ -70,7 +76,11 @@ public class PoolController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MemberRequest request) {
         String sheet = sheetId.trim();
-        service.addMember(sheet, user.trim(), poolId, request.personId(), request.share());
+        if (request.poolId() != null) {
+            service.addPoolMember(sheet, user.trim(), poolId, request.poolId(), request.share());
+        } else {
+            service.addMember(sheet, user.trim(), poolId, request.personId(), request.share());
+        }
         return list(sheet);
     }
 }
