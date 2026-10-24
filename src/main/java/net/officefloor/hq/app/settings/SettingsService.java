@@ -2,7 +2,9 @@ package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -13,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it (a clerk unless made a steward) and its clerk
  * limit, the most a clerk may settle a claim for (none when null), and its floor, the least a claim's
- * live due can be, and its terms, how many days after its date a claim is due by, and its late percent, the
+ * live due can be, and its terms, how many days after its date a claim is due by (each grade may have its own
+ * terms in their place), and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
  * period numbering from, the date from which a claim opened is numbered within its period (off when null). */
@@ -22,12 +25,15 @@ public class SettingsService {
 
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
+    private final GradeTermsRepository gradeTerms;
     private final RollupService rollup;
     private final Audit audit;
 
-    public SettingsService(SheetRepository sheets, SheetRoleRepository roles, RollupService rollup, Audit audit) {
+    public SettingsService(SheetRepository sheets, SheetRoleRepository roles, GradeTermsRepository gradeTerms,
+            RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.roles = roles;
+        this.gradeTerms = gradeTerms;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -99,7 +105,8 @@ public class SettingsService {
         return sheets.findById(sheetId).map(Sheet::getTerms).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Set the sheet's terms; the claims' due-by dates follow them. */
+    /** Set the sheet's terms; only the claims added from then on, of a person whose grade has no terms of
+     * its own, are due by them. */
     @Transactional
     public Sheet setTerms(String sheetId, String by, int terms) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -107,6 +114,41 @@ public class SettingsService {
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=terms", "value=" + terms);
         return sheet;
+    }
+
+    /** The grades given their own terms on the sheet, by grade, in days. */
+    @Transactional(readOnly = true)
+    public Map<String, Integer> gradeTerms(String sheetId) {
+        Map<String, Integer> terms = new LinkedHashMap<>();
+        for (GradeTerms t : gradeTerms.findBySheetIdOrderByGrade(sheetId)) terms.put(t.getGrade(), t.getTerms());
+        return terms;
+    }
+
+    /** The terms a claim of a person of {@code grade} is due by: the grade's own, or else the sheet's. */
+    @Transactional(readOnly = true)
+    public int termsFor(String sheetId, String grade) {
+        if (grade != null) {
+            var own = gradeTerms.findBySheetIdAndGrade(sheetId, grade);
+            if (own.isPresent()) return own.get().getTerms();
+        }
+        return terms(sheetId);
+    }
+
+    /** Set the grade's own terms; null removes them, so the grade uses the sheet's terms. Only the claims
+     * added from then on are due by them. */
+    @Transactional
+    public void setGradeTerms(String sheetId, String by, String grade, Integer terms) {
+        if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+        GradeTerms own = gradeTerms.findBySheetIdAndGrade(sheetId, grade).orElse(null);
+        if (terms == null) {
+            if (own != null) gradeTerms.delete(own);
+        } else if (own == null) {
+            gradeTerms.save(new GradeTerms(sheetId, grade, terms));
+        } else {
+            own.setTerms(terms);
+        }
+        gradeTerms.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=terms-" + grade, "value=" + (terms == null ? "" : terms));
     }
 
     /** The sheet's late percent. */

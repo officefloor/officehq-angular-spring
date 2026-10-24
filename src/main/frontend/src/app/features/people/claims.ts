@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Claim, ClaimAction, ClaimsService, dueByOf, money, overdue } from './claims.service';
+import { Claim, ClaimAction, ClaimsService, money, overdue } from './claims.service';
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Rate, claimShownCents } from './rates.service';
@@ -173,8 +173,6 @@ export class Claims {
   readonly floor = input.required<number>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
-  /** The sheet's terms, in days: how long after its date a claim is due by. */
-  readonly terms = input.required<number>();
   /** The sheet's late percent, with two decimals. */
   readonly latePct = input.required<string>();
   /** The sheet's policy date in force (YYYY-MM-DD): a claim dated before it rounds half up, one on
@@ -228,18 +226,18 @@ export class Claims {
    *  overdue. A claim settled at a rate keeps what was due on it then; one settled without a rate
    *  fixed nothing. */
   protected dueOf(claim: Claim): string {
-    const late = { terms: this.terms(), today: this.session.today(), latePct: this.latePct() };
+    const late = { today: this.session.today(), latePct: this.latePct() };
     const rounding = { policyDate: this.policyDate(), claims: this.claims() };
     const due = claimShownCents(claim, this.rates(), this.grades(), this.floor(), late, rounding);
     return due === null ? 'n/a' : money(due);
   }
 
   protected dueBy(claim: Claim): string {
-    return dueByOf(claim, this.terms());
+    return claim.dueBy;
   }
 
   protected isOverdue(claim: Claim): boolean {
-    return overdue(claim, this.terms(), this.session.today());
+    return overdue(claim, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; empty when none does. */

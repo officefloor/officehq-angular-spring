@@ -10,6 +10,9 @@ export interface Claim {
   amount: string;
   /** YYYY-MM-DD */
   date: string;
+  /** The date (YYYY-MM-DD) the claim is due by, fixed when it was added: its date plus the terms of
+   *  its person's grade in force then (the sheet's terms when the grade has none of its own). */
+  dueBy: string;
   note: string;
   status: ClaimStatus;
   /** The claim's number on the sheet, given when it is opened (sheet-wide, e.g. "3", or within its
@@ -49,15 +52,9 @@ export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
-/** The date (YYYY-MM-DD) a claim is due by: its date plus the sheet's terms, in days. */
-export function dueByOf(claim: Claim, terms: number): string {
-  const [y, m, d] = claim.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** Whether a claim is overdue: OPEN or PENDING, and due by a date before the sheet's today. */
-export function overdue(claim: Claim, terms: number, today: string | null): boolean {
-  return isOpen(claim) && today !== null && dueByOf(claim, terms) < today;
+export function overdue(claim: Claim, today: string | null): boolean {
+  return isOpen(claim) && today !== null && claim.dueBy < today;
 }
 
 /** How a bulk open went: how many claims it opened and refused, and the claims it opened. */

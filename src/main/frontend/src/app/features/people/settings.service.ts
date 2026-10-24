@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Grade } from './people.service';
 
 /** A user's role on a sheet: every name is a clerk unless made a steward. */
 export type Role = 'clerk' | 'steward';
@@ -16,9 +17,6 @@ export interface RoleGiven {
 /** The floor a sheet starts with, in cents. */
 export const FLOOR_CENTS = 100;
 
-/** The terms a sheet starts with, in days. */
-export const TERMS_DAYS = 14;
-
 /** The late percent a sheet starts with. */
 export const LATE_PCT = '0.00';
 
@@ -29,6 +27,8 @@ export interface SheetSettings {
   floor: string;
   /** How many days after its date a claim is due by. */
   terms: number;
+  /** The grades given terms of their own, in days, by grade; a grade not in it uses the sheet's terms. */
+  gradeTerms: Partial<Record<Grade, number>>;
   /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue,
    *  with two decimals. */
   latePct: string;
@@ -41,7 +41,7 @@ export interface SheetSettings {
   periodNumberingFrom: string | null;
 }
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering from), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its terms, its grades' own terms, its late percent, its policy date and its period numbering from), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -73,6 +73,17 @@ export class SettingsService {
   setTerms(sheet: string, value: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/terms`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value removes the grade's own terms: it uses the sheet's terms. */
+  setGradeTerms(sheet: string, grade: Grade, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/terms/${grade}`,
+        { value },
+        { headers: this.session.headers() },
+      ),
     );
   }
 

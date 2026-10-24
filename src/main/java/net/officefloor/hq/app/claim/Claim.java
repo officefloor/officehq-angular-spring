@@ -34,6 +34,11 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
+    /** The date the claim is due by, fixed when it is added: its date plus the terms of its person's
+     * grade in force on that date. Later changes to the terms or to its date leave it as it is. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     @Column(name = "note", nullable = false)
     private String note;
 
@@ -124,6 +129,14 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public String getNote() {

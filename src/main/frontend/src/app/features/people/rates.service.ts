@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents, dueByOf, isCorrection, isOpen } from './claims.service';
+import { Claim, cents, isCorrection, isOpen } from './claims.service';
 import { Grade, PersonGrade, gradeOn } from './people.service';
 
 export interface Rate {
@@ -76,10 +76,9 @@ export function claimDueCents(
   return due === null ? null : isCorrection(claim) ? due : Math.max(due, floorCents);
 }
 
-/** What a late charge is worked from: the sheet's terms, in days, its today, and its late percent
+/** What a late charge is worked from: the sheet's today and its late percent
  *  with two decimals. */
 export interface Lateness {
-  terms: number;
   today: string | null;
   latePct: string;
 }
@@ -89,7 +88,7 @@ export interface Lateness {
  *  rounded like the claim's due; 0 on any other claim, and on a correction. A statement never binds it; settling fixes it in. */
 export function lateChargeCents(claim: Claim, figureCents: number, late: Lateness, rounding: Rounding): number {
   if (!isOpen(claim) || late.today === null || isCorrection(claim)) return 0;
-  const days = (Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000;
+  const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
   const periods = Math.max(0, Math.floor(days / 30));
   return dueCents(figureCents * periods, late.latePct, roundsHalfUp(claim, rounding)) ?? 0;
 }

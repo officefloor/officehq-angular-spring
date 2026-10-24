@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,8 +33,8 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+    /** The sheet's settings; the floor is sent as text with two decimals; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. */
+    public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom) {
     }
 
@@ -62,6 +63,13 @@ public class SettingsController {
     public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
         int termsValue() {
             return Integer.parseInt(value.trim());
+        }
+    }
+
+    /** A grade's own terms: a whole number of days, 0 or more; blank or null to use the sheet's terms. */
+    public record GradeTermsRequest(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+        Integer termsValue() {
+            return value == null || value.isBlank() ? null : Integer.parseInt(value.trim());
         }
     }
 
@@ -97,6 +105,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)), service.terms(sheet),
+                service.gradeTerms(sheet),
                 text(service.latePct(sheet)), service.policyDate(sheet), service.roles(sheet).stream().map(RoleView::of).toList(),
                 service.periodNumberingFrom(sheet));
     }
@@ -125,6 +134,16 @@ public class SettingsController {
             @RequestBody @Valid TermsRequest request) {
         String sheet = sheetId.trim();
         service.setTerms(sheet, user.trim(), request.termsValue());
+        return get(sheet, user);
+    }
+
+    @PutMapping("/settings/terms/{grade}")
+    public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeTermsRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeTerms(sheet, user.trim(), grade, request.termsValue());
         return get(sheet, user);
     }
 

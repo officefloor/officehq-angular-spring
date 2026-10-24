@@ -9,7 +9,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Lateness, Rate, RatesService, Rounding, claimShownCents, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { FLOOR_CENTS, LATE_PCT, SettingsService, TERMS_DAYS } from './settings.service';
+import { FLOOR_CENTS, LATE_PCT, SettingsService } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { Summary, SummaryPerson } from './summary';
 
@@ -23,7 +23,7 @@ import { Summary, SummaryPerson } from './summary';
 // from a date; retired people are left out of the list unless "show retired" is on, but their claims
 // keep counting in every total. A person can be put on hold and taken off it again: while held,
 // their OPEN and PENDING claims count in no live total (theirs, the sheet's or a period's); SETTLED ones still do.
-// A claim is due by its date plus the sheet's terms; an OPEN or PENDING one due by a date before the sheet's
+// A claim is due by the date fixed when it was added (see the claims); an OPEN or PENDING one due by a date before the sheet's
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains the sheet's late percent of its figure for every
 // full 30 days it is overdue; a statement never binds that charge, settling fixes it in.
@@ -36,7 +36,6 @@ import { Summary, SummaryPerson } from './summary';
   template: `
     <app-settings
       (floorSaved)="floor.set($event)"
-      (termsSaved)="terms.set($event)"
       (latePctSaved)="latePct.set($event)"
       (policyDateSaved)="policyDate.set($event)"
     />
@@ -180,7 +179,6 @@ import { Summary, SummaryPerson } from './summary';
                     [rates]="rates()"
                     [floor]="floor()"
                     [periods]="periods()"
-                    [terms]="terms()"
                     [latePct]="latePct()"
                     [policyDate]="policyDateInForce()"
                     [others]="othersOf(p.id)"
@@ -377,8 +375,6 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor, in cents: the least a claim's live due can be. */
   protected readonly floor = signal(FLOOR_CENTS);
-  /** The sheet's terms, in days: how long after its date a claim is due by. */
-  protected readonly terms = signal(TERMS_DAYS);
   /** The sheet's late percent, with two decimals. */
   protected readonly latePct = signal(LATE_PCT);
   /** The sheet's policy date as set; null when it is the sheet's today. */
@@ -387,7 +383,6 @@ export class People {
   protected readonly policyDateInForce = computed(() => this.policyDate() ?? this.session.today());
   /** What the claims' late charges are worked from. */
   private readonly lateness = computed<Lateness>(() => ({
-    terms: this.terms(),
     today: this.session.today(),
     latePct: this.latePct(),
   }));
@@ -459,7 +454,6 @@ export class People {
       this.claims.set([]);
       this.rates.set([]);
       this.floor.set(FLOOR_CENTS);
-      this.terms.set(TERMS_DAYS);
       this.latePct.set(LATE_PCT);
       this.policyDate.set(null);
       this.statements.set([]);
@@ -681,7 +675,7 @@ export class People {
     let sum = 0;
     const today = this.session.today();
     for (const c of this.claimsOf(person.id)) {
-      if (!this.countsLive(c, person) || !overdue(c, this.terms(), today)) continue;
+      if (!this.countsLive(c, person) || !overdue(c, today)) continue;
       count++;
       sum += claimShownCents(c, this.rates(), person.grades, this.floor(), this.lateness(), this.roundingOf(person.id)) ?? 0;
     }
@@ -879,7 +873,6 @@ export class People {
       ]);
       if (this.sheet() === sheet) {
         this.floor.set(cents(settings.floor));
-        this.terms.set(settings.terms);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.rates.set(rates);

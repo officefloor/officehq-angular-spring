@@ -129,15 +129,14 @@ public class RollupService {
     }
 
     /** The late charge on an OPEN or PENDING claim whose figure is {@code figure}: the sheet's late percent of that
-     * figure for every full 30 days the claim is overdue (past its due-by, its date plus the sheet's
-     * terms, on the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
+     * figure for every full 30 days the claim is overdue (past its due-by, fixed when it was added, on
+     * the sheet's today), rounded to two decimals as the claim rounds (see {@link #roundingOf}); 0.00 on a claim not OPEN or
      * PENDING, or not overdue, and on a correction. A statement never binds it: it follows the sheet's today until the claim is settled. */
     public BigDecimal lateChargeOf(Claim claim, BigDecimal figure) {
         if (!claim.getStatus().isOpen() || claim.isCorrection()) return zero();
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null) return zero();
-        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
-        long periods = Math.max(0, ChronoUnit.DAYS.between(dueBy, sheet.getToday())) / 30;
+        long periods = Math.max(0, ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday())) / 30;
         return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
                 .setScale(2, roundingOf(claim, sheet));
     }

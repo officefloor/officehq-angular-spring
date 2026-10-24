@@ -1,4 +1,5 @@
 import { Component, effect, inject, output, signal } from '@angular/core';
+import { GRADES, Grade } from './people.service';
 import { cents } from './claims.service';
 import { Session } from '../../core/session';
 import { ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
@@ -9,7 +10,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
 // limit), its floor (the least a claim's live due can be), its terms (how many days after its date
-// a claim is due by), its late percent (the percent of its figure an overdue claim's due gains for
+// a claim is due by), each grade's own terms (used in place of the sheet's for a person of that
+// grade; blank for the sheet's), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
 // a claim opened is numbered within its period; blank for off) and the role each user name has been given (any other name is a clerk). Read from the
@@ -56,6 +58,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (keydown)="termsChanged = true"
         />
         <span>In force: <span data-testid="setting-terms-current">{{ terms() }}</span></span>
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTermsInput()[g]"
+            (input)="setGradeTermsInput(g, value($event)); gradeTermsChanged.add(g); settingsError.set(null)"
+            (keydown)="gradeTermsChanged.add(g)"
+          />
+          <span>
+            In force: <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsShown(g) }}</span>
+            @if (gradeTerms()[g] === undefined) {
+              (the sheet's terms)
+            }
+          </span>
+        }
         <label for="setting-late-pct">Late percent</label>
         <input
           id="setting-late-pct"
@@ -188,12 +207,13 @@ export class Settings {
   protected readonly given = signal<RoleGiven[]>([]);
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
+  protected readonly grades = GRADES;
+  /** The grades' own terms in force, in days, by grade; a grade not in it uses the sheet's terms. */
+  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   /** The late percent in force, with two decimals; empty until read. */
   protected readonly latePct = signal('');
   /** The floor saved, in cents. */
   readonly floorSaved = output<number>();
-  /** The terms saved, in days. */
-  readonly termsSaved = output<number>();
   /** The late percent saved, with two decimals. */
   readonly latePctSaved = output<string>();
   /** The policy date as set; null when it is the sheet's today. */
@@ -208,6 +228,7 @@ export class Settings {
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
+  protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
@@ -217,6 +238,7 @@ export class Settings {
   protected floorChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
+  protected readonly gradeTermsChanged = new Set<Grade>();
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected readonly settingsError = signal<string | null>(null);
@@ -243,6 +265,9 @@ export class Settings {
       this.limitChanged = false;
       this.floorChanged = false;
       this.termsChanged = false;
+      this.gradeTerms.set({});
+      this.gradeTermsInput.set(blankGrades());
+      this.gradeTermsChanged.clear();
       this.latePct.set('');
       this.latePctInput.set('');
       this.latePctChanged = false;
@@ -264,6 +289,16 @@ export class Settings {
     return (event.target as HTMLInputElement).value;
   }
 
+  protected setGradeTermsInput(grade: Grade, text: string): void {
+    this.gradeTermsInput.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  /** The grade's own terms in force, as text; empty when it uses the sheet's terms. */
+  protected gradeTermsShown(grade: Grade): string {
+    const own = this.gradeTerms()[grade];
+    return own === undefined ? '' : String(own);
+  }
+
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
     if (this.savingSettings) {
@@ -279,6 +314,9 @@ export class Settings {
     const saveFloor = this.floorChanged || floor !== this.floor();
     const terms = this.termsInput().trim();
     const saveTerms = this.termsChanged || terms !== this.terms();
+    const gradeTerms = GRADES.map((grade) => ({ grade, text: this.gradeTermsInput()[grade].trim() })).filter(
+      ({ grade, text }) => this.gradeTermsChanged.has(grade) || text !== this.gradeTermsShown(grade),
+    );
     const latePct = this.latePctInput().trim();
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
     const policyDate = this.policyDateInput().trim();
@@ -296,6 +334,13 @@ export class Settings {
     }
     if (saveTerms && !TERMS.test(terms)) {
       this.settingsError.set('Type terms as a whole number of days, 0 or more.');
+      return;
+    }
+    const badGrade = gradeTerms.find(({ text }) => text !== '' && !TERMS.test(text));
+    if (badGrade) {
+      this.settingsError.set(
+        `Type terms for grade ${badGrade.grade} as a whole number of days, 0 or more, or leave them blank for the sheet's terms.`,
+      );
       return;
     }
     if (saveLatePct && !LIMIT.test(latePct)) {
@@ -330,7 +375,12 @@ export class Settings {
         if (this.session.sheetId() !== sheet) return;
         if (this.termsInput().trim() === terms) this.termsChanged = false;
         this.show(settings);
-        this.termsSaved.emit(settings.terms);
+      }
+      for (const { grade, text } of gradeTerms) {
+        const settings = await this.service.setGradeTerms(sheet, grade, text || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.gradeTermsInput()[grade].trim() === text) this.gradeTermsChanged.delete(grade);
+        this.show(settings);
       }
       if (saveLatePct) {
         const settings = await this.service.setLatePct(sheet, latePct);
@@ -357,6 +407,7 @@ export class Settings {
       if (!this.floorChanged) this.floorInput.set(this.floor());
       if (!this.termsChanged) this.termsInput.set(this.terms());
       if (!this.latePctChanged) this.latePctInput.set(this.latePct());
+      this.showGradeTermsInputs();
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
     } catch {
@@ -411,6 +462,7 @@ export class Settings {
         if (!this.floorChanged) this.floorInput.set(settings.floor);
         if (!this.termsChanged) this.termsInput.set(String(settings.terms));
         if (!this.latePctChanged) this.latePctInput.set(settings.latePct);
+        this.showGradeTermsInputs();
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       }
@@ -419,13 +471,27 @@ export class Settings {
     }
   }
 
+  /** Show each grade's own terms in force in its field, but keep what was typed in one since. */
+  private showGradeTermsInputs(): void {
+    this.gradeTermsInput.update((inputs) => {
+      const next = { ...inputs };
+      for (const grade of GRADES) if (!this.gradeTermsChanged.has(grade)) next[grade] = this.gradeTermsShown(grade);
+      return next;
+    });
+  }
+
   private show(settings: SheetSettings): void {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
     this.terms.set(String(settings.terms));
+    this.gradeTerms.set(settings.gradeTerms ?? {});
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.given.set(settings.roles);
   }
+}
+
+function blankGrades(): Record<Grade, string> {
+  return { A: '', B: '', C: '' };
 }

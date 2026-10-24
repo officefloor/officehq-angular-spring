@@ -31,13 +31,13 @@ public class ClaimController {
      * at its person's last statement; its amount, what was due on it when settled (null otherwise) and
      * the figure it is bound to (null when unbound or bound to no figure) are sent as text with two
      * decimals so they are never rounded on the way. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+    public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     text(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), text(claim.getStatedDue()),
                     claim.getCorrects());
         }

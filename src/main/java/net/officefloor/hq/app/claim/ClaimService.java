@@ -17,7 +17,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. Only a
+/** The claims people on each sheet make. A claim left without a date is dated the sheet's today. A claim's
+ * due-by is fixed when it is added, from the terms of its person's grade in force on its date. Only a
  * DRAFT claim can be edited. No claim dated inside a closed period can be added, edited or change
  * status, and none can be added or edited to a date after its person's retirement date. A claim with a
  * negative amount is a correction: it is refused unless it names, by number, a SETTLED claim of the same
@@ -60,6 +61,7 @@ public class ClaimService {
         person.requireClaimable(dated);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
         claim.setListed(sheets.nextInSequence(sheetId, "listed"));
         claim = claims.saveAndFlush(claim);
         record("CLAIM_ADDED", user, person, claim, claim.getNumber());
