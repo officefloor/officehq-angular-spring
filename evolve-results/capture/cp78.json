@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b46172a68ef8c920ad4939af0b1cb0a6e0424c8f",
+  "reset_sha": "",
+  "preagent_sha": "23cd4e3965542f44c181df96c14c56b07b7456b8",
+  "prev_sha": "23cd4e3965542f44c181df96c14c56b07b7456b8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8640132,
+    "input_tokens": 42,
+    "output_tokens": 7352,
+    "cache_read_tokens": 1061546,
+    "cache_creation_tokens": 63062,
+    "num_turns": 23,
+    "duration_ms": 465767,
+    "duration_api_ms": 87433,
+    "model": "claude-opus-5-5",
+    "session_id": "b3cef10d-1a33-4eec-b84c-647462d11188",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows what's due on their OPEN and PENDING claims, split by age on the sheet's today: 0\u201330 days, 31\u201360 days and 61+ days. All 4 acceptance tests passed on two full `bin/e2e` runs in a row.\n\n**The age buckets** (`src/main/frontend/src/app/features/people/people.ts`)\n- There are three new columns: `person-aged-0-30`, `person-aged-31-60` and `person-aged-61`.\n- A claim's age is the number of days from its date to the sheet's today. A claim dated after today goes in 0\u201330.\n- Only claims that already count toward the person's due-total are included. So claims dated within a hold and deferred claims are left out, and so are SETTLED, DRAFT and VOID claims.\n- Each claim adds its due figure as the row shows it, late charge and floor included.\n- I put this in the front end because the row's other figures (due-total, overdue) are worked out there too. Nothing is written to the audit file, and the test expects nothing new there.\n\n**A second fix the test needed** (`src/main/frontend/src/app/features/people/claims.ts`)\n- **The bug:** in scenario 2, pressing Edit on a draft claim dated in a closed period was refused only after a server round-trip. The test checks for the error right after the click, so it missed it, typed into the person's add-claim form, and added a new claim by mistake.\n- **The fix:** the closed-period refusal now happens straight away in the browser, the same way the existing \"only a draft can be edited\" refusal works. The server still refuses as well.\n- Soft-closed periods are not refused, matching their rule that claims dated in them can still change.\n\nOn my first run, scenario 3 also failed once, at an edit step that timed out with no result or error. It passed on the next three runs. It may have been the same timing problem that the fix above removes, but I didn't confirm that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8640132,
+        "num_turns": 23,
+        "duration_ms": 465767,
+        "duration_api_ms": 87433,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
