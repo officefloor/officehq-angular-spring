@@ -3,11 +3,13 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A member of a pool: a person on the sheet and their share percent (two decimals). */
+/** A member of a pool: a person on the sheet, their share percent and their cut of the sheet's pot
+ *  (two decimals; the cut null when the pool is unbalanced or there is no pot). */
 export interface PoolMember {
   personId: number;
   name: string;
   share: string;
+  cut: string | null;
 }
 
 /** A pool on the sheet: its members, their total share (a retired member's counting as 0.00) and

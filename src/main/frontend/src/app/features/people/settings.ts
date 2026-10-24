@@ -326,6 +326,21 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-pot">Pot</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="potInput()"
+          (input)="potInput.set(value($event)); potChanged = true; settingsError.set(null)"
+          (keydown)="potChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span>
+          @if (pot() === null) {
+            (none)
+          }
+        </span>
         <fieldset>
           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
           @for (a of permActions; track a) {
@@ -477,6 +492,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   /** The grace days as set, as text; null when they are off. */
   protected readonly graceDays = signal<string | null>(null);
+  protected readonly pot = signal<string | null>(null);
   /** The entry date as set; null when it is off. */
   protected readonly entryDate = signal<string | null>(null);
 
@@ -493,6 +509,7 @@ export class Settings {
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
+  protected readonly potInput = signal('');
   protected readonly entryDateInput = signal('');
   /** The date each dated setting is saved from (YYYY-MM-DD); blank for the sheet's today. */
   protected readonly limitFrom = signal('');
@@ -521,6 +538,7 @@ export class Settings {
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
+  protected potChanged = false;
   protected entryDateChanged = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleUser = signal('');
@@ -580,6 +598,9 @@ export class Settings {
       this.graceDays.set(null);
       this.graceDaysInput.set('');
       this.graceDaysChanged = false;
+      this.pot.set(null);
+      this.potInput.set('');
+      this.potChanged = false;
       this.entryDate.set(null);
       this.entryDateInput.set('');
       this.entryDateChanged = false;
@@ -696,6 +717,8 @@ export class Settings {
       this.periodNumberingFromChanged || numberingFrom !== (this.periodNumberingFrom() ?? '');
     const graceDays = this.graceDaysInput().trim();
     const saveGraceDays = this.graceDaysChanged || graceDays !== (this.graceDays() ?? '');
+    const pot = this.potInput().trim();
+    const savePot = this.potChanged || pot !== (this.pot() ?? '');
     const entryDate = this.entryDateInput().trim();
     const saveEntryDate = this.entryDateChanged || entryDate !== (this.entryDate() ?? '');
     const perms = PERM_ACTIONS.map((action) => ({ action, text: this.permInput()[action].trim() })).filter(
@@ -786,6 +809,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !TERMS.test(graceDays)) {
       this.settingsError.set('Type grace days as a whole number of days, 0 or more, or leave them blank to turn them off.');
+      return;
+    }
+    if (savePot && pot !== '' && !LIMIT.test(pot)) {
+      this.settingsError.set('Type a pot of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     if (saveEntryDate && entryDate !== '' && !DATE.test(entryDate)) {
@@ -917,6 +944,12 @@ export class Settings {
         if (this.graceDaysInput().trim() === graceDays) this.graceDaysChanged = false;
         this.show(settings);
       }
+      if (savePot) {
+        const settings = await this.service.setPot(sheet, pot || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.potInput().trim() === pot) this.potChanged = false;
+        this.show(settings);
+      }
       if (saveEntryDate) {
         const settings = await this.service.setEntryDate(sheet, entryDate || null);
         if (this.session.sheetId() !== sheet) return;
@@ -944,6 +977,7 @@ export class Settings {
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+      if (!this.potChanged) this.potInput.set(this.pot() ?? '');
       if (!this.entryDateChanged) this.entryDateInput.set(this.entryDate() ?? '');
     } catch {
       this.settingsError.set('Those settings could not be saved.');
@@ -1007,6 +1041,7 @@ export class Settings {
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
+        if (!this.potChanged) this.potInput.set(settings.pot ?? '');
         if (!this.entryDateChanged) this.entryDateInput.set(settings.entryDate ?? '');
       }
     } catch {
@@ -1068,6 +1103,7 @@ export class Settings {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.entryDate.set(settings.entryDate ?? null);
+    this.pot.set(settings.pot ?? null);
     this.given.set(settings.roles);
   }
 }

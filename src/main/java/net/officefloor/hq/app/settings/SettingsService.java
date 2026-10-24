@@ -410,4 +410,20 @@ public class SettingsService {
                 "value=" + (entryDate == null ? "" : entryDate.toString()));
         return sheet;
     }
+
+    /** The sheet's pot; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPot();
+    }
+
+    /** Set the sheet's pot; null for none. The balanced pools' cuts follow it. */
+    @Transactional
+    public Sheet setPot(String sheetId, String by, BigDecimal pot) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPot(pot);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=pot", "value=" + (pot == null ? "" : pot.toPlainString()));
+        return sheet;
+    }
 }

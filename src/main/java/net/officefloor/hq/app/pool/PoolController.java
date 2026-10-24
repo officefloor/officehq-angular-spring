@@ -20,10 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member of a pool: the person, their name and their share (two decimals). */
-    public record MemberView(long personId, String name, String share) {
+    /** A member of a pool: the person, their name, their share and their cut (two decimals; the cut null when none). */
+    public record MemberView(long personId, String name, String share, String cut) {
         static MemberView of(PoolService.Member m) {
-            return new MemberView(m.personId(), m.name(), m.share().toPlainString());
+            return new MemberView(m.personId(), m.name(), m.share().toPlainString(),
+                    m.cut() == null ? null : m.cut().toPlainString());
         }
     }
 

@@ -87,13 +87,16 @@ export interface SheetSettings {
   /** The date (YYYY-MM-DD) a claim added without a date is dated in place of the sheet's today;
    *  null when off. */
   entryDate: string | null;
+  /** The pot shared out among the members of each balanced pool, with two decimals; null when there
+   *  is none. */
+  pot: string | null;
 }
 
 /** The actions the permission matrix decides who may take. */
 export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
-// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days and its entry date), read from and written to the server.
+// The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its entry date and its pot), read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -231,6 +234,13 @@ export class SettingsService {
   setGraceDays(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/grace-days`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value records no pot. */
+  setPot(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/pot`, { value }, { headers: this.session.headers() }),
     );
   }
 

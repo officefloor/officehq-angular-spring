@@ -95,6 +95,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getPeriodNumberingFrom();
     }
 
+    /** The pot then; null when there was none. */
+    public BigDecimal pot() {
+        return sheet == null ? null : sheet.getPot();
+    }
+
     /** The entry date then; null when it was off. */
     public LocalDate entryDate() {
         return sheet == null ? null : sheet.getEntryDate();

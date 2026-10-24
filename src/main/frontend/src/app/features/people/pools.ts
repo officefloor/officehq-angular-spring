@@ -9,7 +9,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // The sheet's pools, one row each in the order they were added, with the form by which one is added
 // (a blank name, or one already on the sheet, is refused). Each row shows its members with their
 // shares, its total share (a retired member's counting as 0.00) and whether it is balanced (exactly
-// 100.00), and has the entry by which a person is added to it with a share (more than 0.00, at most
+// 100.00) and, while it is balanced and the sheet has a pot, each member's cut of the pot; and has the entry by which a person is added to it with a share (more than 0.00, at most
 // 100.00, two decimals); a person already in the pool, or a bad share, is refused.
 @Component({
   selector: 'app-pools',
@@ -36,6 +36,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
               @for (m of pool.members; track m.personId) {
                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + m.personId">
                   {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>
+                  cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
                 </li>
               }
             </ul>

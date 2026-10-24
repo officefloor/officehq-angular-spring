@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -41,6 +42,10 @@ public class Sheet {
     /** The date a claim added or edited without a date is dated; null when that is off (the sheet's today). */
     @Column(name = "entry_date")
     private LocalDate entryDate;
+
+    /** The pot shared out among the members of each balanced pool by their shares; null when there is none. */
+    @Column(name = "pot")
+    private BigDecimal pot;
 
     /** Whether the sheet is archived: everything on it stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
@@ -122,6 +127,14 @@ public class Sheet {
 
     public void setEntryDate(LocalDate entryDate) {
         this.entryDate = entryDate;
+    }
+
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     /** The date a claim left without a date is dated: the entry date when it is set, else the sheet's today. */
