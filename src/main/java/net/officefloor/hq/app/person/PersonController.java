@@ -388,6 +388,16 @@ public class PersonController {
         return view(to, transfers.transfer(sheetId.trim(), user.trim(), personId, to));
     }
 
+    /** Undoes the transfer that brought the person to this sheet; answers them as they now are on the
+     * sheet they came from. */
+    @PostMapping("/{personId}/transfer-undo")
+    public PersonView transferUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        Person back = transfers.undo(sheetId.trim(), user.trim(), personId);
+        return view(back.getSheetId(), back);
+    }
+
     @PostMapping("/{personId}/aliases")
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId,

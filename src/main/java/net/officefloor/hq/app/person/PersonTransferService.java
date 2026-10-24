@@ -121,7 +121,7 @@ public class PersonTransferService {
         if (into != null) {
             arrived = into;
         } else {
-            Person transferred = from.transferredTo(toSheetId);
+            Person transferred = from.transferredTo(toSheetId, sheets.today(toSheetId));
             transferred.setPosition(people.maxPosition(toSheetId) + 1);
             arrived = people.saveAndFlush(transferred);
         }
@@ -193,5 +193,25 @@ public class PersonTransferService {
         }
         rollup.recordSince(toSheetId, user, beforeThere);
         return arrived;
+    }
+
+    /** Undoes the transfer that brought the person {@code personId} to this sheet: they are transferred
+     * back to the sheet they came from, as {@link #transfer} does, and the undo is recorded here; refused
+     * unless the user is a steward, the person arrived by transfer, and it is still the sheet's today
+     * they arrived on (and when the transfer back is refused). */
+    @Transactional
+    public Person undo(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || person.getOriginSheetId() == null
+                || person.getArrivedOn() == null || !person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new PersonTransferException();
+        }
+        String name = person.getName();
+        String origin = person.getOriginSheetId();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person back = transfer(sheetId, user, personId, origin);
+        audit.change("PERSON_TRANSFER_UNDONE", sheetId, user, "name=" + name, "to=" + origin);
+        rollup.recordSince(sheetId, user, before);
+        return back;
     }
 }

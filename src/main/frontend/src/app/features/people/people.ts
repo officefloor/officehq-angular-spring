@@ -778,6 +778,14 @@ import { FigurePipe } from '../../core/figure.pipe';
                   >
                     Transfer
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-transfer-undo"
+                    [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
+                    (click)="transferUndo(p)"
+                  >
+                    Undo transfer
+                  </button>
                 </td>
               </tr>
             }
@@ -1703,6 +1711,25 @@ export class People {
       this.rowErrors.update((errors) => ({
         ...errors,
         [person.id]: 'That person cannot be transferred to that sheet.',
+      }));
+    }
+  }
+
+  /** Undo the transfer that brought the person here, then re-read the sheet: they go back to the
+   *  sheet they came from. */
+  protected async transferUndo(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      await this.service.transferUndo(sheet, person.id);
+      if (this.sheet() !== sheet) return;
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet), this.crewsService.refresh(sheet)]);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That transfer cannot be undone.',
       }));
     }
   }

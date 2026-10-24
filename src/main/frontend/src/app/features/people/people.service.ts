@@ -288,6 +288,17 @@ export class PeopleService {
     );
   }
 
+  /** Undo the transfer that brought the person to this sheet: they go back to the sheet they came
+   *  from; refused (409) unless the signed-in user is a steward, the person arrived by transfer, and
+   *  it is still the sheet's today they arrived on. */
+  transferUndo(sheet: string, id: number): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheet)}/${id}/transfer-undo`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** The sheet's snapshots, in the order they were written. */
   snapshots(sheet: string): Promise<Snapshot[]> {
     return firstValueFrom(

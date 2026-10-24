@@ -97,6 +97,11 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The sheet's today when a transfer brought the person to it; null when they did not arrive by
+     * transfer. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** The person's place in the sheet's list: people are listed by it, lowest first. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -139,11 +144,12 @@ public class Person {
 
     /** A copy of the person on the sheet {@code sheetId}: the same name, every grade they were given
      * (with its from-date), their terms, contact and aliases, noting this sheet as the one they came
-     * from; nothing else of theirs comes with it. */
-    public Person transferredTo(String sheetId) {
+     * from and {@code arrivedOn} as the day they arrived; nothing else of theirs comes with it. */
+    public Person transferredTo(String sheetId, LocalDate arrivedOn) {
         Person copy = new Person();
         copy.sheetId = sheetId;
         copy.originSheetId = this.sheetId;
+        copy.arrivedOn = arrivedOn;
         copy.setName(name);
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
         copy.terms = terms;
@@ -333,6 +339,12 @@ public class Person {
     /** The sheet the person was transferred from; null when they were not transferred. */
     public String getOriginSheetId() {
         return originSheetId;
+    }
+
+    /** The sheet's today when a transfer brought the person to it; null when they did not arrive by
+     * transfer. */
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
     }
 
     public Long getPosition() {
