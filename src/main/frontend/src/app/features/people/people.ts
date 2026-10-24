@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSignal, untracked } from '@angular/core';
 import { Session } from '../../core/session';
 import { Claims } from './claims';
+import { Delegations } from './delegations';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isOpen, money, overdue, statusOn } from './claims.service';
 import { GRADES, Grade, Patron, PeopleService, Person, gradeOn, heldOn } from './people.service';
@@ -40,7 +41,7 @@ import { Summary, SummaryPerson } from './summary';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, Rates, Settings, Summary],
+  imports: [Claims, Delegations, Header, Periods, Rates, Settings, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -54,6 +55,7 @@ import { Summary, SummaryPerson } from './summary';
       (latePctSaved)="latePcts.set($event)"
       (policyDateSaved)="policyDate.set($event)"
     />
+    <app-delegations />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" />
     <app-summary

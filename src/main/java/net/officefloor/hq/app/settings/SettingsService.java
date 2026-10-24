@@ -43,10 +43,13 @@ public class SettingsService {
     private final SheetPermissionRepository permissions;
     private final DatedSettings dated;
     private final RollupService rollup;
+    private final DelegationService delegations;
     private final Audit audit;
 
     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
-            SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup, Audit audit) {
+            SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
+            DelegationService delegations, Audit audit) {
+        this.delegations = delegations;
         this.permissions = permissions;
         this.sheets = sheets;
         this.roles = roles;
@@ -62,10 +65,13 @@ public class SettingsService {
         return roles.findBySheetIdOrderByUser(sheetId);
     }
 
-    /** The user's role on the sheet: a clerk unless made something else. */
+    /** The user's role on the sheet: a clerk unless made something else, and a steward while the sheet's
+     * today is inside a range the steward role is delegated to them for (see {@link DelegationService}). */
     @Transactional(readOnly = true)
     public Role roleOf(String sheetId, String user) {
-        return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+        Role given = delegations.givenRole(sheetId, user);
+        if (given != Role.STEWARD && delegations.actingFor(sheetId, user).isPresent()) return Role.STEWARD;
+        return given;
     }
 
     @Transactional

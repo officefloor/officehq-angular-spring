@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import net.officefloor.hq.app.settings.DelegationService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -23,10 +26,15 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class Audit {
 
-    private final Path file;
+    /** The lines that only report figures: they never say whom a change was made for. */
+    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
+    private final Path file;
+    private final ObjectProvider<DelegationService> delegations;
+
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, ObjectProvider<DelegationService> delegations) {
         this.file = Path.of(path);
+        this.delegations = delegations;
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -45,12 +53,16 @@ public class Audit {
 
     /**
      * Append one record for a change to a sheet: the event, then {@code sheet=} and {@code by=},
-     * then the given fields, separated by single spaces. Inside a transaction the record is written
+     * then the given fields, separated by single spaces; a change by a user acting as a steward by a
+     * delegation ends with {@code for=} the steward who delegated it (not a line that only reports
+     * figures). Inside a transaction the record is written
      * only once it commits, so a change that is refused or rolled back writes nothing.
      */
     public void change(String event, String sheetId, String user, String... fields) {
+        String forSteward = FIGURES.contains(event) ? ""
+                : delegations.getObject().actingFor(sheetId, user).map(steward -> " for=" + steward).orElse("");
         String entry = event + " sheet=" + sheetId + " by=" + user
-                + (fields.length == 0 ? "" : " " + String.join(" ", fields));
+                + (fields.length == 0 ? "" : " " + String.join(" ", fields)) + forSteward;
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
