@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
  * and their due-total (the sum of what is due on those claims as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
- * sheet's today, as each shows it) — and the sheet's totals of them. A change that moves
+ * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
+ * leave out the single highest and lowest person's figure when three or more people have one; a
+ * due-total of n/a is no figure). A change that moves
  * any of them is followed in the audit by a ROLLUP line per person whose figures moved, then a TOTALS
  * line when the sheet's totals moved: take a {@link #snapshot} before the change, and
  * {@link #recordSince} it after the change has recorded its own lines.
@@ -74,8 +78,8 @@ public class RollupService {
         List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
-        BigDecimal dueTotal = zero();
-        BigDecimal overdueTotal = zero();
+        List<BigDecimal> dueFigures = new ArrayList<>();
+        List<BigDecimal> overdueFigures = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -93,12 +97,19 @@ public class RollupService {
             due = cappedOf(due, cap);
             boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
-            overdueTotal = overdueTotal.add(overdue);
-            if (any || rated) dueTotal = dueTotal.add(due);
+            overdueFigures.add(overdue);
+            if (any || rated) dueFigures.add(due);
             figures.put(person.getId(), new Figures(person.getName(), text(claimed), any || rated ? text(due) : NONE,
                     text(overdue)));
         }
-        return new Snapshot(figures, text(claimedTotal), text(dueTotal), text(overdueTotal));
+        return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
+        if (figures.size() < 3) return sum;
+        return sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
     }
 
     /** Record the ROLLUP and TOTALS lines for the figures that moved since {@code before}. */

@@ -35,6 +35,8 @@ import { Summary, SummaryPerson } from './summary';
 // (a due-total that is n/a is skipped). A person's due-total is at most the sheet's cap: when the
 // sum of their figures is above it, the row shows the cap and the difference as their excess; every
 // total of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
+// The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+// figure when three or more people have one (a due-total of n/a is no figure).
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
@@ -513,21 +515,18 @@ export class People {
   protected readonly summaryPeople = computed<SummaryPerson[]>(() =>
     this.people().map((p) => ({ grade: this.gradeNow(p), retired: p.retired, dueCents: this.dueCentsOf(p) })),
   );
-  protected readonly dueTotal = computed(() => {
-    let sum = 0;
-    for (const p of this.people()) sum += this.dueCentsOf(p) ?? 0;
-    return money(sum);
-  });
-  /** How many of everyone's counting claims are overdue, and what is due on them, in cents. */
-  protected readonly overdueTotal = computed(() =>
-    this.people().reduce(
-      (sum, p) => {
-        const o = this.overdueOf(p);
-        return { count: sum.count + o.count, cents: sum.cents + o.cents };
-      },
-      { count: 0, cents: 0 },
-    ),
+  /** The sheet's due-total: everyone's due-totals added up (n/a ones skipped), trimmed. */
+  protected readonly dueTotal = computed(() =>
+    money(trimmedSum(this.people().map((p) => this.dueCentsOf(p)).filter((c): c is number => c !== null))),
   );
+  /** How many of everyone's counting claims are overdue, and what is due on them, in cents (trimmed). */
+  protected readonly overdueTotal = computed(() => {
+    const each = this.people().map((p) => this.overdueOf(p));
+    return {
+      count: each.reduce((sum, o) => sum + o.count, 0),
+      cents: trimmedSum(each.map((o) => o.cents)),
+    };
+  });
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   /** The date a save gives the grade from; blank for the sheet's today. */
@@ -1177,4 +1176,10 @@ export class People {
  *  quote or a line break. */
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
+/** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((a, b) => a + b, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }
