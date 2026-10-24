@@ -1,0 +1,64 @@
+{
+  "checkpoint": 57,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp57_split-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split. CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split. CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d4483375d69c9c2d7ab199876fad2f52290142de",
+  "reset_sha": "",
+  "preagent_sha": "f014ba71ca4254caeae7dc6bbe956c7037056015",
+  "prev_sha": "f014ba71ca4254caeae7dc6bbe956c7037056015",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9991413999999998,
+    "input_tokens": 40,
+    "output_tokens": 9884,
+    "cache_read_tokens": 1071267,
+    "cache_creation_tokens": 73381,
+    "num_turns": 22,
+    "duration_ms": 245050,
+    "duration_api_ms": 170323,
+    "model": "claude-opus-5-5",
+    "session_id": "f7914922-e777-4dc1-90f8-665a8262eebf",
+    "stop_reason": "success",
+    "result_text": "You can now split an OPEN claim, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** each claim row has a \"Split off\" amount field and a Split button.\n- The original claim keeps the rest of its amount and loses any figure a statement bound it to.\n- The new claim gets the split-off amount, the same date and note, and the next number. It is OPEN, opened by the signed-in user, and its due-by is worked out from the terms in force on the claim's date.\n- The new claim shows the original's number in a new \"split-from\" column. The original shows nothing there.\n\n**When it's refused:** a split is refused with the row's error message if the claim isn't OPEN, is deferred, or is dated in a closed period, or if the amount isn't more than 0.00 and less than the claim's amount. A refused split changes nothing and writes nothing to the audit file.\n\n**Audit order:** `CLAIM_SPLIT` (the original with its remaining amount, ending `into=<new number>`), then `CLAIM_OPENED` for the new claim, then the `ROLLUP`/`TOTALS` lines.\n\n**Changes:**\n- **Database:** a new migration, `V43__claim_split_from.sql`, adds a `split_from` column to claims.\n- **Server:**\n  - `Claim` has a new `splitFrom` field, and the claim data sent to the screen includes it.\n  - `ClaimService.split` does the work, behind a new `POST /api/sheets/{sheetId}/claims/{claimId}/split` endpoint. It returns the original claim first, then the new one.\n  - A new `ClaimSplitException` (HTTP 422) refuses a bad amount.\n- **Front end:** `claims.service.ts` and `claims.ts` add the split call, the amount field, the button, the split-from column and the error messages.\n\nThree things the request didn't cover, which I decided:\n- **Who can split:** any signed-in user, since the request names no role.\n- **Status log:** the new claim gets an \"OPEN\" line in its log. The original's log is unchanged, because its status doesn't change.\n- **Proofs:** the new claim starts with 0 proofs rather than copying the original's.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9991413999999998,
+        "num_turns": 22,
+        "duration_ms": 245050,
+        "duration_api_ms": 170323,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp57.agent.jsonl",
+  "agent_diff_file": "cp57.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
