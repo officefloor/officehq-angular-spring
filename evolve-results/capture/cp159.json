@@ -1,0 +1,64 @@
+{
+  "checkpoint": 159,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp159_carried-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "29f1d1e690966ecfa3a41c00cf8263346ca2e52f",
+  "reset_sha": "",
+  "preagent_sha": "8c6e22a5ada533386404cea428f7ebca26cc87e2",
+  "prev_sha": "8c6e22a5ada533386404cea428f7ebca26cc87e2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46802,
+    "input_tokens": 6,
+    "output_tokens": 589,
+    "cache_read_tokens": 90725,
+    "cache_creation_tokens": 2015,
+    "num_turns": 2,
+    "duration_ms": 8224,
+    "duration_api_ms": 49499,
+    "model": "claude-opus-5-5",
+    "session_id": "1fea1948-244e-4756-9cab-5c8212397f73",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows a carried figure for every period, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What changed:** only `src/main/frontend/src/app/features/people/people.ts`. The server and the stored data needed nothing new, because everything the figure uses (claims, their status logs, periods) already reaches the screen.\n\n- **The figure:** a new `personCarriedCents` calculation, worked the same way as the existing per-period due figures. For each period it adds up the due of the person's claims whose due-by date falls in an earlier period, that count, and that were still OPEN or PENDING at the end of the period's last day according to the claim's status log. Each claim's due is taken as it shows now. A period with nothing carried shows 0.00.\n- **On screen:** after each \"Due in <period>\" column there is a \"Carried into <period>\" column. Each cell has the `data-testid` `person-period-<name>-carried` that the test expects.\n\n**Closed periods:** the carried figure is always worked out live, even for a closed period, which isn't frozen when the period closes the way its due figure is. The tests never close a period, so they don't check this case. If carried figures should be fixed at closing like the due figures, that would need them saved to the store when a period closes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46802,
+        "num_turns": 2,
+        "duration_ms": 8224,
+        "duration_api_ms": 49499,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp159.agent.jsonl",
+  "agent_diff_file": "cp159.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
