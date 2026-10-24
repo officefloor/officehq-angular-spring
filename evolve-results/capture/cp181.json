@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0a87273377954dcb8172c8d13507d53288860dc0",
+  "reset_sha": "",
+  "preagent_sha": "d136bacd9d5ca34985744d05f001c008e9ca5e92",
+  "prev_sha": "d136bacd9d5ca34985744d05f001c008e9ca5e92",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8120362,
+    "input_tokens": 40,
+    "output_tokens": 9806,
+    "cache_read_tokens": 817021,
+    "cache_creation_tokens": 56544,
+    "num_turns": 21,
+    "duration_ms": 318088,
+    "duration_api_ms": 88532,
+    "model": "claude-opus-5-5",
+    "session_id": "7b2c65f1-7ec0-4243-8f1b-b09f02c29054",
+    "stop_reason": "success",
+    "result_text": "Sheets now have notes, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What it does**\n- **Adding a note:** there's a text box and an \"Add note\" button. A note that is blank or only spaces is refused with an error beside the box, and nothing is saved or written to the audit file.\n- **Audit record:** a note that goes through writes `NOTE_ADDED sheet=<id> by=<user> text=<text>`. When the user is acting under a delegation, the existing audit code adds `for=<steward>` at the end on its own.\n- **The list:** notes show newest first as `<sheet's today when added> <user>: <text>`, for example `2026-03-11 uma: third`.\n- **Under an as-of date:** the list shows only notes added while the sheet's today was on or before that date.\n- **Refusals I didn't have to build:** the guards the app already has turn away notes from viewers, on archived sheets, and while an as-of date is set.\n\n**Files**\n- **Database:** a new migration, `V101__sheet_note.sql`, adds a `sheet_note` table that stores each note with the sheet's today at the time and who added it.\n- **Server:** a new `note` package with the note record, its storage, the add/list logic and the `/api/sheets/{sheetId}/notes` endpoint. The endpoint reads the as-of date from the request header to filter the list.\n- **Front end:** a new notes service and a notes panel (`notes.ts`), added to the main screen in `people.ts` just after holidays.\n\n**Not covered**\n- Cloning a sheet doesn't copy its notes; the request didn't mention cloning.\n- Notes aren't added to the sheet's change history. The as-of filter uses the date stored on each note instead.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8120362,
+        "num_turns": 21,
+        "duration_ms": 318088,
+        "duration_api_ms": 88532,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
