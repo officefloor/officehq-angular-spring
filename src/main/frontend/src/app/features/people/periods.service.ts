@@ -10,6 +10,8 @@ export interface Period {
   from: string;
   /** The last day of the period (YYYY-MM-DD). */
   to: string;
+  /** The most OPEN or PENDING claims each person may have in the period; null for no cap. */
+  cap: number | null;
   /** Whether the period is closed: no claim dated in it can change. */
   closed: boolean;
   /** Whether the closed period is only soft-closed: its figures are fixed, but claims dated in it can
@@ -26,6 +28,8 @@ export interface PeriodFields {
   name: string;
   from: string;
   to: string;
+  /** The cap on each person's OPEN or PENDING claims in the period: a whole number, blank for none. */
+  cap: string;
 }
 
 /** The period whose dates, both inclusive, contain the date; null when none does. */

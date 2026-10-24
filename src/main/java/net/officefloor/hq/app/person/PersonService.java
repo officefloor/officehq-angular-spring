@@ -103,7 +103,8 @@ public class PersonService {
     }
 
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
-     * (the sheet's today when left out) and keeping the grades given from other dates; refused when they
+     * (the sheet's today when left out; nothing is given when it is already their grade then) and keeping
+     * the grades given from other dates; refused when they
      * have been saved since. The person's own terms become {@code terms} (none when null), and their
      * contact {@code contact} (none when blank), refused when another person on the sheet has it. Refused
      * too while the new name, or any alias of theirs, is used on another sheet of the sheet's tree. */
@@ -131,7 +132,9 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheetService.today(sheetId);
         person.setName(name);
-        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        LocalDate from = gradeFrom != null ? gradeFrom : today;
+        // A grade already in force on that date is kept as it is given, not given again from it.
+        if (!Objects.equals(person.gradeOn(from), grade)) person.setGrade(grade, from);
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));

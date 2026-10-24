@@ -154,7 +154,7 @@ public class SheetCloneService {
         tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(toSheetId, t.getTag())));
         // Open periods first: the clone numbers its claims within them while it numbers by period.
         periods.findBySheetIdOrderByFromAsc(sheetId).forEach(p ->
-                periods.save(new Period(toSheetId, p.getName(), p.getFrom(), p.getTo())));
+                periods.save(new Period(toSheetId, p.getName(), p.getFrom(), p.getTo(), p.getCap())));
         periods.flush();
 
         List<Person> originals = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);

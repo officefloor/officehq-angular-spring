@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.person.PersonWatchRepository;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Action;
@@ -313,6 +314,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
+        if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
@@ -755,6 +757,22 @@ public class ClaimService {
                 .ifPresent(other -> {
                     throw new ClaimRefTakenException();
                 });
+    }
+
+    /** Refuse opening the claim when the period its due-by falls in caps its person's OPEN or PENDING
+     * claims in it, and they already have that many. The period is locked until the transaction ends,
+     * so two claims are never opened past its cap at once. */
+    private void refuseOverCap(String sheetId, Claim claim) {
+        LocalDate dueBy = claim.getDueBy();
+        Period capped = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> p.getCap() != null && p.overlaps(dueBy, dueBy)).findFirst().orElse(null);
+        if (capped == null) return;
+        Period period = periods.lockByIdAndSheetId(capped.getId(), sheetId).orElseThrow();
+        long open = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+                .filter(c -> !c.getId().equals(claim.getId()) && c.getPersonId().equals(claim.getPersonId())
+                        && c.getStatus().isOpen() && c.getDueBy() != null && period.overlaps(c.getDueBy(), c.getDueBy()))
+                .count();
+        if (open >= period.getCap()) throw new ClaimCapException();
     }
 
     /** Refuse a change to a claim due by {@code date} when a closed period of the sheet contains it. */

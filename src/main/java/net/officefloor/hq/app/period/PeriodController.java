@@ -34,12 +34,12 @@ public class PeriodController {
     /** A period, with whether it is closed, whether that is only a soft close, and the due-total fixed when it was closed (null while it is
      * open) and each person's due-total for it fixed then, by person id (empty while it is open), sent
      * as text with two decimals so they are never rounded on the way. */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
             boolean soft, String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, text(total)));
-            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(), period.getCap(),
                     period.isClosed(), period.isSoft(), period.getClosedTotal() == null ? null : text(period.getClosedTotal()),
                     personTotals);
         }
@@ -50,11 +50,16 @@ public class PeriodController {
     }
 
     /** A period's name (not blank, no spaces inside, kept without the spaces around it) and its from
-     * and to dates, both inclusive. */
+     * and to dates, both inclusive, and the most OPEN or PENDING claims each person may have in it: a
+     * whole number of at least one, blank or missing for no cap. */
     public record PeriodRequest(
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name,
             @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to,
+            @Pattern(regexp = "\\s*(\\d{1,9})?\\s*") String cap) {
+        Integer capValue() {
+            return cap == null || cap.isBlank() ? null : Integer.valueOf(cap.trim());
+        }
     }
 
     /** The dates whose months periods are generated for, both inclusive; a missing one is the sheet's today. */
@@ -91,7 +96,8 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
-        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to(),
+                request.capValue()));
     }
 
     /** Generate one period per month between the dates: the periods made, in order. */

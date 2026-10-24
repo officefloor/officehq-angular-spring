@@ -61,11 +61,21 @@ public class PeriodService {
 
     @Transactional
     public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+        return add(sheetId, user, name, from, to, null);
+    }
+
+    /** Add a period capping each person's OPEN or PENDING claims in it at {@code cap} (none when null);
+     * a cap below one is refused. */
+    @Transactional
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
         if (to.isBefore(from)) {
             throw new PeriodRefusedException("to before from");
+        }
+        if (cap != null && cap < 1) {
+            throw new PeriodRefusedException("cap below one");
         }
         if (periods.findBySheetIdAndNameKey(sheetId, Period.keyOf(name)).isPresent()) {
             throw new PeriodRefusedException("name taken");
@@ -73,9 +83,11 @@ public class PeriodService {
         if (periods.findBySheetIdOrderByFromAsc(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new PeriodRefusedException("overlaps");
         }
-        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to));
-        audit.change("PERIOD_ADDED", sheetId, user, "period=" + period.getName(), "from=" + period.getFrom(),
-                "to=" + period.getTo());
+        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
+        List<String> fields = new ArrayList<>(List.of("period=" + period.getName(), "from=" + period.getFrom(),
+                "to=" + period.getTo()));
+        if (cap != null) fields.add("cap=" + cap);
+        audit.change("PERIOD_ADDED", sheetId, user, fields.toArray(String[]::new));
         return period;
     }
 

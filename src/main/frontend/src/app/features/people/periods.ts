@@ -8,7 +8,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR = /^\d{4}$/;
 
 // The periods of the sheet, by from-date, each with the fiscal year its from-date falls in, the due-total of the counting claims dated in
-// it (fixed once it is closed or soft-closed), whether it is closed (soft for a soft close), the buttons
+// it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
 // that close, soft-close and reopen it, and the
 // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year.
 @Component({
@@ -39,6 +39,15 @@ const YEAR = /^\d{4}$/;
           data-testid="period-form-to"
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
+        />
+        <label for="period-form-cap">Open claims cap</label>
+        <input
+          id="period-form-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          placeholder="none"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
@@ -88,6 +97,7 @@ const YEAR = /^\d{4}$/;
               <th scope="col">From</th>
               <th scope="col">To</th>
               <th scope="col">Fiscal year</th>
+              <th scope="col">Open claims cap</th>
               <th scope="col">Due</th>
               <th scope="col">Closed</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -100,6 +110,7 @@ const YEAR = /^\d{4}$/;
                 <td data-testid="period-from">{{ p.from }}</td>
                 <td data-testid="period-to">{{ p.to }}</td>
                 <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
+                <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
                 <td data-testid="period-due-total">{{ dueTotals()[p.name] ?? '0.00' }}</td>
                 <td data-testid="period-closed">{{ p.closed ? (p.soft ? 'soft' : 'yes') : 'no' }}</td>
                 <td>
@@ -192,6 +203,7 @@ export class Periods {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
@@ -348,7 +360,7 @@ export class Periods {
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const fields = { name: this.name().trim(), from: this.from().trim(), to: this.to().trim() };
+    const fields = { name: this.name().trim(), from: this.from().trim(), to: this.to().trim(), cap: this.cap().trim() };
     if (!/^\S+$/.test(fields.name)) {
       this.error.set('Type a name for the period, without spaces.');
       return;
@@ -361,6 +373,14 @@ export class Periods {
       this.error.set('The to-date must not be before the from-date.');
       return;
     }
+    if (fields.cap !== '' && !/^\d{1,9}$/.test(fields.cap)) {
+      this.error.set('Type the open claims cap as a whole number, or leave it blank for none.');
+      return;
+    }
+    if (fields.cap !== '' && Number(fields.cap) < 1) {
+      this.error.set('The open claims cap must be at least 1.');
+      return;
+    }
     this.submitting = true;
     try {
       const period = await this.service.add(sheet, fields);
@@ -369,6 +389,7 @@ export class Periods {
       this.name.set('');
       this.from.set('');
       this.to.set('');
+      this.cap.set('');
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.error.set(
