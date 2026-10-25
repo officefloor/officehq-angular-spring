@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -52,6 +53,24 @@ public class ClaimService {
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
         return saved;
     }
+
+    /** Move a claim to a new status; a change its status does not allow is refused. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        claim.setStatus(next);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange(EVENTS.get(next), user, person(sheetId, saved.getPersonId()), saved);
+        return saved;
+    }
+
+    private static final Map<ClaimStatus, String> EVENTS = Map.of(
+            ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
 
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)

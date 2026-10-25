@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, cents, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, dueCents } from '../rates/rates-api';
@@ -54,7 +54,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
                     [pct]="rateOf(p.grade)"
-                    (added)="claimAdded($event)" (saved)="claimSaved($event)" />
+                    (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
                 </td>
                 <td>
                   <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -89,10 +89,10 @@ export class People {
   });
   private readonly centsByPerson = computed(() => {
     const by = new Map<number, number>();
-    for (const c of this.claims()) by.set(c.personId, (by.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.claims()) if (counts(c)) by.set(c.personId, (by.get(c.personId) ?? 0) + cents(c.amount));
     return by;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => t + cents(c.amount), 0)));
+  protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => (counts(c) ? t + cents(c.amount) : t), 0)));
   /** The sheet's rates; a grade with no rate is left out. */
   protected readonly rates = signal<RateView[]>([]);
   private readonly rateByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
@@ -137,7 +137,7 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** The sum of the person's claims, with two decimals. */
+  /** The sum of the person's open and settled claims, with two decimals. */
   protected claimed(personId: number): string {
     return money(this.centsByPerson().get(personId) ?? 0);
   }
