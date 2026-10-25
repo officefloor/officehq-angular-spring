@@ -273,7 +273,7 @@ public class PeriodService {
     /** Each person's due-total for the period now, by person id, for everyone on the sheet: the sum of
      * what is due on their claims whose due-by falls in it that counted by the status each had at the end of the
      * period's last day (see {@link #statusAt}), as each shows it now, late charges included (a
-     * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today or an unbound OPEN claim dated within one of its person's holds, while the claim is still OPEN or PENDING now). */
+     * claim with no figure adds nothing, nor does an OPEN claim deferred on the sheet's today, while the claim is still OPEN or PENDING now). */
     private Map<Long, BigDecimal> personTotalsOf(Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(period.getSheetId()).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));

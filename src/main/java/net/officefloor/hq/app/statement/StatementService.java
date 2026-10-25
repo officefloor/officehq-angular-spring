@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken of the people on each sheet. Taking one binds each of the person's claims that
- * counts (OPEN, PENDING or SETTLED, but not an OPEN one deferred on the sheet's today, nor an unbound OPEN or PENDING one dated within one of their holds) to the figure it shows then, and leaves
+ * counts (OPEN, PENDING or SETTLED, but not an OPEN one deferred on the sheet's today) to the figure it shows then, and leaves
  * each that does not count unbound;
  * it records the person's due-total then: the sum of what is due on those claims as each shows it, late
  * charges included (a claim with no figure is skipped), at most the sheet's cap. A bound claim shows and

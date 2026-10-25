@@ -168,21 +168,17 @@ public class RollupService {
     }
 
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
-     * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when it is dated
-     * within one of its person's holds, or held itself, or its person's retirement date is reached on
-     * {@code today}, and no statement binds it. */
+     * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when its person's
+     * retirement date is reached on {@code today} and no statement binds it. A hold, the person's or the
+     * claim's own, does not take it out. */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return countsAs(claim, claim.getStatus(), person, today);
     }
 
     /** Whether the claim counts in what its person has claimed on the sheet's {@code today}: as it counts in
-     * the live totals (see {@link #countsLive}), but a hold, the person's or the claim's own, does not take it out. */
+     * the live totals (see {@link #countsLive}). */
     public static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
-        ClaimStatus status = claim.getStatus();
-        if (!status.counts()) return false;
-        if (!status.isOpen()) return true;
-        if (claim.isDeferredOn(today)) return false;
-        return claim.isStated() || !person.isRetiredOn(today);
+        return countsLive(claim, person, today);
     }
 
     /** Whether the claim would count in the live totals on the sheet's {@code today} were its status
@@ -191,8 +187,7 @@ public class RollupService {
         if (!status.counts()) return false;
         if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
-        boolean bound = claim.isStated();
-        return bound || !(claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
+        return claim.isStated() || !person.isRetiredOn(today);
     }
 
     /** What a sheet's figures are worked out from: its today, the policy date, rates and dated settings in

@@ -183,8 +183,7 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
-    /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live due
-     * total, as a claim of a held person does. */
+    /** Whether the claim is held; it still counts in every total. */
     @Column(name = "held", nullable = false)
     private boolean held;
 

@@ -74,8 +74,7 @@ export interface Claim {
   reviewLate: boolean;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
-  /** Whether the claim is held: while OPEN or PENDING and unbound by a statement it counts in no live due
-   *  total, as a claim of a held person does. */
+  /** Whether the claim is held; it still counts in every total. */
   held: boolean;
   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
   proofsByKind: Record<ProofKind, number>;

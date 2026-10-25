@@ -7,7 +7,7 @@ import { Holidays } from './holidays';
 import { Notes } from './notes';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn, withGrade } from './people.service';
+import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -1955,21 +1955,16 @@ export class People {
   }
 
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, but not an OPEN claim
-   *  deferred on the sheet's today, nor OPEN or PENDING when it is dated within one of its person's
-   *  holds, or held itself, or its person's retirement date is reached on the sheet's today, and no statement binds it. */
+   *  deferred on the sheet's today, nor OPEN or PENDING when its person's retirement date is reached
+   *  on the sheet's today and no statement binds it. A hold, the person's or the claim's own, does not
+   *  take it out. */
   private countsLive(claim: Claim, person: Person): boolean {
     return this.countsAs(claim, claim.status, person);
   }
 
-  /** Whether the claim counts in what its person has claimed: as countsLive says, but a hold, the
-   *  person's or the claim's own, does not take it out. */
+  /** Whether the claim counts in what its person has claimed: as countsLive says. */
   private countsClaimed(claim: Claim, person: Person): boolean {
-    if (!counts(claim)) return false;
-    if (!isOpen(claim)) return true;
-    const today = this.session.today();
-    if (deferred(claim, today)) return false;
-    const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
-    return claim.stated || !retired;
+    return this.countsLive(claim, person);
   }
 
   /** Whether the claim would count in the live totals were its status `status` (see countsLive). */
@@ -1978,10 +1973,9 @@ export class People {
     if (!counts(as)) return false;
     if (!isOpen(as)) return true;
     if (deferred(claim, this.session.today())) return false;
-    const bound = claim.stated;
     const today = this.session.today();
     const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
-    return bound || !(claim.held || heldOn(person.holds, claim.date) || retired);
+    return claim.stated || !retired;
   }
 
   /** Whether the claim counts in a period ending on `end`: by the status it had at the end of

@@ -57,8 +57,8 @@ public class Person {
     @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
     private List<PersonRetirement> retirements = new ArrayList<>();
 
-    /** The holds the person has been put on: their OPEN and PENDING claims dated within one count in no
-     * live total, unless a statement binds them. The same hold may be put on more than once. Loaded by
+    /** The holds the person has been put on: while one is in force the person gets no cut of a pool; their
+     * claims still count in every total. The same hold may be put on more than once. Loaded by
      * a sub-select, so it loads eagerly beside the grades. */
     @ElementCollection(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
