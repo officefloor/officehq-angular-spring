@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ebd17d39..cbbe63e5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -857,6 +857,11 @@ import { FigurePipe } from '../../core/figure.pipe';
+         Overdue: <span data-testid="rollup-overdue-count">{{ (overdueTotal().count) | figure }}</span>,
+         due on them <span data-testid="rollup-overdue-total">{{ (money(overdueTotal().cents)) | figure }}</span>
+       </p>
++      <p>
++        Due aged 0–30 days: <span data-testid="rollup-aged-0-30">{{ (money(agedTotal()[0])) | figure }}</span>,
++        31–60 days: <span data-testid="rollup-aged-31-60">{{ (money(agedTotal()[1])) | figure }}</span>,
++        61+ days: <span data-testid="rollup-aged-61">{{ (money(agedTotal()[2])) | figure }}</span>
++      </p>
+       <p>
+         Cut in total: <span data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</span>
+       </p>
+@@ -1234,6 +1239,16 @@ export class People {
+       open: each.reduce((sum, s) => sum + s.open, 0),
+     };
+   });
++  /** What is due on everyone's counting OPEN and PENDING claims, in cents, by age: the people's age
++   *  buckets (0 to 30, 31 to 60, 61 or more days) each simply added up (not trimmed). */
++  protected readonly agedTotal = computed(() => {
++    const total: [number, number, number] = [0, 0, 0];
++    for (const p of this.people()) {
++      const aged = this.agedOf(p);
++      for (let i = 0; i < 3; i++) total[i] += aged[i];
++    }
++    return total;
++  });
+   /** How many of everyone's counting claims are overdue, and what is due on them, in cents (trimmed). */
+   protected readonly overdueTotal = computed(() => {
+     const each = this.people().map((p) => this.overdueOf(p));
+@@ -1676,10 +1691,10 @@ export class People {
+     }
+   }
+ 
+-  /** The person's statements still standing, by date, oldest first; those of a day keep their order
+-   *  among the person's statements (those a merge or a transfer brought over before their own). */
++  /** The person's statements still standing, in the order they were taken (those a merge or a
++   *  transfer brought over before their own). */
+   protected statementLinesOf(personId: number): Statement[] {
+-    return [...this.statementsOf(personId)].sort((a, b) => a.date.localeCompare(b.date));
++    return this.statementsOf(personId);
+   }
+ 
+   protected snapshotLinesOf(personId: number): string[] {
