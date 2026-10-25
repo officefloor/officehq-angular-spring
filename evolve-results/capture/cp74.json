@@ -1,0 +1,64 @@
+{
+  "checkpoint": 74,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp74_as-of-view",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b125f883d32a9bdc19f8f3f694ec69345fcfc6d2",
+  "reset_sha": "",
+  "preagent_sha": "d9669ae0a134b15236e334c37e96e43fd2531c92",
+  "prev_sha": "d9669ae0a134b15236e334c37e96e43fd2531c92",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0898608000000003,
+    "input_tokens": 60,
+    "output_tokens": 36175,
+    "cache_read_tokens": 2328124,
+    "cache_creation_tokens": 112562,
+    "num_turns": 31,
+    "duration_ms": 735392,
+    "duration_api_ms": 394810,
+    "model": "claude-opus-5-5",
+    "session_id": "11609a18-bfb4-4af6-bec1-88f0caf66776",
+    "stop_reason": "success",
+    "result_text": "I've added the as-of view, and all 4 tests in `bin/e2e` now pass.\n\n**How it works**\n- **Saved states:** a new table, `sheet_history` (migration `V43__sheet_history.sql`), keeps a copy of all of a sheet's rows, filed under the sheet's today at the time. The copy is taken just before each change commits, in the same transaction, so a refused or rolled-back change saves nothing. A later change on the same today replaces that day's copy. The code finds the sheet's tables from the database schema itself (any table with a `sheet_id`, plus tables that point at those rows), so a panel added later is covered without touching this code.\n- **Reading as of a date:** the screen sends the as-of date in an `X-As-Of` header on every request. A read carrying it (a GET, or loading the sheet) runs inside a transaction that is always rolled back. That transaction first puts the sheet back to the latest saved state made while today was on or before the as-of date, or to an empty sheet if there is none. It then sets the sheet's today to the as-of date and runs the app's normal read code. That is why every figure, flag, rate, period and total comes out as of that date, and the store and audit file are left untouched.\n- **Refusing changes:** while the header is present, any other request on the sheet gets a 409 before it reaches its controller, so the screen shows that action's usual error. This includes a statement as of a date and changing today.\n- **Front end:** the as-of date lives only in the signed-in user's browser session, so other users are unaffected. Setting or clearing it re-loads the sheet. The controls are a new `SheetAsOf` component (`asof-date`, `asof-set`, `asof-clear`, and `sheet-asof` showing the date or nothing), wired in through an HTTP interceptor.\n\n**Fixing a bug that was already there:** in the people panel, the statement date field kept its value after a refused statement, so the next plain statement reused that date and was refused too. Scenario 2 failed on this. The field is now cleared after every attempt, whether it went through or not (`people.ts`).\n\n**Limitations**\n- **Today moved backwards:** picking a saved state assumes today usually moves forward. If it moves back, the view uses the most recent state saved on or before the as-of date. That state can include changes made earlier at a later today, which by the request's rule should not count. None of the tests move today backwards.\n- **Bulk open/settle:** these are now refused with a 409 while an as-of date is set. That differs from the viewer rule, where they go through and refuse each claim one by one.\n- **Brief lock:** an as-of read briefly locks the sheet's rows, so another user's change made at that same moment may wait for it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0898608000000003,
+        "num_turns": 31,
+        "duration_ms": 735392,
+        "duration_api_ms": 394810,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp74.agent.jsonl",
+  "agent_diff_file": "cp74.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
