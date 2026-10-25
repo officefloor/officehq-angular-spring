@@ -1,0 +1,64 @@
+{
+  "checkpoint": 55,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp55_auto-close",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has grace days (settings, a whole number, blank means off, not dated; SETTING_CHANGED\nkey=grace-days value=<days>). When the sheet's today is changed, every open period whose to-date\nplus the grace days is before the new today is closed, in order of their to-dates, exactly as a\nclose by hand would, each writing PERIOD_CLOSED with auto=yes at its end; these lines come after\nthe new today is set and before the rollup lines of the today change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has grace days (settings, a whole number, blank means off, not dated; SETTING_CHANGED\nkey=grace-days value=<days>). When the sheet's today is changed, every open period whose to-date\nplus the grace days is before the new today is closed, in order of their to-dates, exactly as a\nclose by hand would, each writing PERIOD_CLOSED with auto=yes at its end; these lines come after\nthe new today is set and before the rollup lines of the today change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b528811d7411fabf87fa08ac7734587b6fc0711b",
+  "reset_sha": "",
+  "preagent_sha": "7edb494d3b0aca9133ff5e8105995aa7bac26abb",
+  "prev_sha": "7edb494d3b0aca9133ff5e8105995aa7bac26abb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8935792,
+    "input_tokens": 28,
+    "output_tokens": 8554,
+    "cache_read_tokens": 684896,
+    "cache_creation_tokens": 73176,
+    "num_turns": 15,
+    "duration_ms": 255207,
+    "duration_api_ms": 85242,
+    "model": "claude-opus-5-5",
+    "session_id": "bfd0773e-9661-4514-8950-9b5ad89cd3c6",
+    "stop_reason": "success",
+    "result_text": "I've added the grace-days setting: changing the sheet's today now closes overdue periods automatically. All 4 tests in `bin/e2e` pass.\n\n**What it does**\n- **Setting:** the sheet has a `grace-days` setting. It takes a whole number of days; blank turns it off, and it isn't dated. Saving it writes `SETTING_CHANGED \u2026 key=grace-days value=<days>` (blank value when cleared). It's on the Settings form as `setting-grace-days` and `setting-grace-days-current`, with a validation error for anything that isn't 0\u201336500.\n- **Auto-close:** when today changes and grace days are set, every open period whose to-date plus the grace days is before the new today is closed, in to-date order. Each one goes through the same code as a close by hand, so its figures are worked out the same way, and the audit line is `PERIOD_CLOSED \u2026 total=\u2026 auto=yes`.\n- **Audit order:** the new today is saved first, then the periods are closed, then the usual `ROLLUP`/`TOTALS` lines for the today change are written.\n\n**How it's wired**\n- `SheetService.setToday` now publishes a `TodayChanged` event (new file `sheet/TodayChanged.java`). `PeriodService.closeOverdue` handles it within the same transaction. I used an event because `PeriodService` already depends on `SheetService`, so a direct call back would create a dependency loop.\n- The by-hand `close` and the automatic close now share one private `closeNow` method.\n\n**Decision for you:** the automatic close skips the `perm-close` permission check. I treated it as part of changing today rather than as an action the user takes. The downside is that a user whose role can't close periods can still cause one to close by changing today. If you'd rather it respected the permission, the choices are to skip the close or to refuse the today change, and the request doesn't say which.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8935792,
+        "num_turns": 15,
+        "duration_ms": 255207,
+        "duration_api_ms": 85242,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp55.agent.jsonl",
+  "agent_diff_file": "cp55.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
