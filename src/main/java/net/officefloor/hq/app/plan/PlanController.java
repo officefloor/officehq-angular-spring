@@ -35,15 +35,17 @@ public class PlanController {
      * for a monthly plan), day of the month (null for one every N days), end, and how many claims it has
      * made so far, and its next dates: the first five plan dates after the sheet's today and on or before
      * the end and not skipped by a pause, comma and space separated (empty when there are none), and
-     * whether it is paused now. */
+     * whether it is paused now, and the changes of its amount, oldest first, each as {@code <date> amount=<amount>}. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates, boolean paused) {
+            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(),
                     p.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), p.getStart(), p.getEvery(),
                     p.getDay(), p.getEnd(), p.getGenerated(),
                     p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")),
-                    p.isPaused());
+                    p.isPaused(),
+                    p.getChanges().stream().map(c -> c.getChangedOn() + " amount="
+                            + c.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()).toList());
         }
     }
 
@@ -71,6 +73,14 @@ public class PlanController {
 
         private static Integer whole(String text) {
             return text == null || text.isBlank() ? null : Integer.valueOf(text.trim());
+        }
+    }
+
+    /** A plan's new amount asked: above zero, with up to two decimals. */
+    public record AmountRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2);
         }
     }
 
@@ -118,6 +128,15 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
         return PlanView.of(service.resume(sheet, user.trim(), planId), service.today(sheet));
+    }
+
+    @PostMapping("/{planId}/amount")
+    public PlanView amount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AmountRequest request) {
+        String sheet = sheetId.trim();
+        return PlanView.of(service.changeAmount(sheet, user.trim(), planId, request.amountValue()),
+                service.today(sheet));
     }
 
     @PostMapping("/generate")

@@ -8,7 +8,8 @@ import { Claim } from './claims.service';
  *  monthly, `day` of every month from the start's month, the month's last day when it is shorter, those
  *  before the start left out) up to the end, how many claims it has made so far, and its next dates (the
  *  first five plan dates after the sheet's today and on or before the end and not skipped by a pause,
- *  comma and space separated), and whether it is paused now. */
+ *  comma and space separated), whether it is paused now, and the changes of its amount, oldest first,
+ *  each as `<date> amount=<amount>`. */
 export interface Plan {
   id: number;
   personId: number;
@@ -20,6 +21,7 @@ export interface Plan {
   generated: number;
   nextDates: string;
   paused: boolean;
+  changes: string[];
 }
 
 /** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of
@@ -69,6 +71,14 @@ export class PlansService {
   resume(sheet: string, planId: number): Promise<Plan> {
     return firstValueFrom(
       this.http.post<Plan>(`${this.url(sheet)}/${planId}/resume`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Change the plan's amount from the sheet's today, for the claims generated from then on. Refused
+   *  (400, 422) when the amount is not above zero with up to two decimals. */
+  changeAmount(sheet: string, planId: number, amount: string): Promise<Plan> {
+    return firstValueFrom(
+      this.http.post<Plan>(`${this.url(sheet)}/${planId}/amount`, { amount }, { headers: this.session.headers() }),
     );
   }
 

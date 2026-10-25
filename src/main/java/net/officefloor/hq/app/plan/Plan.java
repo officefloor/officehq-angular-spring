@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,7 +24,8 @@ import java.util.stream.Collectors;
  * {@code every} days, or, for a monthly plan, {@code day} of every month from the start's month (the
  * month's last day when it is shorter), those before the start left out; with the plan dates it has made
  * its claim for, and the times it was paused: a plan date on or after a pause and before its resume is
- * skipped, not postponed. */
+ * skipped, not postponed; and the changes of its amount, oldest first: a change applies to the claims
+ * generated after it, those already made keep theirs. */
 @Entity
 @Table(name = "person_plan")
 public class Plan {
@@ -60,6 +62,11 @@ public class Plan {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
     private Set<PlanPause> pauses = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderColumn(name = "position")
+    private List<PlanChange> changes = new ArrayList<>();
 
     protected Plan() {
     }
@@ -129,6 +136,19 @@ public class Plan {
     /** The first {@code count} plan dates after {@code today} and on or before the end, earliest first. */
     public List<LocalDate> nextDates(LocalDate today, int count) {
         return dates(end).stream().filter(on -> on.isAfter(today) && !skipped(on)).limit(count).toList();
+    }
+
+    /** The changes of the plan's amount, oldest first. */
+    public List<PlanChange> getChanges() {
+        return List.copyOf(changes);
+    }
+
+    /** Change the plan's amount on {@code on} to {@code to}, for the claims generated from then on;
+     * refused when it is not above zero. */
+    public void changeAmount(LocalDate on, BigDecimal to) {
+        if (to.signum() <= 0) throw new PlanAmountException();
+        amount = to;
+        changes.add(new PlanChange(on, to));
     }
 
     /** Whether the plan is paused now: paused and not yet resumed. */

@@ -10,7 +10,8 @@ const DAY = /^\d{1,2}$/;
 
 // A person's plans, one line each in the order they were added with how many claims each has made so
 // far, its next dates and whether it is paused, with buttons that pause and resume it (a plan date on or
-// after a pause and before its resume is skipped), and the form on the row that adds one: an amount, a start date, either every N days (a whole
+// after a pause and before its resume is skipped), an entry that changes its amount for the claims
+// generated from then on, with its changes listed oldest first, and the form on the row that adds one: an amount, a start date, either every N days (a whole
 // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
 @Component({
   selector: 'app-plans',
@@ -29,6 +30,16 @@ const DAY = /^\d{1,2}$/;
             <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="plan-pause" (click)="pause(pl, true)">Pause</button>
             <button type="button" data-testid="plan-resume" (click)="pause(pl, false)">Resume</button>
+            <label [for]="'plan-amount-' + pl.id">New amount</label>
+            <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" [value]="newAmounts()[pl.id] ?? ''" (input)="typeAmount(pl, value($event))" />
+            <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl)">Save amount</button>
+            @if (pl.changes.length > 0) {
+              <ul class="changes" [attr.aria-label]="'Amount changes'">
+                @for (line of pl.changes; track $index) {
+                  <li data-testid="plan-change-line">{{ (line) | figure }}</li>
+                }
+              </ul>
+            }
             @if (planError()?.id === pl.id) {
               <p role="alert" class="error" data-testid="plan-error">{{ (planError()?.message) | figure }}</p>
             }
@@ -56,6 +67,10 @@ const DAY = /^\d{1,2}$/;
   styles: `
     .plans {
       margin: 0 0 0.25rem;
+      padding-left: 1rem;
+    }
+    .changes {
+      margin: 0;
       padding-left: 1rem;
     }
     form {
@@ -88,11 +103,45 @@ export class Plans {
   protected readonly error = signal<string | null>(null);
   /** The refused pause or resume, on the plan it was asked of. */
   protected readonly planError = signal<{ id: number; message: string } | null>(null);
+  /** The new amount typed on each plan, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
   private saving = false;
   private pausing = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected typeAmount(plan: Plan, amount: string): void {
+    this.newAmounts.update((all) => ({ ...all, [plan.id]: amount }));
+    if (this.planError()?.id === plan.id) this.planError.set(null);
+  }
+
+  /** Change the plan's amount for the claims generated from then on; refused when it is not above zero
+   *  with up to two decimals. */
+  protected async changeAmount(plan: Plan): Promise<void> {
+    if (this.pausing) return;
+    this.planError.set(null);
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.newAmounts()[plan.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || Number(amount) <= 0) {
+      this.planError.set({ id: plan.id, message: 'Type an amount above zero with up to two decimals.' });
+      return;
+    }
+    this.pausing = true;
+    try {
+      const changed = await this.service.changeAmount(sheet, plan.id, amount);
+      if (this.session.sheetId() !== sheet) return;
+      this.newAmounts.update((all) => ({ ...all, [plan.id]: '' }));
+      this.changed.emit(changed);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.planError.set({ id: plan.id, message: 'That amount could not be saved.' });
+    } finally {
+      this.pausing = false;
+    }
   }
 
   /** Pause (true) or resume (false) the plan; refused when it is already paused, or already running. */

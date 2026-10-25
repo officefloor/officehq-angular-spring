@@ -98,10 +98,22 @@ public class PlanService {
         return changed(sheetId, user, plan, "PLAN_RESUMED");
     }
 
-    private Plan changed(String sheetId, String user, Plan plan, String event) {
+    /** Change the plan's amount, from the sheet's today, for the claims generated from then on; refused
+     * when it is not above zero. Records PLAN_CHANGED. */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
+        plan.changeAmount(sheets.today(sheetId), amount);
+        return changed(sheetId, user, plan, "PLAN_CHANGED",
+                "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+    }
+
+    private Plan changed(String sheetId, String user, Plan plan, String event, String... fields) {
         Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         Plan saved = plans.saveAndFlush(plan);
-        audit.change(event, sheetId, user, "name=" + person.getName(), "start=" + plan.getStart());
+        List<String> line = new ArrayList<>(List.of("name=" + person.getName(), "start=" + plan.getStart()));
+        line.addAll(List.of(fields));
+        audit.change(event, sheetId, user, line.toArray(String[]::new));
         return saved;
     }
 
