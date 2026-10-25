@@ -1,0 +1,64 @@
+{
+  "checkpoint": 215,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp215_sheet-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "493b8ead9afc32e48480a985c629b78c98e8836c",
+  "reset_sha": "",
+  "preagent_sha": "4f55b7710f58b361bd75154109e1a7376843116a",
+  "prev_sha": "4f55b7710f58b361bd75154109e1a7376843116a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6114504,
+    "input_tokens": 32,
+    "output_tokens": 7595,
+    "cache_read_tokens": 567352,
+    "cache_creation_tokens": 43244,
+    "num_turns": 17,
+    "duration_ms": 299963,
+    "duration_api_ms": 97297,
+    "model": "claude-opus-5-5",
+    "session_id": "79586e68-775c-4818-a1f1-cee61041072d",
+    "stop_reason": "success",
+    "result_text": "The sheet comparison is in, and `bin/e2e` passes all 4 tests.\n\n**What it does:** the Summary section now has a \"Compare with sheet\" box and a Compare button. Pressing it shows one line per grade (A, B, C): the grade, this sheet's summary due-total for it, then the other sheet's. A grade the other sheet has no one on shows 0.00. If the other sheet has never been loaded (so doesn't exist), no lines appear.\n\n**Server** (`ConsolidatedService.java`, `SheetController.java`): a new `GET /api/sheets/{id}/grade-due-totals` endpoint returns a sheet's per-grade due-totals, worked out the same way as the existing consolidated figures: grade as of that sheet's today, retired people left out, n/a due-totals skipped. If the sheet doesn't exist it says so and returns no grades.\n\n**Front end** (`people.service.ts`, `summary.ts`): this sheet's figures come straight from the Summary's own per-grade table, so the two always match. Only the other sheet's figures are fetched. Starting a new comparison clears the old lines first, and only the most recent request's answer is shown.\n\nThere is no error element: the test doesn't ask for one, and a missing sheet just gives no lines.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6114504,
+        "num_turns": 17,
+        "duration_ms": 299963,
+        "duration_api_ms": 97297,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp215.agent.jsonl",
+  "agent_diff_file": "cp215.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

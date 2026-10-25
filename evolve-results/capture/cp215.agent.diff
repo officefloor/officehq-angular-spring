@@ -1,0 +1,197 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 4978a41e..9411bd55 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -167,6 +167,12 @@ export interface DescendantFigures {
+ export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {},
+   dueFigures: [], overdueFigures: [], nameKeys: [] };
+ 
++/** A sheet's own due-totals per grade, with two decimals. */
++export interface GradeDueTotals {
++  exists: boolean;
++  dueTotals: Partial<Record<string, string>>;
++}
++
+ // The people kept on a sheet, read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class PeopleService {
+@@ -189,6 +195,16 @@ export class PeopleService {
+     );
+   }
+ 
++  /** The sheet's own due-totals per grade as its summary shows them; `exists` false, with none, when the
++   *  sheet has never been loaded. */
++  gradeDueTotals(sheet: string): Promise<GradeDueTotals> {
++    return firstValueFrom(
++      this.http.get<GradeDueTotals>(`/api/sheets/${encodeURIComponent(sheet)}/grade-due-totals`, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Add a person per pasted line of name,grade,terms,contact, in order; when any line is refused
+    *  no one is added. */
+   importPeople(sheet: string, text: string): Promise<Imported> {
+diff --git a/src/main/frontend/src/app/features/people/summary.ts b/src/main/frontend/src/app/features/people/summary.ts
+index b9e56e43..ff6ce7b5 100644
+--- a/src/main/frontend/src/app/features/people/summary.ts
++++ b/src/main/frontend/src/app/features/people/summary.ts
+@@ -1,9 +1,10 @@
+-import { Component, computed, inject, input } from '@angular/core';
++import { Component, computed, inject, input, signal } from '@angular/core';
+ import { Claim, cents, money } from './claims.service';
+-import { GRADES, Grade } from './people.service';
++import { GRADES, Grade, PeopleService } from './people.service';
+ import { Period } from './periods.service';
+ import { VoidReasonsService } from './void-reasons.service';
+ import { FigurePipe } from '../../core/figure.pipe';
++import { Session } from '../../core/session';
+ 
+ /** The statuses the summary counts claims by. */
+ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+@@ -22,6 +23,8 @@ export interface SummaryPerson {
+ // per period, its due-total and its change from the period before it by start date; per tag ever used, its due-total;
+ // per calendar month any claim is dated in, its due-total; per status, how many of the sheet's claims have it;
+ // per reason on the sheet's void reasons, how many VOID claims were voided with it.
++// A comparison with another sheet, by id: per grade, this sheet's due-total and the other's (no lines
++// when the other sheet does not exist).
+ @Component({
+   selector: 'app-summary',
+   imports: [FigurePipe],
+@@ -144,6 +147,36 @@ export interface SummaryPerson {
+           </tr>
+         </tbody>
+       </table>
++      <form (submit)="compare($event)" aria-label="Compare sheets" data-testid="compare-form">
++        <label for="compare-sheet">Compare with sheet</label>
++        <input
++          id="compare-sheet"
++          data-testid="compare-sheet"
++          [value]="compareId()"
++          (input)="compareId.set(value($event))"
++        />
++        <button type="submit" data-testid="compare">Compare</button>
++      </form>
++      @if (compareLines().length > 0) {
++        <table aria-label="Sheet comparison">
++          <thead>
++            <tr>
++              <th scope="col">Grade</th>
++              <th scope="col">This sheet</th>
++              <th scope="col">{{ compared() }}</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (l of compareLines(); track l.grade) {
++              <tr data-testid="compare-line">
++                <th scope="row">{{ (l.grade) | figure }}</th>
++                <td> {{ (l.mine) | figure }}</td>
++                <td> {{ (l.theirs) | figure }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+       @if (byVoidReason().length > 0) {
+         <table>
+           <thead>
+@@ -180,6 +213,24 @@ export interface SummaryPerson {
+ })
+ export class Summary {
+   private readonly voidReasons = inject(VoidReasonsService);
++  private readonly peopleService = inject(PeopleService);
++  private readonly session = inject(Session);
++
++  /** The other sheet's id, as typed. */
++  protected readonly compareId = signal('');
++  /** The id of the sheet last compared with. */
++  protected readonly compared = signal('');
++  /** The other sheet's due-totals per grade, as last read; null when there is none to show. */
++  private readonly otherDueTotals = signal<Partial<Record<string, string>> | null>(null);
++  /** Counts the comparisons asked for, so only the latest one's answer is shown. */
++  private comparing = 0;
++
++  /** Per grade of this sheet: its due-total and the other sheet's (0.00 for a grade it has no one on). */
++  protected readonly compareLines = computed(() => {
++    const other = this.otherDueTotals();
++    if (other === null) return [];
++    return this.byGrade().map((g) => ({ grade: g.grade, mine: g.dueTotal, theirs: other[g.grade] ?? '0.00' }));
++  });
+ 
+   /** Everyone on the sheet. */
+   readonly people = input.required<SummaryPerson[]>();
+@@ -198,6 +249,28 @@ export class Summary {
+   /** Each calendar month any claim is dated in, sorted, with its due-total. */
+   readonly monthDueTotals = input.required<{ month: string; dueTotal: string }[]>();
+ 
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  /** Compare this sheet with the one typed: read the other sheet's due-totals per grade. */
++  protected async compare(event: Event): Promise<void> {
++    event.preventDefault();
++    const id = this.compareId().trim();
++    const run = ++this.comparing;
++    this.otherDueTotals.set(null);
++    const sheet = this.session.sheetId();
++    if (id === '' || sheet === null) return;
++    try {
++      const found = await this.peopleService.gradeDueTotals(id);
++      if (run !== this.comparing) return;
++      this.compared.set(id);
++      this.otherDueTotals.set(found.exists ? found.dueTotals : null);
++    } catch {
++      if (run === this.comparing) this.otherDueTotals.set(null);
++    }
++  }
++
+   protected readonly byGrade = computed(() =>
+     GRADES.map((grade) => {
+       const on = this.people().filter((p) => !p.retired && p.grade === grade);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 815e97e6..8b7b82ba 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -207,6 +207,23 @@ public class ConsolidatedService {
+         sum.add(rollup.snapshot(sheet.people(), sheet.claims(), sheet), sheet.people(), sheet.claims(), sheet.today());
+     }
+ 
++    /** A sheet's own due-totals per grade as its summary shows them: the due-totals of the people on the
++     * grade on its today (retired people left out, a due-total of n/a skipped); {@code exists} false, and
++     * no grades, when the sheet has never been loaded. */
++    public record GradeDueTotals(boolean exists, Map<String, String> dueTotals) {
++    }
++
++    /** The sheet's own due-totals per grade, as they stand (see {@link GradeDueTotals}). */
++    @Transactional(readOnly = true)
++    public GradeDueTotals gradeDueTotalsOf(String sheetId) {
++        return sheets.findById(sheetId).map(sheet -> {
++            Sum sum = new Sum();
++            sum.add(rollup.snapshot(sheet.getId()), people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId()),
++                    List.of(), sheet.getToday());
++            return new GradeDueTotals(true, sum.figures().gradeDueTotals());
++        }).orElseGet(() -> new GradeDueTotals(false, Map.of()));
++    }
++
+     /** The figures of the sheet's descendants as they stand, added up. */
+     @Transactional(readOnly = true)
+     public Figures descendantsOf(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index fcd23ca3..7cd8e2ca 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -68,6 +68,13 @@ public class SheetController {
+         return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedAsOf(id.trim(), asOf);
+     }
+ 
++    /** The sheet's own due-totals per grade, as its summary shows them; none when the sheet does not
++     * exist (see {@link ConsolidatedService#gradeDueTotalsOf}). */
++    @GetMapping("/{id}/grade-due-totals")
++    public ConsolidatedService.GradeDueTotals gradeDueTotals(@PathVariable @NotBlank @Size(max = 100) String id) {
++        return consolidated.gradeDueTotalsOf(id.trim());
++    }
++
+     /** The people of the sheet and the other sheets of its tree whose name or an alias contains
+      * {@code q} (see {@link ConsolidatedService#search}). */
+     @GetMapping("/{id}/search")
