@@ -1,0 +1,64 @@
+{
+  "checkpoint": 73,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp73_statement-as-of",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "232730a26fc2ae7354914ef7516fd21bfcd0aed0",
+  "reset_sha": "",
+  "preagent_sha": "eaa26746e77fbadfc6a40a57f1d93d5ad5cb53da",
+  "prev_sha": "eaa26746e77fbadfc6a40a57f1d93d5ad5cb53da",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.6481030000000003,
+    "input_tokens": 76,
+    "output_tokens": 41768,
+    "cache_read_tokens": 3570235,
+    "cache_creation_tokens": 137299,
+    "num_turns": 42,
+    "duration_ms": 602569,
+    "duration_api_ms": 450083,
+    "model": "claude-opus-5-5",
+    "session_id": "b5c0f097-073d-4299-ab39-940766be4498",
+    "stop_reason": "success",
+    "result_text": "Statements can now be taken as of a date. `bin/e2e` passes all 4 acceptance tests: the main one and scenarios 1\u20133.\n\n**What a person sees:** each person's row has a date entry (`person-statement-asof`) beside the Statement button. Blank takes the statement now, as before. With a date, the statement is taken as of that day, and the date is cleared once it goes through. The row then shows that date as the statement date. Refused dates show `person-error` and write nothing. The `STATEMENT` audit line gets ` asof=<date>` at its end when a date was given.\n\n**How it works:** the store used to overwrite rates and dated settings in place, and kept no dates for holds, retirements, grades or a claim's statement bindings. So there was no way to tell how things stood on an earlier day. Each of these changes now keeps the sheet's today it was made on (migration `V42__statement_as_of.sql`, new tables `rate_change`, `setting_change` and `claim_binding`). The as-of path in `StatementService.take` rebuilds each claim from that history:\n- its status and settled due, from the claim log;\n- whether a statement had bound it then, and to what figure;\n- the person's grade, holds and retirement;\n- the rate, floor, late percent and cap, with the as-of date standing in for today for late charges and rounding.\n\nA cancelled statement counts as a change on the day it was cancelled, so it unbinds the claims as of that day. The last part of the main test depends on this.\n\n**Things you should know:**\n- **An extra refusal not in the request.** All three scenarios expect a refusal for a date that is on or before the sheet's today, so some other rule was needed. In each one, the person was added while the sheet's today was later than the requested date. So I also refuse a date before the person was added, with the error \"<name> was not yet on the sheet on <date>\". That rule fits the tests and seemed the most natural one, but it is my inference.\n- **Changes with no history still use their current values:** policy date, deferrals, and a claim's amount, date and person. Only the figures the request lists are rebuilt as of the date.\n- **One kind of grade change isn't recorded.** If someone gives a person a different grade for a from-date that already has one, that change keeps only its latest date.\n- Plain statements work exactly as before, except that they now also write binding history.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.6481030000000003,
+        "num_turns": 42,
+        "duration_ms": 602569,
+        "duration_api_ms": 450083,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp73.agent.jsonl",
+  "agent_diff_file": "cp73.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
