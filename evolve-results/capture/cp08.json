@@ -1,0 +1,80 @@
+{
+  "checkpoint": 8,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp08_workflow",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    5,
+    6,
+    7
+  ],
+  "replaced_tests": [
+    "cp05_claims.spec.ts::claims",
+    "cp05_claims.spec.ts::claims scenario 1",
+    "cp05_claims.spec.ts::claims scenario 2",
+    "cp05_claims.spec.ts::claims scenario 3",
+    "cp06_audit.spec.ts::audit scenario 1",
+    "cp06_audit.spec.ts::audit scenario 2",
+    "cp06_audit.spec.ts::audit scenario 3",
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 3"
+  ],
+  "request": {
+    "spec": "A claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "788d5d4e11a8d94034e14c03f1038c3b67b8229c",
+  "reset_sha": "",
+  "preagent_sha": "a6c005084c20330dc867b160c24fa9cfb729f34a",
+  "prev_sha": "a6c005084c20330dc867b160c24fa9cfb729f34a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6797458000000001,
+    "input_tokens": 26,
+    "output_tokens": 8716,
+    "cache_read_tokens": 541449,
+    "cache_creation_tokens": 49629,
+    "num_turns": 14,
+    "duration_ms": 345663,
+    "duration_api_ms": 95985,
+    "model": "claude-opus-5-5",
+    "session_id": "4af0a971-4a88-4e8e-ab9a-bef6ffd786b0",
+    "stop_reason": "success",
+    "result_text": "Claims now have a status, and `bin/e2e` passes all 4 tests, including after one last change to the error wording.\n\n**How it behaves**\n- Every new claim starts as DRAFT. A DRAFT can be opened, an OPEN claim can be settled, and a DRAFT or OPEN claim can be voided. A SETTLED or VOID claim can't change status at all.\n- Each claim row shows its status and has Open, Settle and Void buttons. A press that isn't allowed shows an error on that claim and changes nothing. The error clears on the next action on that row.\n- The server makes the decision, not the screen. It reads the claim's current status from the store and locks it while changing it. So a second user acting from an outdated screen is refused, and two status changes on the same claim at the same moment can't both go through. A refused change writes nothing.\n- Each status change writes one audit line: `CLAIM_OPENED`, `CLAIM_SETTLED` or `CLAIM_VOIDED`, with `person=`, `amount=` and `date=`.\n- Only OPEN and SETTLED claims count toward a person's claimed and due totals and the sheet's two totals.\n\n**Things you might not expect**\n- **Each claim's own \"due\" figure still shows for every claim**, including drafts and voided ones. The test expects this: a voided 30.00 claim still shows 3.00 due. Only the totals leave those claims out.\n- **Editing is not restricted by status.** Claims can still be edited whatever their status, including settled and voided ones. The request didn't ask to limit this; one test edits an OPEN claim, and I didn't check the status of the claim edited in the second scenario.\n\n**What changed**\n- **Database:** a new migration, `V7__claim_status.sql`, adds a `status` column. Claims that already exist become DRAFT, so existing totals will drop until those claims are opened.\n- **Server:** a new `ClaimStatus` enum holds the allowed moves. The claim entity, service, repository and controller are updated, with new endpoints `POST /claims/{id}/open`, `/settle` and `/void`.\n- **Front end:** `claims-api.ts` gets the status and a `counts()` check, `person-claims.ts` gets the status, buttons and `claim-error`, and `people.ts` uses only counted claims in the totals.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6797458000000001,
+        "num_turns": 14,
+        "duration_ms": 345663,
+        "duration_api_ms": 95985,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp08.agent.jsonl",
+  "agent_diff_file": "cp08.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
