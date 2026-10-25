@@ -57,6 +57,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** How many days a claim may stay PENDING from its pending day before it is late; null when there is none. */
+    @Column(name = "pending_sla")
+    private Integer pendingSla;
+
     /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
     @Column(name = "max_open")
     private Integer maxOpen;
@@ -128,6 +132,7 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.reviewSla = reviewSla;
+        copy.pendingSla = pendingSla;
         copy.maxOpen = maxOpen;
         copy.scoreMid = scoreMid;
         copy.scoreHigh = scoreHigh;
@@ -226,6 +231,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getPendingSla() {
+        return pendingSla;
+    }
+
+    public void setPendingSla(Integer pendingSla) {
+        this.pendingSla = pendingSla;
     }
 
     public Integer getMaxOpen() {

@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.crew.SheetCrew;
 import net.officefloor.hq.app.crew.SheetCrewMember;
 import net.officefloor.hq.app.period.Period;
@@ -43,7 +44,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Writes a line to the sheet's history (see {@code V51__sheet_history.sql}) for every row of what a
- * sheet's screen is made of — the sheet, its people, claims, rates, dated settings, periods, statements,
+ * sheet's screen is made of — the sheet, its people, claims and their shares, rates, dated settings, periods, statements,
  * patrons, watches, roles, permissions, delegations, pools and their members, and crews and their members — as it stands
  * after each change, with the sheet's today then. The line is written on the change's own connection,
  * so it commits or rolls back with it.
@@ -54,7 +55,8 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
 
     /** The entities kept, by the name their lines carry. */
     static final Map<Class<?>, String> KEPT = Map.ofEntries(Map.entry(Sheet.class, "sheet"),
-            Map.entry(Person.class, "person"), Map.entry(Claim.class, "claim"), Map.entry(Rate.class, "rate"),
+            Map.entry(Person.class, "person"), Map.entry(Claim.class, "claim"), Map.entry(ClaimShare.class, "claim-share"),
+            Map.entry(Rate.class, "rate"),
             Map.entry(SheetSetting.class, "setting"), Map.entry(Period.class, "period"),
             Map.entry(Statement.class, "statement"), Map.entry(PersonPatron.class, "patron"),
             Map.entry(PersonWatch.class, "watch"), Map.entry(SheetRole.class, "role"),
@@ -126,6 +128,7 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
         String sheetId = entity instanceof Sheet sheet ? sheet.getId()
                 : entity instanceof Person person ? person.getSheetId()
                 : entity instanceof Claim claim ? claim.getSheetId()
+                : entity instanceof ClaimShare share ? share.getSheetId()
                 : entity instanceof Rate rate ? rate.getSheetId()
                 : entity instanceof SheetSetting setting ? setting.getSheetId()
                 : entity instanceof Period period ? period.getSheetId()

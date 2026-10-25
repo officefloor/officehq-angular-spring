@@ -128,6 +128,14 @@ public class ClaimService {
         return sla == null ? null : sheets.today(sheetId).minusDays(sla);
     }
 
+    /** The day a PENDING claim's pending day must be before for it to be late: the sheet's today less its
+     * pending SLA; null when the sheet has no pending SLA. */
+    @Transactional(readOnly = true)
+    public LocalDate pendingLateBefore(String sheetId) {
+        Integer sla = settings.pendingSla(sheetId);
+        return sla == null ? null : sheets.today(sheetId).minusDays(sla);
+    }
+
     /** The comments on the claims, by claim id, each oldest first. */
     @Transactional(readOnly = true)
     public Map<Long, List<ClaimComment>> commentsOf(List<Claim> of) {

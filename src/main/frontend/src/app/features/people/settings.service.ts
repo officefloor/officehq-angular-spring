@@ -101,6 +101,8 @@ export interface SheetSettings {
   scoreLog?: boolean;
   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
   reviewSla: number | null;
+  /** How many days a claim may stay PENDING from its pending day before it is late; null when none. */
+  pendingSla?: number | null;
   /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
   maxOpen?: number | null;
   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
@@ -364,6 +366,13 @@ export class SettingsService {
   setReviewSla(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/review-sla`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value means no pending SLA. */
+  setPendingSla(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/pending-sla`, { value }, { headers: this.session.headers() }),
     );
   }
 

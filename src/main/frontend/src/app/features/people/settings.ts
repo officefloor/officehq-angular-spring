@@ -493,6 +493,21 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-pending-sla">Pending SLA (days)</label>
+        <input
+          id="setting-pending-sla"
+          data-testid="setting-pending-sla"
+          inputmode="numeric"
+          [value]="pendingSlaInput()"
+          (input)="pendingSlaInput.set(value($event)); pendingSlaChanged = true; settingsError.set(null)"
+          (keydown)="pendingSlaChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-pending-sla-current">{{ (pendingSla() ?? '') | figure }}</span>
+          @if (pendingSla() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-max-open">Max open claims per person</label>
         <input
           id="setting-max-open"
@@ -755,6 +770,8 @@ export class Settings {
   protected readonly defaultGrade = signal<string | null>(null);
   /** The review SLA as set, as text; null when there is none. */
   protected readonly reviewSla = signal<string | null>(null);
+  /** The pending SLA as set, as text; null when there is none. */
+  protected readonly pendingSla = signal<string | null>(null);
   /** The most OPEN or PENDING claims a person may have, as text; null when there is no maximum. */
   protected readonly maxOpen = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
@@ -792,6 +809,7 @@ export class Settings {
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
+  protected readonly pendingSlaInput = signal('');
   protected readonly maxOpenInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -838,6 +856,7 @@ export class Settings {
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected reviewSlaChanged = false;
+  protected pendingSlaChanged = false;
   protected maxOpenChanged = false;
   protected potChanged = false;
   protected alertThresholdChanged = false;
@@ -922,6 +941,9 @@ export class Settings {
       this.reviewSlaInput.set('');
       this.escalateAfterChanged = false;
       this.reviewSlaChanged = false;
+      this.pendingSla.set(null);
+      this.pendingSlaInput.set('');
+      this.pendingSlaChanged = false;
       this.maxOpen.set(null);
       this.maxOpenInput.set('');
       this.maxOpenChanged = false;
@@ -1092,6 +1114,8 @@ export class Settings {
     const reviewSla = this.reviewSlaInput().trim();
     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
+    const pendingSla = this.pendingSlaInput().trim();
+    const savePendingSla = this.pendingSlaChanged || pendingSla !== (this.pendingSla() ?? '');
     const maxOpen = this.maxOpenInput().trim();
     const saveMaxOpen = this.maxOpenChanged || maxOpen !== (this.maxOpen() ?? '');
     const scoreMid = this.scoreMidInput().trim();
@@ -1251,6 +1275,10 @@ export class Settings {
     }
     if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
       this.settingsError.set('Type the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
+    if (savePendingSla && pendingSla !== '' && !TERMS.test(pendingSla)) {
+      this.settingsError.set('Type the pending SLA as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
     if (saveMaxOpen && maxOpen !== '' && !TERMS.test(maxOpen)) {
@@ -1471,6 +1499,12 @@ export class Settings {
         if (this.reviewSlaInput().trim() === reviewSla) this.reviewSlaChanged = false;
         this.show(settings);
       }
+      if (savePendingSla) {
+        const settings = await this.service.setPendingSla(sheet, pendingSla || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.pendingSlaInput().trim() === pendingSla) this.pendingSlaChanged = false;
+        this.show(settings);
+      }
       if (saveMaxOpen) {
         const settings = await this.service.setMaxOpen(sheet, maxOpen || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1540,6 +1574,7 @@ export class Settings {
       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
       if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
+      if (!this.pendingSlaChanged) this.pendingSlaInput.set(this.pendingSla() ?? '');
       if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
@@ -1622,6 +1657,7 @@ export class Settings {
         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
         if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
+        if (!this.pendingSlaChanged) this.pendingSlaInput.set(this.pendingSla() ?? '');
         if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
@@ -1706,6 +1742,7 @@ export class Settings {
     this.scoreHigh.set(settings.scoreHigh == null ? null : String(settings.scoreHigh));
     this.scoreLog.set(settings.scoreLog ?? false);
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
+    this.pendingSla.set(settings.pendingSla == null ? null : String(settings.pendingSla));
     this.maxOpen.set(settings.maxOpen == null ? null : String(settings.maxOpen));
     this.proofKinds.set(settings.proofKinds ?? null);
     this.defaultGrade.set(settings.defaultGrade ?? null);

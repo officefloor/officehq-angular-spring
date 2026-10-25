@@ -134,6 +134,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
+            <span>Pending late <span data-testid="claim-pending-late">{{ (c.pendingLate ? 'yes' : 'no') | figure }}</span></span>
             <span>Shares <span data-testid="claim-shares">{{ (sharesOf(c)) | figure }}</span></span>
             <span>Held <span data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | figure }}</span></span>
             <span>Review assigned to <span data-testid="claim-review-assigned">{{ (c.reviewAssigned ?? '') | figure }}</span></span>

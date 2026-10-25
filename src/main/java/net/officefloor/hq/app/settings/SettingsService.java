@@ -570,6 +570,22 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The sheet's pending SLA in days; null when there is none. */
+    @Transactional(readOnly = true)
+    public Integer pendingSla(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPendingSla();
+    }
+
+    /** Set the sheet's pending SLA; null means none. */
+    @Transactional
+    public Sheet setPendingSla(String sheetId, String by, Integer days) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPendingSla(days);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=pending-sla", "value=" + (days == null ? "" : days));
+        return sheet;
+    }
+
     /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
     @Transactional(readOnly = true)
     public Integer maxOpen(String sheetId) {

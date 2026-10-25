@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.crew.SheetCrew;
 import net.officefloor.hq.app.crew.SheetCrewMember;
 import net.officefloor.hq.app.period.Period;
@@ -39,6 +40,7 @@ public class SheetAsOf implements RollupService.Basis {
     private final Sheet sheet;
     private final List<Person> people;
     private final List<Claim> claims;
+    private final List<ClaimShare> shares;
     private final List<Rate> rates;
     private final List<List<Rate>> inherited;
     private final List<SheetSetting> settings;
@@ -64,6 +66,8 @@ public class SheetAsOf implements RollupService.Basis {
                 .toList();
         this.claims = rowsOf(rows, Claim.class).stream()
                 .sorted(Comparator.comparingLong(Claim::getListed).thenComparing(Claim::getId).reversed())
+                .toList();
+        this.shares = rowsOf(rows, ClaimShare.class).stream().sorted(Comparator.comparing(ClaimShare::getId))
                 .toList();
         this.rates = rowsOf(rows, Rate.class).stream()
                 .sorted(Comparator.comparing(Rate::getGrade)
@@ -185,6 +189,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getReviewSla();
     }
 
+    /** The pending SLA then; null when there was none. */
+    public Integer pendingSla() {
+        return sheet == null ? null : sheet.getPendingSla();
+    }
+
     /** The most OPEN or PENDING claims a person could have at once; null when there was no maximum. */
     public Integer maxOpen() {
         return sheet == null ? null : sheet.getMaxOpen();
@@ -213,6 +222,17 @@ public class SheetAsOf implements RollupService.Basis {
     /** The person's claims as they stood then, newest first. */
     public List<Claim> claimsOf(long personId) {
         return claims.stream().filter(c -> c.getPersonId() == personId).toList();
+    }
+
+    /** The shares of the claims then, in the order they were given. */
+    @Override
+    public List<ClaimShare> shares() {
+        return shares;
+    }
+
+    /** The shares of the claim then, in the order they were given. */
+    public List<ClaimShare> sharesOf(long claimId) {
+        return shares.stream().filter(s -> s.getClaimId() == claimId).toList();
     }
 
     /** Of {@code log}, the lines written by the end of the date (each is dated the sheet's today then). */

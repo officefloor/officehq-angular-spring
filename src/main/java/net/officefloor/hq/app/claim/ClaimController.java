@@ -54,7 +54,7 @@ public class ClaimController {
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
             Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares,
-            String reviewAssigned) {
+            String reviewAssigned, boolean pendingLate) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -62,10 +62,12 @@ public class ClaimController {
             Map<Long, List<ClaimLine>> lines = service.linesOf(claims);
             Map<Long, List<ClaimShare>> shares = service.sharesOf(claims);
             Map<String, LocalDate> lateBefore = new HashMap<>();
+            Map<String, LocalDate> pendingLateBefore = new HashMap<>();
             return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()),
                     comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()),
                     shares.getOrDefault(c.getId(), List.of()),
-                    lateBefore.computeIfAbsent(c.getSheetId(), service::reviewLateBefore))).toList();
+                    lateBefore.computeIfAbsent(c.getSheetId(), service::reviewLateBefore),
+                    pendingLateBefore.computeIfAbsent(c.getSheetId(), service::pendingLateBefore))).toList();
         }
 
         /** The claim as a view, with its status log. */
@@ -74,9 +76,10 @@ public class ClaimController {
         }
 
         /** The claim as a view, with its status log; a claim in REVIEW whose review day (its last REVIEW
-         * entry in the log) is before {@code lateBefore} is late (none is when that is null). */
+         * entry in the log) is before {@code lateBefore} is late (none is when that is null); so is a PENDING
+         * claim whose pending day (its last PENDING entry) is before {@code pendingLateBefore}. */
         static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines,
-                List<ClaimShare> shares, LocalDate lateBefore) {
+                List<ClaimShare> shares, LocalDate lateBefore, LocalDate pendingLateBefore) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -86,10 +89,10 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
-                    reviewLate(claim, log, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
+                    late(claim, log, ClaimStatus.REVIEW, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
                     claim.isStated() ? claim.getStatedBy() : null,
                     shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList(),
-                    claim.getReviewAssigned());
+                    claim.getReviewAssigned(), late(claim, log, ClaimStatus.PENDING, pendingLateBefore));
         }
 
         /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */
@@ -99,14 +102,14 @@ public class ClaimController {
             return byKind;
         }
 
-        /** Whether the claim is in REVIEW and its review day is before {@code lateBefore}. */
-        private static boolean reviewLate(Claim claim, List<ClaimLog> log, LocalDate lateBefore) {
-            if (lateBefore == null || claim.getStatus() != ClaimStatus.REVIEW) return false;
-            LocalDate reviewDay = null;
+        /** Whether the claim is in {@code status} and the day it last went to it is before {@code lateBefore}. */
+        private static boolean late(Claim claim, List<ClaimLog> log, ClaimStatus status, LocalDate lateBefore) {
+            if (lateBefore == null || claim.getStatus() != status) return false;
+            LocalDate day = null;
             for (ClaimLog entry : log) {
-                if (entry.getStatus() == ClaimStatus.REVIEW) reviewDay = entry.getDate();
+                if (entry.getStatus() == status) day = entry.getDate();
             }
-            return reviewDay != null && reviewDay.isBefore(lateBefore);
+            return day != null && day.isBefore(lateBefore);
         }
 
         /** A line as shown: {@code <label> <qty> x <unit>}. */
@@ -288,14 +291,14 @@ public class ClaimController {
             Map<Long, List<ClaimLog>> logs = service.logsOf(then.claims());
             Map<Long, List<ClaimComment>> comments = service.commentsOf(then.claims());
             Map<Long, List<ClaimLine>> lines = service.linesOf(then.claims());
-            Map<Long, List<ClaimShare>> shares = service.sharesOf(then.claims());
             return then.claims().stream()
                     .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())),
                             comments.getOrDefault(c.getId(), List.of()).stream()
                                     .filter(k -> !k.getDate().isAfter(asOf)).toList(),
                             lines.getOrDefault(c.getId(), List.of()),
-                            shares.getOrDefault(c.getId(), List.of()),
-                            then.reviewSla() == null ? null : then.today().minusDays(then.reviewSla())))
+                            then.sharesOf(c.getId()),
+                            then.reviewSla() == null ? null : then.today().minusDays(then.reviewSla()),
+                            then.pendingSla() == null ? null : then.today().minusDays(then.pendingSla())))
                     .toList();
         }
         return views(service.list(sheetId.trim()));

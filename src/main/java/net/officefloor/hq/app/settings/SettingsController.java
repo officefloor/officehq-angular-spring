@@ -43,13 +43,13 @@ public class SettingsController {
         }
     }
 
-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on; then the maximum of OPEN or PENDING claims per person, null when there is none. */
+    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on; then the maximum of OPEN or PENDING claims per person, null when there is none; then the pending SLA in days, null when there is none. */
     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
             String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
             Map<String, Integer> gradeGraces, Map<String, List<DatedView>> graces, Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth, String alertThreshold,
             String rounding, List<DatedView> roundings, String reviewThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen) {
+            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen, Integer pendingSla) {
     }
 
     /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
@@ -307,7 +307,7 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
                 text(service.reviewThreshold(sheet)), service.escalateAfter(sheet), service.reviewSla(sheet), service.proofKinds(sheet),
                 service.defaultGrade(sheet), textOf(service.gradeClerkLimits(sheet)),
-                service.scoreMid(sheet), service.scoreHigh(sheet), service.scoreLog(sheet), service.maxOpen(sheet));
+                service.scoreMid(sheet), service.scoreHigh(sheet), service.scoreLog(sheet), service.maxOpen(sheet), service.pendingSla(sheet));
     }
 
     /** Every grace recorded for each grade, oldest first, by grade. */
@@ -364,7 +364,7 @@ public class SettingsController {
                 then.history(DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
                 text(then.valueOn(DatedSettings.REVIEW_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
                 then.escalateAfter(), then.reviewSla(), then.proofKinds(), then.defaultGrade(),
-                textOf(gradeClerkLimits), then.scoreMid(), then.scoreHigh(), then.scoreLog(), then.maxOpen());
+                textOf(gradeClerkLimits), then.scoreMid(), then.scoreHigh(), then.scoreLog(), then.maxOpen(), then.pendingSla());
     }
 
     /** Each grade's threshold as text with two decimals, by grade. */
@@ -589,6 +589,15 @@ public class SettingsController {
             @RequestBody @Valid GraceDaysRequest request) {
         String sheet = sheetId.trim();
         service.setReviewSla(sheet, user.trim(), request.daysValue());
+        return get(sheet, user, null);
+    }
+
+    @PutMapping("/settings/pending-sla")
+    public SettingsView setPendingSla(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GraceDaysRequest request) {
+        String sheet = sheetId.trim();
+        service.setPendingSla(sheet, user.trim(), request.daysValue());
         return get(sheet, user, null);
     }
 

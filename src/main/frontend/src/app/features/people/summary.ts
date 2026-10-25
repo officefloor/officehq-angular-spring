@@ -146,6 +146,10 @@ export interface SummaryPerson {
             <th scope="row">Review late</th>
             <td data-testid="summary-review-late-count">{{ (reviewLateCount()) | figure }}</td>
           </tr>
+          <tr>
+            <th scope="row">Pending late</th>
+            <td data-testid="summary-pending-late-count">{{ (pendingLateCount()) | figure }}</td>
+          </tr>
         </tbody>
       </table>
       <form (submit)="compare($event)" aria-label="Compare sheets" data-testid="compare-form">
@@ -312,6 +316,7 @@ export class Summary {
   );
 
   protected readonly reviewLateCount = computed(() => this.claims().filter((c) => c.reviewLate).length);
+  protected readonly pendingLateCount = computed(() => this.claims().filter((c) => c.pendingLate).length);
 
   protected readonly byVoidReason = computed(() =>
     this.voidReasons.reasons().map(({ reason }) => ({

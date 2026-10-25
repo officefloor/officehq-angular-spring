@@ -72,6 +72,9 @@ export interface Claim {
   /** Whether the claim is in REVIEW past the sheet's review SLA: its review day plus the SLA days is
    *  before the sheet's today. */
   reviewLate: boolean;
+  /** Whether the claim is PENDING past the sheet's pending SLA: its pending day plus the SLA days is
+   *  before the sheet's today. */
+  pendingLate: boolean;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
   /** Whether the claim is held; it still counts in every total. */
