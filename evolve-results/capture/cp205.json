@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "773b8ffa0db202bc9cf2f166418fdd2c82619324",
+  "reset_sha": "",
+  "preagent_sha": "95e4f712260180881b9dbe4d9a927c6bb01f9b8f",
+  "prev_sha": "95e4f712260180881b9dbe4d9a927c6bb01f9b8f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7930992,
+    "input_tokens": 34,
+    "output_tokens": 9465,
+    "cache_read_tokens": 767676,
+    "cache_creation_tokens": 56266,
+    "num_turns": 19,
+    "duration_ms": 324341,
+    "duration_api_ms": 100988,
+    "model": "claude-opus-5-5",
+    "session_id": "ef9ef9c2-18d8-47a7-a6ec-138fab74773f",
+    "stop_reason": "success",
+    "result_text": "A plan's amount can now be changed, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- Each plan row has an amount entry (`plan-amount`) and a save button (`plan-amount-save`).\n- A change is dated with the sheet's today. It sets the amount used for every claim generated after it, including plan dates from before the change that hadn't been generated yet. Claims already made keep their amount.\n- Each change writes `PLAN_CHANGED name=<person> start=<plan start> amount=<new amount>` to the audit file.\n- A bad amount (zero or less, or more than two decimals, such as `1.005`) is refused. The plan's existing `plan-error` shows, and nothing is written to the store or the audit file. The error clears when you type in the entry or take the next action on that plan.\n- Each plan lists its changes oldest first, as `<date> amount=<amount>` (`plan-change-line`).\n- Viewers are already refused by the existing viewer guard, which blocks any change a viewer sends to a sheet.\n\n**What changed**\n- **Stored data:** a new migration `V108__plan_change.sql` adds a `plan_change` table, which keeps each plan's changes in order.\n- **Server:**\n  - `PlanChange` stores one change.\n  - `Plan.changeAmount` updates the amount and records the change.\n  - `PlanService.changeAmount` writes the audit line.\n  - A new endpoint, `POST /api/sheets/{sheetId}/plans/{planId}/amount`, takes the new amount.\n  - `PlanView` now includes the list of changes.\n  - A new `PlanAmountException` is the refusal.\n- **Front end:** `plans.ts` and `plans.service.ts` add the entry, save button, error handling and the list of changes.\n\nThe `SNAPSHOT` lines that follow each `PLAN_CHANGED` in the expected audit come from the existing change-today step, not from this feature.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7930992,
+        "num_turns": 19,
+        "duration_ms": 324341,
+        "duration_api_ms": 100988,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

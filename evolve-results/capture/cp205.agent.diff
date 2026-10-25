@@ -1,0 +1,347 @@
+diff --git a/src/main/frontend/src/app/features/people/plans.service.ts b/src/main/frontend/src/app/features/people/plans.service.ts
+index 7464fd4d..991f1011 100644
+--- a/src/main/frontend/src/app/features/people/plans.service.ts
++++ b/src/main/frontend/src/app/features/people/plans.service.ts
+@@ -8,7 +8,8 @@ import { Claim } from './claims.service';
+  *  monthly, `day` of every month from the start's month, the month's last day when it is shorter, those
+  *  before the start left out) up to the end, how many claims it has made so far, and its next dates (the
+  *  first five plan dates after the sheet's today and on or before the end and not skipped by a pause,
+- *  comma and space separated), and whether it is paused now. */
++ *  comma and space separated), whether it is paused now, and the changes of its amount, oldest first,
++ *  each as `<date> amount=<amount>`. */
+ export interface Plan {
+   id: number;
+   personId: number;
+@@ -20,6 +21,7 @@ export interface Plan {
+   generated: number;
+   nextDates: string;
+   paused: boolean;
++  changes: string[];
+ }
+ 
+ /** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of
+@@ -72,6 +74,14 @@ export class PlansService {
+     );
+   }
+ 
++  /** Change the plan's amount from the sheet's today, for the claims generated from then on. Refused
++   *  (400, 422) when the amount is not above zero with up to two decimals. */
++  changeAmount(sheet: string, planId: number, amount: string): Promise<Plan> {
++    return firstValueFrom(
++      this.http.post<Plan>(`${this.url(sheet)}/${planId}/amount`, { amount }, { headers: this.session.headers() }),
++    );
++  }
++
+   /** Make the DRAFT claims every plan on the sheet is due up to its end and the sheet's today. */
+   generate(sheet: string): Promise<Generated> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/plans.ts b/src/main/frontend/src/app/features/people/plans.ts
+index 02e73f9d..4e33cfae 100644
+--- a/src/main/frontend/src/app/features/people/plans.ts
++++ b/src/main/frontend/src/app/features/people/plans.ts
+@@ -10,7 +10,8 @@ const DAY = /^\d{1,2}$/;
+ 
+ // A person's plans, one line each in the order they were added with how many claims each has made so
+ // far, its next dates and whether it is paused, with buttons that pause and resume it (a plan date on or
+-// after a pause and before its resume is skipped), and the form on the row that adds one: an amount, a start date, either every N days (a whole
++// after a pause and before its resume is skipped), an entry that changes its amount for the claims
++// generated from then on, with its changes listed oldest first, and the form on the row that adds one: an amount, a start date, either every N days (a whole
+ // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
+ @Component({
+   selector: 'app-plans',
+@@ -29,6 +30,16 @@ const DAY = /^\d{1,2}$/;
+             <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+             <button type="button" data-testid="plan-pause" (click)="pause(pl, true)">Pause</button>
+             <button type="button" data-testid="plan-resume" (click)="pause(pl, false)">Resume</button>
++            <label [for]="'plan-amount-' + pl.id">New amount</label>
++            <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" [value]="newAmounts()[pl.id] ?? ''" (input)="typeAmount(pl, value($event))" />
++            <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl)">Save amount</button>
++            @if (pl.changes.length > 0) {
++              <ul class="changes" [attr.aria-label]="'Amount changes'">
++                @for (line of pl.changes; track $index) {
++                  <li data-testid="plan-change-line">{{ (line) | figure }}</li>
++                }
++              </ul>
++            }
+             @if (planError()?.id === pl.id) {
+               <p role="alert" class="error" data-testid="plan-error">{{ (planError()?.message) | figure }}</p>
+             }
+@@ -58,6 +69,10 @@ const DAY = /^\d{1,2}$/;
+       margin: 0 0 0.25rem;
+       padding-left: 1rem;
+     }
++    .changes {
++      margin: 0;
++      padding-left: 1rem;
++    }
+     form {
+       display: flex;
+       flex-wrap: wrap;
+@@ -88,6 +103,8 @@ export class Plans {
+   protected readonly error = signal<string | null>(null);
+   /** The refused pause or resume, on the plan it was asked of. */
+   protected readonly planError = signal<{ id: number; message: string } | null>(null);
++  /** The new amount typed on each plan, by plan id. */
++  protected readonly newAmounts = signal<Record<number, string>>({});
+   private saving = false;
+   private pausing = false;
+ 
+@@ -95,6 +112,38 @@ export class Plans {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
++  protected typeAmount(plan: Plan, amount: string): void {
++    this.newAmounts.update((all) => ({ ...all, [plan.id]: amount }));
++    if (this.planError()?.id === plan.id) this.planError.set(null);
++  }
++
++  /** Change the plan's amount for the claims generated from then on; refused when it is not above zero
++   *  with up to two decimals. */
++  protected async changeAmount(plan: Plan): Promise<void> {
++    if (this.pausing) return;
++    this.planError.set(null);
++    this.error.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.newAmounts()[plan.id] ?? '').trim();
++    if (!AMOUNT.test(amount) || Number(amount) <= 0) {
++      this.planError.set({ id: plan.id, message: 'Type an amount above zero with up to two decimals.' });
++      return;
++    }
++    this.pausing = true;
++    try {
++      const changed = await this.service.changeAmount(sheet, plan.id, amount);
++      if (this.session.sheetId() !== sheet) return;
++      this.newAmounts.update((all) => ({ ...all, [plan.id]: '' }));
++      this.changed.emit(changed);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.planError.set({ id: plan.id, message: 'That amount could not be saved.' });
++    } finally {
++      this.pausing = false;
++    }
++  }
++
+   /** Pause (true) or resume (false) the plan; refused when it is already paused, or already running. */
+   protected async pause(plan: Plan, on: boolean): Promise<void> {
+     if (this.pausing) return;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 82ebae4e..227fc715 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -23,7 +24,8 @@ import java.util.stream.Collectors;
+  * {@code every} days, or, for a monthly plan, {@code day} of every month from the start's month (the
+  * month's last day when it is shorter), those before the start left out; with the plan dates it has made
+  * its claim for, and the times it was paused: a plan date on or after a pause and before its resume is
+- * skipped, not postponed. */
++ * skipped, not postponed; and the changes of its amount, oldest first: a change applies to the claims
++ * generated after it, those already made keep theirs. */
+ @Entity
+ @Table(name = "person_plan")
+ public class Plan {
+@@ -61,6 +63,11 @@ public class Plan {
+     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+     private Set<PlanPause> pauses = new HashSet<>();
+ 
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
++    @OrderColumn(name = "position")
++    private List<PlanChange> changes = new ArrayList<>();
++
+     protected Plan() {
+     }
+ 
+@@ -131,6 +138,19 @@ public class Plan {
+         return dates(end).stream().filter(on -> on.isAfter(today) && !skipped(on)).limit(count).toList();
+     }
+ 
++    /** The changes of the plan's amount, oldest first. */
++    public List<PlanChange> getChanges() {
++        return List.copyOf(changes);
++    }
++
++    /** Change the plan's amount on {@code on} to {@code to}, for the claims generated from then on;
++     * refused when it is not above zero. */
++    public void changeAmount(LocalDate on, BigDecimal to) {
++        if (to.signum() <= 0) throw new PlanAmountException();
++        amount = to;
++        changes.add(new PlanChange(on, to));
++    }
++
+     /** Whether the plan is paused now: paused and not yet resumed. */
+     public boolean isPaused() {
+         return pauses.stream().anyMatch(PlanPause::isOpen);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanAmountException.java b/src/main/java/net/officefloor/hq/app/plan/PlanAmountException.java
+new file mode 100644
+index 00000000..8df5274a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanAmountException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.plan;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A plan's amount changed to one not above zero. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
++public class PlanAmountException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChange.java b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+new file mode 100644
+index 00000000..85678398
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+@@ -0,0 +1,45 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.Objects;
++
++/** A change of a plan's amount: the sheet's today it was changed on and the new amount. */
++@Embeddable
++public class PlanChange {
++
++    @Column(name = "changed_on", nullable = false)
++    private LocalDate changedOn;
++
++    @Column(nullable = false)
++    private BigDecimal amount;
++
++    protected PlanChange() {
++    }
++
++    public PlanChange(LocalDate changedOn, BigDecimal amount) {
++        this.changedOn = changedOn;
++        this.amount = amount;
++    }
++
++    public LocalDate getChangedOn() {
++        return changedOn;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    @Override
++    public boolean equals(Object o) {
++        return o instanceof PlanChange other && Objects.equals(changedOn, other.changedOn)
++                && Objects.equals(amount, other.amount);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(changedOn, amount);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 540f2c25..b2bc0a3e 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -35,15 +35,17 @@ public class PlanController {
+      * for a monthly plan), day of the month (null for one every N days), end, and how many claims it has
+      * made so far, and its next dates: the first five plan dates after the sheet's today and on or before
+      * the end and not skipped by a pause, comma and space separated (empty when there are none), and
+-     * whether it is paused now. */
++     * whether it is paused now, and the changes of its amount, oldest first, each as {@code <date> amount=<amount>}. */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, String nextDates, boolean paused) {
++            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes) {
+         static PlanView of(Plan p, LocalDate today) {
+             return new PlanView(p.getId(), p.getPersonId(),
+                     p.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), p.getStart(), p.getEvery(),
+                     p.getDay(), p.getEnd(), p.getGenerated(),
+                     p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")),
+-                    p.isPaused());
++                    p.isPaused(),
++                    p.getChanges().stream().map(c -> c.getChangedOn() + " amount="
++                            + c.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()).toList());
+         }
+     }
+ 
+@@ -74,6 +76,14 @@ public class PlanController {
+         }
+     }
+ 
++    /** A plan's new amount asked: above zero, with up to two decimals. */
++    public record AmountRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2);
++        }
++    }
++
+     /** How many claims a generate made, the claims, and every plan on the sheet as it stands after. */
+     public record GeneratedView(int made, List<ClaimView> claims, List<PlanView> plans) {
+     }
+@@ -120,6 +130,15 @@ public class PlanController {
+         return PlanView.of(service.resume(sheet, user.trim(), planId), service.today(sheet));
+     }
+ 
++    @PostMapping("/{planId}/amount")
++    public PlanView amount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid AmountRequest request) {
++        String sheet = sheetId.trim();
++        return PlanView.of(service.changeAmount(sheet, user.trim(), planId, request.amountValue()),
++                service.today(sheet));
++    }
++
+     @PostMapping("/generate")
+     public GeneratedView generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 192abb63..ed754cd3 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -98,10 +98,22 @@ public class PlanService {
+         return changed(sheetId, user, plan, "PLAN_RESUMED");
+     }
+ 
+-    private Plan changed(String sheetId, String user, Plan plan, String event) {
++    /** Change the plan's amount, from the sheet's today, for the claims generated from then on; refused
++     * when it is not above zero. Records PLAN_CHANGED. */
++    @Transactional
++    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
++        plan.changeAmount(sheets.today(sheetId), amount);
++        return changed(sheetId, user, plan, "PLAN_CHANGED",
++                "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++    }
++
++    private Plan changed(String sheetId, String user, Plan plan, String event, String... fields) {
+         Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+         Plan saved = plans.saveAndFlush(plan);
+-        audit.change(event, sheetId, user, "name=" + person.getName(), "start=" + plan.getStart());
++        List<String> line = new ArrayList<>(List.of("name=" + person.getName(), "start=" + plan.getStart()));
++        line.addAll(List.of(fields));
++        audit.change(event, sheetId, user, line.toArray(String[]::new));
+         return saved;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V108__plan_change.sql b/src/main/resources/db/migration/V108__plan_change.sql
+new file mode 100644
+index 00000000..b5d39d56
+--- /dev/null
++++ b/src/main/resources/db/migration/V108__plan_change.sql
+@@ -0,0 +1,9 @@
++-- The changes of a plan's amount, oldest first: the sheet's today it was changed on and the new amount.
++-- The plan's own amount is the latest; claims generated before a change keep the amount they were made with.
++CREATE TABLE plan_change (
++    plan_id    BIGINT         NOT NULL REFERENCES person_plan (id) ON DELETE CASCADE,
++    position   INT            NOT NULL,
++    changed_on DATE           NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    PRIMARY KEY (plan_id, position)
++);
