@@ -122,6 +122,25 @@ import { PasteClaims } from '../claims/paste-claims';
           <p role="alert" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
         }
         <p>
+          <label for="bulk-reassign-to">Move the selected claims to</label>
+          <select id="bulk-reassign-to" data-testid="bulk-reassign-to" #bulkReassignTo
+            (change)="bulkReassignError.set('')">
+            <option value="">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="bulk-reassign" (click)="reassignSelected(bulkReassignTo.value)"
+            [disabled]="bulkReassigning()">Move selected claims</button>
+          @if (bulkReassignResult(); as r) {
+            Moved <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>,
+            refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong>
+          }
+        </p>
+        @if (bulkReassignError()) {
+          <p role="alert" data-testid="bulk-reassign-error">{{ bulkReassignError() }}</p>
+        }
+        <p>
           <label for="bulk-grade">Grade for the selected people</label>
           <select id="bulk-grade" data-testid="bulk-grade" #bulkGrade (change)="bulkGradeError.set('')">
             @for (g of grades; track g) {
@@ -499,6 +518,11 @@ export class People {
   /** How many the last bulk settle settled and refused; cleared while the next one runs. */
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal('');
+  /** Whether the selected claims are being moved to another person. */
+  protected readonly bulkReassigning = signal(false);
+  /** How many the last bulk move moved and refused; cleared while the next one runs. */
+  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal('');
   /** The ids of the people selected to be given a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** Whether the selected people are being given a grade. */
@@ -533,6 +557,8 @@ export class People {
       this.bulkError.set('');
       this.bulkSettleResult.set(null);
       this.bulkSettleError.set('');
+      this.bulkReassignResult.set(null);
+      this.bulkReassignError.set('');
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
@@ -996,6 +1022,31 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) this.bulkSettleError.set('The selected claims could not be settled.');
     } finally {
       this.bulkSettling.set(false);
+    }
+  }
+
+  /** Move the selected claims to the chosen person together, in list order, each by the rules of
+   *  moving one; each that cannot be moved is left as it is. */
+  protected async reassignSelected(to: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.bulkReassigning()) return;
+    this.bulkReassignResult.set(null);
+    this.bulkReassignError.set('');
+    if (to === '') {
+      this.bulkReassignError.set('Choose the person to move the selected claims to.');
+      return;
+    }
+    this.bulkReassigning.set(true);
+    try {
+      const result = await this.claimsApi.reassignSelected(sheet.id, [...this.selectedClaims()], Number(to));
+      if (this.session.sheet()?.id !== sheet.id) return;
+      for (const claim of result.claims) this.claimReassigned(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkReassignResult.set({ reassigned: result.reassigned, refused: result.refused });
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.bulkReassignError.set('The selected claims could not be moved.');
+    } finally {
+      this.bulkReassigning.set(false);
     }
   }
 

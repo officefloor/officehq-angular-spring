@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongFunction;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.Role;
@@ -16,7 +17,7 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Opens or settles selected claims together. Each is changed on its own, as its own button would,
+/** Opens, settles or moves selected claims together. Each is changed on its own, as its own button would,
  *  so one that cannot be changed is left as it is and the others still change. */
 @Service
 public class BulkChangeService {
@@ -52,7 +53,17 @@ public class BulkChangeService {
         return change(sheetId, user, ids, ClaimStatus.SETTLED);
     }
 
+    /** Move the claims of these ids to another person in list order, each by the rules of moving one;
+     *  one that cannot be moved is refused. An id not of the sheet is refused. */
+    public Result reassign(String sheetId, String user, Collection<Long> ids, long toPersonId) {
+        return each(sheetId, user, ids, id -> service.reassign(sheetId, user, id, toPersonId, true));
+    }
+
     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
+        return each(sheetId, user, ids, id -> service.changeStatus(sheetId, user, id, next));
+    }
+
+    private Result each(String sheetId, String user, Collection<Long> ids, LongFunction<Claim> change) {
         Set<Long> selected = new LinkedHashSet<>(ids);
         if (settings.roleOf(sheetId, user) == Role.VIEWER) {
             return new Result(List.of(), selected.size()); // a viewer changes nothing: each is refused
@@ -65,7 +76,7 @@ public class BulkChangeService {
         int refused = selected.size() - ordered.size();
         for (long id : ordered) {
             try {
-                changed.add(service.changeStatus(sheetId, user, id, next));
+                changed.add(change.apply(id));
             } catch (ResponseStatusException notChanged) {
                 refused++;
             }

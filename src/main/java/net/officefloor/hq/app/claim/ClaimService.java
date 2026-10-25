@@ -450,6 +450,13 @@ public class ClaimService {
      *  or to a person retired by the claim's date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    /** Move a claim as {@link #reassign(String, String, long, long)} does; a claim moved with others to
+     *  its own person is not refused but re-listed as that person's newest claim. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean withOthers) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -461,7 +468,7 @@ public class ClaimService {
         }
         Person from = person(sheetId, claim.getPersonId());
         Person to = person(sheetId, toPersonId);
-        if (from.getId().equals(to.getId())) {
+        if (!withOthers && from.getId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
         }
         refuseIfRetired(to, claim.getDate());

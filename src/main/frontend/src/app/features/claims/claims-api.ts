@@ -143,6 +143,14 @@ export interface BulkSettleView {
   claims: ClaimView[];
 }
 
+/** What moving selected claims together did: how many were moved and refused, and the claims moved,
+ *  in the order they were moved. */
+export interface BulkReassignView {
+  reassigned: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */
@@ -369,6 +377,11 @@ export class ClaimsApi {
 
   settleSelected(sheetId: string, ids: readonly number[]): Promise<BulkSettleView> {
     return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheetId)}/claims/settle`, { ids }));
+  }
+
+  /** Move the claims of these ids to the person together in list order; each that cannot be moved is left as it is. */
+  reassignSelected(sheetId: string, ids: readonly number[], personId: number): Promise<BulkReassignView> {
+    return firstValueFrom(this.http.post<BulkReassignView>(`${this.url(sheetId)}/claims/reassign`, { ids, personId }));
   }
 
   /** Add a draft claim per line of name,amount,date,note, in order; refused as a whole, adding

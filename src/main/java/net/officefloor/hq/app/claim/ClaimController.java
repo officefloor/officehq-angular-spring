@@ -101,6 +101,14 @@ public class ClaimController {
     public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to move together, and the person they move to. */
+    public record BulkReassignForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
+    /** What a bulk reassign did: the claims it moved, and how many were moved and refused. */
+    public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final BulkChangeService bulk;
 
@@ -175,6 +183,17 @@ public class ClaimController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
         BulkChangeService.Result result = bulk.settle(sheetId.trim(), SignedInUser.name(user), form.ids());
         return new BulkSettleView(result.changed().size(), result.refused(),
+                result.changed().stream().map(ClaimView::of).toList());
+    }
+
+    /** Move the selected claims to another person together in list order; each that cannot be moved
+     *  is left as it is. */
+    @PostMapping("/claims/reassign")
+    public BulkReassignView reassignSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkReassignForm form) {
+        BulkChangeService.Result result = bulk.reassign(sheetId.trim(), SignedInUser.name(user), form.ids(),
+                form.personId());
+        return new BulkReassignView(result.changed().size(), result.refused(),
                 result.changed().stream().map(ClaimView::of).toList());
     }
 
