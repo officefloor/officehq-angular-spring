@@ -1,0 +1,64 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Anyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAnyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ce5eac619db9e072fd1e4b3809beedd1279ec492",
+  "reset_sha": "",
+  "preagent_sha": "5c6a5b6a56812ce3737de4c475d1310feb69f25c",
+  "prev_sha": "5c6a5b6a56812ce3737de4c475d1310feb69f25c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46544060000000004,
+    "input_tokens": 22,
+    "output_tokens": 7528,
+    "cache_read_tokens": 306043,
+    "cache_creation_tokens": 31698,
+    "num_turns": 12,
+    "duration_ms": 291560,
+    "duration_api_ms": 75805,
+    "model": "claude-opus-5-5",
+    "session_id": "86feecb3-583b-4abf-a2bc-6ef7fa5e28ce",
+    "stop_reason": "success",
+    "result_text": "Sign-in and sheet loading are in, and `bin/e2e` passes: two users, uma and vic, each sign in and load the same sheet, and each sees their own name and the sheet id.\n\n**Server**\n- `src/main/resources/db/migration/V1__sheet.sql` adds a `sheet` table.\n- `sheet/Sheet.java`, `SheetRepository`, `SheetService` and `SheetController` provide `POST /api/sheets/{id}/load`. It returns the sheet as the store holds it now, and creates an empty one the first time an id is loaded. If two users load the same new id at the same moment, the second gets the sheet the first just created instead of an error.\n\n**Front end**\n- `core/session.ts` is a shared service that holds the signed-in name and the active sheet. Later features can read the sheet id from it.\n- `features/session/sign-in.ts` is the name-only sign-in form.\n- `features/session/sheet-picker.ts` is the form that loads a sheet by id and shows the active one.\n- `features/home/home.ts` shows the sign-in form until someone signs in. After that it shows the signed-in name and the sheet picker.\n\n**Things to know:**\n- **Sign-in is front-end only.** The name is held in the browser and nothing about the user reaches the server yet. Features that need `by=<user>` in audit records will have to send the name with their requests.\n- **I added two error anchors the test doesn't use:** `signin-error` for a blank name and `sheet-load-error` for a blank id or a failed load. AGENTS.md asks for an error element on each form; each one clears when its field is edited or the form is submitted again.\n- **No audit records are written**, since the test doesn't expect any for this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46544060000000004,
+        "num_turns": 12,
+        "duration_ms": 291560,
+        "duration_api_ms": 75805,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
