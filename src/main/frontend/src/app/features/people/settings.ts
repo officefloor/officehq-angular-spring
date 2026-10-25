@@ -3,7 +3,7 @@ import { GRADES, Grade } from './people.service';
 import { GradesService } from './grades.service';
 import { Session } from '../../core/session';
 import { Graces } from './rates.service';
-import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
+import { Dated, PERM_ACTIONS, PermAction, PolicyVersionLine, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -46,6 +46,9 @@ const STANDING: Record<PermAction, string> = {
 // place of by the policy date; blank for none).
 // The rounding mode, floor, cap, terms, late percent and clerk limit are the policy settings, versioned
 // together: every change to one of them is a new policy version, and the current version's number shows.
+// Showing the policy versions lists them, one line per version, oldest first: its number, its from-date
+// (start for one that counts on every date), the setting changed and its value, and how many claims
+// have it as their policy version; read from the store each time it is shown.
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -58,6 +61,14 @@ const STANDING: Record<PermAction, string> = {
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
       <p>Policy version <span data-testid="policy-version">{{ (policyVersion()) | figure }}</span></p>
+      <button type="button" data-testid="policy-show" (click)="showPolicy()">Show policy versions</button>
+      @if (policyLines(); as lines) {
+        <ul aria-label="Policy versions">
+          @for (v of lines; track v.number) {
+            <li data-testid="policy-line">{{ v.number }} {{ v.from ?? 'start' }} {{ v.key }}={{ v.value ?? '' }} {{ v.claims }}</li>
+          }
+        </ul>
+      }
       <form (submit)="saveSettings($event)" aria-label="Settings" data-testid="settings-form">
         <label for="setting-clerk-limit">Clerk limit</label>
         <input
@@ -718,6 +729,10 @@ export class Settings {
   protected readonly policyVersion = signal(0);
   /** The from-date of each policy version, oldest first, whenever the settings are read or saved. */
   readonly policyVersionsSaved = output<(string | null)[]>();
+  /** The policy versions as last shown, oldest first; null until shown. */
+  protected readonly policyLines = signal<PolicyVersionLine[] | null>(null);
+  /** How many times the policy versions have been asked for: an older answer is not shown over a newer one. */
+  private policyAsked = 0;
   protected readonly given = signal<RoleGiven[]>([]);
   /** The proof threshold in force, with two decimals; null when there is none. */
   protected readonly proofThreshold = signal<string | null>(null);
@@ -887,6 +902,8 @@ export class Settings {
     effect(() => {
       const sheet = this.session.sheetId();
       this.session.loads();
+      this.policyAsked++;
+      this.policyLines.set(null);
       this.clerkLimit.set(null);
       this.floor.set('');
       this.given.set([]);
@@ -1008,6 +1025,15 @@ export class Settings {
       if (shownToday !== null && today !== shownToday && sheet) void this.read(sheet);
       shownToday = today;
     });
+  }
+
+  /** Read the sheet's policy versions from the store and show them. */
+  protected async showPolicy(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const asked = ++this.policyAsked;
+    const lines = await this.service.policyVersions(sheet);
+    if (asked === this.policyAsked) this.policyLines.set(lines);
   }
 
   protected value(event: Event): string {

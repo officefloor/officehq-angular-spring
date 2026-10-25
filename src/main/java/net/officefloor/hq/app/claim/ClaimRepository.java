@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -14,6 +15,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+
+    /** The date of each of the sheet's claims. */
+    @Query("SELECT c.date FROM Claim c WHERE c.sheetId = :sheetId")
+    List<LocalDate> datesBySheetId(String sheetId);
 
     /** The highest claim id given so far, on any sheet; 0 when there is none. */
     @Query("SELECT COALESCE(MAX(c.id), 0) FROM Claim c")

@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.PreviewDate;
@@ -51,10 +52,12 @@ public class SettingsService {
     private final DelegationService delegations;
     private final GradeService grades;
     private final Audit audit;
+    private final ClaimRepository claims;
 
     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
             PolicyVersionRepository versions, SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
-            DelegationService delegations, GradeService grades, Audit audit) {
+            DelegationService delegations, GradeService grades, Audit audit, ClaimRepository claims) {
+        this.claims = claims;
         this.grades = grades;
         this.delegations = delegations;
         this.permissions = permissions;
@@ -393,6 +396,12 @@ public class SettingsService {
     @Transactional(readOnly = true)
     public List<PolicyVersion> policyVersions(String sheetId) {
         return versions.findBySheetIdOrderByNumberAsc(sheetId);
+    }
+
+    /** The date of each of the sheet's claims. */
+    @Transactional(readOnly = true)
+    public List<LocalDate> claimDates(String sheetId) {
+        return claims.datesBySheetId(sheetId);
     }
 
     /** Record {@code value} for the dated setting {@code key} from {@code from} (the sheet's today when

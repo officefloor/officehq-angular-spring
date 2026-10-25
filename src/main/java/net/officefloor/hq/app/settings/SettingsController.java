@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -310,6 +311,34 @@ public class SettingsController {
                 service.defaultGrade(sheet), textOf(service.gradeClerkLimits(sheet)),
                 service.scoreMid(sheet), service.scoreHigh(sheet), service.scoreLog(sheet), service.maxOpen(sheet), service.pendingSla(sheet),
                 fromsOf(service.policyVersions(sheet)));
+    }
+
+    /** A policy version: its number, the date it is in force from (null when it counts on every date), the
+     * setting changed and its value, and how many of the sheet's claims have it as their policy version. */
+    public record PolicyVersionView(int number, LocalDate from, String key, String value, int claims) {
+    }
+
+    /** The sheet's policy versions, oldest first. */
+    @GetMapping("/settings/policy-versions")
+    public List<PolicyVersionView> policyVersions(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        String sheet = sheetId.trim();
+        if (asOf != null) {
+            SheetAsOf then = history.read(sheet, asOf);
+            return versionsOf(then.policyVersions(), then.claims().stream().map(c -> c.getDate()).toList());
+        }
+        return versionsOf(service.policyVersions(sheet), service.claimDates(sheet));
+    }
+
+    private static List<PolicyVersionView> versionsOf(List<PolicyVersion> versions, List<LocalDate> claimDates) {
+        int[] claims = PolicyVersion.claimsOf(versions, claimDates);
+        List<PolicyVersionView> views = new ArrayList<>();
+        for (int i = 0; i < versions.size(); i++) {
+            PolicyVersion v = versions.get(i);
+            views.add(new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(), v.getValue(), claims[i]));
+        }
+        return views;
     }
 
     /** Every grace recorded for each grade, oldest first, by grade. */

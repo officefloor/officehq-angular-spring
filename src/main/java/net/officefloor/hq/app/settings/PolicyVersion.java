@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 
 /** A version of a sheet's policy settings (see {@link DatedSettings#POLICY_KEYS}): made by a change to one
  * of them, numbered from 1 on the sheet in the order made, with the setting changed, its value and the
@@ -72,5 +74,17 @@ public class PolicyVersion {
     /** Whether the version counts on the date: it has no from-date, or one on or before it. */
     public boolean countsOn(LocalDate date) {
         return from == null || !from.isAfter(date);
+    }
+
+    /** How many of the claims dated {@code claimDates} have each of {@code versions} (oldest first) as
+     * their policy version: the number of versions that count on the claim's date. A claim with none in
+     * force on its date counts for none. */
+    public static int[] claimsOf(List<PolicyVersion> versions, Collection<LocalDate> claimDates) {
+        int[] counts = new int[versions.size()];
+        for (LocalDate date : claimDates) {
+            int number = (int) versions.stream().filter(v -> v.countsOn(date)).count();
+            if (number > 0) counts[number - 1]++;
+        }
+        return counts;
     }
 }

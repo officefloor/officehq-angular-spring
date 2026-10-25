@@ -141,6 +141,16 @@ export interface SheetSettings {
   policyVersions?: (string | null)[];
 }
 
+/** A policy version: its number, the date it is in force from (null when it counts on every date), the
+ *  setting changed and its value, and how many of the sheet's claims have it as their policy version. */
+export interface PolicyVersionLine {
+  number: number;
+  from: string | null;
+  key: string;
+  value: string | null;
+  claims: number;
+}
+
 /** The policy version in force on a date: how many of the versions (their from-dates, see
  *  SheetSettings.policyVersions) are from it or before, one with no from-date counting always. */
 export function policyVersionOn(versions: readonly (string | null)[], date: string): number {
@@ -168,6 +178,13 @@ export class SettingsService {
   get(sheet: string): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.get<SheetSettings>(`${this.url(sheet)}/settings`, { headers: this.session.headers() }),
+    );
+  }
+
+  /** The sheet's policy versions, oldest first. */
+  policyVersions(sheet: string): Promise<PolicyVersionLine[]> {
+    return firstValueFrom(
+      this.http.get<PolicyVersionLine[]>(`${this.url(sheet)}/settings/policy-versions`, { headers: this.session.headers() }),
     );
   }
 
