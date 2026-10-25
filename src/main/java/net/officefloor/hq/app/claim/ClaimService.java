@@ -320,13 +320,12 @@ public class ClaimService {
         return saved;
     }
 
-    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim dated
-     *  inside a closed period. No figure moves. */
+    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim. No figure moves, so a
+     *  claim dated inside a closed period may still have a proof added. */
     @Transactional
     public Claim addProof(String sheetId, String user, long id) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
-        refuseIfClosed(sheetId, claim.getDate());
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot have a proof added.");

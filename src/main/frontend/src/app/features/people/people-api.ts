@@ -76,6 +76,12 @@ export interface PersonEdit extends PersonForm {
   version: number;
 }
 
+/** What a bulk grade did: the people it changed, in list order, and how many. */
+export interface BulkGradeView {
+  people: PersonView[];
+  changed: number;
+}
+
 /** What the quick-add bar sends: a person's name and a claim's amount. */
 export interface QuickAddForm {
   name: string;
@@ -108,6 +114,12 @@ export class PeopleApi {
   /** Refused with 412 when someone has saved the person since `form.version` was loaded. */
   update(sheetId: string, id: number, form: PersonEdit): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}`, form));
+  }
+
+  /** Give the people of these ids the grade from a date (null: the sheet's today), each in list order
+   *  as the person form would. */
+  grade(sheetId: string, ids: number[], grade: Grade, from: string | null): Promise<BulkGradeView> {
+    return firstValueFrom(this.http.post<BulkGradeView>(`${this.url(sheetId)}/grade`, { ids, grade, from }));
   }
 
   /** Retire the person from a date; null means the sheet's today. */

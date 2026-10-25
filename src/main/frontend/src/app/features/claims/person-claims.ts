@@ -418,10 +418,7 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(proven);
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
-        const message = periodOf(this.periods(), claim.date)?.closed
-          ? 'This claim is dated inside a closed period, so no proof can be added.'
-          : `A ${claim.status} claim cannot have a proof added.`;
-        this.claimError.set({ id: claim.id, message });
+        this.claimError.set({ id: claim.id, message: `A ${claim.status} claim cannot have a proof added.` });
       }
     }
   }

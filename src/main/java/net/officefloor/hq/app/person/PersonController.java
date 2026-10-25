@@ -90,11 +90,21 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
+    /** The people selected to be given a grade together, from the from-date (none: the sheet's today). */
+    public record BulkGradeForm(@NotNull List<@NotNull Long> ids, @NotNull Grade grade, LocalDate from) {
+    }
+
+    /** What a bulk grade did: the people it changed, and how many. */
+    public record BulkGradeView(List<PersonView> people, int changed) {
+    }
+
     private final PersonService service;
+    private final BulkGradeService bulkGrade;
     private final SheetService sheets;
 
-    public PersonController(PersonService service, SheetService sheets) {
+    public PersonController(PersonService service, BulkGradeService bulkGrade, SheetService sheets) {
         this.service = service;
+        this.bulkGrade = bulkGrade;
         this.sheets = sheets;
     }
 
@@ -129,6 +139,15 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
                 form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms())), user);
+    }
+
+    /** Give the selected people a grade together, each in list order as the person form would. */
+    @PostMapping("/grade")
+    public BulkGradeView grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkGradeForm form) {
+        List<Person> changed = bulkGrade.grade(sheetId.trim(), SignedInUser.name(user), form.ids(), form.grade(),
+                form.from());
+        return new BulkGradeView(changed.stream().map(p -> view(p, user)).toList(), changed.size());
     }
 
     /** Retire a person from a date. */
