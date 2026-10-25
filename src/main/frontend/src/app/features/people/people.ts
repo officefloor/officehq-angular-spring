@@ -45,19 +45,33 @@ import { QuickAdd } from './quick-add';
           }
         </form>
         <app-quick-add (added)="quickAdded($event)" />
+        <label>
+          <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
+            (change)="showRetired.set($any($event.target).checked)" />
+          Show retired
+        </label>
         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Retired</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
-            @for (p of people(); track p.id) {
+            @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ p.grade }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+                <td>
+                  <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                  from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
+                  <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                  <input type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date"
+                    #retireDate (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                    [disabled]="retiring() === p.id" [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                </td>
                 <td>
                   <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                   taken; last <span data-testid="person-stated-total">{{ statementOf(p.id)?.lastDueTotal ?? '' }}</span>
@@ -98,7 +112,14 @@ export class People {
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   protected readonly form = new FormGroup({ name: this.name, grade: this.grade });
 
+  /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
+  /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: the retired ones only while show retired is on. */
+  protected readonly shownPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
+  /** The person being retired. */
+  protected readonly retiring = signal<number | null>(null);
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -214,6 +235,29 @@ export class People {
       }
     } finally {
       this.stating.set(null);
+    }
+  }
+
+  protected clearPersonError(personId: number): void {
+    if (this.personError()?.id === personId) this.personError.set(null);
+  }
+
+  /** Retire the person from the date entered, or the sheet's today when it is left blank. */
+  protected async retire(person: PersonView, from: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.retiring() !== null) return;
+    this.personError.set(null);
+    this.retiring.set(person.id);
+    try {
+      const retired = await this.api.retire(sheet.id, person.id, from.trim() === '' ? null : from.trim());
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === retired.id ? retired : p)));
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'The person could not be retired.' });
+      }
+    } finally {
+      this.retiring.set(null);
     }
   }
 

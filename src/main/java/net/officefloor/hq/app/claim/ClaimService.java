@@ -55,6 +55,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         LocalDate dated = dateOr(sheetId, date);
         refuseIfClosed(sheetId, dated);
+        refuseIfRetired(person, dated);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         recordChange("CLAIM_ADDED", user, person, claim);
@@ -75,6 +76,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
         }
+        refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dated, noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -127,6 +129,14 @@ public class ClaimService {
         sheetRows.findForUpdate(sheetId);
         if (periods.isClosedOn(sheetId, date)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is dated inside a closed period.");
+        }
+    }
+
+    /** Refuse a claim dated after its person's retirement date. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (person.isRetiredOn(date)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is dated after " + person.getName() + " retired.");
         }
     }
 

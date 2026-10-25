@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** What the screen shows of a person. */
-    public record PersonView(long id, String name, Grade grade, long version) {
+    public record PersonView(long id, String name, Grade grade, long version, boolean retired, LocalDate retiredFrom) {
         public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    person.isRetired(), person.getRetiredFrom());
         }
     }
 
@@ -36,6 +38,10 @@ public class PersonController {
 
     /** A person's fields as edited, with the version of the person the editor loaded. */
     public record PersonEdit(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, @NotNull Long version) {
+    }
+
+    /** A retirement; no date means the sheet's today. */
+    public record RetireForm(LocalDate from) {
     }
 
     private final PersonService service;
@@ -64,5 +70,12 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return PersonView.of(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
                 form.name(), form.grade()));
+    }
+
+    /** Retire a person from a date. */
+    @PostMapping("/{id}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireForm form) {
+        return PersonView.of(service.retire(sheetId.trim(), SignedInUser.name(user), id, form.from()));
     }
 }
