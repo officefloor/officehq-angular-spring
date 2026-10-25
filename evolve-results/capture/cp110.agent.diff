@@ -1,0 +1,245 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a8e54cd7..8f211331 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -28,6 +28,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+ import { QuickAdd } from './quick-add';
+ import { PasteClaims } from '../claims/paste-claims';
++import { Consolidated } from '../summary/consolidated';
+ 
+ // The sheet's people in the order they were added, with one form to add a person or edit one,
+ // each with their claims and what they have claimed and is due, the sheet's claimed-total and
+@@ -35,10 +36,12 @@ import { PasteClaims } from '../claims/paste-claims';
+ // their counting claims to the figures they show then.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, PoolsList],
++  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, Consolidated, PoolsList],
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
++    <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
++      [ownOverdueTotal]="money(sheetOverdue().cents)" />
+     @if (session.sheet()) {
+       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+diff --git a/src/main/frontend/src/app/features/summary/consolidated-api.ts b/src/main/frontend/src/app/features/summary/consolidated-api.ts
+new file mode 100644
+index 00000000..b04f465b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/consolidated-api.ts
+@@ -0,0 +1,23 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** A sheet's descendants (its children, then theirs, and so on) and their figures added up. */
++export interface DescendantsView {
++  sheets: string[];
++  peopleCount: number;
++  /** Each descendant's due-total as that sheet shows it, added up, with two decimals. */
++  dueTotal: string;
++  /** Each descendant's overdue-total as that sheet shows it, added up, with two decimals. */
++  overdueTotal: string;
++}
++
++// The figures of a sheet's descendants, as the store holds them.
++@Injectable({ providedIn: 'root' })
++export class ConsolidatedApi {
++  private readonly http = inject(HttpClient);
++
++  descendants(sheetId: string): Promise<DescendantsView> {
++    return firstValueFrom(this.http.get<DescendantsView>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/summary/consolidated.ts b/src/main/frontend/src/app/features/summary/consolidated.ts
+new file mode 100644
+index 00000000..a328f200
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/consolidated.ts
+@@ -0,0 +1,53 @@
++import { Component, computed, effect, inject, input, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { cents, money } from '../claims/claims-api';
++import { ConsolidatedApi, DescendantsView } from './consolidated-api';
++
++// The consolidated figures over the sheet and all its descendants (the sheets naming it as their
++// parent, then theirs, and so on): the number of people, and each sheet's due-total and overdue-total
++// as that sheet shows it, added up. The sheet's own figures are those it shows; its descendants' are
++// re-read each time a sheet is loaded. A sheet with no children shows its own figures.
++@Component({
++  selector: 'app-consolidated',
++  template: `
++    <section aria-label="Consolidated figures" data-testid="consolidated">
++      <dl>
++        <dt>People (with descendants)</dt>
++        <dd data-testid="consolidated-people-count">{{ peopleCount() }}</dd>
++        <dt>Due (with descendants)</dt>
++        <dd data-testid="consolidated-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue (with descendants)</dt>
++        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class Consolidated {
++  private readonly session = inject(Session);
++  private readonly api = inject(ConsolidatedApi);
++
++  /** The sheet's own figures, as it shows them. */
++  readonly ownPeopleCount = input.required<number>();
++  readonly ownDueTotal = input.required<string>();
++  readonly ownOverdueTotal = input.required<string>();
++
++  /** The loaded sheet's descendants' figures; null until read (or when the read failed). */
++  private readonly descendants = signal<DescendantsView | null>(null);
++
++  protected readonly peopleCount = computed(() => this.ownPeopleCount() + (this.descendants()?.peopleCount ?? 0));
++  protected readonly dueTotal = computed(() => money(cents(this.ownDueTotal()) + cents(this.descendants()?.dueTotal ?? '0.00')));
++  protected readonly overdueTotal = computed(() =>
++    money(cents(this.ownOverdueTotal()) + cents(this.descendants()?.overdueTotal ?? '0.00')));
++
++  constructor() {
++    effect(() => {
++      // A new sheet view each time a sheet is loaded, so its descendants are read again.
++      const sheet = this.session.sheet();
++      this.descendants.set(null);
++      if (sheet === null) return;
++      this.api.descendants(sheet.id).then(
++        (view) => { if (this.session.sheet() === sheet) this.descendants.set(view); },
++        () => undefined);
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+new file mode 100644
+index 00000000..722be4e5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class ConsolidatedController {
++
++    private final ConsolidatedService service;
++
++    public ConsolidatedController(ConsolidatedService service) {
++        this.service = service;
++    }
++
++    /** The figures of the sheet's descendants added up; the screen adds its own to consolidate them. */
++    @GetMapping("/{id}/descendants")
++    public ConsolidatedService.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
++        return service.descendantsOf(id.trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+new file mode 100644
+index 00000000..39b486d4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.rollup;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Deque;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.setting.SheetParentLink;
++import net.officefloor.hq.app.setting.SheetParentRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The figures of a sheet's descendants (its children, the sheets naming it as their parent, then
++ * theirs, and so on), added up: the number of people on them and each one's due-total and
++ * overdue-total as that sheet shows it. The screen adds the sheet's own figures to make its
++ * consolidated figures. A sheet with no children has none.
++ */
++@Service
++public class ConsolidatedService {
++
++    /** The descendants, in the order found (nearest first), and their figures added up; the totals with two
++     *  decimals. */
++    public record Descendants(List<String> sheets, int peopleCount, String dueTotal, String overdueTotal) {
++    }
++
++    private final SheetParentRepository parents;
++    private final Rollup rollup;
++
++    public ConsolidatedService(SheetParentRepository parents, Rollup rollup) {
++        this.parents = parents;
++        this.rollup = rollup;
++    }
++
++    @Transactional(readOnly = true)
++    public Descendants descendantsOf(String sheetId) {
++        Set<String> found = new LinkedHashSet<>();
++        Deque<String> next = new ArrayDeque<>(List.of(sheetId));
++        while (!next.isEmpty()) {
++            for (SheetParentLink child : parents.findByParentId(next.pop())) {
++                if (!child.getSheetId().equals(sheetId) && found.add(child.getSheetId())) next.add(child.getSheetId());
++            }
++        }
++        int peopleCount = 0;
++        BigDecimal due = BigDecimal.ZERO;
++        BigDecimal overdue = BigDecimal.ZERO;
++        for (String sheet : found) {
++            Rollup.Snapshot figures = rollup.snapshot(sheet);
++            peopleCount += figures.people().size();
++            due = due.add(figures.dueTotal());
++            overdue = overdue.add(figures.overdueTotal());
++        }
++        return new Descendants(new ArrayList<>(found), peopleCount, text(due), text(overdue));
++    }
++
++    private static String text(BigDecimal figure) {
++        return figure.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetParentLink.java b/src/main/java/net/officefloor/hq/app/setting/SheetParentLink.java
+index 82df23fa..03e205f7 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SheetParentLink.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetParentLink.java
+@@ -25,6 +25,10 @@ public class SheetParentLink {
+         this.parentId = parentId;
+     }
+ 
++    public String getSheetId() {
++        return sheetId;
++    }
++
+     public String getParentId() {
+         return parentId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java b/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
+index 8cc14993..4cc96483 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app.setting;
+ 
++import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface SheetParentRepository extends JpaRepository<SheetParentLink, String> {
++
++    /** The links of the sheets naming the sheet as their parent: its children. */
++    List<SheetParentLink> findByParentId(String parentId);
+ }
