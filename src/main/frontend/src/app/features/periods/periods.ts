@@ -25,6 +25,8 @@ const YEAR = /^\d{4}$/;
         <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
         <label for="period-form-to">To</label>
         <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <label for="period-form-cap">Open claims cap</label>
+        <input id="period-form-cap" data-testid="period-form-cap" formControlName="cap" inputmode="numeric" />
         <button type="submit" data-testid="period-form-submit" [disabled]="saving()">Add period</button>
         @if (error()) {
           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
@@ -50,7 +52,7 @@ const YEAR = /^\d{4}$/;
       </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -61,6 +63,7 @@ const YEAR = /^\d{4}$/;
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -95,7 +98,8 @@ export class Periods {
   protected readonly name = new FormControl('', { nonNullable: true });
   protected readonly from = new FormControl('', { nonNullable: true });
   protected readonly to = new FormControl('', { nonNullable: true });
-  protected readonly form = new FormGroup({ name: this.name, from: this.from, to: this.to });
+  protected readonly cap = new FormControl('', { nonNullable: true });
+  protected readonly form = new FormGroup({ name: this.name, from: this.from, to: this.to, cap: this.cap });
   protected readonly generateFrom = new FormControl('', { nonNullable: true });
   protected readonly generateTo = new FormControl('', { nonNullable: true });
   protected readonly generateForm = new FormGroup({ from: this.generateFrom, to: this.generateTo });
@@ -121,7 +125,7 @@ export class Periods {
       this.session.loaded();
       this.error.set('');
       this.periodError.set(null);
-      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+      this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
       this.generateError.set('');
       this.generated.set(null);
       this.generateForm.reset({ from: '', to: '' }, { emitEvent: false });
@@ -246,6 +250,7 @@ export class Periods {
     const name = value.name.trim();
     const from = value.from.trim();
     const to = value.to.trim();
+    const capText = value.cap.trim();
     if (!name) {
       this.error.set('Type a name for the period.');
       return;
@@ -258,12 +263,21 @@ export class Periods {
       this.error.set('The to-date must be on or after the from-date.');
       return;
     }
+    if (capText !== '' && !/^\d+$/.test(capText)) {
+      this.error.set('Type the cap as a whole number of at least 1, or leave it blank for none.');
+      return;
+    }
+    const cap = capText === '' ? null : Number(capText);
+    if (cap !== null && (cap < 1 || !Number.isSafeInteger(cap))) {
+      this.error.set('Type the cap as a whole number of at least 1, or leave it blank for none.');
+      return;
+    }
     this.saving.set(true);
     try {
-      const period = await this.api.add(sheet.id, { name, from, to });
+      const period = await this.api.add(sheet.id, { name, from, to, cap });
       if (this.session.sheet()?.id === sheet.id) {
         this.added.emit(period);
-        this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+        this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
       }
     } catch (e) {
       this.error.set(e instanceof HttpErrorResponse && e.status === 409

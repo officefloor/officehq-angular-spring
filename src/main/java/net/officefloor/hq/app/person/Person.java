@@ -198,7 +198,8 @@ public class Person {
     }
 
     /** Give the person a grade from a date, replacing the grade they had from that same date and
-     *  keeping every other one. */
+     *  keeping every other one. A grade already in force on that date adds nothing, so an edit that
+     *  leaves the grade as it is does not hide a grade given later from an earlier date. */
     public void setGrade(Grade grade, LocalDate from, LocalDate madeOn) {
         for (PersonGrade g : grades) {
             if (from.equals(g.getFrom())) {
@@ -206,6 +207,7 @@ public class Person {
                 return;
             }
         }
+        if (gradeOn(from) == grade) return;
         grades.add(new PersonGrade(grade, from, madeOn));
     }
 

@@ -60,9 +60,10 @@ public class PeriodService {
     }
 
     /** Add a period, refused when its name is in use on the sheet, its to-date is before its
-     *  from-date, or it shares a day with another of the sheet's periods. */
+     *  from-date, or it shares a day with another of the sheet's periods. The cap, when given, is how many
+     *  OPEN or PENDING claims a person may have in it; null for none. */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         sheets.load(sheetId);
         // Periods of a sheet are added one at a time, so two added at once cannot overlap.
         sheetRows.findForUpdate(sheetId);
@@ -77,12 +78,13 @@ public class PeriodService {
         }
         Period saved;
         try {
-            saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
+            saved = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         } catch (DataIntegrityViolationException raced) {
             throw nameInUse();
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " from=" + saved.getFrom() + " to=" + saved.getTo());
+                + " from=" + saved.getFrom() + " to=" + saved.getTo()
+                + (saved.getCap() == null ? "" : " cap=" + saved.getCap()));
         return saved;
     }
 

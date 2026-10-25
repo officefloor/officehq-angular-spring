@@ -22,6 +22,11 @@ function refUsed(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
     && e.error.message.startsWith('The reference ');
 }
+/** Whether the store refused opening a claim because its person has as many open claims in its period as the period's cap. */
+function capReached(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
+    && e.error.message.startsWith('The person already has ');
+}
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled',
   delete: 'deleted', restore: 'restored' };
 
@@ -465,6 +470,8 @@ export class PersonClaims {
             ? 'Choose a void reason from the sheet\'s list to void this claim.'
           : periodOf(this.periods(), claim.dueBy)?.closed
             ? `This claim's due-by is inside a closed period, so it cannot be ${PAST[action]}.`
+          : action === 'open' && capReached(e)
+            ? `This person already has as many open claims in period ${periodOf(this.periods(), claim.dueBy)?.name ?? ''} as its cap allows.`
           : action === 'settle' && this.deferred(claim)
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))

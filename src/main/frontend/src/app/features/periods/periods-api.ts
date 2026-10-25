@@ -18,12 +18,16 @@ export interface PeriodView {
   /** Each person's due-total fixed when the period was closed, with two decimals, by person id; empty
    *  while it is open. A person missing from it (added after the close) has 0.00. */
   closedPersonTotals: Record<string, string>;
+  /** How many OPEN or PENDING claims each person may have in the period; null for no cap. */
+  cap: number | null;
 }
 
 export interface PeriodForm {
   name: string;
   from: string;
   to: string;
+  /** The cap on each person's open claims in the period; null for none. */
+  cap: number | null;
 }
 
 /** The period whose dates contain the date, or null when none does; periods never overlap. */

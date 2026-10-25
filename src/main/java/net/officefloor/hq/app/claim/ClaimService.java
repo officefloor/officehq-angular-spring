@@ -297,6 +297,7 @@ public class ClaimService {
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, person, claim, dueNow);
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, due(sheetId, person, claim));
+        if (next == ClaimStatus.OPEN) refuseIfCapped(sheetId, claim);
         // Settled one at a time until a bulk settle marks it with its batch.
         if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
@@ -779,6 +780,23 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the note threshold of " + threshold.toPlainString()
                             + "; add a note before it is opened.");
+        }
+    }
+
+    /** Refuse opening a claim whose period (the one its due-by falls in) caps its person's claims, when
+     *  the person already has that many OPEN or PENDING claims in it. The sheet is locked, so two opens
+     *  cannot both pass the cap. */
+    private void refuseIfCapped(String sheetId, Claim claim) {
+        if (claim.getDueBy() == null) return;
+        Period period = periodOf(sheetId, claim.getDueBy());
+        if (period == null || period.getCap() == null) return;
+        long held = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter((c) -> !c.getId().equals(claim.getId()) && c.getPersonId().equals(claim.getPersonId())
+                        && c.getStatus().isOpen() && c.getDueBy() != null && period.contains(c.getDueBy()))
+                .count();
+        if (held >= period.getCap()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
+                    + " open claims in period " + period.getName() + ".");
         }
     }
 

@@ -29,22 +29,22 @@ public class PeriodController {
 
     /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
      *  it is closed, whether it is soft-closed and, once closed or soft-closed, the due-total fixed then (null while open) and each person's
-     *  due-total fixed then, by person id (empty while open). */
+     *  due-total fixed then, by person id (empty while open), and its cap on each person's open claims (null for none). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
-                    personTotals);
+                    personTotals, period.getCap());
         }
     }
 
-    /** A period's fields, as entered on the form. */
+    /** A period's fields, as entered on the form; a blank cap is none. */
     public record PeriodForm(@NotBlank @Size(max = 200) String name, @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to, @Min(1) Integer cap) {
     }
 
     /** The dates monthly periods are generated between; a blank date is the sheet's today. */
@@ -73,7 +73,7 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PeriodForm form) {
         return PeriodView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.from(),
-                form.to()));
+                form.to(), form.cap()));
     }
 
     /** Generate one period per calendar month from the from-date's month to the to-date's month,
