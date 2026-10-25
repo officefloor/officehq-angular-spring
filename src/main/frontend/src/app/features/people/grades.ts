@@ -29,6 +29,34 @@ import { FigurePipe } from '../../core/figure.pipe';
           <p role="alert" class="error" data-testid="grade-error">{{ (message) | figure }}</p>
         }
       </form>
+      <form (submit)="merge($event)" aria-label="Merge a grade into another" data-testid="grade-merge-form">
+        <label for="grade-merge-from">Merge grade</label>
+        <select
+          id="grade-merge-from"
+          data-testid="grade-merge-from"
+          [value]="mergeFrom()"
+          (change)="mergeFrom.set(gradeOf($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === mergeFrom()">{{ (g) | figure }}</option>
+          }
+        </select>
+        <label for="grade-merge-into">into</label>
+        <select
+          id="grade-merge-into"
+          data-testid="grade-merge-into"
+          [value]="mergeInto()"
+          (change)="mergeInto.set(gradeOf($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === mergeInto()">{{ (g) | figure }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="grade-merge">Merge grade</button>
+        @if (merged(); as result) {
+          <span>Merged <span data-testid="grade-merged">{{ (result) | figure }}</span></span>
+        }
+      </form>
       <table data-testid="grade-list">
         <thead>
           <tr>
@@ -69,6 +97,12 @@ export class Grades {
   protected readonly grade = signal<Grade>('A');
   protected readonly error = signal<string | null>(null);
   private saving = false;
+  protected readonly mergeFrom = signal<Grade>('A');
+  protected readonly mergeInto = signal<Grade>('B');
+  /** The last merge done here, as "<from> into <into>: <people given the other grade>"; null before
+   *  one, and while one runs. */
+  protected readonly merged = signal<string | null>(null);
+  private merging = false;
 
   constructor() {
     effect(() => {
@@ -76,6 +110,9 @@ export class Grades {
       this.session.loads();
       this.grade.set('A');
       this.error.set(null);
+      this.mergeFrom.set('A');
+      this.mergeInto.set('B');
+      this.merged.set(null);
       if (sheet) void this.service.read(sheet).catch(() => undefined);
     });
   }
@@ -102,6 +139,33 @@ export class Grades {
       if (this.session.sheetId() === sheet) this.error.set('That grade is already retired, or is not a grade.');
     } finally {
       this.saving = false;
+    }
+  }
+
+  /** Merge one grade into another; the error shown is the form's, shared with the retire entry. */
+  protected async merge(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.merging) return;
+    this.error.set(null);
+    this.merged.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const from = this.mergeFrom();
+    const into = this.mergeInto();
+    if (from === into) {
+      this.error.set('Choose two different grades to merge.');
+      return;
+    }
+    this.merging = true;
+    try {
+      const result = await this.service.merge(sheet, from, into);
+      if (this.session.sheetId() === sheet) this.merged.set(`${from} into ${into}: ${result.merged}`);
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.error.set('Only a steward may merge a grade, and not into itself or a retired grade.');
+      }
+    } finally {
+      this.merging = false;
     }
   }
 }

@@ -1541,6 +1541,11 @@ export class People {
   private readLoad = -1;
 
   constructor() {
+    // Show the people a grade merge gave the other grade.
+    effect(() => {
+      const regraded = this.gradesService.regraded();
+      untracked(() => regraded.forEach((p) => this.put(p)));
+    });
     // Re-read the sheet's people from the store every time a sheet is loaded.
     effect(() => {
       const sheet = this.sheet();

@@ -167,6 +167,15 @@ public class PersonController {
     public record BulkGradeView(int graded, List<PersonView> people) {
     }
 
+    /** A grade to merge into another: A, B or C each. */
+    public record GradeMergeRequest(@NotNull @Pattern(regexp = "[ABC]") String from,
+            @NotNull @Pattern(regexp = "[ABC]") String into) {
+    }
+
+    /** How a grade merge went: how many people it gave the other grade, and those people. */
+    public record GradeMergeView(int merged, List<PersonView> people) {
+    }
+
     /** The people {@code personIds} to retire together, from {@code from} (the sheet's today when left
      * out). */
     public record BulkRetireRequest(@NotNull @Size(max = 1000) List<@NotNull Long> personIds, LocalDate from) {
@@ -206,9 +215,13 @@ public class PersonController {
 
     private final PersonTransferService transfers;
 
+    private final GradeMergeService gradeMerges;
+
     public PersonController(PersonService service, PersonBulkService bulk, SheetHistory history,
-            PersonMergeService merges, PersonTransferService transfers, PersonImportService imports) {
+            PersonMergeService merges, PersonTransferService transfers, PersonImportService imports,
+            GradeMergeService gradeMerges) {
         this.service = service;
+        this.gradeMerges = gradeMerges;
         this.imports = imports;
         this.transfers = transfers;
         this.bulk = bulk;
@@ -336,6 +349,14 @@ public class PersonController {
         List<Person> changed = bulk.grade(sheetId.trim(), user.trim(), request.personIds(), request.grade(),
                 request.from());
         return new BulkGradeView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
+    }
+
+    @PostMapping("/grade-merge")
+    public GradeMergeView gradeMerge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeMergeRequest request) {
+        List<Person> changed = gradeMerges.merge(sheetId.trim(), user.trim(), request.from(), request.into());
+        return new GradeMergeView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
     }
 
     @PostMapping("/bulk-retire")
