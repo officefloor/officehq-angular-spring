@@ -209,6 +209,18 @@ public class Person {
         grades.add(new PersonGrade(grade, from));
     }
 
+    /** Makes every grade record of {@code from} one of {@code into}, keeping its from-date; whether any was. */
+    public boolean regrade(String from, String into) {
+        boolean any = false;
+        for (int i = 0; i < grades.size(); i++) {
+            PersonGrade g = grades.get(i);
+            if (!from.equals(g.getGrade())) continue;
+            grades.set(i, new PersonGrade(into, g.getFrom()));
+            any = true;
+        }
+        return any;
+    }
+
     /** The grade in force on {@code date}: the one with the latest from-date on or before it, or the
      * first one given when none has; the latest given when {@code date} is null. */
     public String gradeOn(LocalDate date) {

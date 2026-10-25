@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** A grade merged into another: every person whose grade in force on the sheet's today is the merged
  * grade is given the other from the sheet's today, in list order, each through {@link PersonService#grade}
  * exactly as the person form saves them, so each records its own PERSON_EDITED and rollup lines after the
- * GRADE_MERGED line; the figures the merge as a whole moved are recorded after them. Only a steward may merge, and not a grade into itself nor into a retired grade. */
+ * GRADE_MERGED line. The merge is retroactive: every grade record of the merged grade each moved person has
+ * becomes the other, so all their claims, whatever their date, use the other grade (frozen figures and
+ * those bound by a statement keep theirs); the figures the merge as a whole moved are recorded after them. Only a steward may merge, and not a grade into itself nor into a retired grade. */
 @Service
 public class GradeMergeService {
 
@@ -57,8 +59,11 @@ public class GradeMergeService {
         List<Person> changed = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (!from.equals(person.gradeOn(today))) continue;
-            changed.add(service.grade(sheetId, user, person.getId(), person.getVersion(), into));
+            Person moved = service.grade(sheetId, user, person.getId(), person.getVersion(), into);
+            moved.regrade(from, into);
+            changed.add(moved);
         }
+        people.flush();
         rollup.recordSince(sheetId, user, before);
         return changed;
     }
