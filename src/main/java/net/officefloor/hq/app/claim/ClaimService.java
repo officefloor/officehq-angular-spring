@@ -60,7 +60,8 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to a new status; a change its status does not allow is refused. */
+    /** Move a claim to a new status; a change its status does not allow is refused, as is settling
+     *  by the user who opened the claim. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -69,9 +70,14 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it.");
+        }
         Person person = person(sheetId, claim.getPersonId());
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
+        if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
         // A void claim keeps no number; the number it had is never given to another claim.
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow(sheetId, person, claim));

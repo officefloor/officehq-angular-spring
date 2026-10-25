@@ -24,6 +24,8 @@ export interface ClaimView {
   number: number | null;
   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
   settledDue: string | null;
+  /** Who opened the claim; null when it was never opened. */
+  openedBy: string | null;
 }
 
 export interface ClaimForm {
@@ -73,7 +75,8 @@ export class ClaimsApi {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheetId)}/claims/${id}`, form));
   }
 
-  /** Move a claim to its next status: refused when its status does not allow it. */
+  /** Move a claim to its next status: refused when its status does not allow it, and settling is
+   *  refused (403) to the user who opened the claim. */
   act(sheetId: string, id: number, action: ClaimAction): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, {}));
   }

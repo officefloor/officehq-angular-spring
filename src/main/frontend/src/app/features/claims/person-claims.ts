@@ -1,4 +1,5 @@
 import { Component, inject, input, output, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { RateView } from '../rates/rates-api';
@@ -37,6 +38,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -118,9 +120,12 @@ export class PersonClaims {
     try {
       const changed = await this.api.act(sheet.id, claim.id, action);
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(changed);
-    } catch {
+    } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
-        this.claimError.set({ id: claim.id, message: `This claim cannot be ${PAST[action]} from its status.` });
+        const message = e instanceof HttpErrorResponse && e.status === 403
+          ? 'You opened this claim, so someone else must settle it.'
+          : `This claim cannot be ${PAST[action]} from its status.`;
+        this.claimError.set({ id: claim.id, message });
       }
     }
   }
