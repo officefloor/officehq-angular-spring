@@ -661,6 +661,31 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward's direct setting of a DRAFT, OPEN or PENDING claim's due-by to {@code dueBy}: it stays as
+     * set (a holiday added later leaves it), and the claim's overdue state, late charge, grace and period
+     * follow it. Refused when the user is not a steward, unless the claim is DRAFT, OPEN or PENDING, and
+     * when its due-by or the new one is in a closed period. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long claimId, LocalDate dueBy) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getStatus() != ClaimStatus.OPEN
+                && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimStatusChangeException();
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        refuseClosed(sheetId, dueBy);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueByDirectly(dueBy);
+        claims.flush();
+        record("CLAIM_DUE_BY_SET", user, person, claim, claim.getNumber(), "old=" + old, "new=" + dueBy);
+        rollup.recordSince(sheetId, user, before);
+        return claim;
+    }
+
     /** Split {@code amount} (more than 0.00 and less than the claim's amount) off an OPEN claim: the
      * claim keeps the rest and loses any figure a statement bound it to; a new OPEN claim of the split-off
      * amount, with the same person, date and note, has no number until it is settled, is opened by the user, has

@@ -51,6 +51,11 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** Whether a steward set the claim's due-by directly: it then stays as set, and a holiday added later
+     * leaves it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** The date the claim's due-by counts from: its date when it was added. Later changes to its date
      * leave it as it is. */
     @Column(name = "due_from", nullable = false)
@@ -211,6 +216,7 @@ public class Claim {
         Claim copy = new Claim(sheetId, personId, amount, date, note, null);
         copy.dueBy = dueBy;
         copy.dueFrom = dueFrom;
+        copy.dueBySet = dueBySet;
         copy.terms = terms;
         copy.status = status;
         copy.settledDue = settledDue;
@@ -292,6 +298,16 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    /** Set the claim's due-by directly: it stays as set from then on. */
+    public void setDueByDirectly(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
     }
 
     public LocalDate getDueFrom() {

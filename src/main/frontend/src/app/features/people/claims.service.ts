@@ -340,6 +340,17 @@ export class ClaimsService {
     );
   }
 
+  /** Set a DRAFT, OPEN or PENDING claim's due-by directly; refused (403) when the user is not a steward,
+   *  (422) when it is not DRAFT, OPEN or PENDING and (423) when the claim or the new due-by is in a
+   *  closed period. */
+  setDueBy(sheet: string, id: number, dueBy: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/due-by`, { dueBy }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Raise the claim's proofs count by one, a proof of `kind` (a receipt when null); refused (409) when
    *  it is SETTLED or VOID and (423) when it is dated in a closed period. */
   addProof(sheet: string, id: number, kind: ProofKind | null): Promise<Claim> {

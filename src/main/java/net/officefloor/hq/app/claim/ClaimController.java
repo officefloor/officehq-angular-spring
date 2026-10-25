@@ -229,6 +229,10 @@ public class ClaimController {
     public record RedateRequest(@NotNull LocalDate date) {
     }
 
+    /** The date a claim's due-by is set to. */
+    public record DueByRequest(@NotNull LocalDate dueBy) {
+    }
+
     /** The person a claim is moved to, by id. */
     public record ReassignRequest(@NotNull Long personId) {
     }
@@ -522,6 +526,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RedateRequest request) {
         return view(service.redate(sheetId.trim(), user.trim(), claimId, request.date()));
+    }
+
+    @PostMapping("/claims/{claimId}/due-by")
+    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DueByRequest request) {
+        return view(service.setDueBy(sheetId.trim(), user.trim(), claimId, request.dueBy()));
     }
 
     @PostMapping("/claims/{claimId}/reassign")

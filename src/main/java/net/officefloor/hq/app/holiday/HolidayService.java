@@ -44,7 +44,8 @@ public class HolidayService {
 
     /** Add a holiday on {@code date}; refused when the date is already on the sheet's list. Every claim on
      * the sheet that is not SETTLED or VOID and whose due-by is on or after {@code date} has its due-by
-     * worked out again from its date, with the terms it was fixed with, over the sheet's holidays now. */
+     * worked out again from its date, with the terms it was fixed with, over the sheet's holidays now;
+     * a due-by a steward set directly stays as set. */
     @Transactional
     public SheetHoliday add(String sheetId, String by, LocalDate date) {
         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -69,6 +70,7 @@ public class HolidayService {
         Set<LocalDate> off = offOn(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
+            if (claim.isDueBySet()) continue;
             if (claim.getDueBy() == null || claim.getDueBy().isBefore(holiday)) continue;
             LocalDate dueBy = dueBy(off, claim.getDate(), claim.getTerms());
             if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
