@@ -1,0 +1,64 @@
+{
+  "checkpoint": 131,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp131_plans",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can have plans: an amount, a start date, every N days (a whole number, at least 1) and an\nend date, from a form on the row (PLAN_ADDED name=<name> amount=<amount> start=<date>\nevery=<n> end=<date>; an end before the start or a bad amount or interval is refused with an error\non the row). A generate button on the screen makes, for every plan on the sheet in the order they\nwere added, a DRAFT claim with the plan's amount for every plan date (the start, then every N days)\nup to the end and the sheet's today that has none yet, dated that day with an empty note, by the\nclaim form's rules (a date the form refuses is skipped and tried again next time). Show how many\nwere made, and on each plan how many claims it has made so far.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can have plans: an amount, a start date, every N days (a whole number, at least 1) and an\nend date, from a form on the row (PLAN_ADDED name=<name> amount=<amount> start=<date>\nevery=<n> end=<date>; an end before the start or a bad amount or interval is refused with an error\non the row). A generate button on the screen makes, for every plan on the sheet in the order they\nwere added, a DRAFT claim with the plan's amount for every plan date (the start, then every N days)\nup to the end and the sheet's today that has none yet, dated that day with an empty note, by the\nclaim form's rules (a date the form refuses is skipped and tried again next time). Show how many\nwere made, and on each plan how many claims it has made so far.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "93af356b05f1fe40ae65ed0efc8d170d4aafa78f",
+  "reset_sha": "",
+  "preagent_sha": "b220a68719420226782c949ba2964fde15c88201",
+  "prev_sha": "b220a68719420226782c949ba2964fde15c88201",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5337877999999998,
+    "input_tokens": 52,
+    "output_tokens": 19291,
+    "cache_read_tokens": 1745959,
+    "cache_creation_tokens": 99821,
+    "num_turns": 27,
+    "duration_ms": 384204,
+    "duration_api_ms": 204112,
+    "model": "claude-opus-5-5",
+    "session_id": "71b98462-51a0-42c3-a2ef-f17170620a03",
+    "stop_reason": "success",
+    "result_text": "People can now have plans, and there's a generate button that makes their claims. `bin/e2e` passed all 4 tests in the spec on the first run.\n\n**How it works**\n- **Adding a plan:** each person's row has a new Plans cell with a form for amount, start, every N days and end. Adding one writes `PLAN_ADDED name=\u2026 amount=\u2026 start=\u2026 every=\u2026 end=\u2026` to the audit file. The server refuses an amount that isn't above 0.00 or has more than two decimals, an interval below 1, or an end before the start, and the row shows `plan-error`. The form runs the same checks first so a bad entry is caught before it's sent. A blank start defaults to the sheet's today.\n- **Generating:** the `plan-generate` button goes through the sheet's plans in the order they were added. For each plan date (the start, then every N days, up to the end and the sheet's today) that it hasn't made a claim for yet, it adds a DRAFT claim through the existing claim-adding code. That code checks closed periods and retirements and writes `CLAIM_ADDED` to the audit file, as the claim form does. Each claim is saved on its own, so a refused date is skipped without undoing the others, and the next generate tries it again. `plan-generated-count` shows how many it made, and each plan row shows its running total in `plan-generated`.\n- **Two users generating at once:** each plan is locked while one of its claims is added, so the same date can't get two claims.\n\n**Where the changes are**\n- Database: `V65__person_plan.sql` adds a `person_plan` table, plus `person_plan_date` to record which dates each plan has already made a claim for.\n- Server: a new `plan/` package with `Plan`, `PlanRepository`, `PlanService` and `PlanController` (`GET/POST /api/sheets/{id}/plans`, `POST \u2026/plans/generate`).\n- Front end: a new `features/plans/` folder (`plans-api.ts`, `person-plans.ts`, `generate-plans.ts`), wired into `people.ts` with a Plans column and the generate button.\n\n**Gaps:**\n- Cloning a sheet or transferring a person doesn't copy their plans.\n- When a person is merged into someone else, their plans are deleted with them rather than moved over.\n\nNeither was in the request or the test; say if you want them handled.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5337877999999998,
+        "num_turns": 27,
+        "duration_ms": 384204,
+        "duration_api_ms": 204112,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp131.agent.jsonl",
+  "agent_diff_file": "cp131.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
