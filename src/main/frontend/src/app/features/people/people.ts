@@ -226,7 +226,7 @@ import { PersonPlans } from '../plans/person-plans';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Change grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -251,6 +251,17 @@ import { PersonPlans } from '../plans/person-plans';
                     [disabled]="addingAlias() === p.id" [attr.aria-label]="'Add an alias for ' + p.name">Add alias</button>
                 </td>
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+                <td>
+                  <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
+                  <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
+                    (change)="clearPersonError(p.id)">
+                    @for (g of grades; track g) {
+                      <option [value]="g" [selected]="g === gradeToday(p)">{{ g }}</option>
+                    }
+                  </select>
+                  <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade)"
+                    [disabled]="inlineGrading() === p.id" [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
+                </td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
                 <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
@@ -438,6 +449,7 @@ export class People {
   protected readonly moving = signal<number | null>(null);
   /** The person being retired. */
   protected readonly retiring = signal<number | null>(null);
+  protected readonly inlineGrading = signal<number | null>(null);
   /** The person an alias is being added to. */
   protected readonly addingAlias = signal<number | null>(null);
   /** The person a patron is being added to. */
@@ -956,6 +968,33 @@ export class People {
       }
     } finally {
       this.moving.set(null);
+    }
+  }
+
+  /** Give the person the grade chosen on their row from the sheet's today, as the person form would. */
+  protected async saveGrade(person: PersonView, gradeSelect: HTMLSelectElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.inlineGrading() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const grade = gradeSelect.value as Grade;
+    if (!GRADES.includes(grade)) {
+      this.personError.set({ id: person.id, message: 'Choose a grade of A, B or C.' });
+      return;
+    }
+    this.inlineGrading.set(person.id);
+    try {
+      const saved = await this.api.gradeOne(sheet.id, person.id, person.version, grade);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 412
+          ? 'Someone has saved the person since; re-load the sheet to see them.'
+          : 'The person could not be given the grade.' });
+      }
+    } finally {
+      this.inlineGrading.set(null);
     }
   }
 

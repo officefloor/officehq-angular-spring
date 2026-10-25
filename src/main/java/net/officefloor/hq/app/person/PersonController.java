@@ -117,6 +117,10 @@ public class PersonController {
     public record BulkGradeForm(@NotNull List<@NotNull Long> ids, @NotNull Grade grade, LocalDate from) {
     }
 
+    /** A grade given on a person's row, from the sheet's today, with the version of the person shown. */
+    public record GradeForm(@NotNull Long version, @NotNull Grade grade) {
+    }
+
     /** What a bulk grade did: the people it changed, and how many. */
     public record BulkGradeView(List<PersonView> people, int changed) {
     }
@@ -199,6 +203,13 @@ public class PersonController {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
                 form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.contact(),
                 form.tags()), user);
+    }
+
+    /** Give a person a grade from the sheet's today, as the person form would. */
+    @PostMapping("/{id}/grade")
+    public PersonView grade(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GradeForm form) {
+        return view(service.grade(sheetId.trim(), SignedInUser.name(user), id, form.version(), form.grade()), user);
     }
 
     /** Give the selected people a grade together, each in list order as the person form would. */

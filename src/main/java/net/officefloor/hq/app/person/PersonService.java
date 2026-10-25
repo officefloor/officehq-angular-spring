@@ -253,6 +253,17 @@ public class PersonService {
         return saved;
     }
 
+    /** Give a person a grade from the sheet's today, as the person form would edit them, keeping their
+     *  name, terms, contact and tags; refused when someone has saved the person since this version of
+     *  them was loaded. */
+    @Transactional
+    public Person grade(String sheetId, String user, long id, long version, Grade grade) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        return update(sheetId, user, id, version, person.getName(), grade, null, person.getTerms(),
+                person.getContact(), String.join(",", person.getTags()));
+    }
+
     /** Give a person another name they are found by; refused when blank, or when it equals, as names
      *  are compared, any name or alias on the sheet or on another sheet of its tree. */
     @Transactional

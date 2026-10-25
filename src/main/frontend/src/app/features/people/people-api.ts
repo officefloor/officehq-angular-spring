@@ -155,6 +155,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}`, form));
   }
 
+  /** Give the person the grade from the sheet's today, as the person form would; refused with 412 when
+   *  someone has saved the person since `version` was loaded. */
+  gradeOne(sheetId: string, id: number, version: number, grade: Grade): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/grade`, { version, grade }));
+  }
+
   /** Give the people of these ids the grade from a date (null: the sheet's today), each in list order
    *  as the person form would. */
   grade(sheetId: string, ids: number[], grade: Grade, from: string | null): Promise<BulkGradeView> {
