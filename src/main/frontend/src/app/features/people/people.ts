@@ -78,6 +78,8 @@ import { PasteClaims } from '../claims/paste-claims';
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
+        <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(sheetSettledOpen().settled) }}</strong>,
+          open in total: <strong data-testid="rollup-open-total">{{ money(sheetSettledOpen().open) }}</strong></p>
         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
         <p>
@@ -125,7 +127,7 @@ import { PasteClaims } from '../claims/paste-claims';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -139,6 +141,8 @@ import { PasteClaims } from '../claims/paste-claims';
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+                <td data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) }}</td>
+                <td data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) }}</td>
                 @for (q of periods(); track q.id) {
                   <td [attr.data-testid]="'person-period-' + q.name + '-due-total'">{{ personPeriodDue(p.id, q.id) }}</td>
                 }
@@ -343,6 +347,33 @@ export class People {
       else by.set(c.personId, { ...was, over60: was.over60 + due });
     }
     return by;
+  });
+  /** Each person's claims that count, by person: the sum of the figures of their SETTLED claims (at
+   *  their frozen figures) and of their open (PENDING included) ones, in cents, skipping those that are
+   *  n/a; together their due-total before the cap. */
+  private readonly settledOpenByPerson = computed(() => {
+    const by = new Map<number, SettledOpen>();
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const person = byId.get(c.personId);
+      if (person === undefined || !this.countsLive(c)) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
+      const was = by.get(c.personId) ?? { settled: 0, open: 0 };
+      if (c.status === 'SETTLED') by.set(c.personId, { ...was, settled: was.settled + due });
+      else if (isOpen(c)) by.set(c.personId, { ...was, open: was.open + due });
+    }
+    return by;
+  });
+  /** Everyone's settled-total and open-total added up, not trimmed. */
+  protected readonly sheetSettledOpen = computed(() => {
+    let settled = 0;
+    let open = 0;
+    for (const p of this.people()) {
+      const o = this.settledOpenByPerson().get(p.id);
+      settled += o?.settled ?? 0;
+      open += o?.open ?? 0;
+    }
+    return { settled, open };
   });
   /** The sheet's overdue claims that count: how many, and everyone's overdue-total added up, trimmed. */
   protected readonly sheetOverdue = computed(() => {
@@ -728,6 +759,11 @@ export class People {
     return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
   }
 
+  /** The due of the person's settled and of their open claims that count, in cents. */
+  protected settledOpenOf(personId: number): SettledOpen {
+    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
+  }
+
   /** The due of the person's open claims that count, in cents, by age. */
   protected agedOf(personId: number): Aged {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
@@ -1059,6 +1095,9 @@ export class People {
 
 /** A person's due in cents by the age of the claims: 0 to 30 days, 31 to 60, and 61 or more. */
 interface Aged { upTo30: number; upTo60: number; over60: number }
+
+/** The due of a person's settled claims and of their open ones, in cents. */
+interface SettledOpen { settled: number; open: number }
 
 /** The person's own terms as the form shows them: blank when they have none. */
 function termsText(person: PersonView): string {
