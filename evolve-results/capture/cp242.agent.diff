@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index b988b4fe..d5cdd67e 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -1546,6 +1546,9 @@ export class Claims {
+       this.saved.emit(claim);
+       this.reset();
+     } catch (e) {
++      // An amount its lines fix can never be saved from the editor: it closes, its lock released, so
++      // the form is back to adding, the refusal still showing.
++      if (id !== null && e instanceof HttpErrorResponse && e.status === 417) this.cancel();
+       this.error.set(
+         e instanceof HttpErrorResponse && e.status === 423
+           ? 'A claim dated in a closed period cannot be changed.'
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a4ed3913..f76e68fb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -774,6 +774,11 @@ import { FigurePipe } from '../../core/figure.pipe';
+                   >
+                     Unretire
+                   </button>
++                  <ul class="timeline">
++                    @for (line of timelineOf(p); track $index) {
++                      <li data-testid="person-timeline-line">{{ (line) | figure }}</li>
++                    }
++                  </ul>
+                   <ul class="retirements">
+                     @for (r of p.retirements; track $index) {
+                       <li data-testid="person-retirement-line">{{ (r.from) | figure }} to {{ (r.to) | figure }}</li>
+@@ -1735,6 +1740,31 @@ export class People {
+       );
+   }
+ 
++  /** The person's timeline: one line per dated thing about them, by date, and on one date their
++   *  grade change, then their claims (by their lines), holds, retirements and unretirements. */
++  protected timelineOf(person: Person): string[] {
++    const entries: { date: string; kind: number; order: number; line: string }[] = [];
++    const byLine = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
++    for (const g of person.grades) {
++      if (g.from !== null) entries.push({ date: g.from, kind: 0, order: 0, line: `${g.from} grade ${g.grade}` });
++    }
++    for (const c of this.claimsOf(person.id)) {
++      entries.push({ date: c.date, kind: 1, order: 0, line: `${c.date} claim ${c.amount} ${c.status}` });
++    }
++    person.holds.forEach((h, i) =>
++      entries.push({ date: h.from, kind: 2, order: i, line: `${h.from} hold${h.to ? ' to ' + h.to : ''}` }),
++    );
++    const retirements = [...person.retirements];
++    if (person.retiredFrom !== null) retirements.push({ from: person.retiredFrom, to: '' });
++    retirements.forEach((r, i) => {
++      entries.push({ date: r.from, kind: 3, order: i, line: `${r.from} retired` });
++      if (r.to) entries.push({ date: r.to, kind: 4, order: i, line: `${r.to} unretired` });
++    });
++    return entries
++      .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || a.order - b.order || byLine(a.line, b.line))
++      .map((e) => e.line);
++  }
++
+   protected claimsOf(personId: number): Claim[] {
+     return this.claimsByPerson().get(personId) ?? [];
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 2a3cfd3e..42cde5a5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -186,13 +186,16 @@ public class PersonService {
+         return person;
+     }
+ 
+-    /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the
+-     * person form saves it, keeping their name, terms, contact and tags. */
++    /** Gives the person {@code grade} from the sheet's today, saved from {@code version} as the person
++     * form saves it, keeping their name, terms, contact and tags; the grade is dated from today even when
++     * it is the one they have today, unless that grade is retired, which stays with them undated. */
+     @Transactional
+     public Person grade(String sheetId, String user, long personId, long version, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+-        return update(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
+-                person.getContact());
++        LocalDate today = sheetService.today(sheetId);
++        boolean keptRetired = Objects.equals(grade, person.gradeOn(today)) && grades.isRetired(sheetId, grade);
++        return update(sheetId, user, personId, version, person.getName(), grade, keptRetired ? null : today,
++                person.getTerms(), person.getContact());
+     }
+ 
+     /** Swaps the person with the one above them in the list ({@code up}) or below; refused for the
