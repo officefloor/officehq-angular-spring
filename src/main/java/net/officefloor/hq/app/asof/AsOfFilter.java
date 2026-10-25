@@ -50,7 +50,7 @@ public class AsOfFilter extends OncePerRequestFilter {
         if (asOf.isPresent() && AsOf.reads(request)) {
             readAsOf(sheet.get(), asOf.get(), request, response, chain);
         } else if (asOf.isEmpty() && !AsOf.reads(request)) {
-            SheetHistory.changing(sheet.get(), () -> chain.doFilter(request, response));
+            history.changing(sheet.get(), () -> chain.doFilter(request, response));
         } else {
             chain.doFilter(request, response);
         }

@@ -409,13 +409,15 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden && (action === 'approve' || action === 'reject')
-          ? `Only a steward who did not open this claim can ${action} it.`
+          ? `Only a steward who did not open or last edit this claim can ${action} it.`
           : forbidden && action === 'resettle'
           ? 'Only a steward can re-settle this claim.'
           : forbidden && action === 'void' && claim.status === 'SETTLED'
           ? 'Only a steward can void a settled claim.'
           : forbidden && action === 'settle' && claim.openedBy === this.session.user()
           ? 'You opened this claim, so someone else must settle it.'
+          : forbidden && action === 'settle' && claim.editedBy === this.session.user()
+          ? 'You last edited this claim, so someone else must settle it.'
           : forbidden
           ? `Your role may not ${action} a claim on this sheet.`
           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422

@@ -97,6 +97,8 @@ export interface ClaimView {
   voidReason: string | null;
   /** The claim's comments, oldest first. */
   comments: ClaimComment[];
+  /** Who last edited the claim through its form or its row's amount entry; null when it never was. */
+  editedBy: string | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -312,7 +314,7 @@ export class ClaimsApi {
   }
 
   /** Move a claim to its next status: refused when its status does not allow it, and settling or
-   *  approving is refused (403) to the user who opened the claim; approving and rejecting (with a
+   *  approving is refused (403) to the user who opened or last edited the claim; approving and rejecting (with a
    *  reason) a PENDING claim, and re-settling a SETTLED one, are refused (403) to all but a steward. */
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' || action === 'void' ? { reason: reason ?? '' } : {};

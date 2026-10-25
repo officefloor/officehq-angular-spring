@@ -36,13 +36,14 @@ public class ClaimController {
      *  the claim's proofs count. Split from is the number of the claim it was split off from, or null.
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
      *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none.
-     *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first. */
+     *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first.
+     *  Edited by is who last edited it, or null when it never was. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
-            List<CommentView> comments) {
+            List<CommentView> comments, String editedBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -53,7 +54,7 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentView::of).toList());
+                    claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy());
         }
     }
 

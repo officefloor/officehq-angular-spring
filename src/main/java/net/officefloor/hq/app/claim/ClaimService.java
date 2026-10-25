@@ -204,6 +204,7 @@ public class ClaimService {
         claim.setTags(tagged);
         useTags(sheetId, tagged);
         claim.lockFor(null);
+        claim.setEditedBy(user);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
         rollup.recordChanges(user, before);
@@ -211,8 +212,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
-     *  by the user who opened the claim, and an action the sheet's permission matrix does not allow the
-     *  user's role. A clerk's settling of a claim whose due is above the sheet's
+     *  by the user who opened or last edited the claim, and an action the sheet's permission matrix does
+     *  not allow the user's role. A clerk's settling of a claim whose due is above the sheet's
      *  clerk limit leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
      *  steward settles anything). */
     @Transactional
@@ -248,6 +249,10 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it.");
+        }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot settle it.");
         }
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonToVoid(sheetId, reason) : null;
         Person person = person(sheetId, claim.getPersonId());
@@ -470,13 +475,18 @@ public class ClaimService {
     }
 
     /** Approve a PENDING claim: it is SETTLED, its due (its live figure and any late charge) frozen
-     *  now. Refused unless the user is a steward of the sheet other than the one who opened it. */
+     *  now. Refused unless the user is a steward of the sheet other than the one who opened or last
+     *  edited it. */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
         Claim claim = pending(sheetId, user, id);
         if (user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot approve it.");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot approve it.");
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal dueNow = due(sheetId, person, claim);
