@@ -1,0 +1,216 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 92b472fe..031d0f7d 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -172,11 +172,19 @@ export interface DescendantFigures {
+   overdueFigures: string[];
+   /** Each descendant person's name keys: their name's, then their aliases'. */
+   nameKeys: string[][];
++  settledTotal: string;
++  openTotal: string;
++  cutTotal: string;
++  /** Each descendant person's settled-total, open-total and cut total, so the tree's can be trimmed once over all. */
++  settledFigures: string[];
++  openFigures: string[];
++  cutFigures: string[];
+ }
+ 
+ /** The figures of a sheet without descendants. */
+ export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {},
+-  dueFigures: [], overdueFigures: [], nameKeys: [] };
++  dueFigures: [], overdueFigures: [], nameKeys: [], settledTotal: '0.00', openTotal: '0.00', cutTotal: '0.00',
++  settledFigures: [], openFigures: [], cutFigures: [] };
+ 
+ /** A sheet's own due-totals per grade, with two decimals. */
+ export interface GradeDueTotals {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 20fc9513..4abfc730 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -65,11 +65,10 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // their cut total (not below 0.00): when the sum of their figures is above that, the row shows it and the difference
+ // as their excess; every
+ // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+-// The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
++// The sheet's due-total, overdue-total, settled-total, open-total and cut total leave out the single highest and the single lowest person's
+ // figure when three or more people have one (a due-total of n/a is no figure).
+ // Each row splits its figures before the cap into a settled-total (its counting SETTLED claims, at
+-// their frozen figures) and an open-total (its counting OPEN and PENDING claims); the sheet's
+-// settled-total and open-total simply add up everyone's.
++// their frozen figures) and an open-total (its counting OPEN and PENDING claims).
+ // Each row shows the person's score: their settled-total, leaving out corrections, divided by 100, minus 5 for every overdue
+ // claim of theirs that counts, rounded half to even to a whole number.
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+@@ -92,6 +91,9 @@ import { FigurePipe } from '../../core/figure.pipe';
+       <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
+       <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
+       <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
++      <span>Settled <strong data-testid="consolidated-settled-total">{{ (consolidated().settledTotal) | figure }}</strong></span>
++      <span>Open <strong data-testid="consolidated-open-total">{{ (consolidated().openTotal) | figure }}</strong></span>
++      <span>Cut <strong data-testid="consolidated-cut-total">{{ (consolidated().cutTotal) | figure }}</strong></span>
+       @for (g of consolidated().grades; track g.grade) {
+         <span>Grade {{ (g.grade) | figure }} due <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</strong></span>
+       }
+@@ -1385,16 +1387,14 @@ export class People {
+     }
+     return by;
+   });
+-  /** The sheet's cut total, in cents: everyone's cut totals added up. */
+-  protected readonly cutTotal = computed(() =>
+-    this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0),
+-  );
+-  /** Everyone's settled-totals and open-totals, in cents, each simply added up (not trimmed). */
++  /** The sheet's cut total, in cents: everyone's cut totals added up, trimmed. */
++  protected readonly cutTotal = computed(() => trimmedSum(this.people().map((p) => this.cutCents().get(p.id) ?? 0)));
++  /** Everyone's settled-totals and open-totals, in cents, each added up, trimmed. */
+   protected readonly splitTotal = computed(() => {
+     const each = this.people().map((p) => this.claimedSplitOf(p));
+     return {
+-      settled: each.reduce((sum, s) => sum + s.settled, 0),
+-      open: each.reduce((sum, s) => sum + s.open, 0),
++      settled: trimmedSum(each.map((s) => s.settled)),
++      open: trimmedSum(each.map((s) => s.open)),
+     };
+   });
+   /** What is due on everyone's counting OPEN and PENDING claims, in cents, by age: the people's age
+@@ -1483,12 +1483,19 @@ export class People {
+       ...(d.dueFigures ?? []).map(cents),
+     ];
+     const overdue = [...ownPeople.map((p) => this.overdueOf(p).cents), ...(d.overdueFigures ?? []).map(cents)];
++    const split = ownPeople.map((p) => this.claimedSplitOf(p));
++    const settled = [...split.map((s) => s.settled), ...(d.settledFigures ?? []).map(cents)];
++    const open = [...split.map((s) => s.open), ...(d.openFigures ?? []).map(cents)];
++    const cut = [...ownPeople.map((p) => this.cutCents().get(p.id) ?? 0), ...(d.cutFigures ?? []).map(cents)];
+     return {
+       peopleCount: own
+         ? distinctPeople([...ownPeople.map((p) => [p.name, ...p.aliases].map(nameKey)), ...(d.nameKeys ?? [])])
+         : d.peopleCount,
+       dueTotal: own ? money(trimmedSum(due)) : d.dueTotal,
+       overdueTotal: own ? money(trimmedSum(overdue)) : d.overdueTotal,
++      settledTotal: own ? money(trimmedSum(settled)) : d.settledTotal,
++      openTotal: own ? money(trimmedSum(open)) : d.openTotal,
++      cutTotal: own ? money(trimmedSum(cut)) : d.cutTotal,
+       grades: [...this.grades(), ...Object.keys(d.gradeDueTotals).filter((g) => !this.grades().includes(g))].map((grade) => ({
+         grade,
+         dueTotal: money(
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 0d3d266a..f201f5be 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * A sheet's descendants (its children — the sheets naming it as their parent — their children, and so
+  * on) and their figures added up: the number of people on them (retired ones included), each person counted
+  * once over the tree (people whose names or aliases match, as names are compared, are one person), and
+- * each one's due-total and overdue-total as that sheet shows it, the single highest and lowest person's
++ * each one's due-total, overdue-total, settled-total, open-total and cut total as that sheet shows it, the single highest and lowest person's
+  * figure over all of them left out when three or more have one; per grade, the due-totals of the people on it on
+  * their sheet's today (retired people left out, a due-total of n/a skipped); and per status, the number of
+  * claims in it. The screen adds the sheet's own people in, trimming once over the whole tree, to give the
+@@ -50,20 +50,26 @@ public class ConsolidatedService {
+ 
+     /** The descendants' figures added up, with two decimals; all zero when the sheet has no children.
+      * {@code peopleCount} counts each person once over them (people whose names or aliases match, as names
+-     * are compared, are one person); {@code dueTotal} and {@code overdueTotal} leave out the single highest
++     * are compared, are one person); {@code dueTotal}, {@code overdueTotal}, {@code settledTotal},
++     * {@code openTotal} and {@code cutTotal} leave out the single highest
+      * and lowest person's figure over all of them when three or more have one. {@code gradeDueTotals} by
+      * grade, {@code statusCounts} by status. So that the screen can add the sheet's own people in, each
+-     * person's due-total ({@code dueFigures}, n/a ones left out), overdue-total ({@code overdueFigures}) and
+-     * name keys, their name's then their aliases' ({@code nameKeys}). */
++     * person's due-total ({@code dueFigures}, n/a ones left out), overdue-total ({@code overdueFigures}),
++     * settled-total ({@code settledFigures}), open-total ({@code openFigures}), cut total ({@code cutFigures})
++     * and name keys, their name's then their aliases' ({@code nameKeys}). */
+     public record Figures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
+             Map<String, Integer> statusCounts, List<String> dueFigures, List<String> overdueFigures,
+-            List<List<String>> nameKeys) {
++            List<List<String>> nameKeys, String settledTotal, String openTotal, String cutTotal,
++            List<String> settledFigures, List<String> openFigures, List<String> cutFigures) {
+     }
+ 
+     /** Figures being added up over sheets. */
+     private static final class Sum {
+         private final List<BigDecimal> due = new ArrayList<>();
+         private final List<BigDecimal> overdue = new ArrayList<>();
++        private final List<BigDecimal> settled = new ArrayList<>();
++        private final List<BigDecimal> open = new ArrayList<>();
++        private final List<BigDecimal> cut = new ArrayList<>();
+         private final List<List<String>> keys = new ArrayList<>();
+         private final Map<String, BigDecimal> grades = new LinkedHashMap<>();
+         private final Map<String, Integer> statuses = new LinkedHashMap<>();
+@@ -79,6 +85,9 @@ public class ConsolidatedService {
+                 if (shown == null) continue;
+                 if (!RollupService.NONE.equals(shown.dueTotal())) due.add(new BigDecimal(shown.dueTotal()));
+                 overdue.add(new BigDecimal(shown.overdueTotal()));
++                settled.add(new BigDecimal(shown.settledTotal()));
++                open.add(new BigDecimal(shown.openTotal()));
++                cut.add(new BigDecimal(shown.cutTotal()));
+                 List<String> personKeys = new ArrayList<>();
+                 personKeys.add(Person.keyOf(person.getName()));
+                 person.getAliases().forEach(a -> personKeys.add(Person.keyOf(a)));
+@@ -102,7 +111,13 @@ public class ConsolidatedService {
+             return new Figures(distinctPeople(keys), RollupService.trimmedSum(due).toPlainString(),
+                     RollupService.trimmedSum(overdue).toPlainString(), gradeTotals, Map.copyOf(statuses),
+                     due.stream().map(BigDecimal::toPlainString).toList(),
+-                    overdue.stream().map(BigDecimal::toPlainString).toList(), List.copyOf(keys));
++                    overdue.stream().map(BigDecimal::toPlainString).toList(), List.copyOf(keys),
++                    RollupService.trimmedSum(settled).toPlainString(), RollupService.trimmedSum(open).toPlainString(),
++                    RollupService.trimmedSum(cut).toPlainString(), texts(settled), texts(open), texts(cut));
++        }
++
++        private static List<String> texts(List<BigDecimal> figures) {
++            return figures.stream().map(BigDecimal::toPlainString).toList();
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 2e1cdc6b..3e340ea3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -75,8 +75,10 @@ public class RollupService {
+         this.audit = audit;
+     }
+ 
+-    /** A person's figures, as shown. */
+-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {
++    /** A person's figures, as shown: with their settled-total and open-total (what is due on their own counting
++     * SETTLED, and OPEN and PENDING, claims, each claim whole as it shows it, before the cap) and their cut total. */
++    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String settledTotal,
++            String openTotal, String cutTotal) {
+     }
+ 
+     /** The sheet's figures at one moment: each person's, in list order, and the totals. */
+@@ -121,6 +123,8 @@ public class RollupService {
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+             BigDecimal overdue = zero();
++            BigDecimal settled = zero();
++            BigDecimal open = zero();
+             boolean any = false;
+             for (Claim claim : all) {
+                 if (!claim.getPersonId().equals(person.getId())) continue;
+@@ -129,6 +133,8 @@ public class RollupService {
+                 BigDecimal figure = shownOf(claim, person, basis);
+                 if (figure == null) continue;
+                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
++                if (claim.getStatus().isOpen()) open = open.add(figure);
++                else settled = settled.add(figure);
+                 due = due.add(ownPartOf(claim, figure, sharesByClaim.get(claim.getId()), byId, basis));
+                 any = true;
+             }
+@@ -137,13 +143,14 @@ public class RollupService {
+                 due = due.add(part);
+                 any = true;
+             }
+-            due = cappedOf(due, cap, basis.cutOf(person.getId()));
++            BigDecimal cut = basis.cutOf(person.getId());
++            due = cappedOf(due, cap, cut);
+             boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
+             claimedTotal = claimedTotal.add(claimed);
+             overdueFigures.add(overdue);
+             if (any || rated) dueFigures.add(due);
+             figures.put(person.getId(), new Figures(person.getName(), text(claimed), any || rated ? text(due) : NONE,
+-                    text(overdue)));
++                    text(overdue), text(settled), text(open), text(cut == null ? zero() : cut)));
+         }
+         return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
+     }
