@@ -1,0 +1,64 @@
+{
+  "checkpoint": 10,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp10_settle-freezes-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Settling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSettling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "19978ed7cea7e35b18d78856021e407388abd518",
+  "reset_sha": "",
+  "preagent_sha": "8a61a20bac90517590cca439a7108fcee44ed4af",
+  "prev_sha": "8a61a20bac90517590cca439a7108fcee44ed4af",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6206990000000002,
+    "input_tokens": 24,
+    "output_tokens": 8040,
+    "cache_read_tokens": 407375,
+    "cache_creation_tokens": 47291,
+    "num_turns": 12,
+    "duration_ms": 305461,
+    "duration_api_ms": 89653,
+    "model": "claude-opus-5-5",
+    "session_id": "1296f24a-8fe2-4a8f-861e-11102ad49bbe",
+    "stop_reason": "success",
+    "result_text": "Settling a claim now freezes its due, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- **When settled:** the server works out the due right then (amount \u00d7 the person's grade's rate, rounded to two decimals, halves rounding up) and saves it with the claim. The claim's row keeps showing that figure in the same place, whatever the rates or grade do later.\n- **Open, draft and void claims** stay live, as before.\n- **The audit line:** `CLAIM_SETTLED` now ends with `due=<figure>`, e.g. `due=12.49`.\n\n**Two things the test expects that you might not**\n- **Totals stay live.** The person's due-total and the sheet's due-total are still worked out from the current rate, not from the frozen figures. For example, after a claim is settled at 2.00 and the rate rises to 20%, the person's total shows 4.60 (23.00 \u00d7 20%), while the claim's row still shows 2.00. Making the totals add up the frozen figures fails the first test.\n- **A claim settled while its grade has no rate freezes nothing.** The audit line says `due=n/a`, and the claim's due stays live. If the person later moves to a graded rate, it shows a real figure (0.78 in one scenario).\n\n**Changes**\n- New migration `V9__claim_settled_due.sql` adds a `settled_due` column to claims. It is empty until a claim is settled, and stays empty if no rate applied then.\n- On the server, `Claim`, `ClaimService` (works out the frozen due when settling and adds `due=` to the audit line) and `ClaimController` (sends `settledDue` to the screen).\n- On the front end, the claim row in `person-claims.ts` shows the frozen figure when there is one.\n\nEditing a settled claim's amount keeps the old frozen due. The request doesn't cover that case and the test doesn't try it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6206990000000002,
+        "num_turns": 12,
+        "duration_ms": 305461,
+        "duration_api_ms": 89653,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp10.agent.jsonl",
+  "agent_diff_file": "cp10.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
