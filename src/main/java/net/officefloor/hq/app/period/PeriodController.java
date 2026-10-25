@@ -45,6 +45,10 @@ public class PeriodController {
             @NotNull LocalDate to) {
     }
 
+    /** The dates monthly periods are generated between; a blank date is the sheet's today. */
+    public record GenerateForm(LocalDate from, LocalDate to) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -64,6 +68,15 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PeriodForm form) {
         return PeriodView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.from(),
                 form.to()));
+    }
+
+    /** Generate one period per calendar month from the from-date's month to the to-date's month,
+     *  leaving out those whose name is in use or whose days overlap a period; the periods made. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody GenerateForm form) {
+        return service.generate(sheetId.trim(), SignedInUser.name(user), form.from(), form.to()).stream()
+                .map(PeriodView::of).toList();
     }
 
     /** Close a period, fixing its due-total. */

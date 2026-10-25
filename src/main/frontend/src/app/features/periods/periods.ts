@@ -26,6 +26,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="generateForm" (ngSubmit)="generate()" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
+        <label for="period-generate-to">To</label>
+        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+        <button type="submit" data-testid="period-generate" [disabled]="generating()">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Periods made: <span data-testid="period-generated">{{ generated() }}</span></p>
+        }
+        @if (generateError()) {
+          <p role="alert" data-testid="period-generate-error">{{ generateError() }}</p>
+        }
+      </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -70,6 +83,13 @@ export class Periods {
   protected readonly from = new FormControl('', { nonNullable: true });
   protected readonly to = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ name: this.name, from: this.from, to: this.to });
+  protected readonly generateFrom = new FormControl('', { nonNullable: true });
+  protected readonly generateTo = new FormControl('', { nonNullable: true });
+  protected readonly generateForm = new FormGroup({ from: this.generateFrom, to: this.generateTo });
+  protected readonly generating = signal(false);
+  /** How many periods the last generate made; null before one, and while one runs. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal('');
   protected readonly saving = signal(false);
   protected readonly error = signal('');
   /** The period being closed or reopened. */
@@ -79,13 +99,49 @@ export class Periods {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
     // Each load of a sheet starts the form afresh.
     effect(() => {
       this.session.loaded();
       this.error.set('');
       this.periodError.set(null);
       this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+      this.generateError.set('');
+      this.generated.set(null);
+      this.generateForm.reset({ from: '', to: '' }, { emitEvent: false });
     });
+  }
+
+  /** Generate one period per calendar month between the two dates; a blank date is the sheet's today. */
+  protected async generate(): Promise<void> {
+    if (this.generating()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const value = this.generateForm.getRawValue();
+    const from = value.from.trim() || sheet.today;
+    const to = value.to.trim() || sheet.today;
+    if (!DATE.test(from) || !DATE.test(to)) {
+      this.generateError.set('Type a from and a to date as yyyy-mm-dd.');
+      return;
+    }
+    if (to < from) {
+      this.generateError.set('The to-date must be on or after the from-date.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      const made = await this.api.generate(sheet.id, from, to);
+      if (this.session.sheet()?.id === sheet.id) {
+        for (const period of made) this.added.emit(period);
+        this.generated.set(made.length);
+      }
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating.set(false);
+    }
   }
 
   /** Close a period, fixing its due-total; the store refuses one already closed. */

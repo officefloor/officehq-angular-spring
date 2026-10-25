@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +84,38 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " from=" + saved.getFrom() + " to=" + saved.getTo());
         return saved;
+    }
+
+    /** Generate one period per calendar month from the from-date's month to the to-date's month, each
+     *  from the first to the last day of its month and named yyyy-mm; a blank date is the sheet's today.
+     *  A month whose name is in use on the sheet, or whose days overlap one of its periods, is left out.
+     *  Refused when the to-date is before the from-date. The periods made, in date order. */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        LocalDate today = sheets.today(sheetId);
+        LocalDate start = from == null ? today : from;
+        LocalDate end = to == null ? today : to;
+        if (end.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
+        }
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(start); !month.isAfter(YearMonth.from(end)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getNameKey().equals(Period.keyOf(name)) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(saved);
+            made.add(saved);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                    + " from=" + saved.getFrom() + " to=" + saved.getTo());
+        }
+        return made;
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims

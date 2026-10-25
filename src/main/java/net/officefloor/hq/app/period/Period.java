@@ -84,6 +84,10 @@ public class Period {
         return name;
     }
 
+    public String getNameKey() {
+        return nameKey;
+    }
+
     public LocalDate getFrom() {
         return from;
     }
