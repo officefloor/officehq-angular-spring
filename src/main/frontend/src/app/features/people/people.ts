@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -118,17 +119,21 @@ export class People {
     this.saving.set(true);
     try {
       if (id === null) {
-        const added = await this.api.add(sheet.id, value);
+        const added = await this.api.add(sheet.id, { ...value, name: value.name.trim() });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.update(sheet.id, id, value);
+        const saved = await this.api.update(sheet.id, id, { ...value, name: value.name.trim() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
         }
       }
       if (this.session.sheet()?.id === sheet.id) this.reset();
-    } catch {
-      this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('That name is already in use on the sheet.');
+      } else {
+        this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+      }
     } finally {
       this.saving.set(false);
     }

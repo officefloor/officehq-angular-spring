@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Locale;
 
 /** A person on a sheet. */
 @Entity
@@ -24,6 +25,10 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** The name as uniqueness compares it: trimmed and lower-cased. */
+    @Column(name = "name_key", nullable = false)
+    private String nameKey;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "grade", nullable = false)
     private Grade grade;
@@ -33,7 +38,7 @@ public class Person {
 
     public Person(String sheetId, String name, Grade grade) {
         this.sheetId = sheetId;
-        this.name = name;
+        setName(name);
         this.grade = grade;
     }
 
@@ -49,8 +54,15 @@ public class Person {
         return name;
     }
 
+    /** Stores the name with its surrounding spaces removed. */
     public void setName(String name) {
-        this.name = name;
+        this.name = name.trim();
+        this.nameKey = keyOf(name);
+    }
+
+    /** The key a name is compared on for uniqueness: without surrounding spaces or regard to case. */
+    public static String keyOf(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
     }
 
     public Grade getGrade() {
