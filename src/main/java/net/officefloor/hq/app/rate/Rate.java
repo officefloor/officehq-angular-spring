@@ -4,34 +4,33 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
-import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import net.officefloor.hq.app.person.Grade;
 
-/** The sheet's rate for one grade: a percent with two decimals. */
+/** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
+ *  (or from the beginning of time, when it has none) until the grade's next rate. */
 @Entity
 @Table(name = "rate")
-@IdClass(Rate.Key.class)
 public class Rate {
 
-    /** A rate is kept once per grade on a sheet. */
-    public record Key(String sheetId, Grade grade) implements Serializable {
-        public Key() {
-            this(null, null);
-        }
-    }
-
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     @Column(name = "sheet_id", nullable = false)
     private String sheetId;
 
-    @Id
     @Enumerated(EnumType.STRING)
     @Column(name = "grade", nullable = false)
     private Grade grade;
+
+    @Column(name = "from_date")
+    private LocalDate from;
 
     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal pct;
@@ -39,10 +38,15 @@ public class Rate {
     protected Rate() {
     }
 
-    public Rate(String sheetId, Grade grade, BigDecimal pct) {
+    public Rate(String sheetId, Grade grade, LocalDate from, BigDecimal pct) {
         this.sheetId = sheetId;
         this.grade = grade;
+        this.from = from;
         setPct(pct);
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getSheetId() {
@@ -53,6 +57,11 @@ public class Rate {
         return grade;
     }
 
+    /** The date the rate is in force from, or null when it applies from the beginning of time. */
+    public LocalDate getFrom() {
+        return from;
+    }
+
     public BigDecimal getPct() {
         return pct;
     }
@@ -60,5 +69,10 @@ public class Rate {
     /** Change the percent; it is kept to two decimals. */
     public void setPct(BigDecimal pct) {
         this.pct = pct.setScale(2);
+    }
+
+    /** Whether the rate is in force on or before this date. */
+    public boolean appliesBy(LocalDate date) {
+        return from == null || !from.isAfter(date);
     }
 }

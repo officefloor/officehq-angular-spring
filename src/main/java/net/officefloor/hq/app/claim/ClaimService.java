@@ -9,7 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,11 +21,11 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
@@ -94,12 +94,12 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
     }
 
-    /** What is due on the claim now at its person's grade's rate, rounded half up; null when the grade has no rate. */
+    /** What is due on the claim now at its person's grade's rate in force on the claim's date, rounded
+     *  half up; null when no rate of the grade applies by then. */
     private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
-        return rates.findById(new Rate.Key(sheetId, person.getGrade()))
-                .map(rate -> claim.getAmount().multiply(rate.getPct())
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
-                .orElse(null);
+        Rate rate = rates.inForce(sheetId, person.getGrade(), claim.getDate());
+        return rate == null ? null
+                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {

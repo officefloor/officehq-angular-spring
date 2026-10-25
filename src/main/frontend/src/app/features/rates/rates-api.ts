@@ -7,6 +7,24 @@ export interface RateView {
   grade: Grade;
   /** The percent with two decimals, as the store holds it. */
   pct: string;
+  /** The date the rate is in force from (yyyy-mm-dd), or null when it applies from the beginning of time. */
+  from: string | null;
+}
+
+/** Of one grade's rates, the one in force on a date: the one with the latest from-date on or before
+ *  it, or null when the date is before every one of them. */
+export function rateInForce(rates: readonly RateView[], date: string): RateView | null {
+  let inForce: RateView | null = null;
+  for (const r of rates) {
+    if (r.from !== null && r.from > date) continue;
+    if (inForce === null || (inForce.from ?? '') < (r.from ?? '')) inForce = r;
+  }
+  return inForce;
+}
+
+/** Whether two rates are the same grade's rate for the same from-date. */
+export function sameRate(a: RateView, b: RateView): boolean {
+  return a.grade === b.grade && a.from === b.from;
 }
 
 /** What is due on an amount of `amountCents` at a rate of `pct` percent, in whole cents: the
@@ -32,7 +50,8 @@ export class RatesApi {
     return firstValueFrom(this.http.get<RateView[]>(this.url(sheetId)));
   }
 
-  set(sheetId: string, grade: Grade, pct: string): Promise<RateView> {
-    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct }));
+  /** Set the grade's rate from a from-date (null: from the beginning of time), replacing the one it had for it. */
+  set(sheetId: string, grade: Grade, pct: string, from: string | null): Promise<RateView> {
+    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from }));
   }
 }

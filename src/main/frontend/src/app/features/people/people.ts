@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { ClaimView, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
-import { RateView, RatesApi, dueCents } from '../rates/rates-api';
+import { RateView, RatesApi, dueCents, rateInForce, sameRate } from '../rates/rates-api';
 import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
@@ -53,7 +53,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
-                    [pct]="rateOf(p.grade)"
+                    [rates]="ratesOf(p.grade)"
                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
                 </td>
                 <td>
@@ -95,7 +95,11 @@ export class People {
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => (counts(c) ? t + cents(c.amount) : t), 0)));
   /** The sheet's rates; a grade with no rate is left out. */
   protected readonly rates = signal<RateView[]>([]);
-  private readonly rateByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  private readonly ratesByGrade = computed(() => {
+    const by = new Map<Grade, RateView[]>();
+    for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+    return by;
+  });
   /** Everyone's due-total added up, skipping the people whose grade has no rate. */
   protected readonly sheetDueTotal = computed(() => {
     let total = 0;
@@ -142,25 +146,33 @@ export class People {
     return money(this.centsByPerson().get(personId) ?? 0);
   }
 
-  /** The rate for a grade, or null when the grade has no rate. */
-  protected rateOf(grade: Grade): string | null {
-    return this.rateByGrade().get(grade) ?? null;
+  /** The grade's rates, whatever their from-dates. */
+  protected ratesOf(grade: Grade): RateView[] {
+    return this.ratesByGrade().get(grade) ?? [];
   }
 
-  /** What the person has claimed times their grade's rate, in cents; null when it has no rate. */
+  /** The grade's rate in force on the sheet's today, or null when none is. */
+  private rateOf(grade: Grade): string | null {
+    const today = this.session.sheet()?.today;
+    return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
+  }
+
+  /** What the person has claimed times their grade's rate in force today, in cents; null when none is. */
   private dueCentsOf(person: PersonView): number | null {
     const pct = this.rateOf(person.grade);
     return pct === null ? null : dueCents(this.centsByPerson().get(person.id) ?? 0, pct);
   }
 
-  /** The person's due-total with two decimals, or n/a when their grade has no rate. */
+  /** The person's due-total with two decimals, or n/a when no rate of their grade is in force today. */
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);
   }
 
   protected rateSaved(rate: RateView): void {
-    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
+    // Kept as the store lists them: in grade order, then the rate from the start, then by from-date.
+    this.rates.update((list) => [...list.filter((r) => !sameRate(r, rate)), rate]
+      .sort((a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
   }
 
   protected claimAdded(claim: ClaimView): void {

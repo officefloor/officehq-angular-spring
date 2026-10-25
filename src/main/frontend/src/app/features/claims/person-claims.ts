@@ -1,7 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { dueCents } from '../rates/rates-api';
+import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 import { ClaimAction, ClaimView, ClaimsApi, cents, money } from './claims-api';
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -64,8 +64,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The rate for the person's grade, or null when the grade has no rate. */
-  readonly pct = input.required<string | null>();
+  /** The rates of the person's grade, whatever their from-dates. */
+  readonly rates = input.required<RateView[]>();
   readonly added = output<ClaimView>();
   readonly saved = output<ClaimView>();
   /** A claim whose status changed. */
@@ -87,11 +87,11 @@ export class PersonClaims {
   }
 
   /** What is due on the claim: the figure fixed when it was settled, else at the person's grade's
-   *  rate, or n/a when the grade has no rate. */
+   *  rate in force on the claim's date, or n/a when the claim is dated before every rate of the grade. */
   protected due(claim: ClaimView): string {
     if (claim.settledDue !== null) return claim.settledDue;
-    const pct = this.pct();
-    return pct === null ? 'n/a' : money(dueCents(cents(claim.amount), pct));
+    const rate = rateInForce(this.rates(), claim.date);
+    return rate === null ? 'n/a' : money(dueCents(cents(claim.amount), rate.pct));
   }
 
   protected fieldId(field: string): string {
