@@ -296,17 +296,21 @@ function divideHalfEven(value: bigint, by: bigint): bigint {
 
 /** The cuts of a pot (in cents) among members in the order they were added, by person: each the pot times
  *  their share over the shares of the members with a cut added up, half to even (a retired or held
- *  member's 0); the remainder to the largest share with a cut, the earliest added on a tie. With no
+ *  member's 0); the remainder to the smallest non-zero cut, the latest added on a tie, or with no
+ *  non-zero cut to the last member with a share. With no
  *  member with a cut, every cut is 0. A member whose dates leave out the sheet's today is not given here. */
 function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigint][] {
   const shares = members.map((m) => (m.retired || m.held ? 0 : cents(m.share)));
   const total = BigInt(shares.reduce((t, share) => t + share, 0));
   const cuts = shares.map((share) => (total === 0n ? 0n : divideHalfEven(potCents * BigInt(share), total)));
-  let largest = 0;
-  shares.forEach((share, i) => {
-    if (share > shares[largest]) largest = i;
+  let target = -1;
+  cuts.forEach((cut, i) => {
+    if (cut !== 0n && (target < 0 || cut <= cuts[target])) target = i;
   });
-  if (total > 0n) cuts[largest] += potCents - cuts.reduce((t, c) => t + c, 0n);
+  if (target < 0) shares.forEach((share, i) => {
+    if (share > 0) target = i;
+  });
+  if (total > 0n && target >= 0) cuts[target] += potCents - cuts.reduce((t, c) => t + c, 0n);
   return members.map((m, i) => [m.key, cuts[i]]);
 }
 

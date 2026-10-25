@@ -569,7 +569,7 @@ public class ClaimService {
     }
 
     /** Move a claim as {@link #reassign(String, String, long, long)} does; a claim moved with others to
-     *  its own person is not refused but re-listed as that person's newest claim. */
+     *  its own person is not refused but re-listed as that person's newest claim, a numbered one taking the next number. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean withOthers) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -592,8 +592,9 @@ public class ClaimService {
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));
-        // Moved to another person, a numbered claim takes the next number; its old one is not reused.
-        if (claim.getNumber() != null && !from.getId().equals(to.getId())) {
+        // Moved (to another person, or with others to its own), a numbered claim takes the next number;
+        // its old one is not reused.
+        if (claim.getNumber() != null && (withOthers || !from.getId().equals(to.getId()))) {
             claim.setNumber(nextNumber(sheetId, claim));
         }
         Claim saved = claims.saveAndFlush(claim);
