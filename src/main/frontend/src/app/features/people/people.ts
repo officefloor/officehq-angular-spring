@@ -66,7 +66,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each row splits its figures before the cap into a settled-total (its counting SETTLED claims, at
 // their frozen figures) and an open-total (its counting OPEN and PENDING claims); the sheet's
 // settled-total and open-total simply add up everyone's.
-// Each row shows the person's score: their settled-total divided by 100, minus 5 for every overdue
+// Each row shows the person's score: their settled-total, leaving out corrections, divided by 100, minus 5 for every overdue
 // claim of theirs that counts, rounded half to even to a whole number.
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
@@ -2286,6 +2286,17 @@ export class People {
     return { settled, open, any };
   }
 
+  /** What is due on the person's counting SETTLED claims that are not corrections, in cents, as each
+   *  claim shows it, before the cap: the settled figure their score is worked from. */
+  private scoredSettledOf(person: Person): number {
+    let settled = 0;
+    for (const c of this.claimsOf(person.id)) {
+      if (!this.countsLive(c, person) || isOpen(c) || isCorrection(c)) continue;
+      settled += claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0;
+    }
+    return settled;
+  }
+
   /** How many of the person's counting claims are overdue, and the sum of what is due on them, in
    *  cents, as each claim shows it (a claim with nothing due adds nothing). */
   protected overdueOf(person: Person): { count: number; cents: number } {
@@ -2300,11 +2311,11 @@ export class People {
     return { count, cents: sum };
   }
 
-  /** The person's score: their settled-total divided by 100, minus 5 for every overdue claim that
-   *  counts, rounded half to even to a whole number. */
+  /** The person's score: their settled-total, leaving out corrections, divided by 100, minus 5 for
+   *  every overdue claim that counts, rounded half to even to a whole number. */
   protected scoreOf(person: Person): string {
     // In cents, the score is (settled - 50000 * overdue) / 10000.
-    const x = this.splitOf(person).settled - 50000 * this.overdueOf(person).count;
+    const x = this.scoredSettledOf(person) - 50000 * this.overdueOf(person).count;
     const q = Math.floor(x / 10000);
     const r = x - q * 10000;
     const whole = r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;

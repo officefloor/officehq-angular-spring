@@ -116,7 +116,7 @@ public class RollupService {
     }
 
     /** Each person's score on the sheet as it stands, by person, in list order: their settled-total (what is due
-     * on their counting SETTLED claims, as each shows it, before the cap) divided by 100, minus 5 for every
+     * on their counting SETTLED claims that are not corrections, as each shows it, before the cap) divided by 100, minus 5 for every
      * counting claim of theirs that is overdue, rounded half to even to a whole number. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Map<Long, Score> scores(String sheetId) {
@@ -130,7 +130,7 @@ public class RollupService {
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
                 if (isOverdue(claim, basis)) overdue++;
-                if (claim.getStatus().isOpen()) continue;
+                if (claim.getStatus().isOpen() || claim.isCorrection()) continue;
                 BigDecimal figure = shownOf(claim, person, basis);
                 if (figure != null) settled = settled.add(figure);
             }

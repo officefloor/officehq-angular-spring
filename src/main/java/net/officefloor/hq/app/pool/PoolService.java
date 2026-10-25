@@ -39,7 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and the remainder of the pot over the cuts goes to the member with the smallest non-zero cut, the latest
  * added on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last member with a
  * share), so the cuts add up to the pot exactly; a hold changes neither the total share nor the balance; an unbalanced pool, or one with no pot, has no
- * cuts, nor has a pool whose every member is retired. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
+ * cuts, nor has a pool whose every member is retired or held. A pool is a member of at most one pool, never contains itself through any chain, and a chain of pools is
  * at most three deep. A membership may carry a from-date and a to-date (each optional, both included); a member
  * whose dates do not include the sheet's today is left out entirely: not in the total share, not in the balance,
  * and no cut. Worked out as of an earlier date, the pools, their members, the pot and the people are as they
@@ -302,10 +302,10 @@ public class PoolService {
     /** The cuts of a balanced pool's members, in their order: the pot times each share over the shares of the
      * members with a cut, half to even to two decimals (a retired or held person's 0.00), the remainder going to the
      * smallest non-zero cut, the latest added on a tie (to the last member with a share when no cut is non-zero);
-     * a member whose dates leave out {@code today} has none (null); null when every member is retired. */
+     * a member whose dates leave out {@code today} has none (null); null when every member is retired or held. */
     private static List<BigDecimal> cuts(BigDecimal pot, List<SheetPoolMember> kept, Map<Long, Person> byId,
             LocalDate today) {
-        if (kept.stream().filter(m -> m.isOn(today)).allMatch(m -> retired(m, byId))) return null;
+        if (kept.stream().filter(m -> m.isOn(today)).allMatch(m -> retired(m, byId) || held(m, byId, today))) return null;
         BigDecimal shares = BigDecimal.ZERO.setScale(2);
         for (SheetPoolMember m : kept) {
             if (m.isOn(today) && !retired(m, byId) && !held(m, byId, today)) shares = shares.add(m.getShare());

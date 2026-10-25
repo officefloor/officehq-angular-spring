@@ -10,7 +10,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 // The sheet's pools, one row each in the order they were added, with the form by which one is added
 // (a blank name, or one already on the sheet, is refused). Each row shows its members with their
 // shares, its total share (a retired member's counted as given) and whether it is balanced (exactly
-// 100.00) and, while it is balanced and has a pot, each member's cut of the pot (none when every member is retired); and has the entry by which a person, or
+// 100.00) and, while it is balanced and has a pot, each member's cut of the pot (none when every member is retired or held); and has the entry by which a person, or
 // another pool (as pool:<name>), is added to it with a share (more than 0.00, at most 100.00, two decimals); a person already
 // in the pool, a pool already in one, a pool that would contain itself or make a chain more than three deep, or a bad share,
 // is refused. A pool that is a member of none has the sheet's pot; one that is a member of another has its cut there.
