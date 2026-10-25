@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,11 +41,15 @@ public class PersonService {
         return person;
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name and grade, refused when someone has saved the person since the editor
+     *  loaded this version of them. */
     @Transactional
-    public Person update(String sheetId, String user, long id, String name, Grade grade) {
+    public Person update(String sheetId, String user, long id, long version, String name, Grade grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (person.getVersion() != version) {
+            throw changedMeanwhile();
+        }
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)) {
             throw nameInUse();
         }
@@ -63,10 +68,18 @@ public class PersonService {
     private Person save(Person person) {
         try {
             return people.saveAndFlush(person);
+        } catch (OptimisticLockingFailureException raced) {
+            // Another user saved the same person at the same moment.
+            throw changedMeanwhile();
         } catch (DataIntegrityViolationException raced) {
             // Another user took the same name at the same moment.
             throw nameInUse();
         }
+    }
+
+    private static ResponseStatusException changedMeanwhile() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                "Someone else has saved this person since it was opened.");
     }
 
     private static ResponseStatusException nameInUse() {

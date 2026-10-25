@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.Locale;
 
 /** A person on a sheet. */
@@ -32,6 +33,11 @@ public class Person {
     @Enumerated(EnumType.STRING)
     @Column(name = "grade", nullable = false)
     private Grade grade;
+
+    /** Bumped on each save; an edit made from an older version is refused. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected Person() {
     }
@@ -71,5 +77,9 @@ public class Person {
 
     public void setGrade(Grade grade) {
         this.grade = grade;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

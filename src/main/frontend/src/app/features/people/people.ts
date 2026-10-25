@@ -107,6 +107,8 @@ export class People {
     return money(total);
   });
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private readonly editingVersion = signal(0);
   protected readonly saving = signal(false);
   protected readonly error = signal('');
 
@@ -201,6 +203,7 @@ export class People {
 
   protected edit(person: PersonView): void {
     this.editingId.set(person.id);
+    this.editingVersion.set(person.version);
     this.error.set('');
     this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });
   }
@@ -209,7 +212,26 @@ export class People {
     this.reset();
   }
 
+  /** After an edit was refused because someone else saved the person meanwhile: re-read the people
+   *  and show the person's current values in the editor, keeping the refusal showing. */
+  private async showCurrent(sheetId: string, id: number): Promise<void> {
+    try {
+      const people = await this.api.list(sheetId);
+      if (this.session.sheet()?.id !== sheetId) return;
+      this.people.set(people);
+      const current = people.find((p) => p.id === id);
+      if (current && this.editingId() === id) {
+        this.editingVersion.set(current.version);
+        this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+      }
+    } finally {
+      this.error.set('Someone else has saved this person since you opened it; the form now shows their changes.');
+    }
+  }
+
   protected async submit(): Promise<void> {
+    // A second submit before the first has answered is ignored, so it stores one record, not two.
+    if (this.saving()) return;
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.error.set('');
@@ -229,14 +251,17 @@ export class People {
         const added = await this.api.add(sheet.id, { ...value, name: value.name.trim() });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.update(sheet.id, id, { ...value, name: value.name.trim() });
+        const saved = await this.api.update(sheet.id, id,
+          { ...value, name: value.name.trim(), version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
         }
       }
       if (this.session.sheet()?.id === sheet.id) this.reset();
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        await this.showCurrent(sheet.id, id);
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on the sheet.');
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');

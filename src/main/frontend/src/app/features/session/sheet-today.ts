@@ -40,6 +40,8 @@ export class SheetToday {
   }
 
   protected async save(): Promise<void> {
+    // A second submit before the first has answered is ignored, so it stores one record, not two.
+    if (this.saving()) return;
     const today = this.today.value.trim();
     this.error.set('');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {

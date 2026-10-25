@@ -33,6 +33,8 @@ export class SheetPicker {
   }
 
   protected async load(): Promise<void> {
+    // A second submit before the first has answered is ignored, so it loads the sheet once.
+    if (this.loading()) return;
     const id = this.sheetId.value.trim();
     this.error.set('');
     if (!id) {

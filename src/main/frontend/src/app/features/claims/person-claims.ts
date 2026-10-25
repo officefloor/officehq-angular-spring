@@ -135,6 +135,8 @@ export class PersonClaims {
   }
 
   protected async submit(): Promise<void> {
+    // A second submit before the first has answered is ignored, so it stores one record, not two.
+    if (this.saving()) return;
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.error.set('');

@@ -9,6 +9,8 @@ export interface PersonView {
   id: number;
   name: string;
   grade: Grade;
+  /** Bumped on each save; an edit is sent with the version its editor loaded. */
+  version: number;
 }
 
 export interface PersonForm {
@@ -33,7 +35,8 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(this.url(sheetId), form));
   }
 
-  update(sheetId: string, id: number, form: PersonForm): Promise<PersonView> {
+  /** Refused with 412 when someone has saved the person since `form.version` was loaded. */
+  update(sheetId: string, id: number, form: PersonForm & { version: number }): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}`, form));
   }
 }
