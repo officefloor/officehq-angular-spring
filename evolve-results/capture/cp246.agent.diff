@@ -1,0 +1,69 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b4bfb1a7..1f9d63db 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -511,6 +511,8 @@ import { FigurePipe } from '../../core/figure.pipe';
+               }
+               <th scope="col">Settled due</th>
+               <th scope="col">Open due</th>
++              <th scope="col">Open claims</th>
++              <th scope="col">Settled claims</th>
+               @for (pd of periods(); track pd.id) {
+                 <th scope="col">Due in {{ (pd.name) | figure }}</th>
+                 <th scope="col">Carried into {{ (pd.name) | figure }}</th>
+@@ -598,6 +600,8 @@ import { FigurePipe } from '../../core/figure.pipe';
+                 @let split = claimedSplitOf(p);
+                 <td data-testid="person-settled-total">{{ (money(split.settled)) | figure }}</td>
+                 <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
++                <td data-testid="person-claims-OPEN-count">{{ (statusCountOf(p, 'OPEN')) | figure }}</td>
++                <td data-testid="person-claims-SETTLED-count">{{ (statusCountOf(p, 'SETTLED')) | figure }}</td>
+                 @for (pd of periods(); track pd.id) {
+                   <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (money(personPeriodCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
+                   <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ (money(personCarriedCents().get(p.id)?.[pd.name] ?? 0)) | figure }}</td>
+@@ -1079,9 +1083,13 @@ export class People {
+    *  chosen order; people with equal keys keep their list order. A restricted user is listed only the
+    *  people they may see (see {@link visibleIds}). */
+   protected readonly shownPeople = computed(() => {
++    const people = this.sortedPeople();
++    return this.showRetired() ? people : people.filter((p) => !p.retired);
++  });
++  /** The people the filter lets through, retired ones included, in the order chosen. */
++  private readonly sortedPeople = computed(() => {
+     const visible = this.visibleIds();
+-    const people = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
+-    const listed = this.showRetired() ? people : people.filter((p) => !p.retired);
++    const listed = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
+     const key = this.sortKey();
+     if (key === 'added') return listed;
+     const keyed = listed.map((p, i) => ({ p, i, k: this.sortValueOf(p, key) }));
+@@ -1962,7 +1970,8 @@ export class People {
+   }
+ 
+   /** Compares each listed person's snapshot of the from-date with that of the to-date (or their
+-   *  due-total now when the to-date is blank); a missing snapshot shows as nothing. */
++   *  due-total now when the to-date is blank); a missing snapshot shows as nothing. Retired people
++   *  are compared too, as their snapshots go back before they retired. */
+   protected async compareSnapshots(): Promise<void> {
+     const from = this.snapshotFrom().trim();
+     const to = this.snapshotTo().trim();
+@@ -1983,7 +1992,7 @@ export class People {
+       for (const s of written) if (s.personId === personId && s.day === day) due = s.dueTotal;
+       return due;
+     };
+-    this.snapshotRows.set(this.shownPeople().map((p) => [
++    this.snapshotRows.set(this.sortedPeople().map((p) => [
+       p.name,
+       from === '' ? '' : dueOn(p.id, from),
+       to === '' ? (this.dueTotalOf(p) ?? 'n/a') : dueOn(p.id, to),
+@@ -2476,6 +2485,11 @@ export class People {
+     return split.any || this.rateOf(this.gradeNow(person)) !== null ? split.settled + split.open : null;
+   }
+ 
++  /** How many of the person's own claims are in the status. */
++  protected statusCountOf(person: Person, status: Claim['status']): number {
++    return this.claimsOf(person.id).filter((c) => c.status === status).length;
++  }
++
+   /** What is due on the person's own counting SETTLED claims (at their frozen figures) and on their
+    *  counting OPEN and PENDING ones, in cents, each claim whole as it shows it: shares of a claim are
+    *  not taken from it, nor are the parts the person holds of others' claims added. */
