@@ -16,6 +16,7 @@ import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.voidreason.VoidReasonRequiredException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -117,6 +118,26 @@ public class ClaimBulkService {
                 changed.add(service.redate(sheetId, user, claim.getId(), date));
             } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimNotFoundException | ClaimNotStewardException
                     | PersonNotFoundException | PersonRetiredException e) {
+                refused++;
+            }
+        }
+        return new Outcome(changed, refused);
+    }
+
+    /** Void each of the claims that can be voided, in list order, by exactly the rules of voiding one
+     * with the reason (each void records its CLAIM_VOIDED and rollup lines); any that cannot be voided
+     * (or is not on the sheet) is left as it is and counted as refused. */
+    public Outcome voidAll(String sheetId, String user, Collection<Long> claimIds, String reason) {
+        Set<Long> asked = Set.copyOf(claimIds);
+        if (refusesAll(sheetId, user)) return new Outcome(List.of(), asked.size());
+        List<Claim> found = inListOrder(sheetId, asked);
+        int refused = asked.size() - found.size();
+        List<Claim> changed = new ArrayList<>();
+        for (Claim claim : found) {
+            try {
+                changed.add(service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.VOID, reason));
+            } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimVoidLateException | ClaimNotFoundException | ClaimNotStewardException
+                    | VoidReasonRequiredException | PersonNotFoundException e) {
                 refused++;
             }
         }

@@ -20,6 +20,7 @@ import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
 import { Templates } from './templates';
 import { TreeSearch } from './tree-search';
 import { VoidReasons } from './void-reasons';
+import { VoidReasonsService } from './void-reasons.service';
 import { Pools } from './pools';
 import { Crews } from './crews';
 import { CrewsService, crewDueCents } from './crews.service';
@@ -336,6 +337,27 @@ import { FigurePipe } from '../../core/figure.pipe';
         @if (bulkRedated(); as result) {
           Re-dated <span data-testid="bulk-redated">{{ (result.redated) | figure }}</span>,
           refused <span data-testid="bulk-redate-refused">{{ (result.refused) | figure }}</span>
+        }
+      </p>
+
+      <p>
+        @if (voidReasonList().length > 0) {
+          <label for="bulk-void-reason">Void reason for selected claims</label>
+          <select
+            id="bulk-void-reason"
+            data-testid="bulk-void-reason"
+            (change)="bulkVoidReason.set(value($event))"
+          >
+            <option value="" [selected]="!bulkVoidReason()">Choose a reason</option>
+            @for (r of voidReasonList(); track r.id) {
+              <option [value]="r.reason" [selected]="bulkVoidReason() === r.reason">{{ (r.reason) | figure }}</option>
+            }
+          </select>
+        }
+        <button type="button" data-testid="bulk-void" (click)="bulkVoid()">Void selected claims</button>
+        @if (bulkVoided(); as result) {
+          Voided <span data-testid="bulk-voided">{{ (result.voided) | figure }}</span>,
+          refused <span data-testid="bulk-void-refused">{{ (result.refused) | figure }}</span>
         }
       </p>
 
@@ -1329,6 +1351,14 @@ export class People {
   protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
   /** A bulk re-date is waiting for its answer; another meanwhile is ignored. */
   private bulkRedating = false;
+  /** The sheet's void reasons, in the order they were added. */
+  protected readonly voidReasonList = inject(VoidReasonsService).reasons;
+  /** The reason a bulk void voids the selected claims with; blank before one is chosen. */
+  protected readonly bulkVoidReason = signal('');
+  /** How the last bulk void went; null before one, and while one runs. */
+  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
+  /** A bulk void is waiting for its answer; another meanwhile is ignored. */
+  private bulkVoiding = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The grade a bulk grade gives. */
@@ -1379,6 +1409,8 @@ export class People {
       this.bulkReassigned.set(null);
       this.bulkRedateDate.set('');
       this.bulkRedated.set(null);
+      this.bulkVoidReason.set('');
+      this.bulkVoided.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGradeChoice.set('A');
       this.bulkGradeFrom.set('');
@@ -2220,6 +2252,30 @@ export class People {
       }
     } finally {
       this.bulkRedating = false;
+    }
+  }
+
+  /** Void the selected claims together with the reason chosen, in list order, each by the rules of
+   *  voiding one; those that cannot be voided are left as they are. Shows how many were voided and
+   *  refused; the old counts are gone while it runs. */
+  protected async bulkVoid(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || this.bulkVoiding) return;
+    this.bulkVoided.set(null);
+    this.bulkVoiding = true;
+    try {
+      const reason = this.voidReasonList().length > 0 && this.bulkVoidReason() !== '' ? this.bulkVoidReason() : null;
+      const result = await this.claimsService.bulkVoid(sheet, [...this.selectedClaims()], reason);
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.claims) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkVoided.set({ voided: result.voided, refused: result.refused });
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.bulkVoided.set({ voided: 0, refused: this.selectedClaims().size });
+      }
+    } finally {
+      this.bulkVoiding = false;
     }
   }
 

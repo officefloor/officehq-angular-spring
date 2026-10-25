@@ -232,6 +232,15 @@ public class ClaimController {
     }
 
     private final ClaimService service;
+    /** The claims a bulk void is asked of, by id, and the reason from the sheet's list they are voided
+     * with; none when null or blank. */
+    public record BulkVoidRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @Size(max = 200) String reason) {
+    }
+
+    /** How a bulk void went: how many claims it voided and refused, and the claims it voided. */
+    public record BulkVoidView(int voided, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimBulkService bulk;
 
     private final SheetHistory history;
@@ -506,6 +515,17 @@ public class ClaimController {
         if (asOf != null) return new BulkRedateView(0, Set.copyOf(request.claimIds()).size(), List.of());
         ClaimBulkService.Outcome outcome = bulk.redate(sheetId.trim(), user.trim(), request.claimIds(), request.date());
         return new BulkRedateView(outcome.changed().size(), outcome.refused(),
+                views(outcome.changed()));
+    }
+
+    @PostMapping("/claims/bulk-void")
+    public BulkVoidView bulkVoid(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestBody @Valid BulkVoidRequest request) {
+        if (asOf != null) return new BulkVoidView(0, Set.copyOf(request.claimIds()).size(), List.of());
+        ClaimBulkService.Outcome outcome = bulk.voidAll(sheetId.trim(), user.trim(), request.claimIds(), request.reason());
+        return new BulkVoidView(outcome.changed().size(), outcome.refused(),
                 views(outcome.changed()));
     }
 

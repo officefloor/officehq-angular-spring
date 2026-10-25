@@ -162,6 +162,13 @@ export interface BulkRedated {
   claims: Claim[];
 }
 
+/** How a bulk void went: how many claims it voided and refused, and the claims it voided. */
+export interface BulkVoided {
+  voided: number;
+  refused: number;
+  claims: Claim[];
+}
+
 /** How a bulk move went: how many claims it moved and refused, and the claims it moved. */
 export interface BulkReassigned {
   reassigned: number;
@@ -449,6 +456,16 @@ export class ClaimsService {
   bulkRedate(sheet: string, claimIds: number[], date: string): Promise<BulkRedated> {
     return firstValueFrom(
       this.http.post<BulkRedated>(`${this.url(sheet)}/claims/bulk-redate`, { claimIds, date }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Void each of the claims that can be voided with the reason (none when null), in list order, by
+   *  the rules of voiding one; the rest are left as they are and counted as refused. */
+  bulkVoid(sheet: string, claimIds: number[], reason: string | null): Promise<BulkVoided> {
+    return firstValueFrom(
+      this.http.post<BulkVoided>(`${this.url(sheet)}/claims/bulk-void`, { claimIds, reason }, {
         headers: this.session.headers(),
       }),
     );
