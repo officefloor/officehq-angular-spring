@@ -1,6 +1,6 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { Person } from './people.service';
+import { Person, gradeOn, withGrade } from './people.service';
 import { money } from './claims.service';
 import { Crew, CrewsService, crewDueCents } from './crews.service';
 import { PoolsService } from './pools.service';
@@ -37,7 +37,7 @@ import { FigurePipe } from '../../core/figure.pipe';
         <div class="crew" [attr.data-testid]="'crew-row-' + crew.name">
           <h3>{{ (crew.name) | figure }}</h3>
           <p>
-            Lead <span data-testid="crew-lead">{{ (crew.lead?.name ?? '') | figure }}</span>,
+            Lead <span data-testid="crew-lead">{{ (leadOf(crew)) | figure }}</span>,
             due-total <span data-testid="crew-due-total">{{ (dueTotalOf(crew)) | figure }}</span>
           </p>
           @if (crew.members.length > 0) {
@@ -116,6 +116,14 @@ export class Crews {
   /** The crew's due-total: the lead's and the members' due-totals added up, n/a ones skipped. */
   protected dueTotalOf(crew: Crew): string {
     return money(crewDueCents(crew, this.dueCents()));
+  }
+
+  /** The crew's lead as the screen shows a name: with the grade in force on the sheet's today. */
+  protected leadOf(crew: Crew): string {
+    const lead = crew.lead;
+    if (!lead) return '';
+    const person = this.people().find((p) => p.id === lead.personId);
+    return person ? withGrade(lead.name, gradeOn(person.grades, this.session.today()) ?? person.grade) : lead.name;
   }
 
   protected value(event: Event): string {

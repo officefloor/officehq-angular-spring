@@ -3,11 +3,13 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A person found over a sheet's tree: their sheet, name and due-total as that sheet shows it. */
+/** A person found over a sheet's tree: their sheet, name and due-total as that sheet shows it, and the
+ *  grade in force on that sheet's today. */
 export interface Found {
   sheet: string;
   name: string;
   dueTotal: string;
+  grade: string | null;
 }
 
 // The people of a sheet's tree whose name or an alias contains some text, read from the server.

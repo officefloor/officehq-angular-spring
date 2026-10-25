@@ -7,7 +7,7 @@ import { Holidays } from './holidays';
 import { Notes } from './notes';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
+import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn, withGrade } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -498,7 +498,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                     (change)="selectPerson(p.id, checked($event))"
                   />
                 </td>
-                <td data-testid="person-name">{{ (p.name) | figure }}</td>
+                <td data-testid="person-name">{{ (withGrade(p.name, gradeNow(p))) | figure }}</td>
                 <td data-testid="person-grade">{{ (gradeNow(p)) | figure }}</td>
                 @if (shows('terms')) {
                   <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
@@ -1020,15 +1020,15 @@ export class People {
   });
   /** Each person's patrons as "<name> <share>", sorted by name and comma separated, by person id. */
   private readonly patronNames = computed(() => {
-    const byId = new Map(this.people().map((p) => [p.id, p.name]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const by = new Map<number, string>();
     for (const [id, shares] of this.patronShares()) {
       const named = shares.flatMap(({ patronId, share }) => {
-        const name = byId.get(patronId);
-        return name === undefined ? [] : [{ name, share }];
+        const patron = byId.get(patronId);
+        return patron === undefined ? [] : [{ name: patron.name, shown: withGrade(patron.name, this.gradeNow(patron)), share }];
       });
       named.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      by.set(id, named.map(({ name, share }) => `${name} ${money(share)}`).join(', '));
+      by.set(id, named.map(({ shown, share }) => `${shown} ${money(share)}`).join(', '));
     }
     return by;
   });
@@ -2033,6 +2033,8 @@ export class People {
   }
 
   /** The person's grade in force on the sheet's today. */
+  protected readonly withGrade = withGrade;
+
   protected gradeNow(person: Person): Grade {
     return gradeOn(person.grades, this.session.today()) ?? person.grade;
   }

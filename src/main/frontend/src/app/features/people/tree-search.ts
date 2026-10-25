@@ -2,9 +2,10 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { Found, TreeSearchService } from './tree-search.service';
 import { FigurePipe } from '../../core/figure.pipe';
+import { withGrade } from './people.service';
 
 // The tree search: every person of this sheet and the other sheets of its tree whose name or an alias
-// contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>. It changes
+// contains the typed text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>. It changes
 // nothing.
 @Component({
   selector: 'app-tree-search',
@@ -24,7 +25,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       @if (found().length > 0) {
         <ol data-testid="search-list">
           @for (f of found(); track $index) {
-            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (f.name) | figure }} {{ (f.dueTotal) | figure }}</li>
+            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (withGrade(f.name, f.grade)) | figure }} {{ (f.dueTotal) | figure }}</li>
           }
         </ol>
       }
@@ -54,6 +55,7 @@ export class TreeSearch {
   private readonly session = inject(Session);
   private readonly service = inject(TreeSearchService);
 
+  protected readonly withGrade = withGrade;
   protected readonly text = signal('');
   protected readonly found = signal<Found[]>([]);
   protected readonly count = signal('');

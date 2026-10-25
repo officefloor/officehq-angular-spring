@@ -48,8 +48,9 @@ public class ConsolidatedService {
         this.people = people;
     }
 
-    /** One person found by {@link #search}: their sheet, name and due-total as that sheet shows it. */
-    public record Found(String sheet, String name, String dueTotal) {
+    /** One person found by {@link #search}: their sheet, name and due-total as that sheet shows it, and
+     * the grade in force on that sheet's today. */
+    public record Found(String sheet, String name, String dueTotal, String grade) {
     }
 
     /** Every person of the sheet and the other sheets of its tree whose name or an alias contains
@@ -64,12 +65,13 @@ public class ConsolidatedService {
         List<Found> found = new ArrayList<>();
         for (String id : order) {
             RollupService.Snapshot snapshot = rollup.snapshot(id);
+            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (!matches(person.getName(), needle)
                         && person.getAliases().stream().noneMatch(a -> matches(a, needle))) continue;
                 RollupService.Figures figures = snapshot.people().get(person.getId());
                 found.add(new Found(id, person.getName(),
-                        figures == null ? RollupService.NONE : figures.dueTotal()));
+                        figures == null ? RollupService.NONE : figures.dueTotal(), person.gradeOn(today)));
             }
         }
         return found;

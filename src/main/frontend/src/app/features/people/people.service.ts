@@ -138,6 +138,11 @@ export function gradeOn(grades: PersonGrade[], date: string | null): Grade | nul
   return best?.grade ?? null;
 }
 
+/** A name as the screen shows it: the name, then the grade in force in brackets. */
+export function withGrade(name: string, grade: string | null): string {
+  return grade ? `${name} (${grade})` : name;
+}
+
 /** A sheet's descendants' figures added up: their people (retired ones included), and each one's
  *  due-total and overdue-total as that sheet shows it, with two decimals. */
 export interface DescendantFigures {
