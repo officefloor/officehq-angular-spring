@@ -36,11 +36,11 @@ public class SettingService implements ActingFor {
     /** The floor of a sheet that has not set one. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
 
-    /** The key of the terms: the days after a claim's date it is due by; the sheet starts at {@link #DEFAULT_TERMS}.
+    /** The key of the terms: the business days after a claim's date it is due by; the sheet starts at {@link #DEFAULT_TERMS}.
      *  A grade may set its own under terms-<grade>; a grade without them uses the sheet's. */
     public static final String TERMS = "terms";
 
-    /** The terms of a sheet that has not set them, in days. */
+    /** The terms of a sheet that has not set them, in business days. */
     public static final int DEFAULT_TERMS = 14;
 
     /** The key of the late percent: what an overdue claim gains of its figure for every full 30 days

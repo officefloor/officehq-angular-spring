@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 
-/** A holiday of the sheet: no claim added while it is listed is due by it. */
+/** A holiday of the sheet: no claim is due by it, and the terms of a claim count no holiday. */
 @Entity
 @Table(name = "holiday")
 public class Holiday {

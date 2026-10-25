@@ -39,10 +39,21 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
-    /** The date the claim is due by, fixed when it is added from the terms of its person's grade in
-     *  force on its date; later changes to the terms or to the claim's date leave it as it is. */
+    /** The date the claim is due by: the {@link #terms}-th business day after {@link #dueFrom}, past
+     *  the sheet's holidays now, worked out again whenever they change. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The date the claim's due-by counts from: its date when it was added; a later change to the
+     *  claim's date leaves it as it is. */
+    @Column(name = "due_from", nullable = false)
+    private LocalDate dueFrom;
+
+    /** The terms, in business days, the claim was fixed with when it was added, from those of its
+     *  person (else their grade's, else the sheet's) in force on its date; later changes to the terms
+     *  leave them as they are. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -121,11 +132,14 @@ public class Claim {
     protected Claim() {
     }
 
+    /** A claim whose due-by, the date given, is fixed from its date with the terms given. */
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
-            LocalDate dueBy) {
+            int terms, LocalDate dueBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         set(amount, date, note, corrects);
+        this.dueFrom = date;
+        this.terms = terms;
         this.dueBy = dueBy;
     }
 
@@ -168,6 +182,21 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public LocalDate getDueFrom() {
+        return dueFrom;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    /** Set the due-by worked out again from the claim's due-from and terms; whether it moved. */
+    public boolean moveDueBy(LocalDate dueBy) {
+        if (dueBy.equals(this.dueBy)) return false;
+        this.dueBy = dueBy;
+        return true;
     }
 
     public String getNote() {
@@ -325,11 +354,13 @@ public class Claim {
     }
 
     /** Split the amount given off the claim into a new OPEN claim of the same person, date and note,
-     *  with the number given, opened by the user and due by the date given, split from
+     *  with the number given, opened by the user and due by the date given (fixed from its date with the
+     *  terms given), split from
      *  this claim's number. This claim keeps the rest of its amount and loses any figure a statement
      *  bound it to. */
-    public Claim splitOff(BigDecimal part, String number, String user, LocalDate dueBy, LocalDate today) {
-        Claim split = new Claim(sheetId, personId, part, date, note, null, dueBy);
+    public Claim splitOff(BigDecimal part, String number, String user, int terms, LocalDate dueBy,
+            LocalDate today) {
+        Claim split = new Claim(sheetId, personId, part, date, note, null, terms, dueBy);
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = user;

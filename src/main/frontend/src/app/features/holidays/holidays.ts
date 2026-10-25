@@ -6,8 +6,9 @@ import { HolidayView, HolidaysApi } from './holidays-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's holidays in date order, with an entry to add one. A claim's due-by falling on a
-// holiday when the claim is added moves to the next day that is not one.
+// The sheet's holidays in date order, with an entry to add one. A claim's terms count business
+// days, skipping every Saturday, Sunday and holiday on the sheet now, so adding one moves every
+// due-by it falls before.
 @Component({
   selector: 'app-holidays',
   imports: [ReactiveFormsModule],

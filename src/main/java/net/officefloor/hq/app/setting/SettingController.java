@@ -34,7 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class SettingController {
 
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
-     *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
+     *  when there is no limit; the floor has two decimals; the terms are the business days after a claim's date
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
@@ -96,11 +96,11 @@ public class SettingController {
             LocalDate from) {
     }
 
-    /** The terms as entered: whole days. */
+    /** The terms as entered: whole business days. */
     public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
-    /** A grade's own terms as entered: whole days; none means the sheet's terms. */
+    /** A grade's own terms as entered: whole business days; none means the sheet's terms. */
     public record GradeTermsForm(@Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
@@ -162,7 +162,7 @@ public class SettingController {
         return view(id);
     }
 
-    /** Set the sheet's terms: the days after a claim's date it is due by. */
+    /** Set the sheet's terms: the business days after a claim's date it is due by. */
     @PutMapping("/settings/terms")
     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TermsForm form) {

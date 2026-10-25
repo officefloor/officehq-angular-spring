@@ -54,7 +54,7 @@ import { PasteClaims } from '../claims/paste-claims';
               aria-describedby="person-form-grade-from-hint" />
             <span id="person-form-grade-from-hint">Blank: the sheet's today</span>
           }
-          <label for="person-form-terms">Terms (days)</label>
+          <label for="person-form-terms">Terms (business days)</label>
           <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms"
             aria-describedby="person-form-terms-hint" />
           <span id="person-form-terms-hint">Blank: none</span>

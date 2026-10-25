@@ -34,7 +34,7 @@ function settled(control: AbstractControl): void {
 }
 
 // The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
-// least a claim's live due can be) and the terms (the days after a claim's date it is due by, fixed when the
+// least a claim's live due can be) and the terms (the business days after a claim's date it is due by, fixed when the
 // claim is added) and each grade's own terms (blank: the sheet's terms) and the late
 // percent (what an overdue claim gains of its figure for every full 30 days overdue) and the policy date
 // (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today) and period
@@ -70,13 +70,13 @@ function settled(control: AbstractControl): void {
         <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" />
         <p>Floor now: <span data-testid="setting-floor-current">{{ floor() }}</span></p>
-        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+        <label for="setting-terms">Terms (business days after a claim's date it is due by)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-terms-from">Terms from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-terms-from" data-testid="setting-terms-from" formControlName="termsFrom" />
         <p>Terms now: <span data-testid="setting-terms-current">{{ terms() }}</span></p>
         @for (g of grades; track g) {
-          <label [for]="'setting-terms-' + g">Terms of grade {{ g }} (days; blank: the sheet's terms)</label>
+          <label [for]="'setting-terms-' + g">Terms of grade {{ g }} (business days; blank: the sheet's terms)</label>
           <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]" inputmode="numeric" />
           <label [for]="'setting-terms-' + g + '-from'">Terms of grade {{ g }} from (yyyy-mm-dd; blank: the sheet's today)</label>
           <input [id]="'setting-terms-' + g + '-from'" [attr.data-testid]="'setting-terms-' + g + '-from'" [formControl]="gradeTermsFromForm.controls[g]" />
@@ -352,14 +352,14 @@ export class Settings {
       return;
     }
     if (dirty(terms, termsFrom) && (!DAYS.test(termsValue) || Number(termsValue) > 36500)) {
-      this.settingsError.set('Type terms as a whole number of days, from 0 to 36500.');
+      this.settingsError.set('Type terms as a whole number of business days, from 0 to 36500.');
       return;
     }
     const gradeTermsValues = GRADES.map((g) => ({ grade: g, control: this.gradeTermsForm.controls[g],
       from: this.gradeTermsFromForm.controls[g], value: this.gradeTermsForm.controls[g].value.trim() }));
     for (const { grade, control, from, value } of gradeTermsValues) {
       if (dirty(control, from) && value !== '' && (!DAYS.test(value) || Number(value) > 36500)) {
-        this.settingsError.set(`Type the terms of grade ${grade} as a whole number of days, from 0 to 36500, or leave them blank for the sheet's terms.`);
+        this.settingsError.set(`Type the terms of grade ${grade} as a whole number of business days, from 0 to 36500, or leave them blank for the sheet's terms.`);
         return;
       }
     }
@@ -388,7 +388,7 @@ export class Settings {
       return;
     }
     if (changed(graceDays) && graceDaysValue !== '' && (!DAYS.test(graceDaysValue) || Number(graceDaysValue) > 36500)) {
-      this.settingsError.set('Type grace days as a whole number of days, from 0 to 36500, or leave them blank for off.');
+      this.settingsError.set('Type grace days as a whole number of business days, from 0 to 36500, or leave them blank for off.');
       return;
     }
     if (changed(entryDate) && entryDateValue !== '' && !isDate(entryDateValue)) {
