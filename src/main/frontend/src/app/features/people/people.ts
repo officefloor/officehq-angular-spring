@@ -448,7 +448,6 @@ export class People {
     try {
       const taken = await this.statementsApi.take(sheet.id, person.id, asOf || null);
       if (this.session.sheet()?.id !== sheet.id) return;
-      asOfInput.value = '';
       const bound = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => bound.get(c.id) ?? c));
       this.statements.update((by) => new Map(by).set(person.id, taken.statement));
@@ -457,6 +456,8 @@ export class People {
         this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
       }
     } finally {
+      // The date typed for this statement, taken or refused, never carries into the next one.
+      asOfInput.value = '';
       this.stating.set(null);
     }
   }

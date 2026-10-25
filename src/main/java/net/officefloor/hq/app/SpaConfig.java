@@ -1,6 +1,7 @@
 package net.officefloor.hq.app;
 
 import java.io.IOException;
+import net.officefloor.hq.app.asof.AsOfGuard;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -19,16 +20,19 @@ public class SpaConfig implements WebMvcConfigurer {
 
     private final ViewerGuard viewerGuard;
     private final ArchiveGuard archiveGuard;
+    private final AsOfGuard asOfGuard;
 
-    public SpaConfig(ViewerGuard viewerGuard, ArchiveGuard archiveGuard) {
+    public SpaConfig(ViewerGuard viewerGuard, ArchiveGuard archiveGuard, AsOfGuard asOfGuard) {
         this.viewerGuard = viewerGuard;
         this.archiveGuard = archiveGuard;
+        this.asOfGuard = asOfGuard;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(viewerGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
         registry.addInterceptor(archiveGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
+        registry.addInterceptor(asOfGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
     }
 
     @Override
