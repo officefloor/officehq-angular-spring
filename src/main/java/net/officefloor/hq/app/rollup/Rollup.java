@@ -135,14 +135,15 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  else the live due at the grade's rate in force on its date, at least the floor; null when that is n/a. */
+     *  else the live due at the grade's rate in force on its date, at least the floor unless a correction;
+     *  null when that is n/a. */
     private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         Rate rate = inForce(gradeRates, claim.getDate());
-        return rate == null ? null
-                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN)
-                        .max(floor);
+        if (rate == null) return null;
+        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+        return claim.isCorrection() ? due : due.max(floor);
     }
 
     /** Of the grade's rates (from the start first, then by from-date), the one in force on the date. */

@@ -8,7 +8,7 @@ import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
@@ -26,6 +26,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
       <input [id]="fieldId('date')" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" />
+      <label [for]="fieldId('corrects')">Corrects claim no.</label>
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" inputmode="numeric" />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -40,6 +42,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
@@ -91,7 +94,8 @@ export class PersonClaims {
   protected readonly amount = new FormControl('', { nonNullable: true });
   protected readonly date = new FormControl('', { nonNullable: true });
   protected readonly note = new FormControl('', { nonNullable: true });
-  protected readonly form = new FormGroup({ amount: this.amount, date: this.date, note: this.note });
+  protected readonly corrects = new FormControl('', { nonNullable: true });
+  protected readonly form = new FormGroup({ amount: this.amount, date: this.date, note: this.note, corrects: this.corrects });
 
   protected readonly editingId = signal<number | null>(null);
   protected readonly saving = signal(false);
@@ -144,14 +148,15 @@ export class PersonClaims {
   private reset(): void {
     this.editingId.set(null);
     this.error.set('');
-    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
   }
 
   protected edit(claim: ClaimView): void {
     this.claimError.set(null);
     this.editingId.set(claim.id);
     this.error.set('');
-    this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note }, { emitEvent: false });
+    this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects?.toString() ?? '' },
+      { emitEvent: false });
   }
 
   /** Open, settle or void a claim; the store refuses a change its status does not allow. */
@@ -190,15 +195,22 @@ export class PersonClaims {
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
     const date = value.date.trim();
-    if (!AMOUNT.test(amount)) {
-      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+    const corrects = value.corrects.trim();
+    if (!CLAIM_AMOUNT.test(amount)) {
+      this.error.set('Type an amount with up to two decimals; a negative amount is a correction.');
+      return;
+    }
+    const correction = amount.startsWith('-') && Number(amount) !== 0;
+    if (correction && !CLAIM_NUMBER.test(corrects)) {
+      this.error.set('A negative amount is a correction: type the number of the settled claim it corrects.');
       return;
     }
     if (date !== '' && !DATE.test(date)) {
       this.error.set('Type a date as yyyy-mm-dd.');
       return;
     }
-    const form = { amount, date: date === '' ? null : date, note: value.note.trim() };
+    const form = { amount, date: date === '' ? null : date, note: value.note.trim(),
+      corrects: correction ? Number(corrects) : null };
     const id = this.editingId();
     this.saving.set(true);
     try {
@@ -212,12 +224,15 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) this.reset();
     } catch (e) {
       const conflict = e instanceof HttpErrorResponse && e.status === 409;
+      const uncorrected = e instanceof HttpErrorResponse && e.status === 422;
       const editing = id === null ? undefined : this.claims().find((c) => c.id === id);
       if (conflict && editing && !this.inClosedPeriod(editing.date) && !this.inClosedPeriod(date)) {
         // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
         this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
       } else {
-        this.error.set(conflict
+        this.error.set(uncorrected
+          ? 'A correction must name, by number, a settled claim of this person.'
+          : conflict
           ? 'A claim dated inside a closed period cannot be added or changed.'
           : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
       }

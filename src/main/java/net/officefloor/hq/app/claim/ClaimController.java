@@ -1,10 +1,10 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,24 +30,28 @@ public class ClaimController {
     /** What the screen shows of a claim; the amount always has two decimals. The settled due is the
      *  due fixed when the claim was settled, or null when its due is live. Opened by is who opened
      *  the claim, or null when it was never opened. Stated is whether the person's last statement bound
-     *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. */
+     *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. Corrects is
+     *  the number of the claim a correction corrects, or null when the claim is not a correction. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue,
-            String openedBy, boolean stated, String statedDue) {
+            String openedBy, boolean stated, String statedDue, Integer corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+                    claim.getCorrects());
         }
     }
 
-    /** A claim's fields, as entered on the form; no date means the sheet's today. */
+    /** A claim's fields, as entered on the form; no date means the sheet's today. A negative amount
+     *  is a correction, which names the number of the settled claim it corrects. */
     public record ClaimForm(
-            @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+            @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
-            @Size(max = 1000) String note) {
+            @Size(max = 1000) String note,
+            @Positive Integer corrects) {
     }
 
     private final ClaimService service;
@@ -68,7 +72,7 @@ public class ClaimController {
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.add(sheetId.trim(), SignedInUser.name(user), personId,
-                form.amount(), form.date(), form.note()));
+                form.amount(), form.date(), form.note(), form.corrects()));
     }
 
     /** Edit a claim. */
@@ -76,7 +80,7 @@ public class ClaimController {
     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.update(sheetId.trim(), SignedInUser.name(user), id,
-                form.amount(), form.date(), form.note()));
+                form.amount(), form.date(), form.note(), form.corrects()));
     }
 
     /** Open a draft claim. */

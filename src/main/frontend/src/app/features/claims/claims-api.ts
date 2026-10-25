@@ -9,6 +9,17 @@ export type ClaimAction = 'open' | 'settle' | 'void';
 /** An amount as a form takes it: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
+/** An amount as the claim form takes it: as AMOUNT, or negative for a correction. */
+export const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+
+/** A claim number as a form takes it: a whole number of 1 or more. */
+export const CLAIM_NUMBER = /^[1-9]\d{0,8}$/;
+
+/** Whether the claim is a correction: its amount is negative. */
+export function isCorrection(claim: ClaimView): boolean {
+  return cents(claim.amount) < 0;
+}
+
 /** Only open and settled claims count toward what is claimed and due. */
 export function counts(claim: ClaimView): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
@@ -33,6 +44,8 @@ export interface ClaimView {
   stated: boolean;
   /** The figure the last statement bound the claim to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
+  /** The number of the settled claim a correction corrects; null when the claim is not a correction. */
+  corrects: number | null;
 }
 
 export interface ClaimForm {
@@ -40,6 +53,8 @@ export interface ClaimForm {
   /** null takes the sheet's today. */
   date: string | null;
   note: string;
+  /** The number of the settled claim of the same person a correction corrects; null for none. */
+  corrects: number | null;
 }
 
 /** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */
@@ -59,12 +74,14 @@ export function money(total: number): string {
 
 /** What is due on the claim, in cents: the figure fixed when it was settled, else the figure its
  *  person's last statement bound it to, else at the rate of `gradeRates` (its person's grade's rates)
- *  in force on the claim's date and at least `floorCents` (the sheet's floor); null when there is none. */
+ *  in force on the claim's date and at least `floorCents` (the sheet's floor) unless a correction; null when there is none. */
 export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateInForce(gradeRates, claim.date);
-  return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate.pct), floorCents);
+  if (rate === null) return null;
+  const due = dueCents(cents(claim.amount), rate.pct);
+  return isCorrection(claim) ? due : Math.max(due, floorCents);
 }
 
 /** Days since 1970-01-01 of a yyyy-mm-dd date, worked out from the calendar, not a clock. */
@@ -113,9 +130,10 @@ export interface Lateness {
 }
 
 /** The late charge on the claim of `figureCents`, in cents: the late percent of the figure for every
- *  full 30 days the claim is overdue, rounded half to even like due; none unless it is overdue. */
+ *  full 30 days the claim is overdue, rounded half to even like due; none unless it is overdue, and
+ *  none on a correction. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness): number {
-  if (late.today === undefined || !isOverdue(claim, late.terms, late.today)) return 0;
+  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.terms, late.today)) return 0;
   const steps = Math.floor((epochDay(late.today) - epochDay(claim.date) - late.terms) / DAYS_PER_CHARGE);
   return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct);
 }

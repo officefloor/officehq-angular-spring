@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit;
 /**
  * The late charge on a claim: an open claim past its due-by (its date plus the sheet's terms) gains
  * the sheet's late percent of its figure for every full 30 days it is overdue, rounded half to even
- * like due. A statement never binds the charge; it follows the sheet's today until the claim is settled.
+ * like due; a correction gains none. A statement never binds the charge; it follows the sheet's today until the claim is settled.
  */
 public final class LateCharge {
 
@@ -22,7 +22,7 @@ public final class LateCharge {
 
     /** The late charge on the claim of the figure (null: n/a, and no charge) on the sheet's today. */
     public static BigDecimal of(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct) {
-        if (figure == null || today == null || claim.getStatus() != ClaimStatus.OPEN) return ZERO;
+        if (figure == null || today == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) return ZERO;
         long overdueDays = ChronoUnit.DAYS.between(claim.getDate().plusDays(terms), today);
         long steps = overdueDays <= 0 ? 0 : overdueDays / DAYS_PER_CHARGE;
         if (steps == 0) return ZERO;

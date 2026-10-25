@@ -56,13 +56,15 @@ public class ClaimService {
 
     /** Add a claim to a person; a claim with no date is dated the sheet's today. */
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Person person = person(sheetId, personId);
         LocalDate dated = dateOr(sheetId, date);
         refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
+        refuseIfNotCorrecting(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrects));
         recordChange("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -71,7 +73,8 @@ public class ClaimService {
     /** Change a draft claim's amount, date and note; a blank date takes the sheet's today. A claim that
      *  is no longer a draft is refused: to change an open claim, void it and add a new one. */
     @Transactional
-    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         LocalDate dated = dateOr(sheetId, date);
@@ -82,8 +85,9 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
         }
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
+        refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        claim.set(amount, dated, noteOf(note));
+        claim.set(amount, dated, noteOf(note), corrects);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
         rollup.recordChanges(user, before);
@@ -151,6 +155,17 @@ public class ClaimService {
         }
     }
 
+    /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person. */
+    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) return;
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(c -> c.getStatus() == ClaimStatus.SETTLED).isPresent();
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A negative amount must name, by number, a settled claim of the same person that it corrects.");
+        }
+    }
+
     /** Refuse a claim dated after its person's retirement date. */
     private static void refuseIfRetired(Person person, LocalDate date) {
         if (person.isRetiredOn(date)) {
@@ -181,12 +196,13 @@ public class ClaimService {
 
     /** What is due on the claim now at the rate in force on the claim's date of its person's grade in
      *  force on that date, rounded
-     *  half to even and at least the sheet's floor; null when no rate of the grade applies by then. */
+     *  half to even and at least the sheet's floor (a correction has no floor); null when no rate of the
+     *  grade applies by then. */
     private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
         Rate rate = rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
-        return rate == null ? null
-                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN)
-                        .max(settings.floor(sheetId));
+        if (rate == null) return null;
+        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+        return claim.isCorrection() ? due : due.max(settings.floor(sheetId));
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {
