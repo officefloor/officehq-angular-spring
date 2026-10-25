@@ -275,6 +275,12 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/defer`, { until }));
   }
 
+  /** Re-date an OPEN or PENDING claim: refused (403) to all but a steward, and refused for another status,
+   *  a claim dated or a new date inside a closed period, and a new date after its person's retirement. */
+  redate(sheetId: string, id: number, date: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/redate`, { date }));
+  }
+
   /** Split an amount (more than 0.00, less than the claim's amount) off an OPEN claim into a new OPEN
    *  claim: refused for a claim that is not OPEN, a deferred claim, and a claim dated inside a closed period. */
   split(sheetId: string, id: number, amount: string): Promise<SplitView> {

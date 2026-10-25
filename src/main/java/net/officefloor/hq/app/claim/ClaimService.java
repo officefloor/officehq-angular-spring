@@ -232,6 +232,41 @@ public class ClaimService {
     public record Split(Claim original, Claim split) {
     }
 
+    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound
+     *  it to stays bound; its period follows the new date, and while the sheet's period numbering is in
+     *  force a claim whose period changes takes the next number of its new period (or of claims in no
+     *  period), its old number never given again. Refused unless the user is a steward of the sheet, and
+     *  for a claim that is not OPEN or PENDING, a claim dated inside a closed period, a new date inside
+     *  one, and a new date after its person's retirement. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long id, LocalDate date) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, date);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-dates a claim.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        refuseIfRetired(person, date);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDate();
+        Period oldPeriod = periodOf(sheetId, old);
+        Period newPeriod = periodOf(sheetId, date);
+        claim.redate(date);
+        boolean samePeriod = oldPeriod == null ? newPeriod == null
+                : newPeriod != null && oldPeriod.getId().equals(newPeriod.getId());
+        if (!samePeriod && isPeriodNumbering(sheetId)) claim.setNumber(nextNumber(sheetId, claim));
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_REDATED", user, person, saved, saved.getNumber(), " old=" + old + " new=" + date);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim dated
      *  inside a closed period. No figure moves. */
     @Transactional
@@ -401,14 +436,24 @@ public class ClaimService {
      *  today on or after the setting's date), the next of the claim's period, <period name>-<n>, or of
      *  claims in no period, X-<n>; otherwise the sheet's next sheet-wide number. */
     private String nextNumber(String sheetId, Claim claim) {
-        LocalDate from = settings.periodNumberingFrom(sheetId);
-        if (from == null || sheets.today(sheetId).isBefore(from)) {
+        if (!isPeriodNumbering(sheetId)) {
             return Integer.toString(sheets.nextClaimNumber(sheetId));
         }
-        Period period = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
-                .filter((p) -> p.contains(claim.getDate())).findFirst().orElse(null);
+        Period period = periodOf(sheetId, claim.getDate());
         if (period == null) return "X-" + sheets.nextSequenceNumber(sheetId, "none");
         return period.getName() + "-" + sheets.nextSequenceNumber(sheetId, "period:" + period.getId());
+    }
+
+    /** Whether the sheet's period numbering is in force: its today on or after the setting's date. */
+    private boolean isPeriodNumbering(String sheetId) {
+        LocalDate from = settings.periodNumberingFrom(sheetId);
+        return from != null && !sheets.today(sheetId).isBefore(from);
+    }
+
+    /** The sheet's period whose dates contain the date; null when none does. */
+    private Period periodOf(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter((p) -> p.contains(date)).findFirst().orElse(null);
     }
 
     /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold

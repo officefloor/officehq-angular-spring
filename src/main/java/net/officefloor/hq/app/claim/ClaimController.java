@@ -190,6 +190,17 @@ public class ClaimController {
         return ClaimView.of(service.addProof(sheetId.trim(), SignedInUser.name(user), id));
     }
 
+    /** The new date of a claim. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
+    /** Re-date an open or pending claim; only a steward may. */
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RedateForm form) {
+        return ClaimView.of(service.redate(sheetId.trim(), SignedInUser.name(user), id, form.date()));
+    }
+
     /** The amount split off a claim. */
     public record SplitForm(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
     }

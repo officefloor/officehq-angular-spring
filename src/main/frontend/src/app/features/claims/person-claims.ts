@@ -80,6 +80,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #deferDate type="date" [id]="'claim-defer-date-' + c.id" data-testid="claim-defer-date" />
           <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          <label [for]="'claim-date-new-' + c.id">Re-date to</label>
+          <input #newDate type="date" [id]="'claim-date-new-' + c.id" data-testid="claim-date-new" />
+          <button type="button" data-testid="claim-redate" (click)="redate(c, newDate.value)"
+            [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
@@ -271,6 +275,37 @@ export class PersonClaims {
           : claim.status !== 'OPEN'
           ? 'Only an OPEN claim can be deferred.'
           : 'A claim can only be deferred to a date after the sheet\'s today.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Re-date an OPEN or PENDING claim; only a steward may, and the store refuses another status, a claim
+   *  dated or a new date inside a closed period, and a new date after the person's retirement. */
+  protected async redate(claim: ClaimView, date: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const dated = date.trim();
+    if (!DATE.test(dated)) {
+      this.claimError.set({ id: claim.id, message: 'Type the new date of this claim as yyyy-mm-dd.' });
+      return;
+    }
+    try {
+      const redated = await this.api.redate(sheet.id, claim.id, dated);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(redated);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+        const message = forbidden
+          ? 'Only a steward can re-date a claim.'
+          : this.inClosedPeriod(claim.date)
+          ? 'This claim is dated inside a closed period, so it cannot be re-dated.'
+          : this.inClosedPeriod(dated)
+          ? 'The new date is inside a closed period.'
+          : !(claim.status === 'OPEN' || claim.status === 'PENDING')
+          ? 'Only an OPEN or PENDING claim can be re-dated.'
+          : `The new date is after ${this.personName()} retired.`;
         this.claimError.set({ id: claim.id, message });
       }
     }

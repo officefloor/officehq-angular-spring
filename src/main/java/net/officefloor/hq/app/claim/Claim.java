@@ -272,6 +272,11 @@ public class Claim {
         return split;
     }
 
+    /** Re-date the claim: its due-by, number and any figure a statement bound it to are kept. */
+    public void redate(LocalDate date) {
+        this.date = date;
+    }
+
     public BigDecimal getStatedDue() {
         return statedDue;
     }
