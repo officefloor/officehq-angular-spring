@@ -33,14 +33,14 @@ public class ClaimController {
      *  the number of the claim a correction corrects, or null when the claim is not a correction. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
-            String openedBy, boolean stated, String statedDue, String corrects) {
+            String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getDueBy());
         }
     }
 

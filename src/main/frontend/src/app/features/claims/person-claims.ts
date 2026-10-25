@@ -8,8 +8,7 @@ import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { SheetTerms } from '../settings/sheet-terms';
-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected' };
@@ -52,7 +51,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
-          <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
@@ -94,7 +93,6 @@ export class PersonClaims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
-  private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
 
@@ -148,19 +146,14 @@ export class PersonClaims {
   protected due(claim: ClaimView): string {
     const grade = gradeOn(this.grades(), claim.date);
     const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.cents(),
-      { terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+      { today: this.session.sheet()?.today, latePct: this.latePct.pct(),
         policyDate: this.policyDate.date() ?? this.session.sheet()?.today }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
 
-  /** The date the claim is due by: its date plus the sheet's terms. */
-  protected dueBy(claim: ClaimView): string {
-    return dueBy(claim, this.terms.days());
-  }
-
   /** Whether the claim is open and its due-by is before the sheet's today. */
   protected overdue(claim: ClaimView): boolean {
-    return isOverdue(claim, this.terms.days(), this.session.sheet()?.today);
+    return isOverdue(claim, this.session.sheet()?.today);
   }
 
   /** The name of the period whose dates contain the claim's date, or blank when none does. */

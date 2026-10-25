@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,7 +26,8 @@ public class SettingService {
     /** The floor of a sheet that has not set one. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
 
-    /** The key of the terms: the days after a claim's date it is due by; the sheet starts at {@link #DEFAULT_TERMS}. */
+    /** The key of the terms: the days after a claim's date it is due by; the sheet starts at {@link #DEFAULT_TERMS}.
+     *  A grade may set its own under terms-<grade>; a grade without them uses the sheet's. */
     public static final String TERMS = "terms";
 
     /** The terms of a sheet that has not set them, in days. */
@@ -108,26 +110,63 @@ public class SettingService {
                 .orElse(DEFAULT_TERMS);
     }
 
-    /** Set the sheet's terms, in days. */
+    /** The key of a grade's own terms. */
+    public static String termsKey(Grade grade) {
+        return TERMS + "-" + grade.name();
+    }
+
+    /** The terms the grade set for itself, in days, or null when it uses the sheet's terms. */
+    @Transactional(readOnly = true)
+    public Integer gradeTerms(String sheetId, Grade grade) {
+        return settings.findBySheetIdAndKey(sheetId, termsKey(grade)).map((s) -> Integer.parseInt(s.getValue()))
+                .orElse(null);
+    }
+
+    /** The terms of a grade in days: its own, else the sheet's (a person with no grade has the sheet's). */
+    @Transactional(readOnly = true)
+    public int terms(String sheetId, Grade grade) {
+        Integer own = grade == null ? null : gradeTerms(sheetId, grade);
+        return own != null ? own : terms(sheetId);
+    }
+
+    /** Set the sheet's terms, in days. A claim's due-by is fixed when it is added, so no claim moves. */
     @Transactional
     public int setTerms(String sheetId, String user, int days) {
+        store(sheetId, TERMS, Integer.toString(days));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + TERMS
+                + " value=" + days);
+        return days;
+    }
+
+    /** Set a grade's own terms, in days; null clears them, leaving the sheet's terms. No claim moves. */
+    @Transactional
+    public Integer setGradeTerms(String sheetId, String user, Grade grade, Integer days) {
+        String key = termsKey(grade);
+        store(sheetId, key, days == null ? null : Integer.toString(days));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + key
+                + " value=" + (days == null ? "" : days.toString()));
+        return days;
+    }
+
+    /** Store a setting's value on a loaded sheet; null removes it. */
+    private void store(String sheetId, String key, String value) {
         sheets.load(sheetId);
-        Rollup.Snapshot before = rollup.snapshot(sheetId);
-        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, TERMS).orElse(null);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, key).orElse(null);
         try {
-            if (setting == null) {
-                settings.saveAndFlush(new SheetSetting(sheetId, TERMS, Integer.toString(days)));
+            if (value == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, key, value));
             } else {
-                setting.setValue(Integer.toString(days));
+                setting.setValue(value);
                 settings.saveAndFlush(setting);
             }
         } catch (DataIntegrityViolationException raced) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + TERMS
-                + " value=" + days);
-        rollup.recordChanges(user, before);
-        return days;
     }
 
     /** The sheet's late percent with two decimals: the one it set, else {@link #DEFAULT_LATE_PCT}. */

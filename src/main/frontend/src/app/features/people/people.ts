@@ -12,7 +12,6 @@ import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { SheetTerms } from '../settings/sheet-terms';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn } from './people-api';
@@ -169,13 +168,12 @@ export class People {
   private readonly statementsApi = inject(StatementsApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
-  private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
-    ({ terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+    ({ today: this.session.sheet()?.today, latePct: this.latePct.pct(),
       policyDate: this.policyDate.date() ?? this.session.sheet()?.today }));
 
   protected readonly grades = GRADES;
@@ -235,7 +233,7 @@ export class People {
     const today = this.session.sheet()?.today;
     for (const c of this.claims()) {
       const person = byId.get(c.personId);
-      if (person === undefined || !this.countsLive(c) || !isOverdue(c, this.terms.days(), today)) continue;
+      if (person === undefined || !this.countsLive(c) || !isOverdue(c, today)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });

@@ -60,6 +60,9 @@ export interface ClaimView {
   statedDue: string | null;
   /** The number of the settled claim a correction corrects; null when the claim is not a correction. */
   corrects: string | null;
+  /** yyyy-mm-dd: the date the claim is due by, fixed when it was added from the terms of its person's
+   *  grade in force on its date. */
+  dueBy: string;
 }
 
 /** What opening selected claims together did: how many were opened and refused, and the claims opened. */
@@ -128,37 +131,17 @@ function epochDay(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
-/** The yyyy-mm-dd date of days since 1970-01-01. */
-function dateOf(epoch: number): string {
-  const z = epoch + 719468;
-  const era = Math.floor(z / 146097);
-  const doe = z - era * 146097;
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
-  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  const mp = Math.floor((5 * doy + 2) / 153);
-  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
-  const m = mp < 10 ? mp + 3 : mp - 9;
-  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
-  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** The date the claim is due by: its date plus the sheet's terms in days. */
-export function dueBy(claim: ClaimView, terms: number): string {
-  return dateOf(epochDay(claim.date) + terms);
-}
-
 /** Whether the claim is overdue: open, with its due-by before the sheet's today. */
-export function isOverdue(claim: ClaimView, terms: number, today: string | undefined): boolean {
-  return isOpen(claim) && today !== undefined && dueBy(claim, terms) < today;
+export function isOverdue(claim: ClaimView, today: string | undefined): boolean {
+  return isOpen(claim) && today !== undefined && claim.dueBy < today;
 }
 
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
-/** What the late charge depends on: the sheet's terms in days, its today and its late percent; and the
+/** What the late charge depends on: the sheet's today and its late percent; and the
  *  policy date in force (the sheet's, else its today) that decides how a claim's figures round. */
 export interface Lateness {
-  terms: number;
   today: string | undefined;
   latePct: string;
   policyDate: string | undefined;
@@ -168,8 +151,8 @@ export interface Lateness {
  *  full 30 days the claim is overdue, rounded like its due; none unless it is overdue, and
  *  none on a correction. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
-  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.terms, late.today)) return 0;
-  const steps = Math.floor((epochDay(late.today) - epochDay(claim.date) - late.terms) / DAYS_PER_CHARGE);
+  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today)) return 0;
+  const steps = Math.floor((epochDay(late.today) - epochDay(claim.dueBy)) / DAYS_PER_CHARGE);
   return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct, halfUp);
 }
 

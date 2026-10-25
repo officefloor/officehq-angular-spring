@@ -65,7 +65,9 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        // The due-by is fixed now, from the terms of the person's grade in force on the claim's date.
+        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects,
+                settings.terms(sheetId, person.gradeOn(dated)));
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         claim = claims.saveAndFlush(claim);
@@ -284,8 +286,8 @@ public class ClaimService {
     /** What is due on the claim now: its figure with the late charge on top while it is open and
      *  overdue (the charge is never bound by a statement); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
-        return LateCharge.dueOf(claim, figure(sheetId, person, claim), settings.terms(sheetId),
-                sheets.today(sheetId), settings.latePct(sheetId), rounding(sheetId, claim));
+        return LateCharge.dueOf(claim, figure(sheetId, person, claim), sheets.today(sheetId),
+                settings.latePct(sheetId), rounding(sheetId, claim));
     }
 
     /** The figure under the claim's due, before any late charge: the due fixed when it was settled, else the figure

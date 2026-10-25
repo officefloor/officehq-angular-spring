@@ -10,8 +10,12 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.person.Grade;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,9 +35,10 @@ public class SettingController {
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
      *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
-     *  today then); period numbering from is null when blank (sheet-wide numbering). */
+     *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
+     *  the terms each grade set for itself, by grade, a grade without its own using the sheet's. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles, LocalDate periodNumberingFrom) {
+            List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -53,6 +58,10 @@ public class SettingController {
 
     /** The terms as entered: whole days. */
     public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value) {
+    }
+
+    /** A grade's own terms as entered: whole days; none means the sheet's terms. */
+    public record GradeTermsForm(@Min(0) @Max(36500) Integer value) {
     }
 
     /** The late percent as entered. */
@@ -110,6 +119,18 @@ public class SettingController {
         return view(id, service.clerkLimit(id), service.floor(id));
     }
 
+    /** Set a grade's own terms, or clear them to use the sheet's. */
+    @PutMapping("/settings/terms/{grade}")
+    public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Valid GradeTermsForm form) {
+        String id = sheetId.trim();
+        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        service.setGradeTerms(id, SignedInUser.name(user), g, form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
+    }
+
     /** Set the sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */
     @PutMapping("/settings/late-pct")
     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -150,6 +171,15 @@ public class SettingController {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                 service.terms(sheetId), service.latePct(sheetId).toPlainString(),
                 service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList(),
-                service.periodNumberingFrom(sheetId));
+                service.periodNumberingFrom(sheetId), gradeTerms(sheetId));
+    }
+
+    private Map<String, Integer> gradeTerms(String sheetId) {
+        Map<String, Integer> terms = new LinkedHashMap<>();
+        for (Grade grade : Grade.values()) {
+            Integer own = service.gradeTerms(sheetId, grade);
+            if (own != null) terms.put(grade.name(), own);
+        }
+        return terms;
     }
 }

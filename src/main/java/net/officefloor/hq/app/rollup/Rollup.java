@@ -69,7 +69,6 @@ public class Rollup {
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
         BigDecimal floor = SettingService.floorOf(settings, sheetId);
-        int terms = SettingService.termsOf(settings, sheetId);
         BigDecimal latePct = SettingService.latePctOf(settings, sheetId);
         LocalDate policyDate = Rounding.policyDate(SettingService.policyDateOf(settings, sheetId), today);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
@@ -96,7 +95,7 @@ public class Rollup {
                 Grade grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
                 BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding);
-                BigDecimal owed = LateCharge.dueOf(claim, figure, terms, today, latePct, rounding);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, today, latePct, rounding);
                 if (owed != null) due = due.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
                     keptFigure = true;

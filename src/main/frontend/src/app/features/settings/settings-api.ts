@@ -1,6 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Grade } from '../people/people-api';
+
+/** The terms of a sheet that has not set them, in days. */
+export const DEFAULT_TERMS = 14;
 
 /** The roles a sheet can assign a user name; any name not assigned one is a clerk. */
 export const ROLES = ['clerk', 'steward'] as const;
@@ -28,6 +32,8 @@ export interface SettingsView {
   /** The date (yyyy-mm-dd) from which, once the sheet's today reaches it, a claim opened is numbered
    *  within its period; null when blank (sheet-wide numbering). */
   periodNumberingFrom: string | null;
+  /** The terms each grade set for itself, in days, by grade; a grade not here uses the sheet's terms. */
+  gradeTerms: Partial<Record<Grade, number>>;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -56,6 +62,11 @@ export class SettingsApi {
   /** Set the terms, in days. */
   setTerms(sheetId: string, value: number): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value }));
+  }
+
+  /** Set a grade's own terms, in days; null clears them, leaving the sheet's terms. */
+  setGradeTerms(sheetId: string, grade: Grade, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms/${grade}`, { value }));
   }
 
   /** Set the late percent. */
