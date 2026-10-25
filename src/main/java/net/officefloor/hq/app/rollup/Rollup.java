@@ -17,6 +17,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetSettingRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -47,20 +49,23 @@ public class Rollup {
     private final ClaimRepository claims;
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final SheetSettingRepository settings;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            Audit audit) {
+            SheetSettingRepository settings, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
+        this.settings = settings;
         this.audit = audit;
     }
 
     /** The sheet's figures as the store holds them now, within the caller's transaction. */
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        BigDecimal floor = SettingService.floorOf(settings, sheetId);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
@@ -80,7 +85,7 @@ public class Rollup {
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 if (!counts(person, claim)) continue;
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = figure(claim, gradeRates);
+                BigDecimal figure = figure(claim, gradeRates, floor);
                 if (figure != null) due = due.add(figure);
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) {
                     keptFigure = true;
@@ -119,13 +124,14 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  else the live due at the grade's rate in force on its date; null when that is n/a. */
-    private static BigDecimal figure(Claim claim, List<Rate> gradeRates) {
+     *  else the live due at the grade's rate in force on its date, at least the floor; null when that is n/a. */
+    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         Rate rate = inForce(gradeRates, claim.getDate());
         return rate == null ? null
-                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN)
+                        .max(floor);
     }
 
     /** Of the grade's rates (from the start first, then by from-date), the one in force on the date. */

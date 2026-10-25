@@ -26,8 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class SettingController {
 
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
-     *  when there is no limit. */
-    public record SettingsView(String clerkLimit, List<RoleView> roles) {
+     *  when there is no limit; the floor has two decimals. */
+    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -39,6 +39,10 @@ public class SettingController {
 
     /** The clerk limit as entered; none means no limit. */
     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** The floor as entered. */
+    public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     /** A role to assign a user name, as entered on the form. */
@@ -54,7 +58,7 @@ public class SettingController {
     @GetMapping("/settings")
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
-        return view(service.clerkLimit(id), service.roles(id));
+        return view(service.clerkLimit(id), service.floor(id), service.roles(id));
     }
 
     /** Set the sheet's clerk limit, or clear it. */
@@ -63,7 +67,16 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClerkLimitForm form) {
         String id = sheetId.trim();
         BigDecimal limit = service.setClerkLimit(id, SignedInUser.name(user), form.value());
-        return view(limit, service.roles(id));
+        return view(limit, service.floor(id), service.roles(id));
+    }
+
+    /** Set the sheet's floor: the least a claim's live due can be. */
+    @PutMapping("/settings/floor")
+    public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FloorForm form) {
+        String id = sheetId.trim();
+        BigDecimal floor = service.setFloor(id, SignedInUser.name(user), form.value());
+        return view(service.clerkLimit(id), floor, service.roles(id));
     }
 
     /** Assign a user name a role on the sheet. */
@@ -75,8 +88,8 @@ public class SettingController {
         return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.name(user), form.user().trim(), role));
     }
 
-    private static SettingsView view(BigDecimal limit, List<SheetRole> roles) {
-        return new SettingsView(limit == null ? null : limit.toPlainString(),
+    private static SettingsView view(BigDecimal limit, BigDecimal floor, List<SheetRole> roles) {
+        return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                 roles.stream().map(RoleView::of).toList());
     }
 }

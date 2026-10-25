@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { PeriodView, periodOf } from '../periods/periods-api';
 import { RateView } from '../rates/rates-api';
+import { SheetFloor } from '../settings/sheet-floor';
 import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -63,6 +64,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
 export class PersonClaims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
+  private readonly floor = inject(SheetFloor);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -98,9 +100,9 @@ export class PersonClaims {
 
   /** What is due on the claim: the figure fixed when it was settled, else the figure its person's
    *  last statement bound it to, else at the person's grade's
-   *  rate in force on the claim's date, or n/a when the claim is dated before every rate of the grade. */
+   *  rate in force on the claim's date and at least the sheet's floor, or n/a when the claim is dated before every rate of the grade. */
   protected due(claim: ClaimView): string {
-    const due = claimDueCents(claim, this.rates());
+    const due = claimDueCents(claim, this.rates(), this.floor.cents());
     return due === null ? 'n/a' : money(due);
   }
 

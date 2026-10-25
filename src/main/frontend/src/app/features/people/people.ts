@@ -8,6 +8,7 @@ import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
+import { SheetFloor } from '../settings/sheet-floor';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView } from './people-api';
 import { QuickAdd } from './quick-add';
@@ -112,6 +113,7 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly statementsApi = inject(StatementsApi);
   private readonly periodsApi = inject(PeriodsApi);
+  private readonly floor = inject(SheetFloor);
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -168,7 +170,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const grade = gradeOf.get(c.personId);
       if (period === null || grade === undefined) continue;
-      const due = claimDueCents(c, this.ratesOf(grade));
+      const due = claimDueCents(c, this.ratesOf(grade), this.floor.cents());
       if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
     }
     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
@@ -320,7 +322,7 @@ export class People {
     let keptFigure = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c)) continue;
-      const due = claimDueCents(c, gradeRates);
+      const due = claimDueCents(c, gradeRates, this.floor.cents());
       if (due !== null) total += due;
       if (keepsFigure(c)) keptFigure = true;
     }

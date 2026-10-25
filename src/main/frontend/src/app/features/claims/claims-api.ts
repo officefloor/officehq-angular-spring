@@ -59,12 +59,12 @@ export function money(total: number): string {
 
 /** What is due on the claim, in cents: the figure fixed when it was settled, else the figure its
  *  person's last statement bound it to, else at the rate of `gradeRates` (its person's grade's rates)
- *  in force on the claim's date; null when there is none. */
-export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[]): number | null {
+ *  in force on the claim's date and at least `floorCents` (the sheet's floor); null when there is none. */
+export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateInForce(gradeRates, claim.date);
-  return rate === null ? null : dueCents(cents(claim.amount), rate.pct);
+  return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate.pct), floorCents);
 }
 
 // The claims on a sheet, as the store holds them.

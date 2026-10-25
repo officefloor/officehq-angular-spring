@@ -14,6 +14,8 @@ export interface RoleView {
 export interface SettingsView {
   /** The highest due a clerk may settle, with two decimals, or null when there is no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due can be, with two decimals. */
+  floor: string;
   /** The roles the sheet has assigned, by user name. */
   roles: RoleView[];
 }
@@ -34,6 +36,11 @@ export class SettingsApi {
   /** Set the clerk limit; null clears it, leaving no limit. */
   setClerkLimit(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit`, { value }));
+  }
+
+  /** Set the floor. */
+  setFloor(sheetId: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */
