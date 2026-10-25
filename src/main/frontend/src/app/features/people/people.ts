@@ -28,6 +28,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
+import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
@@ -36,7 +37,7 @@ import { Consolidated } from '../summary/consolidated';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, Consolidated, PoolsList],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
@@ -83,6 +84,7 @@ import { Consolidated } from '../summary/consolidated';
         </form>
         <app-quick-add (added)="quickAdded($event)" />
         <app-paste-claims (added)="pasted($event)" />
+        <app-import-people (added)="imported($event)" />
         <label>
           <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
             (change)="showRetired.set($any($event.target).checked)" />
@@ -1156,6 +1158,11 @@ export class People {
   protected quickAdded(added: QuickAddView): void {
     if (!this.people().some((p) => p.id === added.person.id)) this.people.update((list) => [...list, added.person]);
     this.claimAdded(added.claim);
+  }
+
+  /** An import's people, in the order of their lines. */
+  protected imported(people: PersonView[]): void {
+    this.people.update((list) => [...list, ...people]);
   }
 
   /** A paste's claims, in the order of their lines: the last line's claim is the newest. */

@@ -112,15 +112,25 @@ public class PersonController {
     public record BulkGradeView(List<PersonView> people, int changed) {
     }
 
+    /** The import box's text: lines of name,grade,terms,contact. */
+    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How many people the import added, and the people, in the order of their lines. */
+    public record ImportView(int added, List<PersonView> people) {
+    }
+
     private final PersonService service;
+    private final ImportPeopleService imports;
     private final BulkGradeService bulkGrade;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetService sheets;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
-            TransferService transfers, SheetService sheets) {
+            TransferService transfers, SheetService sheets, ImportPeopleService imports) {
         this.service = service;
+        this.imports = imports;
         this.bulkGrade = bulkGrade;
         this.merges = merges;
         this.transfers = transfers;
@@ -151,6 +161,16 @@ public class PersonController {
         Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade(),
                 termsOf(form.terms()), form.contact());
         return PersonView.of(added, sheets.today(added.getSheetId()), false, service.isClashing(added));
+    }
+
+    /** Add a person per pasted line, all or none. */
+    @PostMapping("/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ImportView importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ImportForm form) {
+        List<PersonView> added = imports.importPeople(sheetId.trim(), SignedInUser.name(user), form.text()).stream()
+                .map(p -> PersonView.of(p, sheets.today(p.getSheetId()), false, service.isClashing(p))).toList();
+        return new ImportView(added.size(), added);
     }
 
     /** Edit a person. */

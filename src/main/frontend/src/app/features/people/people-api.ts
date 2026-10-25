@@ -101,6 +101,12 @@ export interface QuickAddView {
   claim: ClaimView;
 }
 
+/** What an import added: how many people, and the people, in the order of their lines. */
+export interface ImportView {
+  added: number;
+  people: PersonView[];
+}
+
 // The people on a sheet, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {
@@ -116,6 +122,11 @@ export class PeopleApi {
 
   add(sheetId: string, form: PersonForm): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(this.url(sheetId), form));
+  }
+
+  /** Add a person per line of name,grade,terms,contact; refused, adding no one, when any line is. */
+  importPeople(sheetId: string, text: string): Promise<ImportView> {
+    return firstValueFrom(this.http.post<ImportView>(`${this.url(sheetId)}/import`, { text }));
   }
 
   /** Refused with 412 when someone has saved the person since `form.version` was loaded. */
