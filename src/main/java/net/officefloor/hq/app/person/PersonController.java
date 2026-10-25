@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -44,11 +45,12 @@ public class PersonController {
      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
      *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
      *  user watches them; clashing whether their name or an alias is used on another sheet of the
-     *  sheet's tree; origin the sheet they were transferred from, null when added here. */
+     *  sheet's tree; origin the sheet they were transferred from, null when added here; snapshots
+     *  one line per snapshot written for them, oldest first: the day being left and their due-total. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
             List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing,
-            String origin, List<String> tags) {
+            String origin, List<String> tags, List<String> snapshots) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
             return of(person, List.of(), today, watched, clashing);
@@ -65,7 +67,13 @@ public class PersonController {
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheetId(), person.getTags());
+                    person.getOriginSheetId(), person.getTags(), List.of());
+        }
+
+        /** The same person with these snapshot lines. */
+        public PersonView withSnapshots(List<String> lines) {
+            return new PersonView(id, name, grade, grades, version, retired, retiredFrom, retirements, held, holds,
+                    patronIds, watched, terms, contact, aliases, clashing, origin, tags, lines);
         }
     }
 
@@ -148,9 +156,12 @@ public class PersonController {
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetService sheets;
+    private final Rollup rollup;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
-            TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire) {
+            TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire,
+            Rollup rollup) {
+        this.rollup = rollup;
         this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
@@ -170,9 +181,11 @@ public class PersonController {
                 : service.watchedIds(sheet, SignedInUser.name(user));
         LocalDate today = sheets.today(sheet);
         Set<Long> clashing = service.clashingIds(sheet);
+        Map<Long, List<String>> snapshots = rollup.snapshotLines(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, patronIds.getOrDefault(p.getId(), List.of()), today,
-                        watched.contains(p.getId()), clashing.contains(p.getId())))
+                        watched.contains(p.getId()), clashing.contains(p.getId()))
+                        .withSnapshots(snapshots.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -302,6 +315,7 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, service.patronIdsOf(person.getId()), sheets.today(person.getSheetId()),
-                service.isWatched(person.getId(), SignedInUser.name(user)), service.isClashing(person));
+                service.isWatched(person.getId(), SignedInUser.name(user)), service.isClashing(person))
+                .withSnapshots(rollup.snapshotLinesOf(person.getId()));
     }
 }

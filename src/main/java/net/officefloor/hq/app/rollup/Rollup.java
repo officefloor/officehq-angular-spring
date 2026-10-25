@@ -63,11 +63,13 @@ public class Rollup {
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
     private final SheetParentRepository parents;
+    private final PersonSnapshotRepository snapshots;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
             SheetSettingRepository settings, SheetSettingDatedRepository dated, SheetParentRepository parents,
-            Audit audit) {
+            PersonSnapshotRepository snapshots, Audit audit) {
+        this.snapshots = snapshots;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -146,12 +148,35 @@ public class Rollup {
         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
     }
 
-    /** Audit, once the transaction commits, each person's due-total as it stood in the snapshot, in the
-     *  order they were added. */
+    /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
+     *  in the order they were added, against the sheet's today: the day being left. */
     public void recordSnapshot(String user, Snapshot before) {
         String prefix = " sheet=" + before.sheetId() + " by=" + user;
-        before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix + " name="
-                + figures.name() + " due-total=" + text(figures.dueTotal())));
+        LocalDate day = sheets.findById(before.sheetId()).map(Sheet::getToday).orElse(null);
+        before.people().forEach((id, figures) -> {
+            if (day != null) snapshots.save(new PersonSnapshot(before.sheetId(), id, day, figures.dueTotal()));
+            audit.recordOnCommit("SNAPSHOT" + prefix + " name=" + figures.name() + " due-total="
+                    + text(figures.dueTotal()));
+        });
+    }
+
+    /** The lines of each person's snapshots, by person id, oldest first: the day being left and the
+     *  due-total then. */
+    public Map<Long, List<String>> snapshotLines(String sheetId) {
+        Map<Long, List<String>> lines = new LinkedHashMap<>();
+        for (PersonSnapshot s : snapshots.findBySheetIdOrderByIdAsc(sheetId)) {
+            lines.computeIfAbsent(s.getPersonId(), p -> new ArrayList<>()).add(snapshotLine(s));
+        }
+        return lines;
+    }
+
+    /** The lines of the person's snapshots, oldest first. */
+    public List<String> snapshotLinesOf(Long personId) {
+        return snapshots.findByPersonIdOrderByIdAsc(personId).stream().map(Rollup::snapshotLine).toList();
+    }
+
+    private static String snapshotLine(PersonSnapshot s) {
+        return s.getDay() + " " + text(s.getDueTotal());
     }
 
     /** Audit, once the transaction commits, the figures that moved since the snapshot was taken. */

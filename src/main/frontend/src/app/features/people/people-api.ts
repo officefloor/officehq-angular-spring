@@ -78,6 +78,8 @@ export interface PersonView {
   origin: string | null;
   /** The person's tags, lower-cased and sorted; empty when they have none. */
   tags: string[];
+  /** One line per snapshot written for the person, oldest first: the day being left and their due-total. */
+  snapshots: string[];
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
