@@ -183,7 +183,7 @@ public class ClaimService {
      *  overdue (the charge is never bound by a statement); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         return LateCharge.dueOf(claim, figure(sheetId, person, claim), settings.terms(sheetId),
-                sheets.today(sheetId), settings.latePct(sheetId));
+                sheets.today(sheetId), settings.latePct(sheetId), rounding(sheetId, claim));
     }
 
     /** The figure under the claim's due, before any late charge: the due fixed when it was settled, else the figure
@@ -196,13 +196,24 @@ public class ClaimService {
 
     /** What is due on the claim now at the rate in force on the claim's date of its person's grade in
      *  force on that date, rounded
-     *  half to even and at least the sheet's floor (a correction has no floor); null when no rate of the
+     *  as the claim's {@link Rounding} decides and at least the sheet's floor (a correction has no floor); null when no rate of the
      *  grade applies by then. */
     private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
         Rate rate = rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
         if (rate == null) return null;
-        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2,
+                rounding(sheetId, claim));
         return claim.isCorrection() ? due : due.max(settings.floor(sheetId));
+    }
+
+    /** How the claim's live figures round under the sheet's policy date: by the date of the claim a
+     *  correction corrects, else by its own. */
+    private RoundingMode rounding(String sheetId, Claim claim) {
+        Claim corrected = claim.isCorrection() && claim.getCorrects() != null
+                ? claims.findBySheetIdAndPersonIdAndNumber(sheetId, claim.getPersonId(), claim.getCorrects()).orElse(null)
+                : null;
+        return Rounding.of(Rounding.dateOf(claim, corrected),
+                Rounding.policyDate(settings.policyDate(sheetId), sheets.today(sheetId)));
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {

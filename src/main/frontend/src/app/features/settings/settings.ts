@@ -4,11 +4,21 @@ import { Session } from '../../core/session';
 import { ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
+import { SheetPolicyDate } from './sheet-policy-date';
 import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,10}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Whether a yyyy-mm-dd text is a real calendar date. */
+function isDate(text: string): boolean {
+  if (!DATE.test(text)) return false;
+  const [y, m, d] = text.split('-').map(Number);
+  const days = [31, y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return m >= 1 && m <= 12 && d >= 1 && d <= days[m - 1];
+}
 
 /** Whether a setting's field was changed or visited since the last save. */
 function changed(control: AbstractControl): boolean {
@@ -23,7 +33,8 @@ function settled(control: AbstractControl): void {
 
 // The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
 // least a claim's live due can be) and the terms (the days after a claim's date it is due by) and the late
-// percent (what an overdue claim gains of its figure for every full 30 days overdue), and the roles it assigns user names, with one form for each.
+// percent (what an overdue claim gains of its figure for every full 30 days overdue) and the policy date
+// (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today), and the roles it assigns user names, with one form for each.
 // Saving the settings stores each setting whose field was changed or visited since the last save, so
 // a value typed again as it was is still stored.
 @Component({
@@ -45,6 +56,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-late-pct">Late percent (gained for every full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <p>Late percent now: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></p>
+        <label for="setting-policy-date">Policy date (yyyy-mm-dd; claims dated before it round half up, on or after it half to even; blank: the sheet's today)</label>
+        <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
+        <p>Policy date now: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -88,12 +102,14 @@ export class Settings {
   private readonly sheetFloor = inject(SheetFloor);
   private readonly sheetTerms = inject(SheetTerms);
   private readonly sheetLatePct = inject(SheetLatePct);
+  private readonly sheetPolicyDate = inject(SheetPolicyDate);
 
   protected readonly roles = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly floor = signal((DEFAULT_FLOOR_CENTS / 100).toFixed(2));
   protected readonly terms = signal(DEFAULT_TERMS);
   protected readonly latePct = signal(DEFAULT_LATE_PCT);
+  protected readonly policyDate = signal<string | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
 
   protected readonly settingsForm = new FormGroup({
@@ -101,6 +117,7 @@ export class Settings {
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
+    policyDate: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -119,7 +136,7 @@ export class Settings {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, roles: [] });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [] });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       if (sheet) void this.reload(sheet.id);
@@ -141,11 +158,12 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
+    const policyDateValue = policyDate.value.trim();
     if (changed(clerkLimit) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -160,6 +178,10 @@ export class Settings {
     }
     if (changed(latePct) && !PCT.test(latePctValue)) {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (changed(policyDate) && policyDateValue !== '' && !isDate(policyDateValue)) {
+      this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
     this.savingSettings.set(true);
@@ -184,6 +206,11 @@ export class Settings {
         settled(latePct);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(policyDate)) {
+        const settings = await this.api.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue);
+        settled(policyDate);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -191,7 +218,7 @@ export class Settings {
     }
   }
 
-  /** Show the settings as the store answered them, and share the floor, terms and late percent with the screens showing them. */
+  /** Show the settings as the store answered them, and share the floor, terms, late percent and policy date with the screens showing them. */
   private show(settings: SettingsView): void {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
@@ -200,6 +227,8 @@ export class Settings {
     this.sheetTerms.days.set(settings.terms);
     this.latePct.set(settings.latePct);
     this.sheetLatePct.pct.set(settings.latePct);
+    this.policyDate.set(settings.policyDate);
+    this.sheetPolicyDate.date.set(settings.policyDate);
     this.assigned.set(settings.roles);
   }
 

@@ -72,15 +72,27 @@ export function money(total: number): string {
   return (total / 100).toFixed(2);
 }
 
+/** Whether the claim's live figures round half up: the date that decides it (for a correction, the
+ *  date of the claim of `claims` it corrects; else its own) is before the policy date. Otherwise they
+ *  round half to even. */
+export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], policyDate: string | undefined): boolean {
+  if (policyDate === undefined) return false;
+  const corrected = isCorrection(claim) && claim.corrects !== null
+    ? claims.find((c) => c.personId === claim.personId && c.number === claim.corrects)
+    : undefined;
+  return (corrected ?? claim).date < policyDate;
+}
+
 /** What is due on the claim, in cents: the figure fixed when it was settled, else the figure its
  *  person's last statement bound it to, else at the rate of `gradeRates` (its person's grade's rates)
- *  in force on the claim's date and at least `floorCents` (the sheet's floor) unless a correction; null when there is none. */
-export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number): number | null {
+ *  in force on the claim's date, rounded half up when `halfUp` (else half to even), and at least
+ *  `floorCents` (the sheet's floor) unless a correction; null when there is none. */
+export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, halfUp = false): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateInForce(gradeRates, claim.date);
   if (rate === null) return null;
-  const due = dueCents(cents(claim.amount), rate.pct);
+  const due = dueCents(cents(claim.amount), rate.pct, halfUp);
   return isCorrection(claim) ? due : Math.max(due, floorCents);
 }
 
@@ -122,27 +134,32 @@ export function isOverdue(claim: ClaimView, terms: number, today: string | undef
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
-/** What the late charge depends on: the sheet's terms in days, its today and its late percent. */
+/** What the late charge depends on: the sheet's terms in days, its today and its late percent; and the
+ *  policy date in force (the sheet's, else its today) that decides how a claim's figures round. */
 export interface Lateness {
   terms: number;
   today: string | undefined;
   latePct: string;
+  policyDate: string | undefined;
 }
 
 /** The late charge on the claim of `figureCents`, in cents: the late percent of the figure for every
- *  full 30 days the claim is overdue, rounded half to even like due; none unless it is overdue, and
+ *  full 30 days the claim is overdue, rounded like its due; none unless it is overdue, and
  *  none on a correction. */
-export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness): number {
+export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
   if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.terms, late.today)) return 0;
   const steps = Math.floor((epochDay(late.today) - epochDay(claim.date) - late.terms) / DAYS_PER_CHARGE);
-  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct);
+  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct, halfUp);
 }
 
 /** What is due on the claim now, in cents: its figure (see claimDueCents) with the late charge on top
- *  while it is open and overdue, as no statement binds the charge; null when the figure is n/a. */
-export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness): number | null {
-  const figure = claimDueCents(claim, gradeRates, floorCents);
-  return figure === null ? null : figure + lateChargeCents(claim, figure, late);
+ *  while it is open and overdue, as no statement binds the charge; both round as roundsHalfUp decides
+ *  by the policy date, `claims` holding the claim a correction corrects. Null when the figure is n/a. */
+export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness,
+  claims: readonly ClaimView[]): number | null {
+  const halfUp = roundsHalfUp(claim, claims, late.policyDate);
+  const figure = claimDueCents(claim, gradeRates, floorCents, halfUp);
+  return figure === null ? null : figure + lateChargeCents(claim, figure, late, halfUp);
 }
 
 // The claims on a sheet, as the store holds them.

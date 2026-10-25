@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -36,6 +37,10 @@ public class SettingService {
 
     /** The late percent of a sheet that has not set one. */
     public static final BigDecimal DEFAULT_LATE_PCT = new BigDecimal("0.00");
+
+    /** The key of the policy date: a claim dated before it rounds half up, one dated on or after it half
+     *  to even; with no value the policy date is the sheet's today. */
+    public static final String POLICY_DATE = "policy-date";
 
     private final SheetSettingRepository settings;
     private final SheetRoleRepository roles;
@@ -154,6 +159,46 @@ public class SettingService {
                 + " value=" + value.toPlainString());
         rollup.recordChanges(user, before);
         return value;
+    }
+
+    /** The sheet's policy date as it set it, or null when it is blank (the sheet's today then). */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return policyDateOf(settings, sheetId);
+    }
+
+    /** The sheet's policy date as the store holds it, within the caller's transaction; null when blank. */
+    public static LocalDate policyDateOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, POLICY_DATE).map((s) -> LocalDate.parse(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's policy date; null clears it, leaving the sheet's today. The live dues it moves are
+     *  audited after it. */
+    @Transactional
+    public LocalDate setPolicyDate(String sheetId, String user, LocalDate date) {
+        sheets.load(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, POLICY_DATE).orElse(null);
+        try {
+            if (date == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, POLICY_DATE, date.toString()));
+            } else {
+                setting.setValue(date.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POLICY_DATE
+                + " value=" + (date == null ? "" : date.toString()));
+        rollup.recordChanges(user, before);
+        return date;
     }
 
     /** The sheet's clerk limit with two decimals, or null when there is no limit. */

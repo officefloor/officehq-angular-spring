@@ -7,6 +7,7 @@ import { GradeView, gradeOn } from '../people/people-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
+import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { SheetTerms } from '../settings/sheet-terms';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
 
@@ -75,6 +76,7 @@ export class PersonClaims {
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
+  private readonly policyDate = inject(SheetPolicyDate);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -118,7 +120,8 @@ export class PersonClaims {
   protected due(claim: ClaimView): string {
     const grade = gradeOn(this.grades(), claim.date);
     const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.cents(),
-      { terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct() });
+      { terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+        policyDate: this.policyDate.date() ?? this.session.sheet()?.today }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
 

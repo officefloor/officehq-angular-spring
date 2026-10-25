@@ -20,6 +20,9 @@ export interface SettingsView {
   terms: number;
   /** What an overdue claim gains of its figure for every full 30 days overdue, with two decimals. */
   latePct: string;
+  /** The policy date (yyyy-mm-dd) a claim dated before rounds half up, and on or after half to even;
+   *  null when blank, the sheet's today then. */
+  policyDate: string | null;
   /** The roles the sheet has assigned, by user name. */
   roles: RoleView[];
 }
@@ -55,6 +58,11 @@ export class SettingsApi {
   /** Set the late percent. */
   setLatePct(sheetId: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/late-pct`, { value }));
+  }
+
+  /** Set the policy date; null clears it, leaving the sheet's today. */
+  setPolicyDate(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/policy-date`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */

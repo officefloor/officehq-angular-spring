@@ -10,6 +10,7 @@ import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
+import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { SheetTerms } from '../settings/sheet-terms';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -155,9 +156,11 @@ export class People {
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
+  private readonly policyDate = inject(SheetPolicyDate);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
-    ({ terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct() }));
+    ({ terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+      policyDate: this.policyDate.date() ?? this.session.sheet()?.today }));
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -217,7 +220,7 @@ export class People {
     for (const c of this.claims()) {
       const person = byId.get(c.personId);
       if (person === undefined || !this.countsLive(c) || !isOverdue(c, this.terms.days(), today)) continue;
-      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness());
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });
     }
@@ -246,7 +249,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (period === null || person === undefined) continue;
-      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness());
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
       if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
     }
     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
@@ -489,7 +492,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c)) continue;
       const grade = gradeOn(person.grades, c.date);
-      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
+      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness(), this.claims());
       if (due !== null) total += due;
       if (keepsFigure(c)) keptFigure = true;
       // A live figure at a grade other than today's is not undone by today's grade having no rate.

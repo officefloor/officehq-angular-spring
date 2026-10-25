@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.http.HttpStatus;
@@ -29,8 +30,10 @@ public class SettingController {
 
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
      *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
-     *  it is due by; the late percent has two decimals. */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {
+     *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
+     *  today then). */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            List<RoleView> roles) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -54,6 +57,10 @@ public class SettingController {
 
     /** The late percent as entered. */
     public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** The policy date as entered; none means the sheet's today. */
+    public record PolicyDateForm(LocalDate value) {
     }
 
     /** A role to assign a user name, as entered on the form. */
@@ -108,6 +115,15 @@ public class SettingController {
         return view(id, service.clerkLimit(id), service.floor(id));
     }
 
+    /** Set the sheet's policy date, or clear it: a claim dated before it rounds half up, on or after it half to even. */
+    @PutMapping("/settings/policy-date")
+    public SettingsView setPolicyDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PolicyDateForm form) {
+        String id = sheetId.trim();
+        service.setPolicyDate(id, SignedInUser.name(user), form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -119,6 +135,7 @@ public class SettingController {
 
     private SettingsView view(String sheetId, BigDecimal limit, BigDecimal floor) {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                service.terms(sheetId), service.latePct(sheetId).toPlainString(), service.roles(sheetId).stream().map(RoleView::of).toList());
+                service.terms(sheetId), service.latePct(sheetId).toPlainString(),
+                service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 }

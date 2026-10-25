@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -70,6 +71,7 @@ public class Rollup {
         BigDecimal floor = SettingService.floorOf(settings, sheetId);
         int terms = SettingService.termsOf(settings, sheetId);
         BigDecimal latePct = SettingService.latePctOf(settings, sheetId);
+        LocalDate policyDate = Rounding.policyDate(SettingService.policyDateOf(settings, sheetId), today);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
@@ -86,13 +88,15 @@ public class Rollup {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             boolean keptFigure = false;
-            for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
+            List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
+            for (Claim claim : theirs) {
                 if (!counts(person, claim)) continue;
                 claimed = claimed.add(claim.getAmount());
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
-                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor);
-                BigDecimal owed = LateCharge.dueOf(claim, figure, terms, today, latePct);
+                RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
+                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, terms, today, latePct, rounding);
                 if (owed != null) due = due.add(owed);
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) {
                     keptFigure = true;
@@ -135,15 +139,24 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  else the live due at the grade's rate in force on its date, at least the floor unless a correction;
-     *  null when that is n/a. */
-    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
+     *  else the live due at the grade's rate in force on its date, rounded as the claim rounds, at least
+     *  the floor unless a correction; null when that is n/a. */
+    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         Rate rate = inForce(gradeRates, claim.getDate());
         if (rate == null) return null;
-        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
         return claim.isCorrection() ? due : due.max(floor);
+    }
+
+    /** Of the person's claims, the one a correction corrects by number; null for any other claim. */
+    private static Claim corrected(Claim claim, List<Claim> theirs) {
+        if (!claim.isCorrection() || claim.getCorrects() == null) return null;
+        for (Claim other : theirs) {
+            if (claim.getCorrects().equals(other.getNumber())) return other;
+        }
+        return null;
     }
 
     /** Of the grade's rates (from the start first, then by from-date), the one in force on the date. */
