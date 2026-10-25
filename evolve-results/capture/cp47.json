@@ -1,0 +1,64 @@
+{
+  "checkpoint": 47,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp47_person-period-figures",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "be7aeca54f0d2b33af928394ee5e2abd11aab429",
+  "reset_sha": "",
+  "preagent_sha": "db143afda865b56063b97fb398fce29e463595ef",
+  "prev_sha": "db143afda865b56063b97fb398fce29e463595ef",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6186008,
+    "input_tokens": 28,
+    "output_tokens": 6764,
+    "cache_read_tokens": 518324,
+    "cache_creation_tokens": 47443,
+    "num_turns": 15,
+    "duration_ms": 252000,
+    "duration_api_ms": 93108,
+    "model": "claude-opus-5-5",
+    "session_id": "71701e07-aca3-42f8-906c-6a678ae1a20a",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows a due-total for every period on the sheet, and all 4 tests in the acceptance spec pass under `bin/e2e`.\n\n**What it does**\n- **Open period:** a person's figure is the due on their claims that count and are dated in that period. It's worked out the same way as the existing period total, and it updates live.\n- **Closing a period:** the server saves every person's figure at that moment. Later changes, like a new rate, don't alter them. A person added after the close shows 0.00 for it.\n- **Reopening:** the saved figures are removed and the live values come back.\n- **Period total:** the period's row and the summary both now show the sum of the people's figures, so the two always agree.\n\n**Changes**\n- **Stored data:** a new migration, `V30__period_person_total.sql`, adds a table holding each person's figure for each closed period.\n- **Server:** in `Period.java` and `PeriodService.java`, closing a period now saves each person's figure alongside the total, and reopening clears them. The period data sent to the screen (`PeriodController.java`) now includes these figures.\n- **Front end:** `people.ts` gets one \"Due in <period>\" column per period, with the cell labelled `person-period-<name>-due-total` as the spec expects, and `periods-api.ts` gets the new field. The period total is now built from these per-person figures.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6186008,
+        "num_turns": 15,
+        "duration_ms": 252000,
+        "duration_api_ms": 93108,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp47.agent.jsonl",
+  "agent_diff_file": "cp47.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
