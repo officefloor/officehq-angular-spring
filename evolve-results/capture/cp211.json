@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8d41b30f974e9a2e46accb32e0f11e47973dfeaf",
+  "reset_sha": "",
+  "preagent_sha": "1de4c05ccefb784b72770f40781a1e7d1271bfd7",
+  "prev_sha": "1de4c05ccefb784b72770f40781a1e7d1271bfd7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7053596,
+    "input_tokens": 38,
+    "output_tokens": 7657,
+    "cache_read_tokens": 1589921,
+    "cache_creation_tokens": 33569,
+    "num_turns": 18,
+    "duration_ms": 302195,
+    "duration_api_ms": 253568,
+    "model": "claude-opus-5-5",
+    "session_id": "e7911de2-f2c7-4519-be54-4ae540f40d58",
+    "stop_reason": "success",
+    "result_text": "I've added the score log switch, but `bin/e2e` isn't fully green. The main \"score lines\" test and \"scenario 1\" pass. Scenarios 2 and 3 fail the same way on both runs, on plan and reassign behaviour this change doesn't touch.\n\n**What I built**\n- **Stored data:** migration `V111__sheet_score_log.sql` adds a `score_log` boolean to the sheet, off by default. It's on the `Sheet` entity, copied in `copy()`, and shown in the as-of history view.\n- **Server:**\n  - `PUT /settings/score-log` accepts `on` or blank and writes `SETTING_CHANGED key=score-log value=on` (or `value=`). The settings view now includes `scoreLog`.\n  - `RollupService.scores()` works out each person's score the way the front end does: settled-total \u00f7 100, minus 5 per overdue claim that counts, rounded half to even.\n  - `SheetService.setToday` writes one `SCORE name=\u2026 score=\u2026` line per person, in list order and before the SNAPSHOT lines, while the switch is on and the date actually changes. The scores are taken before the date moves, so they are the ones for the day being left.\n- **Front end:** a `setting-score-log` input and a `setting-score-log-current` display in the settings form. Any value other than `on` or blank is refused with `settings-error`.\n\n**The two failing scenarios**\n1. **Scenario 2, `acceptance.spec.ts:1299`:** the test expects a paused plan (paused on 2026-03-10, today 2026-03-10) to still list `2026-04-01` as a next date. In the current code a pause that hasn't been resumed hides every plan date from the pause onward, so it shows nothing (`PlanPause.skips`, `Plan.nextDates`).\n2. **Scenario 3, `acceptance.spec.ts:1472`:** the test expects reassigning Cam's draft claim dated 2026-02-25 to Ben to be refused. The app allows it. My guess at the cause: adding the same claim to Ben directly is refused because Ben's terms would make it due in the closed period P1. Reassign keeps the claim's existing due date, so that check never trips (`ClaimService.move`).\n\nI didn't change either behaviour. Making these pass means changing how a pause hides next dates, and whether reassign works out the due date again from the new person's terms. Both fixes would rest on my guesses, they are features outside this change request, and they could break whatever relies on the current rules. Do you want me to make those two changes so the whole spec passes?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7053596,
+        "num_turns": 18,
+        "duration_ms": 302195,
+        "duration_api_ms": 253568,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
