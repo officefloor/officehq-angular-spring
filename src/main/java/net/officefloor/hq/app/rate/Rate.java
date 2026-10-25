@@ -110,6 +110,19 @@ public class Rate {
         }
     }
 
+    /** The terms as kept (see {@link #terms}), for an older version to keep (see {@link RateVersion}). */
+    String getStoredTerms() {
+        return terms;
+    }
+
+    /** Brings back an older version: its percent, to-date and terms as kept. */
+    void restore(RateVersion older) {
+        this.pct = older.getPct();
+        this.to = older.getTo();
+        this.terms = older.getTerms();
+        this.version = older.getVersion();
+    }
+
     /** The terms the rate was saved with, newest first: the newest version alone, for every claim, when
      * it was not saved forward-only. */
     public List<Term> getTerms() {

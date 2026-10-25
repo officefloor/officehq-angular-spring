@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** An older version of a rate: the percent and to-date it had before a newer version replaced them. */
+/** An older version of a rate: the percent, to-date and terms it had before a newer version replaced them. */
 @Entity
 @Table(name = "rate_version")
 public class RateVersion {
@@ -30,6 +30,11 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The rate's terms while this version was its newest, as {@link Rate} keeps them; null when it
+     * applied to every claim. */
+    @Column(name = "terms", length = 4000)
+    private String terms;
+
     protected RateVersion() {
     }
 
@@ -38,6 +43,11 @@ public class RateVersion {
         this.version = version;
         this.pct = pct;
         this.to = to;
+    }
+
+    public RateVersion(Long rateId, int version, BigDecimal pct, LocalDate to, String terms) {
+        this(rateId, version, pct, to);
+        this.terms = terms;
     }
 
     public Long getId() {
@@ -58,5 +68,9 @@ public class RateVersion {
 
     public LocalDate getTo() {
         return to;
+    }
+
+    public String getTerms() {
+        return terms;
     }
 }

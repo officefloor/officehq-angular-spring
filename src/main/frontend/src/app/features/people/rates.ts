@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { Session } from '../../core/session';
 import { GradesService } from './grades.service';
 import { Grade } from './people.service';
-import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
+import { Rate, RatePreview, RateWithdrawn, RatesService, rateOn } from './rates.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -156,6 +156,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
               <th scope="col">To</th>
               <th scope="col">Rate (%)</th>
               <th scope="col">Versions</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -166,6 +167,14 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
                 <td data-testid="rate-to">{{ (r.to ?? '') | figure }}</td>
                 <td data-testid="rate-pct">{{ (r.pct) | figure }}</td>
                 <td data-testid="rate-version">{{ (r.version) | figure }}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid="rate-withdraw"
+                    [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
+                    (click)="withdraw(r)"
+                  >Withdraw</button>
+                </td>
               </tr>
             }
           </tbody>
@@ -193,6 +202,14 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
       text-align: left;
       font-weight: bold;
     }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
     th,
     td {
       text-align: left;
@@ -219,6 +236,8 @@ export class Rates {
   });
   /** A grade's rate was set. */
   readonly saved = output<Rate>();
+  /** A rate's newest version was withdrawn. */
+  readonly withdrawn = output<RateWithdrawn>();
 
   protected readonly grades = inject(GradesService).all;
   protected readonly grade = signal<Grade>('A');
@@ -240,6 +259,8 @@ export class Rates {
   private previewSeq = 0;
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private submitting = false;
+  /** A withdrawal is waiting for its answer; another meanwhile is ignored. */
+  private withdrawing = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -297,6 +318,25 @@ export class Rates {
       this.error.set('That rate could not be set.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Withdraw the rate's newest version: the one before it applies again, or the rate is gone. */
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.withdrawing) return;
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.withdrawing = true;
+    try {
+      const result = await this.service.withdraw(sheet, rate.grade, rate.from);
+      if (this.session.sheetId() !== sheet) return;
+      this.withdrawn.emit(result);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.error.set('That rate could not be withdrawn: only a steward can withdraw a rate.');
+    } finally {
+      this.withdrawing = false;
     }
   }
 

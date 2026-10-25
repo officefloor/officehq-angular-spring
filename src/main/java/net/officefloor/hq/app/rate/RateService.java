@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -16,6 +17,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -25,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time)
  * through its to-date (or with no end).
  * Setting a grade's rate for a from-date it already has a rate for adds a new version of that rate, which is
- * the one in force, and keeps the value it replaces as an older version. */
+ * the one in force, and keeps the value it replaces as an older version; a steward can withdraw the newest
+ * version, so the one before it applies again. */
 @Service
 public class RateService {
 
@@ -38,9 +42,11 @@ public class RateService {
     private final PersonRepository people;
     private final RateVersionRepository versions;
     private final GradeService grades;
+    private final SettingsService settings;
 
     public RateService(RateRepository rates, RateVersionRepository versions, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
-            ClaimRepository claims, PersonRepository people, GradeService grades) {
+            ClaimRepository claims, PersonRepository people, GradeService grades, SettingsService settings) {
+        this.settings = settings;
         this.grades = grades;
         this.versions = versions;
         this.chain = chain;
@@ -88,7 +94,7 @@ public class RateService {
             rate.setTerms(List.of(term));
             rate = rates.saveAndFlush(rate);
         } else {
-            versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
+            versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo(), rate.getStoredTerms()));
             rate.setVersion(rate.getVersion() + 1);
             List<Rate.Term> terms = new ArrayList<>();
             terms.add(term);
@@ -104,6 +110,40 @@ public class RateService {
         audit.change("RATE_SET", sheetId, user, fields.toArray(String[]::new));
         rollup.recordSince(sheetId, user, before);
         return rate;
+    }
+
+    /** Withdraws the newest version of the grade's rate from {@code from} (null: from the beginning of
+     * time): the version before it applies again, as it applied to claims; with none before it the rate is
+     * gone. The rate left, or empty when it is gone. Refused when the user is not a steward of the sheet,
+     * and when the grade has no such rate. */
+    @Transactional
+    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
+        if (!sheets.existsById(sheetId)) {
+            throw new SheetNotFoundException();
+        }
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new RateNotStewardException();
+        }
+        Rate rate = (from == null ? rates.findUndated(sheetId, grade)
+                : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElseThrow(RateNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Optional<RateVersion> older = versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1);
+        Optional<Rate> left;
+        if (older.isPresent()) {
+            rate.restore(older.get());
+            versions.delete(older.get());
+            left = Optional.of(rate);
+        } else {
+            versions.deleteAll(versions.findByRateIdOrderByVersionAsc(rate.getId()));
+            rates.delete(rate);
+            left = Optional.empty();
+        }
+        rates.flush();
+        List<String> fields = new ArrayList<>(List.of("grade=" + grade));
+        if (from != null) fields.add("from=" + from);
+        audit.change("RATE_WITHDRAWN", sheetId, user, fields.toArray(String[]::new));
+        rollup.recordSince(sheetId, user, before);
+        return left;
     }
 
     /** How many OPEN and PENDING claims would show a different due, and by how much in all (new minus

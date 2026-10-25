@@ -13,7 +13,7 @@ import { DescendantFigures, NO_DESCENDANTS, Grade, Patron, PeopleService, Person
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
-import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
+import { Graces, Lateness, Rate, RateWithdrawn, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
 import { Settings } from './settings';
 import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
@@ -122,7 +122,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-audit />
     <app-activity />
     <app-duplicates />
-    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" (saved)="rateSaved($event)" (withdrawn)="rateWithdrawn($event)" />
     <app-grades />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-dashboard [counts]="dashboard()" />
@@ -2635,6 +2635,13 @@ export class People {
     this.rates.update((list) => [
       ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== rate.grade || r.from !== rate.from),
       rate,
+    ]);
+  }
+
+  protected rateWithdrawn(withdrawn: RateWithdrawn): void {
+    this.rates.update((list) => [
+      ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== withdrawn.grade || r.from !== withdrawn.from),
+      ...(withdrawn.rate === null ? [] : [withdrawn.rate]),
     ]);
   }
 

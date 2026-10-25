@@ -48,6 +48,14 @@ export interface RatesImported {
   rates: Rate[];
 }
 
+/** A withdrawn rate's grade and from-date, and the rate left there: its version before, or null when
+ *  it had none and is gone. */
+export interface RateWithdrawn {
+  grade: Grade;
+  from: string | null;
+  rate: Rate | null;
+}
+
 /** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
 export interface RatePreview {
   count: number;
@@ -261,6 +269,17 @@ export class RatesService {
   importRates(sheet: string, text: string): Promise<RatesImported> {
     return firstValueFrom(
       this.http.post<RatesImported>(`${this.url(sheet)}/import`, { text }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Withdraw the newest version of the grade's rate from a date (null: from the beginning of time);
+   *  refused unless the user is a steward. */
+  withdraw(sheet: string, grade: Grade, from: string | null): Promise<RateWithdrawn> {
+    return firstValueFrom(
+      this.http.delete<RateWithdrawn>(`${this.url(sheet)}/${grade}`, {
+        params: from === null ? {} : { from },
+        headers: this.session.headers(),
+      }),
     );
   }
 

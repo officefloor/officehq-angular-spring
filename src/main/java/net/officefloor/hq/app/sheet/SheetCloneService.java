@@ -158,7 +158,7 @@ public class SheetCloneService {
             copy.setTerms(r.getTerms());
             Long copyId = rates.save(copy).getId();
             rateVersions.findByRateIdOrderByVersionAsc(r.getId()).forEach(v ->
-                    rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo())));
+                    rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo(), v.getTerms())));
         });
         holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new SheetHoliday(toSheetId, h.getDate())));
         retiredGrades.findBySheetIdOrderByGradeAsc(sheetId).forEach(g ->

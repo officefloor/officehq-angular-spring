@@ -14,6 +14,7 @@ import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetHistory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -106,6 +107,20 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+    }
+
+    /** A withdrawn rate's grade and from-date (null: from the beginning of time), and the rate left there:
+     * its version before, or null when it had none and is gone. */
+    public record WithdrawnView(String grade, LocalDate from, RateView rate) {
+    }
+
+    @DeleteMapping("/{grade}")
+    public WithdrawnView withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return new WithdrawnView(grade, from,
+                service.withdraw(sheetId.trim(), user.trim(), grade, from).map(RateView::of).orElse(null));
     }
 
     @PostMapping("/import")
