@@ -175,7 +175,8 @@ public class StatementService {
         if (figure == null || settled != null) {
             due = figure;
         } else if (status.isOpen() && !deferred) {
-            due = LateCharge.dueAsOpen(claim, figure, floor, asOf, dated::latePctOn, rounding);
+            due = LateCharge.dueAsOpen(claim, figure, floor, asOf, dated.graceOn(grade, claim.getDate()),
+                    dated::latePctOn, rounding);
         } else {
             due = LateCharge.floored(claim, figure, floor);
         }

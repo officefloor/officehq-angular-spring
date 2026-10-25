@@ -104,6 +104,10 @@ public class SettingController {
     public record GradeTermsForm(@Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
+    /** A grade's grace days as entered: whole days; none means no grace. */
+    public record GradeGraceForm(@Min(0) @Max(36500) Integer value, LocalDate from) {
+    }
+
     /** The late percent as entered. */
     public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
             LocalDate from) {
@@ -180,6 +184,18 @@ public class SettingController {
         Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
         service.setGradeTerms(id, SignedInUser.name(user), g, form.value(), form.from());
+        return view(id);
+    }
+
+    /** Set a grade's grace days, or clear them. */
+    @PutMapping("/settings/grace/{grade}")
+    public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Valid GradeGraceForm form) {
+        String id = sheetId.trim();
+        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        service.setGradeGrace(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
 

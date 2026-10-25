@@ -6,6 +6,7 @@ import { DatedValue, valueOn } from './dated';
 import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { SheetCap } from './sheet-cap';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
+import { SheetGrace } from './sheet-grace';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetPolicyDate } from './sheet-policy-date';
 
@@ -36,7 +37,9 @@ function settled(control: AbstractControl): void {
 // The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
 // least a claim's live due can be) and the terms (the business days after a claim's date it is due by, fixed when the
 // claim is added) and each grade's own terms (blank: the sheet's terms) and the late
-// percent (what an overdue claim gains of its figure for every full 30 days overdue) and the policy date
+// percent (what an overdue claim gains of its figure for every full 30 days overdue) and each grade's grace
+// (days after a claim's due-by, its person's grade on its date having them then, before it is overdue and its
+// late charge counts; blank: none) and the policy date
 // (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today) and period
 // numbering from (once the sheet's today reaches it, a claim opened is numbered within its period; blank: off) and the cap
 // (the most a person's due-total can be; blank: no cap) and the proof threshold (a claim whose due is above
@@ -44,7 +47,7 @@ function settled(control: AbstractControl): void {
 // A steward can delegate the steward role to a user from a date (blank: the sheet's today) to a date, inclusive;
 // while the sheet's today is inside the range the user acts as a steward.
 // The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the late
-// percent, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
+// percent, each grade's grace, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
 // the sheet's today.
 // The permission matrix names, for each of open, settle, void, reassign, close and reopen, the roles that
@@ -87,6 +90,13 @@ function settled(control: AbstractControl): void {
         <label for="setting-late-pct-from">Late percent from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-late-pct-from" data-testid="setting-late-pct-from" formControlName="latePctFrom" />
         <p>Late percent now: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></p>
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace of grade {{ g }} (days after a claim's due-by before it is overdue; blank: none)</label>
+          <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControl]="gradeGraceForm.controls[g]" inputmode="numeric" />
+          <label [for]="'setting-grace-' + g + '-from'">Grace of grade {{ g }} from (yyyy-mm-dd; blank: the sheet's today)</label>
+          <input [id]="'setting-grace-' + g + '-from'" [attr.data-testid]="'setting-grace-' + g + '-from'" [formControl]="gradeGraceFromForm.controls[g]" />
+          <p>Grace of grade {{ g }} now: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ now('grace-' + g) ?? '' }}</span></p>
+        }
         <label for="setting-policy-date">Policy date (yyyy-mm-dd; claims dated before it round half up, on or after it half to even; blank: the sheet's today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
         <p>Policy date now: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
@@ -184,6 +194,7 @@ export class Settings {
   private readonly sheetLatePct = inject(SheetLatePct);
   private readonly sheetPolicyDate = inject(SheetPolicyDate);
   private readonly sheetCap = inject(SheetCap);
+  private readonly sheetGrace = inject(SheetGrace);
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
@@ -196,7 +207,7 @@ export class Settings {
   /** By key, the values the dated settings take from their from-dates. */
   private readonly dated = signal<Partial<Record<string, DatedValue[]>>>({});
   /** The value of a dated setting in force on the sheet's today, or null when it has none. */
-  private now(key: string): string | null {
+  protected now(key: string): string | null {
     return valueOn(this.dated()[key] ?? [], this.session.sheet()?.today);
   }
   protected readonly clerkLimit = computed(() => this.now('clerk-limit'));
@@ -246,6 +257,18 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   } satisfies Record<Grade, FormControl<string>>);
+  /** Each grade's grace days, a field per grade; part of the settings form. */
+  protected readonly gradeGraceForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  } satisfies Record<Grade, FormControl<string>>);
+  /** The date each grade's grace days are recorded from, a field per grade; blank: the sheet's today. */
+  protected readonly gradeGraceFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  } satisfies Record<Grade, FormControl<string>>);
   /** The roles that may take each action, a field per action; part of the settings form. */
   protected readonly permissionsForm = new FormGroup({
     open: new FormControl('', { nonNullable: true }),
@@ -275,6 +298,8 @@ export class Settings {
     this.settingsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+    this.gradeGraceForm.valueChanges.subscribe(() => this.settingsError.set(''));
+    this.gradeGraceFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     this.delegateForm.valueChanges.subscribe(() => this.delegateError.set(''));
@@ -291,6 +316,10 @@ export class Settings {
       this.gradeTermsForm.markAsUntouched();
       this.gradeTermsFromForm.markAsPristine();
       this.gradeTermsFromForm.markAsUntouched();
+      this.gradeGraceForm.markAsPristine();
+      this.gradeGraceForm.markAsUntouched();
+      this.gradeGraceFromForm.markAsPristine();
+      this.gradeGraceFromForm.markAsUntouched();
       this.permissionsForm.markAsPristine();
       this.permissionsForm.markAsUntouched();
       if (sheet) void this.reload(sheet.id);
@@ -322,6 +351,7 @@ export class Settings {
       { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
       { label: 'note threshold', control: noteThresholdFrom },
       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
+      ...GRADES.map((g) => ({ label: `grace of grade ${g}`, control: this.gradeGraceFromForm.controls[g] })),
     ];
     for (const { label, control } of froms) {
       const from = control.value.trim();
@@ -360,6 +390,14 @@ export class Settings {
     for (const { grade, control, from, value } of gradeTermsValues) {
       if (dirty(control, from) && value !== '' && (!DAYS.test(value) || Number(value) > 36500)) {
         this.settingsError.set(`Type the terms of grade ${grade} as a whole number of business days, from 0 to 36500, or leave them blank for the sheet's terms.`);
+        return;
+      }
+    }
+    const gradeGraceValues = GRADES.map((g) => ({ grade: g, control: this.gradeGraceForm.controls[g],
+      from: this.gradeGraceFromForm.controls[g], value: this.gradeGraceForm.controls[g].value.trim() }));
+    for (const { grade, control, from, value } of gradeGraceValues) {
+      if (dirty(control, from) && value !== '' && (!DAYS.test(value) || Number(value) > 36500)) {
+        this.settingsError.set(`Type the grace of grade ${grade} as a whole number of days, from 0 to 36500, or leave it blank for none.`);
         return;
       }
     }
@@ -436,6 +474,13 @@ export class Settings {
         settled(latePctFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      for (const { grade, control, from, value } of gradeGraceValues) {
+        if (!dirty(control, from)) continue;
+        const settings = await this.api.setGradeGrace(sheet.id, grade, value === '' ? null : Number(value), fromOf(from));
+        settled(control);
+        settled(from);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(policyDate)) {
         const settings = await this.api.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue);
         settled(policyDate);
@@ -495,13 +540,14 @@ export class Settings {
     return own === null ? this.terms() : Number(own);
   }
 
-  /** Show the settings as the store answered them, and share the dated floor, late percent and cap, and
+  /** Show the settings as the store answered them, and share the dated floor, late percent, cap and grades' grace, and
    *  the policy date, with the screens showing them. */
   private show(settings: SettingsView): void {
     this.dated.set(settings.dated);
     this.sheetFloor.history.set(settings.dated['floor'] ?? []);
     this.sheetLatePct.history.set(settings.dated['late-pct'] ?? []);
     this.sheetCap.history.set(settings.dated['cap'] ?? []);
+    this.sheetGrace.history.set(Object.fromEntries(GRADES.map((g) => [g, settings.dated[`grace-${g}`] ?? []])));
     this.policyDate.set(settings.policyDate);
     this.sheetPolicyDate.date.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);

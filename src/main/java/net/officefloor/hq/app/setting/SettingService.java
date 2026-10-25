@@ -43,6 +43,11 @@ public class SettingService implements ActingFor {
     /** The terms of a sheet that has not set them, in business days. */
     public static final int DEFAULT_TERMS = 14;
 
+    /** The prefix of a grade's grace days, set under grace-<grade>: a claim whose person's grade in force on
+     *  its date has grace days in force on that date is overdue only once its due-by plus them is before the
+     *  sheet's today, and its late charge counts from then; no value means none. Dated. */
+    public static final String GRACE = "grace";
+
     /** The key of the late percent: what an overdue claim gains of its figure for every full 30 days
      *  overdue; the sheet starts at {@link #DEFAULT_LATE_PCT}. */
     public static final String LATE_PCT = "late-pct";
@@ -176,6 +181,21 @@ public class SettingService implements ActingFor {
     @Transactional
     public Integer setGradeTerms(String sheetId, String user, Grade grade, Integer days, LocalDate from) {
         record(sheetId, user, termsKey(grade), days == null ? "" : days.toString(), from);
+        return days;
+    }
+
+    /** The key of a grade's grace days. */
+    public static String graceKey(Grade grade) {
+        return GRACE + "-" + grade.name();
+    }
+
+    /** Record a grade's grace days from a date; null clears them from then. The late charges and overdue
+     *  claims it moves are audited after it. */
+    @Transactional
+    public Integer setGradeGrace(String sheetId, String user, Grade grade, Integer days, LocalDate from) {
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        record(sheetId, user, graceKey(grade), days == null ? "" : days.toString(), from);
+        rollup.recordChanges(user, before);
         return days;
     }
 

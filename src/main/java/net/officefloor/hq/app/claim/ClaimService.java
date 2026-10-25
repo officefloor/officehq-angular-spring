@@ -456,7 +456,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal old = claim.getSettledDue();
         BigDecimal dueNow = LateCharge.dueAsOpen(claim, dueNow(sheetId, person, claim),
-                settings.floor(sheetId, claim.getDate()), sheets.today(sheetId),
+                settings.floor(sheetId, claim.getDate()), sheets.today(sheetId), grace(sheetId, person, claim),
                 settings.dated(sheetId)::latePctOn, rounding(sheetId, claim));
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setSettledDue(dueNow);
@@ -623,8 +623,13 @@ public class ClaimService {
      *  is never bound by a statement; a correction has no floor); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         return LateCharge.dueOf(claim, figure(sheetId, person, claim), settings.floor(sheetId, claim.getDate()),
-                sheets.today(sheetId),
+                sheets.today(sheetId), grace(sheetId, person, claim),
                 settings.dated(sheetId)::latePctOn, rounding(sheetId, claim));
+    }
+
+    /** The grace days of the person's grade in force on the claim's date, in force on that date; 0 when none. */
+    private int grace(String sheetId, Person person, Claim claim) {
+        return settings.dated(sheetId).graceOn(person.gradeOn(claim.getDate()), claim.getDate());
     }
 
     /** The figure under the claim's due, before any late charge and floor: the due fixed when it was settled, else the figure

@@ -106,10 +106,11 @@ public class Rollup {
                 Grade grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
                 BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding);
+                int grace = values.graceOn(grade, claim.getDate());
                 BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,
-                        values::latePctOn, rounding);
+                        grace, values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
-                if (owed != null && isOverdue(claim, today)) overdue = overdue.add(owed);
+                if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }
@@ -156,9 +157,11 @@ public class Rollup {
         }
     }
 
-    /** Whether the claim is overdue: open and not deferred, with its due-by before the sheet's today. */
-    private static boolean isOverdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null && claim.getDueBy().isBefore(today);
+    /** Whether the claim is overdue: open and not deferred, with its due-by plus the grace days of its
+     *  person's grade before the sheet's today. */
+    private static boolean isOverdue(Claim claim, int grace, LocalDate today) {
+        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null
+                && LateCharge.lateFrom(claim, grace).isBefore(today);
     }
 
     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's

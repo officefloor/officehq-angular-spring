@@ -6,6 +6,7 @@ import { PeriodView, periodOf } from '../periods/periods-api';
 import { GradeView, gradeOn } from '../people/people-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { ClaimEditors } from './claim-editors';
@@ -127,6 +128,7 @@ export class PersonClaims {
   private readonly editors = inject(ClaimEditors);
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
+  private readonly sheetGrace = inject(SheetGrace);
   private readonly policyDate = inject(SheetPolicyDate);
 
   readonly personId = input.required<number>();
@@ -198,13 +200,19 @@ export class PersonClaims {
     const grade = gradeOn(this.grades(), claim.date);
     const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.centsOn(claim.date),
       { today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
+        grace: (c: ClaimView) => this.graceOf(c),
         policyDate: this.policyDate.date() ?? this.session.sheet()?.today }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
 
-  /** Whether the claim is open and its due-by is before the sheet's today. */
+  /** Whether the claim is open and its due-by plus its grace days is before the sheet's today. */
   protected overdue(claim: ClaimView): boolean {
-    return isOverdue(claim, this.session.sheet()?.today);
+    return isOverdue(claim, this.session.sheet()?.today, this.graceOf(claim));
+  }
+
+  /** The grace days of the claim: those of the person's grade in force on its date, in force on that date. */
+  private graceOf(claim: ClaimView): number {
+    return this.sheetGrace.daysOn(gradeOn(this.grades(), claim.date), claim.date);
   }
 
   /** Whether the claim is OPEN and deferred until a date the sheet's today has not reached. */

@@ -198,28 +198,37 @@ function dateOfEpochDay(day: number): string {
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-/** Whether the claim is overdue: open and not deferred, with its due-by before the sheet's today. */
-export function isOverdue(claim: ClaimView, today: string | undefined): boolean {
-  return isOpen(claim) && !isDeferred(claim, today) && today !== undefined && claim.dueBy < today;
+/** The date the claim's lateness counts from: its due-by plus `graceDays` (those of its person's grade in
+ *  force on its date); the due-by shown is unchanged. */
+export function lateFrom(claim: ClaimView, graceDays: number): string {
+  return dateOfEpochDay(epochDay(claim.dueBy) + graceDays);
+}
+
+/** Whether the claim is overdue: open and not deferred, with its due-by plus `graceDays` before the sheet's today. */
+export function isOverdue(claim: ClaimView, today: string | undefined, graceDays = 0): boolean {
+  return isOpen(claim) && !isDeferred(claim, today) && today !== undefined && lateFrom(claim, graceDays) < today;
 }
 
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
-/** What the late charge depends on: the sheet's today and its late percent in force on a date; and the
- *  policy date in force (the sheet's, else its today) that decides how a claim's figures round. */
+/** What the late charge depends on: the sheet's today and its late percent in force on a date; the grace
+ *  days of a claim (its person's grade's, in force on its date); and the policy date in force (the sheet's,
+ *  else its today) that decides how a claim's figures round. */
 export interface Lateness {
   today: string | undefined;
   latePct: (date: string) => string;
+  grace: (claim: ClaimView) => number;
   policyDate: string | undefined;
 }
 
 /** The late charge on the claim of `figureCents`, in cents: for every full 30 days the claim is overdue, the
- *  late percent in force on that boundary (its due-by plus 30, 60, 90 ... days) of the figure, rounded like its
+ *  late percent in force on that boundary (its due-by plus its grace days plus 30, 60, 90 ... days) of the figure, rounded like its
  *  due, added up; none unless it is overdue, and none on a correction. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
-  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today)) return 0;
-  const dueBy = epochDay(claim.dueBy);
+  const grace = late.grace(claim);
+  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today, grace)) return 0;
+  const dueBy = epochDay(claim.dueBy) + grace;
   const steps = Math.floor((epochDay(late.today) - dueBy) / DAYS_PER_CHARGE);
   let charge = 0;
   for (let step = 1; step <= steps; step++) {

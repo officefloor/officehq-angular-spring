@@ -11,6 +11,7 @@ import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { StatementView, StatementsApi } from '../statements/statements-api';
@@ -248,11 +249,13 @@ export class People {
   private readonly floor = inject(SheetFloor);
   private readonly cap = inject(SheetCap);
   private readonly latePct = inject(SheetLatePct);
+  private readonly sheetGrace = inject(SheetGrace);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
     ({ today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
+      grace: (claim: ClaimView) => this.graceOf(claim),
       policyDate: this.policyDate.date() ?? this.session.sheet()?.today }));
 
   protected readonly grades = GRADES;
@@ -320,13 +323,15 @@ export class People {
     const today = this.session.sheet()?.today;
     for (const c of this.claims()) {
       const person = byId.get(c.personId);
-      if (person === undefined || !this.countsLive(c) || !isOverdue(c, today)) continue;
+      if (person === undefined || !this.countsLive(c) || !isOverdue(c, today, this.graceOf(c))) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });
     }
     return by;
   });
+  /** Each person's grades, by id. */
+  private readonly gradesById = computed(() => new Map(this.people().map((p) => [p.id, p.grades])));
   /** Each person's open (PENDING included) claims that count, by person: the sum of their figures in
    *  cents, skipping those that are n/a, split by the claim's age in days on the sheet's today — 0 to 30
    *  (a claim dated after today included), 31 to 60, and 61 or more. */
@@ -752,6 +757,12 @@ export class People {
     } finally {
       this.holding.set(null);
     }
+  }
+
+  /** The grace days of the claim: those of its person's grade in force on its date, in force on that date. */
+  private graceOf(claim: ClaimView): number {
+    const grades = this.gradesById().get(claim.personId);
+    return grades === undefined ? 0 : this.sheetGrace.daysOn(gradeOn(grades, claim.date), claim.date);
   }
 
   /** The person's overdue claims that count: how many, and the sum of their figures in cents. */

@@ -55,7 +55,7 @@ export interface SettingsView {
   proofThreshold: string | null;
   /** The due above which a claim needs a note to be opened, with two decimals, or null when there is none. */
   noteThreshold: string | null;
-  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold,
+  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold,
    *  note-threshold) take
    *  from their from-dates, in date order. */
   dated: Partial<Record<string, DatedValue[]>>;
@@ -116,6 +116,11 @@ export class SettingsApi {
   /** Record a grade's own terms, in days, from a date (null: the sheet's today); null clears them from then, leaving the sheet's terms. */
   setGradeTerms(sheetId: string, grade: Grade, value: number | null, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms/${grade}`, { value, from }));
+  }
+
+  /** Record a grade's grace days from a date (null: the sheet's today); null clears them from then. */
+  setGradeGrace(sheetId: string, grade: Grade, value: number | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/grace/${grade}`, { value, from }));
   }
 
   /** Record the late percent from a date (null: the sheet's today). */

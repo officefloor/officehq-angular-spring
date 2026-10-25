@@ -13,7 +13,7 @@ import net.officefloor.hq.app.person.Grade;
  * their from-dates, in date order. The value in force on a date is the one of the latest from-date on or
  * before it; before every from-date, and from a blank value, a key has its starting value (the floor
  * {@link SettingService#DEFAULT_FLOOR}, the late percent {@link SettingService#DEFAULT_LATE_PCT}, the terms
- * {@link SettingService#DEFAULT_TERMS}; none for the clerk limit, the proof threshold, the note threshold, the cap and a grade's own terms).
+ * {@link SettingService#DEFAULT_TERMS}; none for the clerk limit, the proof threshold, the note threshold, the cap, a grade's own terms and a grade's grace days).
  */
 public final class DatedSettings {
 
@@ -103,6 +103,12 @@ public final class DatedSettings {
     public Integer gradeTermsOn(Grade grade, LocalDate date) {
         String value = on(SettingService.termsKey(grade), date);
         return value == null ? null : Integer.valueOf(value);
+    }
+
+    /** The grade's grace days in force on the date, or 0 when it has none then (no grade has none). */
+    public int graceOn(Grade grade, LocalDate date) {
+        String value = grade == null ? null : on(SettingService.graceKey(grade), date);
+        return value == null ? 0 : Integer.parseInt(value);
     }
 
     /** The terms of a grade in force on the date: its own, else the sheet's (no grade has the sheet's). */
