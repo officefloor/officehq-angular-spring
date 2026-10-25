@@ -62,6 +62,8 @@ export interface PersonView {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased, or null when they have none. */
   contact: string | null;
+  /** The other names the person is found by, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
@@ -140,6 +142,12 @@ export class PeopleApi {
    *  for someone already their patron. */
   addPatron(sheetId: string, id: number, patronId: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/patrons`, { patronId }));
+  }
+
+  /** Give the person another name they are found by; refused when blank, or when it equals, as names
+   *  are compared, any name or alias on the sheet. */
+  addAlias(sheetId: string, id: number, alias: string): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/aliases`, { alias }));
   }
 
   /** Start (true) or stop (false) the signed-in user watching the person. */

@@ -183,7 +183,7 @@ import { PasteClaims } from '../claims/paste-claims';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -193,6 +193,14 @@ import { PasteClaims } from '../claims/paste-claims';
                     (change)="selectPerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
                 </td>
                 <td data-testid="person-name">{{ p.name }}</td>
+                <td>
+                  <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                  <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                  <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input" #aliasInput
+                    (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                    [disabled]="addingAlias() === p.id" [attr.aria-label]="'Add an alias for ' + p.name">Add alias</button>
+                </td>
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -335,6 +343,8 @@ export class People {
   protected readonly shownPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
   /** The person being retired. */
   protected readonly retiring = signal<number | null>(null);
+  /** The person an alias is being added to. */
+  protected readonly addingAlias = signal<number | null>(null);
   /** The person a patron is being added to. */
   protected readonly addingPatron = signal<number | null>(null);
   /** The refusal of the last patron added on a person's row, shown on that row. */
@@ -794,6 +804,33 @@ export class People {
 
   protected clearPatronError(personId: number): void {
     if (this.patronError()?.id === personId) this.patronError.set(null);
+  }
+
+  /** Give the person the alias typed in the row's entry; a blank one is refused. */
+  protected async addAlias(person: PersonView, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.addingAlias() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const alias = input.value.trim();
+    if (alias === '') {
+      this.personError.set({ id: person.id, message: 'Type an alias.' });
+      return;
+    }
+    this.addingAlias.set(person.id);
+    try {
+      const changed = await this.api.addAlias(sheet.id, person.id, alias);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+      input.value = '';
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'That alias is already a name or alias on the sheet.' : 'The alias could not be added.' });
+      }
+    } finally {
+      this.addingAlias.set(null);
+    }
   }
 
   /** Name the person chosen in the row's select as the person's patron. */

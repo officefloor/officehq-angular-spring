@@ -73,7 +73,7 @@ public class PasteClaimsService {
         if (fields.length < 2) throw refused(number, "it needs at least a name and an amount");
         String name = fields[0].trim();
         Person person = name.isEmpty() ? null
-                : people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name)).orElse(null);
+                : people.findByNameOrAlias(sheetId, Person.keyOf(name)).orElse(null);
         if (person == null) throw refused(number, "no one on the sheet is named '" + name + "'");
         BigDecimal amount;
         try {

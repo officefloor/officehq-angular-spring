@@ -26,15 +26,17 @@ public class PersonService {
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
+    private final PersonAliasRepository aliases;
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            SheetService sheets, Rollup rollup, Audit audit) {
+            PersonAliasRepository aliases, SheetService sheets, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
+        this.aliases = aliases;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -140,7 +142,8 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact) {
         sheets.load(sheetId);
-        if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))) {
+        if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
         String contactKey = Person.contactOf(contact);
@@ -170,7 +173,8 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw changedMeanwhile();
         }
-        if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)) {
+        if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
         String contactKey = Person.contactOf(contact);
@@ -188,6 +192,26 @@ public class PersonService {
         recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
                 + (contactChanged ? " contact=" + (contactKey == null ? "" : contactKey) : ""));
         rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Give a person another name they are found by; refused when blank, or when it equals, as names
+     *  are compared, any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long id, String alias) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (alias == null || alias.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an alias.");
+        }
+        String key = Person.keyOf(alias);
+        if (people.existsBySheetIdAndNameKey(sheetId, key) || aliases.existsBySheetIdAndAliasKey(sheetId, key)) {
+            throw nameInUse();
+        }
+        person.addAlias(alias);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " alias=" + alias.trim());
         return saved;
     }
 

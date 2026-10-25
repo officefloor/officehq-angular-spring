@@ -33,4 +33,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     /** The person on the sheet with this name key, if any. */
     Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+
+    /** The person on the sheet with this key as their name or as one of their aliases, if any. */
+    @Query("select distinct p from Person p left join p.aliases a where p.sheetId = :sheetId"
+            + " and (p.nameKey = :key or a.aliasKey = :key)")
+    Optional<Person> findByNameOrAlias(@Param("sheetId") String sheetId, @Param("key") String key);
 }

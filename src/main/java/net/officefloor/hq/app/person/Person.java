@@ -61,6 +61,11 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private Set<PersonHold> holds = new LinkedHashSet<>();
 
+    /** The other names the person is found by. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private Set<PersonAlias> aliases = new LinkedHashSet<>();
+
     /** The person's own terms, in days; null when they have none and use their grade's, else the sheet's. */
     @Column(name = "terms")
     private Integer terms;
@@ -211,6 +216,17 @@ public class Person {
      *  given (madeOn). */
     public void hold(LocalDate from, LocalDate to, LocalDate madeOn) {
         holds.add(new PersonHold(from, to, madeOn));
+    }
+
+    /** The person's aliases, sorted as names are compared. */
+    public List<String> getAliases() {
+        return aliases.stream().sorted(Comparator.comparing(PersonAlias::getAliasKey))
+                .map(PersonAlias::getAlias).toList();
+    }
+
+    /** Give the person another name they are found by, stored without its surrounding spaces. */
+    public void addAlias(String alias) {
+        aliases.add(new PersonAlias(sheetId, alias));
     }
 
     public Integer getTerms() {

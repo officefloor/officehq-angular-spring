@@ -42,7 +42,7 @@ public class PersonController {
      *  user watches them. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
-            List<Long> patronIds, boolean watched, Integer terms, String contact) {
+            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched) {
             return of(person, List.of(), today, watched);
@@ -55,7 +55,7 @@ public class PersonController {
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
                     person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact());
+                    watched, person.getTerms(), person.getContact(), person.getAliases());
         }
     }
 
@@ -76,6 +76,10 @@ public class PersonController {
 
     /** The person named as a patron. */
     public record PatronForm(@NotNull Long patronId) {
+    }
+
+    /** Another name the person is to be found by. */
+    public record AliasForm(@Size(max = 200) String alias) {
     }
 
     /** Whether the signed-in user is to watch the person. */
@@ -169,6 +173,13 @@ public class PersonController {
     public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PatronForm form) {
         return view(service.addPatron(sheetId.trim(), SignedInUser.name(user), id, form.patronId()), user);
+    }
+
+    /** Give a person another name they are found by. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid AliasForm form) {
+        return view(service.addAlias(sheetId.trim(), SignedInUser.name(user), id, form.alias()), user);
     }
 
     /** Start or stop the signed-in user watching a person. */

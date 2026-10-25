@@ -72,7 +72,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
-          <span>Deferred <span data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</span></span>
+          <span>Deferred <span data-testid="claim-deferred">{{ deferredShown(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
@@ -267,6 +267,13 @@ export class PersonClaims {
   /** Whether the claim is OPEN and deferred until a date the sheet's today has not reached. */
   protected deferred(claim: ClaimView): boolean {
     return isDeferred(claim, this.session.sheet()?.today);
+  }
+
+  /** Whether the row shows the claim as deferred: deferred until a date the sheet's today has not
+   *  reached, whatever its status now. */
+  protected deferredShown(claim: ClaimView): boolean {
+    const today = this.session.sheet()?.today;
+    return claim.deferredUntil !== null && today !== undefined && today < claim.deferredUntil;
   }
 
   /** The name of the period whose dates contain the claim's due-by, or blank when none does. */
