@@ -155,10 +155,17 @@ export interface DescendantFigures {
   overdueTotal: string;
   gradeDueTotals: Partial<Record<string, string>>;
   statusCounts: Partial<Record<string, number>>;
+  /** Each descendant person's due-total (n/a ones left out), so the tree's can be trimmed once over all. */
+  dueFigures: string[];
+  /** Each descendant person's overdue-total. */
+  overdueFigures: string[];
+  /** Each descendant person's name keys: their name's, then their aliases'. */
+  nameKeys: string[][];
 }
 
 /** The figures of a sheet without descendants. */
-export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
+export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {},
+  dueFigures: [], overdueFigures: [], nameKeys: [] };
 
 // The people kept on a sheet, read from and written to the server.
 @Injectable({ providedIn: 'root' })

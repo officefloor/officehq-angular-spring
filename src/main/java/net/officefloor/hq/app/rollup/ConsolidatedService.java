@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,10 +28,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A sheet's descendants (its children — the sheets naming it as their parent — their children, and so
- * on) and their figures added up: the number of people on them (retired ones included) and each one's
- * due-total and overdue-total as that sheet shows it; per grade, the due-totals of the people on it on
+ * on) and their figures added up: the number of people on them (retired ones included), each person counted
+ * once over the tree (people whose names or aliases match, as names are compared, are one person), and
+ * each one's due-total and overdue-total as that sheet shows it, the single highest and lowest person's
+ * figure over all of them left out when three or more have one; per grade, the due-totals of the people on it on
  * their sheet's today (retired people left out, a due-total of n/a skipped); and per status, the number of
- * claims in it. The screen adds the sheet's own figures to give the consolidated figures.
+ * claims in it. The screen adds the sheet's own people in, trimming once over the whole tree, to give the
+ * consolidated figures.
  */
 @Service
 public class ConsolidatedService {
@@ -43,16 +47,22 @@ public class ConsolidatedService {
             ClaimStatus.PENDING, ClaimStatus.SETTLED, ClaimStatus.VOID, ClaimStatus.REVIEW);
 
     /** The descendants' figures added up, with two decimals; all zero when the sheet has no children.
-     * {@code gradeDueTotals} by grade, {@code statusCounts} by status. */
+     * {@code peopleCount} counts each person once over them (people whose names or aliases match, as names
+     * are compared, are one person); {@code dueTotal} and {@code overdueTotal} leave out the single highest
+     * and lowest person's figure over all of them when three or more have one. {@code gradeDueTotals} by
+     * grade, {@code statusCounts} by status. So that the screen can add the sheet's own people in, each
+     * person's due-total ({@code dueFigures}, n/a ones left out), overdue-total ({@code overdueFigures}) and
+     * name keys, their name's then their aliases' ({@code nameKeys}). */
     public record Figures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts) {
+            Map<String, Integer> statusCounts, List<String> dueFigures, List<String> overdueFigures,
+            List<List<String>> nameKeys) {
     }
 
     /** Figures being added up over sheets. */
     private static final class Sum {
-        private int count;
-        private BigDecimal due = BigDecimal.ZERO.setScale(2);
-        private BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        private final List<BigDecimal> due = new ArrayList<>();
+        private final List<BigDecimal> overdue = new ArrayList<>();
+        private final List<List<String>> keys = new ArrayList<>();
         private final Map<String, BigDecimal> grades = new LinkedHashMap<>();
         private final Map<String, Integer> statuses = new LinkedHashMap<>();
 
@@ -62,9 +72,16 @@ public class ConsolidatedService {
         }
 
         void add(RollupService.Snapshot snapshot, List<Person> everyone, List<Claim> claims, LocalDate today) {
-            count += snapshot.people().size();
-            due = due.add(new BigDecimal(snapshot.dueTotal()));
-            overdue = overdue.add(new BigDecimal(snapshot.overdueTotal()));
+            for (Person person : everyone) {
+                RollupService.Figures shown = snapshot.people().get(person.getId());
+                if (shown == null) continue;
+                if (!RollupService.NONE.equals(shown.dueTotal())) due.add(new BigDecimal(shown.dueTotal()));
+                overdue.add(new BigDecimal(shown.overdueTotal()));
+                List<String> personKeys = new ArrayList<>();
+                personKeys.add(Person.keyOf(person.getName()));
+                person.getAliases().forEach(a -> personKeys.add(Person.keyOf(a)));
+                keys.add(personKeys);
+            }
             for (Person person : everyone) {
                 if (person.isRetired()) continue;
                 RollupService.Figures figures = snapshot.people().get(person.getId());
@@ -79,8 +96,38 @@ public class ConsolidatedService {
         Figures figures() {
             Map<String, String> gradeTotals = new LinkedHashMap<>();
             grades.forEach((g, sum) -> gradeTotals.put(g, sum.toPlainString()));
-            return new Figures(count, due.toPlainString(), overdue.toPlainString(), gradeTotals, Map.copyOf(statuses));
+            return new Figures(distinctPeople(keys), RollupService.trimmedSum(due).toPlainString(),
+                    RollupService.trimmedSum(overdue).toPlainString(), gradeTotals, Map.copyOf(statuses),
+                    due.stream().map(BigDecimal::toPlainString).toList(),
+                    overdue.stream().map(BigDecimal::toPlainString).toList(), List.copyOf(keys));
         }
+    }
+
+    /** How many people there are among those with the name keys given, people sharing a key (directly or
+     * through others) being one person. */
+    static int distinctPeople(List<List<String>> keys) {
+        int[] group = new int[keys.size()];
+        for (int i = 0; i < group.length; i++) group[i] = i;
+        Map<String, Integer> firstWith = new HashMap<>();
+        int count = keys.size();
+        for (int i = 0; i < keys.size(); i++) {
+            for (String key : keys.get(i)) {
+                Integer other = firstWith.putIfAbsent(key, i);
+                if (other == null) continue;
+                int a = root(group, i);
+                int b = root(group, other);
+                if (a != b) {
+                    group[a] = b;
+                    count--;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int root(int[] group, int i) {
+        while (group[i] != i) i = group[i] = group[group[i]];
+        return i;
     }
 
     private final SheetRepository sheets;

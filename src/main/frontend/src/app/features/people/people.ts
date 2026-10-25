@@ -1364,10 +1364,19 @@ export class People {
     const own = !this.session.asOf();
     const people = own ? this.summaryPeople().filter((p) => !p.retired) : [];
     const claims = own ? this.claims() : [];
+    const ownPeople = own ? this.people() : [];
+    // The trim applies once over every person of the tree; a person is counted once across it.
+    const due = [
+      ...ownPeople.map((p) => this.dueCentsOf(p)).filter((c): c is number => c !== null),
+      ...(d.dueFigures ?? []).map(cents),
+    ];
+    const overdue = [...ownPeople.map((p) => this.overdueOf(p).cents), ...(d.overdueFigures ?? []).map(cents)];
     return {
-      peopleCount: (own ? this.people().length : 0) + d.peopleCount,
-      dueTotal: own ? money(cents(this.dueTotal()) + cents(d.dueTotal)) : d.dueTotal,
-      overdueTotal: own ? money(this.overdueTotal().cents + cents(d.overdueTotal)) : d.overdueTotal,
+      peopleCount: own
+        ? distinctPeople([...ownPeople.map((p) => [p.name, ...p.aliases].map(nameKey)), ...(d.nameKeys ?? [])])
+        : d.peopleCount,
+      dueTotal: own ? money(trimmedSum(due)) : d.dueTotal,
+      overdueTotal: own ? money(trimmedSum(overdue)) : d.overdueTotal,
       grades: GRADES.map((grade) => ({
         grade,
         dueTotal: money(
@@ -2895,6 +2904,31 @@ type SortKey = (typeof SORT_KEYS)[number];
 function compareKeys(a: string | number | null, b: string | number | null): number {
   if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** How many people there are among those with the name keys given, people sharing a key (directly or
+ *  through others) being one person. */
+function distinctPeople(keys: string[][]): number {
+  const group = keys.map((_, i) => i);
+  const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i])));
+  const firstWith = new Map<string, number>();
+  let count = keys.length;
+  keys.forEach((personKeys, i) => {
+    for (const key of personKeys) {
+      const other = firstWith.get(key);
+      if (other === undefined) {
+        firstWith.set(key, i);
+        continue;
+      }
+      const a = root(i);
+      const b = root(other);
+      if (a !== b) {
+        group[a] = b;
+        count--;
+      }
+    }
+  });
+  return count;
 }
 
 function nameKey(name: string): string {
