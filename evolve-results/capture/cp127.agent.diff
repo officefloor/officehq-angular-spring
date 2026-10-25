@@ -1,0 +1,63 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 56fdba52..0f980aa4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -41,7 +41,8 @@ import { Consolidated } from '../summary/consolidated';
+   imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList],
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+-      [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
++      [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
++      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
+     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
+       [ownOverdueTotal]="money(sheetOverdue().cents)" />
+     @if (session.sheet()) {
+@@ -434,6 +435,15 @@ export class People {
+     for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+     return by;
+   });
++  /** The person on the sheet with the signed-in user's name, by name or alias as names are compared
++   *  (without surrounding spaces or regard to case); null when there is none. */
++  protected readonly me = computed(() => {
++    const user = this.session.user();
++    if (user === null) return null;
++    const key = (name: string) => name.trim().toLowerCase();
++    const mine = key(user);
++    return this.people().find((p) => key(p.name) === mine || p.aliases.some((a) => key(a) === mine)) ?? null;
++  });
+   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
+   protected readonly sheetDueTotal = computed(() => {
+     const figures: number[] = [];
+diff --git a/src/main/frontend/src/app/features/summary/sheet-header.ts b/src/main/frontend/src/app/features/summary/sheet-header.ts
+index 091aec4b..5cb68d6e 100644
+--- a/src/main/frontend/src/app/features/summary/sheet-header.ts
++++ b/src/main/frontend/src/app/features/summary/sheet-header.ts
+@@ -2,7 +2,8 @@ import { Component, input } from '@angular/core';
+ import { StatusSummary } from './summary';
+ 
+ // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
+-// each status as the summary counts them, and the sheet's due-total and overdue-total.
++// each status as the summary counts them, the sheet's due-total and overdue-total, and
++// the signed-in user's own when a person on the sheet has their name or alias.
+ @Component({
+   selector: 'app-sheet-header',
+   template: `
+@@ -18,6 +19,10 @@ import { StatusSummary } from './summary';
+         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+         <dt>Overdue</dt>
+         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dt>My due</dt>
++        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dt>My overdue</dt>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+       </dl>
+     </section>
+   `,
+@@ -27,4 +32,7 @@ export class SheetHeader {
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  /** The signed-in user's own due-total and overdue-total; blank when no one on the sheet has their name. */
++  readonly myDueTotal = input.required<string>();
++  readonly myOverdueTotal = input.required<string>();
+ }

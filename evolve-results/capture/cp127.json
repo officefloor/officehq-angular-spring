@@ -1,0 +1,64 @@
+{
+  "checkpoint": 127,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp127_my-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8e170b9b42a51dc1a2fff06d1f7301c052269083",
+  "reset_sha": "",
+  "preagent_sha": "e22eae7b0bf4311ccb22c7ea149f1a2ed285d0e2",
+  "prev_sha": "e22eae7b0bf4311ccb22c7ea149f1a2ed285d0e2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.39009759999999993,
+    "input_tokens": 26,
+    "output_tokens": 3678,
+    "cache_read_tokens": 375888,
+    "cache_creation_tokens": 30157,
+    "num_turns": 14,
+    "duration_ms": 189756,
+    "duration_api_ms": 47796,
+    "model": "claude-opus-5-5",
+    "session_id": "e8af8c73-ec9e-415b-9e8c-e6afe9ef2be3",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's own figures, and all 4 acceptance tests pass with `bin/e2e`.\n\n- **What it shows:** two new fields, `my-due-total` and `my-overdue-total`. When a person on the sheet has the user's name or one of their aliases, these show that person's due-total and overdue-total, the same figures as on that person's row. When there is no such person, both are empty.\n- **How names match:** surrounding spaces and upper/lower case are ignored, the same rule the server uses for names. So the user \"vic\" matches a person with the alias \"VIC\".\n- **Where the change is:** only in the front end, since the screen already has the people, aliases and totals it needs. I added the lookup in `features/people/people.ts` and the two fields in `features/summary/sheet-header.ts`. Nothing changed on the server or in the stored data, and nothing is written to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.39009759999999993,
+        "num_turns": 14,
+        "duration_ms": 189756,
+        "duration_api_ms": 47796,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp127.agent.jsonl",
+  "agent_diff_file": "cp127.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
