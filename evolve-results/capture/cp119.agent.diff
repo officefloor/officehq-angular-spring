@@ -1,0 +1,96 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5fbd4473..6be63be3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,7 +7,7 @@ import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, count
+ import { PersonClaims } from '../claims/person-claims';
+ import { Periods } from '../periods/periods';
+ import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
+-import { PoolsList } from '../pools/pools';
++import { PoolsList, personCutTotals } from '../pools/pools';
+ import { Pools } from '../pools/pools-api';
+ import { Rates } from '../rates/rates';
+ import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
+@@ -16,6 +16,7 @@ import { SheetFloor } from '../settings/sheet-floor';
+ import { SheetGrace } from '../settings/sheet-grace';
+ import { SheetLatePct } from '../settings/sheet-late-pct';
+ import { SheetParent } from '../settings/sheet-parent';
++import { SheetPot } from '../settings/sheet-pot';
+ import { SheetPolicyDate } from '../settings/sheet-policy-date';
+ import { StatementView, StatementsApi } from '../statements/statements-api';
+ import { SheetHeader } from '../summary/sheet-header';
+@@ -97,6 +98,7 @@ import { Consolidated } from '../summary/consolidated';
+           open in total: <strong data-testid="rollup-open-total">{{ money(sheetSettledOpen().open) }}</strong></p>
+         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
+           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
++        <p>Cut in total: <strong data-testid="rollup-cut-total">{{ sheetCutTotal() }}</strong></p>
+         @if (tagTotals().length > 0) {
+           <table aria-label="Due by tag">
+             <thead>
+@@ -192,7 +194,7 @@ import { Consolidated } from '../summary/consolidated';
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+         <table data-testid="people-list">
+           <thead>
+-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+           </thead>
+           <tbody>
+             @for (p of shownPeople(); track p.id) {
+@@ -228,6 +230,7 @@ import { Consolidated } from '../summary/consolidated';
+                   <td [attr.data-testid]="'person-period-' + q.name + '-due-total'">{{ personPeriodDue(p.id, q.id) }}</td>
+                 }
+                 <td data-testid="person-excess">{{ excess(p) }}</td>
++                <td data-testid="person-cut-total">{{ personCutTotal(p) }}</td>
+                 <td>
+                   <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+                   due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+@@ -342,6 +345,7 @@ export class People {
+   private readonly ratesApi = inject(RatesApi);
+   private readonly statementsApi = inject(StatementsApi);
+   private readonly pools = inject(Pools);
++  private readonly sheetPot = inject(SheetPot);
+   private readonly periodsApi = inject(PeriodsApi);
+   private readonly floor = inject(SheetFloor);
+   private readonly cap = inject(SheetCap);
+@@ -525,6 +529,14 @@ export class People {
+     const figures = this.people().map((p) => this.overdueByPerson().get(p.id)?.cents ?? 0);
+     return { count, cents: trimmedSum(figures) };
+   });
++  /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */
++  private readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.sheetPot.pot()));
++  /** The person's cut total, with two decimals. */
++  protected personCutTotal(p: PersonView): string {
++    return money(this.cutTotals().get(p.id) ?? 0);
++  }
++  /** The sheet's cut total: everyone's added up, with two decimals. */
++  protected readonly sheetCutTotal = computed(() => money(this.people().reduce((t, p) => t + (this.cutTotals().get(p.id) ?? 0), 0)));
+   protected readonly money = money;
+   /** The sheet's periods in date order. */
+   protected readonly periods = signal<PeriodView[]>([]);
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index a5d46444..75616929 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -221,6 +221,22 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
+   return out;
+ }
+ 
++/** Each person's cut total in cents, by person id: their cuts across every pool they are a member of added
++ *  up; a pool that shows no cuts adds nothing. */
++export function personCutTotals(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null): Map<number, number> {
++  const cuts = allCuts(pools, people, pot);
++  const totals = new Map<number, number>();
++  for (const pool of pools) {
++    const poolCuts = cuts.get(pool.id);
++    if (!poolCuts) continue;
++    for (const m of pool.members) {
++      if (m.personId === null) continue;
++      totals.set(m.personId, (totals.get(m.personId) ?? 0) + Number(poolCuts.get(String(m.personId)) ?? 0n));
++    }
++  }
++  return totals;
++}
++
+ /** A whole number of cents divided by 10000, rounded half to even. */
+ function divideHalfEven(value: bigint, by: bigint): bigint {
+   const quotient = value / by;
