@@ -1,0 +1,83 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index f96a627f..f5802cb6 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -109,6 +109,11 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
+           </select>
+           <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
+             [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
++          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++          <input #inlineAmount [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" inputmode="decimal"
++            (input)="clearClaimError(c)" />
++          <button type="button" data-testid="claim-inline-save" (click)="saveAmount(c, inlineAmount.value)"
++            [attr.aria-label]="'Save the amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
+           <button type="button" data-testid="claim-edit" (click)="edit(c)"
+             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+           @if (editingId() === c.id) {
+@@ -173,6 +178,8 @@ export class PersonClaims {
+   /** The last edit button's open of the editor, settled once the store has answered it. */
+   private opening: Promise<void> = Promise.resolve();
+   protected readonly saving = signal(false);
++  /** The claims whose inline amount is being saved, so a second press stores one change, not two. */
++  private readonly inlineSaving = new Set<number>();
+   protected readonly error = signal('');
+   /** The refusal of the last action taken on a claim's row, shown on that row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+@@ -522,6 +529,57 @@ export class PersonClaims {
+     if (sheet && id !== null) this.release(sheet.id, id);
+   }
+ 
++  /** Clear the refusal shown on a claim's row once its inline amount is typed in again. */
++  protected clearClaimError(claim: ClaimView): void {
++    if (this.claimError()?.id === claim.id) this.claimError.set(null);
++  }
++
++  /** Change a draft claim's amount in its row, keeping its date, note and correction: saved as the
++   *  claim form saves it, so the store refuses what the form's save is refused (a claim that is not a
++   *  draft, due by a date inside a closed period, locked by another user's editor, or a viewer's). */
++  protected async saveAmount(claim: ClaimView, typed: string): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.claimError.set(null);
++    const amount = typed.trim();
++    if (!CLAIM_AMOUNT.test(amount)) {
++      this.claimError.set({ id: claim.id, message: 'Type an amount with up to two decimals; a negative amount is a correction.' });
++      return;
++    }
++    const correction = amount.startsWith('-') && Number(amount) !== 0;
++    if (correction && claim.corrects === null) {
++      this.claimError.set({ id: claim.id, message: 'A negative amount is a correction: only a claim that corrects a settled claim can have one.' });
++      return;
++    }
++    if (this.inlineSaving.has(claim.id)) return;
++    this.inlineSaving.add(claim.id);
++    try {
++      const saved = await this.api.update(sheet.id, claim.id, { amount, date: claim.date, note: claim.note,
++        corrects: correction ? claim.corrects : null });
++      if (this.session.sheet()?.id !== sheet.id) return;
++      // The save released the user's own lock: an editor the user had open on the claim is closed.
++      if (this.editingId() === claim.id) this.reset();
++      this.saved.emit(saved);
++    } catch (e) {
++      if (this.session.sheet()?.id !== sheet.id) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      const message = status === 403
++        ? 'Your role may not edit a claim on this sheet.'
++        : status === 423
++        ? 'Someone else is editing this claim, so it cannot be saved until they save or cancel.'
++        : status === 422
++        ? 'A correction must name, by number, a settled claim of this person.'
++        : this.inClosedPeriod(claim.dueBy)
++        ? 'This claim\'s due-by is inside a closed period, so it cannot be edited.'
++        : status === 409
++        ? 'Only a draft claim can be edited. To change an open claim, void it and add a new one.'
++        : 'The claim could not be saved.';
++      this.claimError.set({ id: claim.id, message });
++    } finally {
++      this.inlineSaving.delete(claim.id);
++    }
++  }
++
+   protected async submit(): Promise<void> {
+     // A second submit before the first has answered is ignored, so it stores one record, not two.
+     if (this.saving()) return;
