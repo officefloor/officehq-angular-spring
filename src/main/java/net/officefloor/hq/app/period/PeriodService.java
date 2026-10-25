@@ -99,7 +99,7 @@ public class PeriodService {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
             boolean counts = claim.getStatus() == ClaimStatus.SETTLED
-                    || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
+                    || (claim.getStatus().isOpen() && !person.isHeld());
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) total = total.add(due);

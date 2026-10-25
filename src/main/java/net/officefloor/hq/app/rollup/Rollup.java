@@ -98,7 +98,7 @@ public class Rollup {
                 BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding);
                 BigDecimal owed = LateCharge.dueOf(claim, figure, terms, today, latePct, rounding);
                 if (owed != null) due = due.add(owed);
-                if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) {
+                if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }
                 // A live figure at a grade other than today's is not undone by today's grade having no rate.
@@ -131,19 +131,19 @@ public class Rollup {
         }
     }
 
-    /** Only open and settled claims count toward what is claimed and due; a held person's open claims
-     *  do not. */
+    /** Only open (PENDING included) and settled claims count toward what is claimed and due; a held
+     *  person's open claims do not. */
     private static boolean counts(Person person, Claim claim) {
         return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
+                || (claim.getStatus().isOpen() && !person.isHeld());
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  else the live due at the grade's rate in force on its date, rounded as the claim rounds, at least
+     *  (unless PENDING), else the live due at the grade's rate in force on its date, rounded as the claim rounds, at least
      *  the floor unless a correction; null when that is n/a. */
     private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
-        if (claim.isStated()) return claim.getStatedDue();
+        if (claim.isBound()) return claim.getStatedDue();
         Rate rate = inForce(gradeRates, claim.getDate());
         if (rate == null) return null;
         BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);

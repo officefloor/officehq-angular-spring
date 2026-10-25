@@ -113,14 +113,32 @@ public class ClaimController {
                 result.opened().stream().map(ClaimView::of).toList());
     }
 
-    /** Settle an open claim. */
+    /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. */
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.name(user), id, ClaimStatus.SETTLED));
     }
 
-    /** Void a draft or open claim. */
+    /** Why a steward rejects a pending claim. */
+    public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+    }
+
+    /** Approve a pending claim, settling it. */
+    @PostMapping("/claims/{id}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** Reject a pending claim for a reason, opening it again. */
+    @PostMapping("/claims/{id}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RejectForm form) {
+        return ClaimView.of(service.reject(sheetId.trim(), SignedInUser.name(user), id, form.reason().trim()));
+    }
+
+    /** Void a draft or open (or pending) claim. */
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {

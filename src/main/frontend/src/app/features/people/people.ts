@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isOverdue, keepsFigure, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -392,10 +392,10 @@ export class People {
     }
   }
 
-  /** Whether the claim counts in the live totals: open and settled claims do, except the open claims
-   *  of a person on hold. */
+  /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
+   *  except the open claims of a person on hold. */
   private countsLive(claim: ClaimView): boolean {
-    return counts(claim) && !(claim.status === 'OPEN' && this.heldIds().has(claim.personId));
+    return counts(claim) && !(isOpen(claim) && this.heldIds().has(claim.personId));
   }
 
   /** The names of the person's patrons, sorted, comma and space separated. */

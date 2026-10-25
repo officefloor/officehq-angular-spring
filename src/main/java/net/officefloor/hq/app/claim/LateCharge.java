@@ -23,7 +23,7 @@ public final class LateCharge {
     /** The late charge on the claim of the figure (null: n/a, and no charge) on the sheet's today. */
     public static BigDecimal of(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct,
             RoundingMode rounding) {
-        if (figure == null || today == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) return ZERO;
+        if (figure == null || today == null || !claim.getStatus().isOpen() || claim.isCorrection()) return ZERO;
         long overdueDays = ChronoUnit.DAYS.between(claim.getDate().plusDays(terms), today);
         long steps = overdueDays <= 0 ? 0 : overdueDays / DAYS_PER_CHARGE;
         if (steps == 0) return ZERO;

@@ -12,7 +12,7 @@ import { SheetTerms } from '../settings/sheet-terms';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected' };
 
 // One person's claims, newest first, with one form to add a claim or edit one.
 @Component({
@@ -58,6 +58,12 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
+            [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input #rejectReason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" />
+          <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
+            [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <button type="button" data-testid="claim-edit" (click)="edit(c)"
@@ -169,20 +175,26 @@ export class PersonClaims {
       { emitEvent: false });
   }
 
-  /** Open, settle or void a claim; the store refuses a change its status does not allow. */
-  protected async act(claim: ClaimView, action: ClaimAction): Promise<void> {
+  /** Open, settle, void, approve or reject (for a reason) a claim; the store refuses a change its
+   *  status does not allow. A clerk's settling above the clerk limit leaves the claim PENDING. */
+  protected async act(claim: ClaimView, action: ClaimAction, reason = ''): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.claimError.set(null);
+    if (action === 'reject' && reason.trim() === '') {
+      this.claimError.set({ id: claim.id, message: 'Type a reason to reject this claim.' });
+      return;
+    }
     try {
-      const changed = await this.api.act(sheet.id, claim.id, action);
+      const changed = await this.api.act(sheet.id, claim.id, action, reason.trim());
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(changed);
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
-        const message = e instanceof HttpErrorResponse && e.status === 403
+        const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+        const message = forbidden && (action === 'approve' || action === 'reject')
+          ? `Only a steward who did not open this claim can ${action} it.`
+          : forbidden
           ? 'You opened this claim, so someone else must settle it.'
-          : e instanceof HttpErrorResponse && e.status === 422
-            ? 'This claim\'s due is above the clerk limit, so only a steward can settle it.'
           : periodOf(this.periods(), claim.date)?.closed
             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
             : `This claim cannot be ${PAST[action]} from its status.`;

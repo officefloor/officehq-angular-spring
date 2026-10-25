@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
 
 /** An amount as a form takes it: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -21,9 +21,21 @@ export function isCorrection(claim: ClaimView): boolean {
   return cents(claim.amount) < 0;
 }
 
-/** Only open and settled claims count toward what is claimed and due. */
+/** Whether the claim is open: OPEN, or PENDING (a clerk's settling above the clerk limit, waiting
+ *  for a steward), which is handled as open. */
+export function isOpen(claim: ClaimView): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
+}
+
+/** Whether the claim is bound to the figure its person's last statement stated: no statement binds
+ *  a PENDING claim, which shows its live figure. */
+export function isBound(claim: ClaimView): boolean {
+  return claim.stated && claim.status !== 'PENDING';
+}
+
+/** Only open (PENDING included) and settled claims count toward what is claimed and due. */
 export function counts(claim: ClaimView): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+  return isOpen(claim) || claim.status === 'SETTLED';
 }
 
 export interface ClaimView {
@@ -68,7 +80,7 @@ export interface ClaimForm {
 
 /** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */
 export function keepsFigure(claim: ClaimView): boolean {
-  return claim.settledDue !== null || (claim.stated && claim.statedDue !== null);
+  return claim.settledDue !== null || (isBound(claim) && claim.statedDue !== null);
 }
 
 /** An amount in whole cents, so sums of amounts are exact. */
@@ -93,12 +105,12 @@ export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], pol
 }
 
 /** What is due on the claim, in cents: the figure fixed when it was settled, else the figure its
- *  person's last statement bound it to, else at the rate of `gradeRates` (its person's grade's rates)
+ *  person's last statement bound it to (unless PENDING), else at the rate of `gradeRates` (its person's grade's rates)
  *  in force on the claim's date, rounded half up when `halfUp` (else half to even), and at least
  *  `floorCents` (the sheet's floor) unless a correction; null when there is none. */
 export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, halfUp = false): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
-  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+  if (isBound(claim)) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateInForce(gradeRates, claim.date);
   if (rate === null) return null;
   const due = dueCents(cents(claim.amount), rate.pct, halfUp);
@@ -137,7 +149,7 @@ export function dueBy(claim: ClaimView, terms: number): string {
 
 /** Whether the claim is overdue: open, with its due-by before the sheet's today. */
 export function isOverdue(claim: ClaimView, terms: number, today: string | undefined): boolean {
-  return claim.status === 'OPEN' && today !== undefined && dueBy(claim, terms) < today;
+  return isOpen(claim) && today !== undefined && dueBy(claim, terms) < today;
 }
 
 /** The days a claim must be overdue for each step of the late charge. */
@@ -193,10 +205,12 @@ export class ClaimsApi {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheetId)}/claims/${id}`, form));
   }
 
-  /** Move a claim to its next status: refused when its status does not allow it, and settling is
-   *  refused (403) to the user who opened the claim. */
-  act(sheetId: string, id: number, action: ClaimAction): Promise<ClaimView> {
-    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, {}));
+  /** Move a claim to its next status: refused when its status does not allow it, and settling or
+   *  approving is refused (403) to the user who opened the claim; approving and rejecting (with a
+   *  reason) a PENDING claim are refused (403) to all but a steward. */
+  act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
+    const body = action === 'reject' ? { reason: reason ?? '' } : {};
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));
   }
 
   /** Open the claims of these ids together in list order; each that cannot be opened is left as it is. */

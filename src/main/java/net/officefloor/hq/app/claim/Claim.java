@@ -142,6 +142,12 @@ public class Claim {
         return stated;
     }
 
+    /** Whether the claim is bound to its stated figure now: stated, and not PENDING, as no statement
+     *  binds a PENDING claim (its binding holds again should it be rejected). */
+    public boolean isBound() {
+        return stated && status != ClaimStatus.PENDING;
+    }
+
     public BigDecimal getStatedDue() {
         return statedDue;
     }

@@ -85,7 +85,7 @@ public class StatementService {
             BigDecimal figure = claimService.figure(sheetId, person, claim);
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) total = total.add(due);
-            if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) keptFigure = true;
+            if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) keptFigure = true;
             // A live figure at a grade other than today's is not undone by today's grade having no rate.
             if (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today)) keptFigure = true;
             claim.bind(figure);
@@ -106,6 +106,6 @@ public class StatementService {
      *  do not, as on the screen. */
     private static boolean counts(Person person, Claim claim) {
         return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
+                || (claim.getStatus().isOpen() && !person.isHeld());
     }
 }
