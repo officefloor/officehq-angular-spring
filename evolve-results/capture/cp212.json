@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp212_score-without-corrections",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    209
+  ],
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "request": {
+    "spec": "The score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8e0eb6799ab91d5482dc276bdc8ce62c7e4f56b4",
+  "reset_sha": "",
+  "preagent_sha": "44505f0c088e51976ef96263ad395af040d99dba",
+  "prev_sha": "44505f0c088e51976ef96263ad395af040d99dba",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8219654000000001,
+    "input_tokens": 52,
+    "output_tokens": 9771,
+    "cache_read_tokens": 1063327,
+    "cache_creation_tokens": 51709,
+    "num_turns": 26,
+    "duration_ms": 562260,
+    "duration_api_ms": 140843,
+    "model": "claude-opus-5-5",
+    "session_id": "7ca48f79-7bdb-408c-a8fa-0e0bdd07dd1a",
+    "stop_reason": "success",
+    "result_text": "The score now leaves out corrections: only SETTLED claims with a positive amount count toward it. All 4 Playwright tests pass with `bin/e2e`.\n\n**The score change** (in both places the score is worked out):\n- **Server** \u2014 `RollupService.scores` (`src/main/java/net/officefloor/hq/app/rollup/RollupService.java:133`) now skips corrections. This feeds the `SCORE` audit lines the score log writes.\n- **Front end** \u2014 `scoreOf` in `people.ts` now uses a new `scoredSettledOf` helper that leaves out corrections. The settled-total column still includes corrections; only the score changed.\n\nA correction is a claim with a negative amount, which is how the app already defines it on both sides.\n\n**A second change, outside the request:** test scenario 1 still failed after the score fix. It expects no pool cut for a crew whose only member has a hold in force. The server was showing `0.00`, and the pot was going nowhere: the held member got nothing and the leftover was dropped. I changed `PoolService.cuts` so a pool whose members are all retired *or held* on the sheet's today has no cuts. Before, only \"all retired\" did. I updated the matching doc comments in `PoolService.java` and `pools.ts`.\n\nThis changes pool behaviour beyond the score. It only applies when no member of a pool can take a cut, and pools with at least one member who can are worked out as before. Still, you may want to check that this is the rule you intend.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8219654000000001,
+        "num_turns": 26,
+        "duration_ms": 562260,
+        "duration_api_ms": 140843,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp212.agent.jsonl",
+  "agent_diff_file": "cp212.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
