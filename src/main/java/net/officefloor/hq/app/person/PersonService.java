@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -15,11 +16,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -36,8 +39,10 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         Person person = save(new Person(sheetId, name, grade));
         recordChange("PERSON_ADDED", user, person);
+        rollup.recordChanges(user, before);
         return person;
     }
 
@@ -53,10 +58,12 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)) {
             throw nameInUse();
         }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         person.setName(name);
         person.setGrade(grade);
         Person saved = save(person);
         recordChange("PERSON_EDITED", user, saved);
+        rollup.recordChanges(user, before);
         return saved;
     }
 

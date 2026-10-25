@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -17,11 +18,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -47,6 +50,7 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, Grade grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = (from == null ? rates.findFromStart(sheetId, grade) : rates.findFrom(sheetId, grade, from))
                 .orElse(null);
         if (rate == null) {
@@ -63,6 +67,7 @@ public class RateService {
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + saved.getGrade()
                 + " rate=" + saved.getPct().toPlainString() + (from == null ? "" : " from=" + from));
+        rollup.recordChanges(user, before);
         return saved;
     }
 }

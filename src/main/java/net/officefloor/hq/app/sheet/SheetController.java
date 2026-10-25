@@ -5,11 +5,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.SignedInUser;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -44,7 +46,7 @@ public class SheetController {
     /** Change the sheet's today. */
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
-            @RequestBody @Valid TodayChange change) {
-        return SheetView.of(service.setToday(id.trim(), change.today()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TodayChange change) {
+        return SheetView.of(service.setToday(id.trim(), SignedInUser.name(user), change.today()));
     }
 }

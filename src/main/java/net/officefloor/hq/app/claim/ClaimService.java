@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,14 +24,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateService rates;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit) {
+            Rollup rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -44,8 +47,10 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = person(sheetId, personId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOr(sheetId, date), noteOf(note)));
         recordChange("CLAIM_ADDED", user, person, claim);
+        rollup.recordChanges(user, before);
         return claim;
     }
 
@@ -54,9 +59,11 @@ public class ClaimService {
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dateOr(sheetId, date), noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
+        rollup.recordChanges(user, before);
         return saved;
     }
 
@@ -75,6 +82,7 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
@@ -89,6 +97,7 @@ public class ClaimService {
         } else {
             recordChange(event, user, person, saved, number, "");
         }
+        rollup.recordChanges(user, before);
         return saved;
     }
 
