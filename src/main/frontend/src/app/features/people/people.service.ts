@@ -172,11 +172,19 @@ export interface DescendantFigures {
   overdueFigures: string[];
   /** Each descendant person's name keys: their name's, then their aliases'. */
   nameKeys: string[][];
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
+  /** Each descendant person's settled-total, open-total and cut total, so the tree's can be trimmed once over all. */
+  settledFigures: string[];
+  openFigures: string[];
+  cutFigures: string[];
 }
 
 /** The figures of a sheet without descendants. */
 export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {},
-  dueFigures: [], overdueFigures: [], nameKeys: [] };
+  dueFigures: [], overdueFigures: [], nameKeys: [], settledTotal: '0.00', openTotal: '0.00', cutTotal: '0.00',
+  settledFigures: [], openFigures: [], cutFigures: [] };
 
 /** A sheet's own due-totals per grade, with two decimals. */
 export interface GradeDueTotals {

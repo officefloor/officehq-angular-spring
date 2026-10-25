@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * A sheet's descendants (its children — the sheets naming it as their parent — their children, and so
  * on) and their figures added up: the number of people on them (retired ones included), each person counted
  * once over the tree (people whose names or aliases match, as names are compared, are one person), and
- * each one's due-total and overdue-total as that sheet shows it, the single highest and lowest person's
+ * each one's due-total, overdue-total, settled-total, open-total and cut total as that sheet shows it, the single highest and lowest person's
  * figure over all of them left out when three or more have one; per grade, the due-totals of the people on it on
  * their sheet's today (retired people left out, a due-total of n/a skipped); and per status, the number of
  * claims in it. The screen adds the sheet's own people in, trimming once over the whole tree, to give the
@@ -50,20 +50,26 @@ public class ConsolidatedService {
 
     /** The descendants' figures added up, with two decimals; all zero when the sheet has no children.
      * {@code peopleCount} counts each person once over them (people whose names or aliases match, as names
-     * are compared, are one person); {@code dueTotal} and {@code overdueTotal} leave out the single highest
+     * are compared, are one person); {@code dueTotal}, {@code overdueTotal}, {@code settledTotal},
+     * {@code openTotal} and {@code cutTotal} leave out the single highest
      * and lowest person's figure over all of them when three or more have one. {@code gradeDueTotals} by
      * grade, {@code statusCounts} by status. So that the screen can add the sheet's own people in, each
-     * person's due-total ({@code dueFigures}, n/a ones left out), overdue-total ({@code overdueFigures}) and
-     * name keys, their name's then their aliases' ({@code nameKeys}). */
+     * person's due-total ({@code dueFigures}, n/a ones left out), overdue-total ({@code overdueFigures}),
+     * settled-total ({@code settledFigures}), open-total ({@code openFigures}), cut total ({@code cutFigures})
+     * and name keys, their name's then their aliases' ({@code nameKeys}). */
     public record Figures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
             Map<String, Integer> statusCounts, List<String> dueFigures, List<String> overdueFigures,
-            List<List<String>> nameKeys) {
+            List<List<String>> nameKeys, String settledTotal, String openTotal, String cutTotal,
+            List<String> settledFigures, List<String> openFigures, List<String> cutFigures) {
     }
 
     /** Figures being added up over sheets. */
     private static final class Sum {
         private final List<BigDecimal> due = new ArrayList<>();
         private final List<BigDecimal> overdue = new ArrayList<>();
+        private final List<BigDecimal> settled = new ArrayList<>();
+        private final List<BigDecimal> open = new ArrayList<>();
+        private final List<BigDecimal> cut = new ArrayList<>();
         private final List<List<String>> keys = new ArrayList<>();
         private final Map<String, BigDecimal> grades = new LinkedHashMap<>();
         private final Map<String, Integer> statuses = new LinkedHashMap<>();
@@ -79,6 +85,9 @@ public class ConsolidatedService {
                 if (shown == null) continue;
                 if (!RollupService.NONE.equals(shown.dueTotal())) due.add(new BigDecimal(shown.dueTotal()));
                 overdue.add(new BigDecimal(shown.overdueTotal()));
+                settled.add(new BigDecimal(shown.settledTotal()));
+                open.add(new BigDecimal(shown.openTotal()));
+                cut.add(new BigDecimal(shown.cutTotal()));
                 List<String> personKeys = new ArrayList<>();
                 personKeys.add(Person.keyOf(person.getName()));
                 person.getAliases().forEach(a -> personKeys.add(Person.keyOf(a)));
@@ -102,7 +111,13 @@ public class ConsolidatedService {
             return new Figures(distinctPeople(keys), RollupService.trimmedSum(due).toPlainString(),
                     RollupService.trimmedSum(overdue).toPlainString(), gradeTotals, Map.copyOf(statuses),
                     due.stream().map(BigDecimal::toPlainString).toList(),
-                    overdue.stream().map(BigDecimal::toPlainString).toList(), List.copyOf(keys));
+                    overdue.stream().map(BigDecimal::toPlainString).toList(), List.copyOf(keys),
+                    RollupService.trimmedSum(settled).toPlainString(), RollupService.trimmedSum(open).toPlainString(),
+                    RollupService.trimmedSum(cut).toPlainString(), texts(settled), texts(open), texts(cut));
+        }
+
+        private static List<String> texts(List<BigDecimal> figures) {
+            return figures.stream().map(BigDecimal::toPlainString).toList();
         }
     }
 

@@ -65,11 +65,10 @@ import { FigurePipe } from '../../core/figure.pipe';
 // their cut total (not below 0.00): when the sum of their figures is above that, the row shows it and the difference
 // as their excess; every
 // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
-// The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+// The sheet's due-total, overdue-total, settled-total, open-total and cut total leave out the single highest and the single lowest person's
 // figure when three or more people have one (a due-total of n/a is no figure).
 // Each row splits its figures before the cap into a settled-total (its counting SETTLED claims, at
-// their frozen figures) and an open-total (its counting OPEN and PENDING claims); the sheet's
-// settled-total and open-total simply add up everyone's.
+// their frozen figures) and an open-total (its counting OPEN and PENDING claims).
 // Each row shows the person's score: their settled-total, leaving out corrections, divided by 100, minus 5 for every overdue
 // claim of theirs that counts, rounded half to even to a whole number.
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
@@ -92,6 +91,9 @@ import { FigurePipe } from '../../core/figure.pipe';
       <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
       <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
       <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
+      <span>Settled <strong data-testid="consolidated-settled-total">{{ (consolidated().settledTotal) | figure }}</strong></span>
+      <span>Open <strong data-testid="consolidated-open-total">{{ (consolidated().openTotal) | figure }}</strong></span>
+      <span>Cut <strong data-testid="consolidated-cut-total">{{ (consolidated().cutTotal) | figure }}</strong></span>
       @for (g of consolidated().grades; track g.grade) {
         <span>Grade {{ (g.grade) | figure }} due <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</strong></span>
       }
@@ -1385,16 +1387,14 @@ export class People {
     }
     return by;
   });
-  /** The sheet's cut total, in cents: everyone's cut totals added up. */
-  protected readonly cutTotal = computed(() =>
-    this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0),
-  );
-  /** Everyone's settled-totals and open-totals, in cents, each simply added up (not trimmed). */
+  /** The sheet's cut total, in cents: everyone's cut totals added up, trimmed. */
+  protected readonly cutTotal = computed(() => trimmedSum(this.people().map((p) => this.cutCents().get(p.id) ?? 0)));
+  /** Everyone's settled-totals and open-totals, in cents, each added up, trimmed. */
   protected readonly splitTotal = computed(() => {
     const each = this.people().map((p) => this.claimedSplitOf(p));
     return {
-      settled: each.reduce((sum, s) => sum + s.settled, 0),
-      open: each.reduce((sum, s) => sum + s.open, 0),
+      settled: trimmedSum(each.map((s) => s.settled)),
+      open: trimmedSum(each.map((s) => s.open)),
     };
   });
   /** What is due on everyone's counting OPEN and PENDING claims, in cents, by age: the people's age
@@ -1483,12 +1483,19 @@ export class People {
       ...(d.dueFigures ?? []).map(cents),
     ];
     const overdue = [...ownPeople.map((p) => this.overdueOf(p).cents), ...(d.overdueFigures ?? []).map(cents)];
+    const split = ownPeople.map((p) => this.claimedSplitOf(p));
+    const settled = [...split.map((s) => s.settled), ...(d.settledFigures ?? []).map(cents)];
+    const open = [...split.map((s) => s.open), ...(d.openFigures ?? []).map(cents)];
+    const cut = [...ownPeople.map((p) => this.cutCents().get(p.id) ?? 0), ...(d.cutFigures ?? []).map(cents)];
     return {
       peopleCount: own
         ? distinctPeople([...ownPeople.map((p) => [p.name, ...p.aliases].map(nameKey)), ...(d.nameKeys ?? [])])
         : d.peopleCount,
       dueTotal: own ? money(trimmedSum(due)) : d.dueTotal,
       overdueTotal: own ? money(trimmedSum(overdue)) : d.overdueTotal,
+      settledTotal: own ? money(trimmedSum(settled)) : d.settledTotal,
+      openTotal: own ? money(trimmedSum(open)) : d.openTotal,
+      cutTotal: own ? money(trimmedSum(cut)) : d.cutTotal,
       grades: [...this.grades(), ...Object.keys(d.gradeDueTotals).filter((g) => !this.grades().includes(g))].map((grade) => ({
         grade,
         dueTotal: money(

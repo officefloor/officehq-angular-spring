@@ -75,8 +75,10 @@ public class RollupService {
         this.audit = audit;
     }
 
-    /** A person's figures, as shown. */
-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {
+    /** A person's figures, as shown: with their settled-total and open-total (what is due on their own counting
+     * SETTLED, and OPEN and PENDING, claims, each claim whole as it shows it, before the cap) and their cut total. */
+    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /** The sheet's figures at one moment: each person's, in list order, and the totals. */
@@ -121,6 +123,8 @@ public class RollupService {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
+            BigDecimal settled = zero();
+            BigDecimal open = zero();
             boolean any = false;
             for (Claim claim : all) {
                 if (!claim.getPersonId().equals(person.getId())) continue;
@@ -129,6 +133,8 @@ public class RollupService {
                 BigDecimal figure = shownOf(claim, person, basis);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
+                if (claim.getStatus().isOpen()) open = open.add(figure);
+                else settled = settled.add(figure);
                 due = due.add(ownPartOf(claim, figure, sharesByClaim.get(claim.getId()), byId, basis));
                 any = true;
             }
@@ -137,13 +143,14 @@ public class RollupService {
                 due = due.add(part);
                 any = true;
             }
-            due = cappedOf(due, cap, basis.cutOf(person.getId()));
+            BigDecimal cut = basis.cutOf(person.getId());
+            due = cappedOf(due, cap, cut);
             boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);
             if (any || rated) dueFigures.add(due);
             figures.put(person.getId(), new Figures(person.getName(), text(claimed), any || rated ? text(due) : NONE,
-                    text(overdue)));
+                    text(overdue), text(settled), text(open), text(cut == null ? zero() : cut)));
         }
         return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
     }
