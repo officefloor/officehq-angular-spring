@@ -23,6 +23,19 @@ export function gradeOn(grades: readonly GradeView[], date: string): Grade | nul
   return inForce?.grade ?? null;
 }
 
+/** A hold put on a person, both days included. */
+export interface HoldView {
+  /** The date the hold starts (yyyy-mm-dd), or null when it holds from the beginning of time. */
+  from: string | null;
+  /** The date the hold ends (yyyy-mm-dd), or null when it has no end. */
+  to: string | null;
+}
+
+/** Whether a date (yyyy-mm-dd) falls within one of the holds. */
+export function heldOn(holds: readonly HoldView[], date: string): boolean {
+  return holds.some((h) => (h.from === null || h.from <= date) && (h.to === null || date <= h.to));
+}
+
 export interface PersonView {
   id: number;
   name: string;
@@ -36,8 +49,11 @@ export interface PersonView {
   retired: boolean;
   /** The date the person is retired from, or null while they are not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: while held, their open claims count in no live total. */
+  /** Whether the person has any hold, whatever its dates. */
   held: boolean;
+  /** Every hold put on the person, by from-date: their open claims dated within one, unless a
+   *  statement binds them, count in no live total. */
+  holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as patrons, in the order named. */
   patronIds: number[];
 }
@@ -93,9 +109,10 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/retire`, { from }));
   }
 
-  /** Put the person on hold (true) or take them off it (false); refused when they already are. */
-  hold(sheetId: string, id: number, held: boolean): Promise<PersonView> {
-    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/${held ? 'hold' : 'release'}`, {}));
+  /** Put a hold on the person from a date (null: the sheet's today) to a date (null: no end);
+   *  refused when it ends before it starts. */
+  hold(sheetId: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/hold`, { from, to }));
   }
 
   /** Name another person on the sheet as the person's patron; refused for the person themselves and

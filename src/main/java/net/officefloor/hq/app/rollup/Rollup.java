@@ -130,11 +130,11 @@ public class Rollup {
         }
     }
 
-    /** Only open (PENDING included) and settled claims count toward what is claimed and due; a held
-     *  person's open claims do not. */
+    /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's
+     *  open claims dated within one of their holds do not, unless a statement binds them. */
     private static boolean counts(Person person, Claim claim) {
         return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && !person.isHeld());
+                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,

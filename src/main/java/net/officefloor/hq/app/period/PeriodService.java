@@ -82,7 +82,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing its due-total at this moment: the figures of the open and settled claims
-     *  dated in it, skipping those that are n/a and the open claims of people on hold. Refused when the period is already closed. */
+     *  dated in it, skipping those that are n/a and the unbound open claims dated within a hold of their person. Refused when the period is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -99,7 +99,7 @@ public class PeriodService {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
             boolean counts = claim.getStatus() == ClaimStatus.SETTLED
-                    || (claim.getStatus().isOpen() && !person.isHeld());
+                    || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) total = total.add(due);

@@ -13,8 +13,11 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** A person on a sheet. */
 @Entity
@@ -44,9 +47,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their open claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** Every hold put on the person; their open claims dated within one, unless bound by a statement,
+     *  count in no live total. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private Set<PersonHold> holds = new LinkedHashSet<>();
 
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
@@ -131,12 +136,28 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
-    public boolean isHeld() {
-        return held;
+    /** The holds put on the person, the one from the beginning of time first, then by from-date, then
+     *  in the order they were put on. */
+    public List<PersonHold> getHolds() {
+        List<PersonHold> ordered = new ArrayList<>(holds);
+        ordered.sort(Comparator.comparing(PersonHold::getFrom, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(PersonHold::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        return ordered;
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Whether the person has any hold, whatever its dates. */
+    public boolean isHeld() {
+        return !holds.isEmpty();
+    }
+
+    /** Whether a date falls within one of the person's holds. */
+    public boolean isHeldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /** Put a hold on the person from a date to a date (none: no end). */
+    public void hold(LocalDate from, LocalDate to) {
+        holds.add(new PersonHold(from, to));
     }
 
     public long getVersion() {

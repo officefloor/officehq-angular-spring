@@ -30,10 +30,16 @@ public class PersonController {
     public record GradeView(Grade grade, LocalDate from) {
     }
 
+    /** A hold put on the person, from its from-date (null: the beginning of time) to its to-date (null: no end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+    }
+
     /** What the screen shows of a person: grade is the one in force on the sheet's today, grades every
-     *  grade they were given, the one from the beginning of time first, then by from-date. */
+     *  grade they were given, the one from the beginning of time first, then by from-date; held whether
+     *  they have any hold, holds every hold put on them, by from-date. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
+            List<Long> patronIds) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today) {
             return of(person, List.of(), today);
@@ -44,7 +50,8 @@ public class PersonController {
         public static PersonView of(Person person, List<Long> patronIds, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
-                    person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
+                    person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds);
         }
     }
 
@@ -64,6 +71,10 @@ public class PersonController {
 
     /** A retirement; no date means the sheet's today. */
     public record RetireForm(LocalDate from) {
+    }
+
+    /** A hold; no from-date means the sheet's today, no to-date no end. */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
     private final PersonService service;
@@ -108,18 +119,11 @@ public class PersonController {
         return view(service.retire(sheetId.trim(), SignedInUser.name(user), id, form.from()));
     }
 
-    /** Put a person on hold. */
+    /** Put a hold on a person. */
     @PostMapping("/{id}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, true));
-    }
-
-    /** Take a person off hold. */
-    @PostMapping("/{id}/release")
-    public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, false));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody HoldForm form) {
+        return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, form.from(), form.to()));
     }
 
     /** Name another person on the sheet as one of the person's patrons. */

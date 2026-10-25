@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -14,7 +14,7 @@ import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn } from './people-api';
+import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
@@ -108,9 +108,19 @@ import { QuickAdd } from './quick-add';
                 </td>
                 <td>
                   <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                  <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
-                    [disabled]="holding() === p.id" [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">
-                    {{ p.held ? 'Release' : 'Hold' }}</button>
+                  <ul [attr.aria-label]="'Holds on ' + p.name">
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from ?? 'the start' }} to {{ h.to ?? 'no end' }}</li>
+                    }
+                  </ul>
+                  <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
+                  <input type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from"
+                    #holdFrom (input)="clearPersonError(p.id)" />
+                  <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
+                  <input type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to"
+                    #holdTo (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom, holdTo)"
+                    [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
                 </td>
                 <td>
                   <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
@@ -195,10 +205,10 @@ export class People {
   protected readonly addingPatron = signal<number | null>(null);
   /** The refusal of the last patron added on a person's row, shown on that row. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
-  /** The person being put on hold or taken off it. */
+  /** The person a hold is being put on. */
   protected readonly holding = signal<number | null>(null);
-  /** The ids of the people on hold. */
-  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** The holds of each person, by id. */
+  private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -392,9 +402,10 @@ export class People {
   }
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
-   *  except the open claims of a person on hold. */
+   *  except open claims dated within a hold of their person that no statement binds. */
   private countsLive(claim: ClaimView): boolean {
-    return counts(claim) && !(isOpen(claim) && this.heldIds().has(claim.personId));
+    return counts(claim) && !(isOpen(claim) && !isBound(claim)
+      && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
   }
 
   /** The names of the person's patrons, sorted, comma and space separated. */
@@ -454,20 +465,33 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or take them off it when they are held. */
-  protected async toggleHold(person: PersonView): Promise<void> {
+  /** Put a hold on the person from the row's from-date (blank: the sheet's today) to its to-date
+   *  (blank: no end). */
+  protected async hold(person: PersonView, fromInput: HTMLInputElement, toInput: HTMLInputElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.holding() !== null) return;
     this.personError.set(null);
     this.patronError.set(null);
+    const from = fromInput.value.trim();
+    const to = toInput.value.trim();
+    if ((from !== '' && !DATE.test(from)) || (to !== '' && !DATE.test(to))) {
+      this.personError.set({ id: person.id, message: 'Enter the hold dates as yyyy-mm-dd.' });
+      return;
+    }
+    if (to !== '' && to < (from !== '' ? from : sheet.today)) {
+      this.personError.set({ id: person.id, message: 'A hold cannot end before it starts.' });
+      return;
+    }
     this.holding.set(person.id);
     try {
-      const changed = await this.api.hold(sheet.id, person.id, !person.held);
+      const changed = await this.api.hold(sheet.id, person.id, from === '' ? null : from, to === '' ? null : to);
       if (this.session.sheet()?.id !== sheet.id) return;
       this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+      fromInput.value = '';
+      toInput.value = '';
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
-        this.personError.set({ id: person.id, message: person.held ? 'The person could not be released.' : 'The person could not be put on hold.' });
+        this.personError.set({ id: person.id, message: 'The person could not be put on hold.' });
       }
     } finally {
       this.holding.set(null);

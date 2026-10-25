@@ -102,10 +102,10 @@ public class StatementService {
         return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
     }
 
-    /** Only open and settled claims count toward what is claimed and due; a held person's open claims
-     *  do not, as on the screen. */
+    /** Only open and settled claims count toward what is claimed and due; a person's open claims dated
+     *  within one of their holds do not, unless a statement binds them, as on the screen. */
     private static boolean counts(Person person, Claim claim) {
         return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && !person.isHeld());
+                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
     }
 }
