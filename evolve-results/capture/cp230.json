@@ -1,0 +1,64 @@
+{
+  "checkpoint": 230,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp230_pending-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "408bf0c4b76ff7788cb02173f9adfdbfad068213",
+  "reset_sha": "",
+  "preagent_sha": "9911d6f6a4b436728d0d9de029d213f0de7e4545",
+  "prev_sha": "9911d6f6a4b436728d0d9de029d213f0de7e4545",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2537825999999999,
+    "input_tokens": 56,
+    "output_tokens": 15847,
+    "cache_read_tokens": 1575213,
+    "cache_creation_tokens": 77697,
+    "num_turns": 29,
+    "duration_ms": 590032,
+    "duration_api_ms": 167547,
+    "model": "claude-opus-5-5",
+    "session_id": "58951c91-b87f-4e0d-8f5a-0f7f7ed9c766",
+    "stop_reason": "success",
+    "result_text": "The pending SLA is in, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does**\n- **Setting:** the sheet has a new \"Pending SLA (days)\" setting (`setting-pending-sla` / `setting-pending-sla-current`). It isn't dated, blank means none, and saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=pending-sla value=<days>` to the audit file. It is stored in a new `sheet.pending_sla` column (migration `V120__pending_sla.sql`).\n- **Per claim:** each claim shows `claim-pending-late`. It reads \"yes\" when the claim is PENDING and its pending day plus the SLA is before the sheet's today. The pending day is the date of the claim's most recent PENDING entry in its status log, so a claim that is rejected and settled again starts counting from its new pending day.\n- **Summary:** a new \"Pending late\" row (`summary-pending-late-count`) counts those claims.\n- The history view (looking at the sheet as of a past date) uses the SLA and today as they stood on that date.\n\nI built it to match the existing review SLA. The review-late check and the new one now share one helper, `late(...)` in `ClaimController`.\n\n**One change outside the request:** scenario 1 failed on something unrelated. When you viewed the sheet as of 2026-04-02, the claim's shares included one that was only added on 2026-04-05. Claim shares weren't saved in the sheet's history, so the past view always showed today's shares. I added them to what history keeps (`HistoryListener`, `SheetAsOf`), and the past view now shows the shares as they stood on that date. Because of this, a sheet's totals for a past date now count the shares held then. Before, those totals ignored shares entirely.\n\nShares that already exist have no history rows yet, so in views of past dates they will appear only from their next change onward.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2537825999999999,
+        "num_turns": 29,
+        "duration_ms": 590032,
+        "duration_api_ms": 167547,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp230.agent.jsonl",
+  "agent_diff_file": "cp230.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
