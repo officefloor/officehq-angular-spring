@@ -7,7 +7,7 @@ import { Holidays } from './holidays';
 import { Notes } from './notes';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
+import { DescendantFigures, GRADES, NO_DESCENDANTS, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -15,7 +15,7 @@ import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdu
 import { Settings } from './settings';
 import { Dated, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
-import { Summary, SummaryPerson } from './summary';
+import { STATUSES, Summary, SummaryPerson } from './summary';
 import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
 import { Templates } from './templates';
 import { TreeSearch } from './tree-search';
@@ -85,6 +85,12 @@ import { FigurePipe } from '../../core/figure.pipe';
       <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
       <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
       <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
+      @for (g of consolidated().grades; track g.grade) {
+        <span>Grade {{ (g.grade) | figure }} due <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</strong></span>
+      }
+      @for (s of consolidated().statuses; track s.status) {
+        <span>{{ (s.status) | figure }} <strong [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ (s.count) | figure }}</strong></span>
+      }
     </section>
     <app-settings
       (floorSaved)="floors.set($event)"
@@ -1316,16 +1322,29 @@ export class People {
     return people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key)) ?? null;
   });
   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
-  protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+  protected readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up.
    *  While the sheet is read as of an earlier date they are the tree's as it stood then: the server adds the sheet's own in. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
-    if (this.session.asOf()) return d;
+    const own = !this.session.asOf();
+    const people = own ? this.summaryPeople().filter((p) => !p.retired) : [];
+    const claims = own ? this.claims() : [];
     return {
-      peopleCount: this.people().length + d.peopleCount,
-      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
-      overdueTotal: money(this.overdueTotal().cents + cents(d.overdueTotal)),
+      peopleCount: (own ? this.people().length : 0) + d.peopleCount,
+      dueTotal: own ? money(cents(this.dueTotal()) + cents(d.dueTotal)) : d.dueTotal,
+      overdueTotal: own ? money(this.overdueTotal().cents + cents(d.overdueTotal)) : d.overdueTotal,
+      grades: GRADES.map((grade) => ({
+        grade,
+        dueTotal: money(
+          people.filter((p) => p.grade === grade).reduce((sum, p) => sum + (p.dueCents ?? 0), 0) +
+            cents(d.gradeDueTotals[grade] ?? '0.00'),
+        ),
+      })),
+      statuses: STATUSES.map((status) => ({
+        status,
+        count: claims.filter((c) => c.status === status).length + (d.statusCounts[status] ?? 0),
+      })),
     };
   });
   protected readonly name = signal('');
@@ -1447,7 +1466,7 @@ export class People {
       this.fiscalStartMonth.set(1);
       this.statements.set([]);
       this.periods.set([]);
-      this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+      this.descendants.set(NO_DESCENDANTS);
       this.rowErrors.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpened.set(null);
@@ -2735,7 +2754,7 @@ export class People {
         this.service.watched(sheet),
         this.claimsService.tags(sheet),
         // Without its descendants' figures the sheet shows only its own as consolidated.
-        this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
+        this.service.descendants(sheet).catch(() => NO_DESCENDANTS),
         this.plansService.list(sheet),
         this.service.snapshots(sheet),
         this.service.dashboard(sheet).catch(() => NO_DASHBOARD),

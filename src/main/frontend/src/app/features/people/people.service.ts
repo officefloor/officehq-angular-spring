@@ -147,12 +147,18 @@ export function withGrade(name: string, grade: string | null): string {
 }
 
 /** A sheet's descendants' figures added up: their people (retired ones included), and each one's
- *  due-total and overdue-total as that sheet shows it, with two decimals. */
+ *  due-total and overdue-total as that sheet shows it, with two decimals; per grade, the due-totals of
+ *  the people on it (retired ones left out); and per status, how many claims have it. */
 export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
+  gradeDueTotals: Partial<Record<string, string>>;
+  statusCounts: Partial<Record<string, number>>;
 }
+
+/** The figures of a sheet without descendants. */
+export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
 
 // The people kept on a sheet, read from and written to the server.
 @Injectable({ providedIn: 'root' })
