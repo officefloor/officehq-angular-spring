@@ -227,6 +227,14 @@ export class ClaimsService {
   }
 
   /** Every tag ever used on the sheet's claims, sorted. */
+  /** The sheet's duplicate claims: one line `<name> <date> <amount> x<count>` per person, date and amount
+   *  with two or more claims (VOID and DELETED ones left out), people in list order, then by date, then by amount. */
+  duplicates(sheet: string): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`${this.url(sheet)}/claims/duplicates`, { headers: this.session.headers() }),
+    );
+  }
+
   tags(sheet: string): Promise<string[]> {
     return firstValueFrom(
       this.http.get<string[]>(`${this.url(sheet)}/tags`, { headers: this.session.headers() }),

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,29 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /** The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and
+     * DELETED ones left out), one line {@code <name> <date> <amount> x<count>}; people in list order, then
+     * by date, then by amount. */
+    @Transactional(readOnly = true)
+    public List<String> duplicates(String sheetId) {
+        record Key(LocalDate date, BigDecimal amount) {}
+        Map<Long, Map<Key, Long>> counts = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                .collect(Collectors.groupingBy(Claim::getPersonId, Collectors.groupingBy(
+                        c -> new Key(c.getDate(), c.getAmount().setScale(2, RoundingMode.UNNECESSARY)),
+                        Collectors.counting())));
+        List<String> out = new ArrayList<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            counts.getOrDefault(person.getId(), Map.of()).entrySet().stream()
+                    .filter(e -> e.getValue() >= 2)
+                    .sorted(Map.Entry.<Key, Long>comparingByKey(Comparator.comparing(Key::date)
+                            .thenComparing(Key::amount)))
+                    .forEach(e -> out.add(person.getName() + " " + e.getKey().date() + " "
+                            + e.getKey().amount().toPlainString() + " x" + e.getValue()));
+        }
+        return out;
     }
 
     /** The status logs of the claims, by claim id, each oldest first. */

@@ -277,6 +277,15 @@ public class ClaimController {
         return views(service.list(sheetId.trim()));
     }
 
+    /** The sheet's duplicate claims, one line {@code <name> <date> <amount> x<count>} per person, date and
+     * amount with two or more claims (VOID and DELETED ones left out), people in list order, then by date,
+     * then by amount. */
+    @GetMapping("/claims/duplicates")
+    public List<String> duplicates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.duplicates(sheetId.trim());
+    }
+
     /** Every tag ever used on the sheet's claims, sorted. */
     @GetMapping("/tags")
     public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId,
