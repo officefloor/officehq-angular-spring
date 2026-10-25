@@ -1,0 +1,77 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp245-tvelfjsk
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp245_rate-withdraw.spec.ts:6:7 › rate withdraw › rate withdraw (9.7s)
+  ✓  2 [chromium] › cp245_rate-withdraw.spec.ts:98:7 › rate withdraw › rate withdraw scenario 1 (21.4s)
+  ✘  3 [chromium] › cp245_rate-withdraw.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 (24.8s)
+  ✘  4 [chromium] › cp245_rate-withdraw.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 (20.2s)
+
+
+  1) [chromium] › cp245_rate-withdraw.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-6').getByTestId('claim-status')
+    Expected string: [32m"DRAFT"[39m
+    Received string: [31m"OPEN"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-6').getByTestId('claim-status')[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status" _ngcontent-ng-c3801447841="">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+
+
+      669 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_3).getByTestId("claim-stated")).toHaveText("no");
+      670 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-due")).toHaveText("1.00");
+    > 671 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-status")).toHaveText("DRAFT");
+          |                                                                                          ^
+      672 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-stated")).toHaveText("no");
+      673 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-due")).toHaveText("1.00");
+      674 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-status")).toHaveText("DRAFT");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp245_rate-withdraw.spec.ts:671:90
+
+  2) [chromium] › cp245_rate-withdraw.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"14"[39m
+
+      1300 |     await expect(pg_vic.getByTestId("watched-due-total")).toHaveText("0.00");
+      1301 |     expect(await ui.setRate(pg_vic, {"grade": "C", "pct": "7.50"})).toBe(true);
+    > 1302 |     expect(await ui.split(pg_vic, p_ben, c_ben_0, "0.01")).toBeNull();
+           |                                                            ^
+      1303 |     expect(await ui.importOpenings(pg_vic, "Cam,P1,1.00")).toBe(1);
+      1304 |     expect(await ui.claimAction(pg_vic, c_ben_1, "open")).toBe(false);
+      1305 |     await ui.setAsOf(pg_vic, "2026-03-01");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp245_rate-withdraw.spec.ts:1302:60
+
+  2 failed
+    [chromium] › cp245_rate-withdraw.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ──────
+    [chromium] › cp245_rate-withdraw.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ─────
+  2 passed (1.3m)

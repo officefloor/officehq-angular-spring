@@ -1,0 +1,66 @@
+{
+  "checkpoint": 91,
+  "checkpoint_id": "cp91_claim-comments",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "a79aa0e86e2b8546e150cfd79ead1b263b0645bd",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-24T20:17:12",
+  "seconds": 86,
+  "build_log_file": "cp91.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp91_claim-comments.spec.ts::claim comments": false,
+      "cp91_claim-comments.spec.ts::claim comments scenario 1": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 2": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7065,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  21 |     expect(await ui.addComment(pg_vic, c_ada_0, \"second\")).toBe(true);\n  22 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n> 23 |     expect(await ui.addComment(pg_wes, c_ada_0, \"nope\")).toBe(false);\n     |                                                          ^\n  24 |     await ui.refresh(pg_vic);\n  25 |     expect(await ui.claimAction(pg_vic, c_ada_0, \"settle\")).toBe(true);\n  26 |     expect(await ui.addComment(pg_vic, c_ada_0, \"paid\")).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp91_claim-comments.spec.ts:23:58 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15488,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14126,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

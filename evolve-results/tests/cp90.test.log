@@ -1,0 +1,225 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp90-fd1bx8ta
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+ [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role (36.0s)
+  ✓  202 [chromium] › cp53_permission-matrix.spec.ts:349:7 › permission matrix › permission matrix scenario 2 (12.5s)
+  ✓  204 [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 (10.5s)
+  ✓  206 [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 (9.4s)
+  ✓  207 [chromium] › cp54_viewer-role.spec.ts:639:7 › viewer role › viewer role scenario 3 (7.2s)
+  ✓  203 [chromium] › cp55_auto-close.spec.ts:377:7 › auto close › auto close scenario 2 (35.4s)
+  ✓  208 [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary (6.0s)
+  ✓  210 [chromium] › cp56_late-per-boundary.spec.ts:86:7 › late per boundary › late per boundary scenario 1 (8.3s)
+  ✓  205 [chromium] › cp53_permission-matrix.spec.ts:692:7 › permission matrix › permission matrix scenario 3 (42.1s)
+  ✓  209 [chromium] › cp55_auto-close.spec.ts:624:7 › auto close › auto close scenario 3 (19.5s)
+  ✓  213 [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify (5.1s)
+  ✓  211 [chromium] › cp56_late-per-boundary.spec.ts:402:7 › late per boundary › late per boundary scenario 2 (15.0s)
+  ✓  212 [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim (13.0s)
+  ✓  214 [chromium] › cp58_watch-and-notify.spec.ts:96:7 › watch and notify › watch and notify scenario 1 (7.0s)
+  ✓  216 [chromium] › cp57_split-claim.spec.ts:159:7 › split claim › split claim scenario 1 (11.1s)
+  ✓  217 [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 (14.9s)
+  ✓  215 [chromium] › cp56_late-per-boundary.spec.ts:681:7 › late per boundary › late per boundary scenario 3 (27.5s)
+  ✓  218 [chromium] › cp57_split-claim.spec.ts:484:7 › split claim › split claim scenario 2 (17.6s)
+  ✓  219 [chromium] › cp58_watch-and-notify.spec.ts:716:7 › watch and notify › watch and notify scenario 3 (16.0s)
+  ✓  220 [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates (11.7s)
+  ✓  222 [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals (7.1s)
+  ✓  221 [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 (11.1s)
+  ✓  223 [chromium] › cp59_period-templates.spec.ts:106:7 › period templates › period templates scenario 1 (14.2s)
+  ✓  225 [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation (13.8s)
+  ✓  224 [chromium] › cp60_trimmed-totals.spec.ts:179:7 › trimmed totals › trimmed totals scenario 1 (21.7s)
+  ✓  226 [chromium] › cp59_period-templates.spec.ts:338:7 › period templates › period templates scenario 2 (20.2s)
+  ✓  227 [chromium] › cp61_delegation.spec.ts:77:7 › delegation › delegation scenario 1 (22.0s)
+  ✓  228 [chromium] › cp60_trimmed-totals.spec.ts:433:7 › trimmed totals › trimmed totals scenario 2 (16.2s)
+  ✓  229 [chromium] › cp59_period-templates.spec.ts:659:7 › period templates › period templates scenario 3 (19.4s)
+  ✓  230 [chromium] › cp61_delegation.spec.ts:426:7 › delegation › delegation scenario 2 (15.3s)
+  ✓  231 [chromium] › cp60_trimmed-totals.spec.ts:759:7 › trimmed totals › trimmed totals scenario 3 (29.2s)
+  ✓  233 [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 (17.0s)
+  ✓  234 [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms (8.8s)
+  ✓  235 [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late (8.3s)
+  ✓  236 [chromium] › cp63_person-terms.spec.ts:84:7 › person terms › person terms scenario 1 (11.9s)
+  ✓  232 [chromium] › cp62_archive-sheet.spec.ts:6:7 › archive sheet › archive sheet (39.3s)
+  ✓  239 [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 (14.3s)
+  ✓  238 [chromium] › cp63_person-terms.spec.ts:362:7 › person terms › person terms scenario 2 (17.1s)
+  ✓  240 [chromium] › cp62_archive-sheet.spec.ts:361:7 › archive sheet › archive sheet scenario 2 (11.7s)
+  ✓  241 [chromium] › cp63_person-terms.spec.ts:741:7 › person terms › person terms scenario 3 (10.9s)
+  ✓  237 [chromium] › cp64_floor-after-late.spec.ts:101:7 › floor after late › floor after late scenario 1 (46.7s)
+  ✓  243 [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled (10.4s)
+  ✓  242 [chromium] › cp62_archive-sheet.spec.ts:653:7 › archive sheet › archive sheet scenario 3 (16.2s)
+  ✓  244 [chromium] › cp64_floor-after-late.spec.ts:391:7 › floor after late › floor after late scenario 2 (16.6s)
+  ✓  246 [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim (11.5s)
+  ✓  247 [chromium] › cp64_floor-after-late.spec.ts:703:7 › floor after late › floor after late scenario 3 (14.6s)
+  ✓  245 [chromium] › cp65_void-settled.spec.ts:99:7 › void settled › void settled scenario 1 (30.8s)
+  ✓  249 [chromium] › cp67_active-people.spec.ts:6:7 › active people › active people (4.1s)
+  ✓  251 [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 (17.2s)
+  ✓  252 [chromium] › cp67_active-people.spec.ts:524:7 › active people › active people scenario 2 (13.7s)
+  ✓  248 [chromium] › cp66_redate-claim.spec.ts:117:7 › redate claim › redate claim scenario 1 (52.5s)
+  ✓  250 [chromium] › cp65_void-settled.spec.ts:361:7 › void settled › void settled scenario 2 (39.1s)
+  ✓  253 [chromium] › cp67_active-people.spec.ts:810:7 › active people › active people scenario 3 (14.1s)
+  ✓  254 [chromium] › cp66_redate-claim.spec.ts:296:7 › redate claim › redate claim scenario 2 (11.3s)
+  ✓  256 [chromium] › cp68_backing-recent-settled.spec.ts:6:7 › backing recent settled › backing recent settled (5.2s)
+  ✓  255 [chromium] › cp65_void-settled.spec.ts:593:7 › void settled › void settled scenario 3 (18.1s)
+  ✓  257 [chromium] › cp66_redate-claim.spec.ts:602:7 › redate claim › redate claim scenario 3 (9.4s)
+  ✓  258 [chromium] › cp68_backing-recent-settled.spec.ts:98:7 › backing recent settled › backing recent settled scenario 1 (10.1s)
+  ✓  260 [chromium] › cp70_soft-close.spec.ts:6:7 › soft close › soft close (11.8s)
+  ✓  259 [chromium] › cp69_claim-lock.spec.ts:6:7 › claim lock › claim lock (14.9s)
+  ✓  261 [chromium] › cp68_backing-recent-settled.spec.ts:426:7 › backing recent settled › backing recent settled scenario 2 (10.8s)
+  ✓  263 [chromium] › cp69_claim-lock.spec.ts:71:7 › claim lock › claim lock scenario 1 (13.8s)
+  ✓  262 [chromium] › cp70_soft-close.spec.ts:111:7 › soft close › soft close scenario 1 (16.4s)
+  ✓  264 [chromium] › cp68_backing-recent-settled.spec.ts:720:7 › backing recent settled › backing recent settled scenario 3 (15.0s)
+  ✓  265 [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 (12.8s)
+  ✓  267 [chromium] › cp71_cancel-statement.spec.ts:6:7 › cancel statement › cancel statement (10.4s)
+  ✓  266 [chromium] › cp70_soft-close.spec.ts:383:7 › soft close › soft close scenario 2 (19.7s)
+  ✓  268 [chromium] › cp69_claim-lock.spec.ts:777:7 › claim lock › claim lock scenario 3 (10.8s)
+  ✓  269 [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 (12.6s)
+  ✓  271 [chromium] › cp72_retired-leave-totals.spec.ts:6:7 › retired leave totals › retired leave totals (5.9s)
+  ✓  272 [chromium] › cp71_cancel-statement.spec.ts:332:7 › cancel statement › cancel statement scenario 2 (17.8s)
+  ✓  273 [chromium] › cp72_retired-leave-totals.spec.ts:149:7 › retired leave totals › retired leave totals scenario 1 (17.0s)
+  ✓  270 [chromium] › cp70_soft-close.spec.ts:732:7 › soft close › soft close scenario 3 (32.2s)
+  ✓  274 [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 (21.8s)
+  ✓  276 [chromium] › cp73_statement-as-of.spec.ts:6:7 › statement as of › statement as of (20.4s)
+  ✓  277 [chromium] › cp74_as-of-view.spec.ts:6:7 › as of view › as of view (19.3s)
+  ✓  275 [chromium] › cp72_retired-leave-totals.spec.ts:421:7 › retired leave totals › retired leave totals scenario 2 (44.0s)
+  ✓  278 [chromium] › cp73_statement-as-of.spec.ts:246:7 › statement as of › statement as of scenario 1 (19.6s)
+  ✓  280 [chromium] › cp72_retired-leave-totals.spec.ts:622:7 › retired leave totals › retired leave totals scenario 3 (13.9s)
+  ✓  282 [chromium] › cp75_bulk-grade.spec.ts:6:7 › bulk grade › bulk grade (4.4s)
+  ✓  281 [chromium] › cp73_statement-as-of.spec.ts:457:7 › statement as of › statement as of scenario 2 (16.2s)
+  ✓  279 [chromium] › cp74_as-of-view.spec.ts:277:7 › as of view › as of view scenario 1 (28.8s)
+  ✓  283 [chromium] › cp75_bulk-grade.spec.ts:101:7 › bulk grade › bulk grade scenario 1 (13.0s)
+  ✓  284 [chromium] › cp73_statement-as-of.spec.ts:829:7 › statement as of › statement as of scenario 3 (17.3s)
+  ✓  285 [chromium] › cp74_as-of-view.spec.ts:702:7 › as of view › as of view scenario 2 (16.5s)
+  ✓  287 [chromium] › cp76_snapshots.spec.ts:6:7 › snapshots › snapshots (4.5s)
+  ✓  286 [chromium] › cp75_bulk-grade.spec.ts:366:7 › bulk grade › bulk grade scenario 2 (20.3s)
+  ✓  288 [chromium] › cp74_as-of-view.spec.ts:1050:7 › as of view › as of view scenario 3 (19.7s)
+  ✓  289 [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 (19.6s)
+  ✘  290 [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 (11.6s)
+  ✓  291 [chromium] › cp77_note-required.spec.ts:6:7 › note required › note required (11.5s)
+  ✓  293 [chromium] › cp78_age-buckets.spec.ts:6:7 › age buckets › age buckets (8.1s)
+  ✓  292 [chromium] › cp76_snapshots.spec.ts:429:7 › snapshots › snapshots scenario 2 (15.6s)
+  ✓  294 [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 (17.0s)
+  ✓  296 [chromium] › cp76_snapshots.spec.ts:819:7 › snapshots › snapshots scenario 3 (15.4s)
+  ✓  297 [chromium] › cp77_note-required.spec.ts:441:7 › note required › note required scenario 2 (12.2s)
+  ✓  298 [chromium] › cp79_entry-date.spec.ts:6:7 › entry date › entry date (13.0s)
+  ✓  299 [chromium] › cp77_note-required.spec.ts:674:7 › note required › note required scenario 3 (22.7s)
+  ✓  295 [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 (53.3s)
+  ✓  301 [chromium] › cp80_period-by-due-by.spec.ts:6:7 › period by due by › period by due by (10.0s)
+  ✓  302 [chromium] › cp78_age-buckets.spec.ts:608:7 › age buckets › age buckets scenario 2 (22.1s)
+  ✓  303 [chromium] › cp80_period-by-due-by.spec.ts:164:7 › period by due by › period by due by scenario 1 (18.9s)
+  ✓  300 [chromium] › cp79_entry-date.spec.ts:99:7 › entry date › entry date scenario 1 (48.9s)
+  ✓  304 [chromium] › cp78_age-buckets.spec.ts:879:7 › age buckets › age buckets scenario 3 (9.4s)
+  ✓  306 [chromium] › cp79_entry-date.spec.ts:363:7 › entry date › entry date scenario 2 (10.2s)
+  ✓  305 [chromium] › cp80_period-by-due-by.spec.ts:710:7 › period by due by › period by due by scenario 2 (16.5s)
+  ✓  307 [chromium] › cp81_remind.spec.ts:6:7 › remind › remind (19.2s)
+  ✓  308 [chromium] › cp79_entry-date.spec.ts:704:7 › entry date › entry date scenario 3 (18.2s)
+  ✓  311 [chromium] › cp82_settled-and-open-totals.spec.ts:6:7 › settled and open totals › settled and open totals (6.3s)
+  ✓  309 [chromium] › cp80_period-by-due-by.spec.ts:1121:7 › period by due by › period by due by scenario 3 (21.7s)
+  ✓  310 [chromium] › cp81_remind.spec.ts:68:7 › remind › remind scenario 1 (15.0s)
+  ✘  313 [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays (9.3s)
+  ✓  314 [chromium] › cp81_remind.spec.ts:459:7 › remind › remind scenario 2 (9.9s)
+  ✓  312 [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 (17.3s)
+  ✓  316 [chromium] › cp81_remind.spec.ts:826:7 › remind › remind scenario 3 (12.8s)
+  ✓  317 [chromium] › cp82_settled-and-open-totals.spec.ts:507:7 › settled and open totals › settled and open totals scenario 2 (11.3s)
+  ✓  318 [chromium] › cp84_business-day-terms.spec.ts:6:7 › business day terms › business day terms (4.4s)
+  ✓  315 [chromium] › cp83_holidays.spec.ts:93:7 › holidays › holidays scenario 1 (20.3s)
+  ✓  321 [chromium] › cp83_holidays.spec.ts:593:7 › holidays › holidays scenario 2 (16.4s)
+  ✓  322 [chromium] › cp83_holidays.spec.ts:1055:7 › holidays › holidays scenario 3 (20.7s)
+  ✓  320 [chromium] › cp84_business-day-terms.spec.ts:127:7 › business day terms › business day terms scenario 1 (42.5s)
+  ✓  319 [chromium] › cp82_settled-and-open-totals.spec.ts:1018:7 › settled and open totals › settled and open totals scenario 3 (47.4s)
+  ✓  323 [chromium] › cp85_grace-per-grade.spec.ts:6:7 › grace per grade › grace per grade (11.1s)
+  ✓  324 [chromium] › cp84_business-day-terms.spec.ts:493:7 › business day terms › business day terms scenario 2 (14.7s)
+  ✓  325 [chromium] › cp86_inline-amount.spec.ts:6:7 › inline amount › inline amount (16.0s)
+  ✓  326 [chromium] › cp85_grace-per-grade.spec.ts:137:7 › grace per grade › grace per grade scenario 1 (19.5s)
+  ✓  327 [chromium] › cp84_business-day-terms.spec.ts:882:7 › business day terms › business day terms scenario 3 (15.1s)
+  ✓  328 [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 (13.2s)
+  ✓  330 [chromium] › cp87_external-reference.spec.ts:6:7 › external reference › external reference (9.9s)
+  ✓  329 [chromium] › cp85_grace-per-grade.spec.ts:451:7 › grace per grade › grace per grade scenario 2 (15.6s)
+  ✓  332 [chromium] › cp87_external-reference.spec.ts:77:7 › external reference › external reference scenario 1 (8.2s)
+  ✓  333 [chromium] › cp85_grace-per-grade.spec.ts:932:7 › grace per grade › grace per grade scenario 3 (13.9s)
+  ✓  335 [chromium] › cp88_compound-late-charge.spec.ts:6:7 › compound late charge › compound late charge (4.1s)
+  ✓  334 [chromium] › cp87_external-reference.spec.ts:364:7 › external reference › external reference scenario 2 (13.5s)
+  ✓  331 [chromium] › cp86_inline-amount.spec.ts:369:7 › inline amount › inline amount scenario 2 (41.1s)
+  ✓  337 [chromium] › cp87_external-reference.spec.ts:785:7 › external reference › external reference scenario 3 (21.1s)
+  ✓  336 [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 (27.0s)
+  ✓  339 [chromium] › cp89_claim-tags.spec.ts:6:7 › claim tags › claim tags (8.6s)
+  ✓  338 [chromium] › cp86_inline-amount.spec.ts:666:7 › inline amount › inline amount scenario 3 (20.8s)
+  ✓  341 [chromium] › cp89_claim-tags.spec.ts:105:7 › claim tags › claim tags scenario 1 (16.2s)
+  ✓  342 [chromium] › cp90_void-reasons.spec.ts:6:7 › void reasons › void reasons (14.8s)
+  ✓  340 [chromium] › cp88_compound-late-charge.spec.ts:593:7 › compound late charge › compound late charge scenario 2 (23.8s)
+  ✓  343 [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 (21.2s)
+  ✓  344 [chromium] › cp90_void-reasons.spec.ts:101:7 › void reasons › void reasons scenario 1 (27.2s)
+  ✓  346 [chromium] › cp89_claim-tags.spec.ts:715:7 › claim tags › claim tags scenario 3 (9.4s)
+  ✓  347 [chromium] › cp90_void-reasons.spec.ts:338:7 › void reasons › void reasons scenario 2 (14.4s)
+  ✓  345 [chromium] › cp88_compound-late-charge.spec.ts:965:7 › compound late charge › compound late charge scenario 3 (47.1s)
+  ✓  348 [chromium] › cp90_void-reasons.spec.ts:684:7 › void reasons › void reasons scenario 3 (8.9s)
+
+
+  1) [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      742 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "0.40"})).toBeNull();
+      743 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 744 |     expect(await ui.reassign(pg_wes, c_ada_0, "Ben")).toBe(false);
+          |                                                       ^
+      745 |     await ui.refresh(pg_wes);
+      746 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      747 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp75_bulk-grade.spec.ts:744:55
+
+  2) [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays ──────────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-1399').getByTestId('claim-due-by')
+    Expected string: [32m"2026-03-1[7m7[27m"[39m
+    Received string: [31m"2026-03-1[7m8[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-1399').getByTestId('claim-due-by')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due-by" _ngcontent-ng-c2807942702="">2026-03-18</span>[22m
+    [2m  -   unexpected value "2026-03-18"[22m
+
+
+      26 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-due-by")).toHaveText("2026-03-18");
+      27 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-overdue")).toHaveText("no");
+    > 28 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-due-by")).toHaveText("2026-03-17");
+         |                                                                                          ^
+      29 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-overdue")).toHaveText("no");
+      30 |     await expect(pg_uma.getByTestId("rollup-claimed-total")).toHaveText("60.00");
+      31 |     await expect(pg_uma.getByTestId("rollup-due-total")).toHaveText("6.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp83_holidays.spec.ts:28:90
+
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (1.9m)
+  Slow test file: [chromium] › cp88_compound-late-charge.spec.ts (1.7m)
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (1.6m)
+  Slow test file: [chromium] › cp78_age-buckets.spec.ts (1.5m)
+  Slow test file: [chromium] › cp86_inline-amount.spec.ts (1.5m)
+  Consider splitting slow test files to speed up parallel execution
+  2 failed
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+    [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays ───────────────────────────────────
+  346 passed (28.0m)

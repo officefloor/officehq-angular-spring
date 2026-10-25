@@ -1,0 +1,66 @@
+{
+  "checkpoint": 214,
+  "checkpoint_id": "cp214_max-open-claims",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "7826a38d8a2bb9d3b77c27f831c2f2c5a7ac4665",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T15:11:46",
+  "seconds": 149,
+  "build_log_file": "cp214.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp214_max-open-claims.spec.ts::max open claims": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 1": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 2": false,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9010,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18423,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 25967,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('plan-row-1').getByTestId('plan-next-dates')\nExpected string: \u001b[32m\"2026-03-15, 2026-04-15\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-next-dates')\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c2711238297=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n  1033 |     await expect(pg_uma.getByTestId(\"note-line\")).toHaveText([]);\n  1034 |     await expect(pg_uma.getByTestId(\"plan-row-\" + pl_cam_1).getByTestId(\"plan-generated\")).toHaveText(\"0\");\n> 1035 |     await expect(pg_uma.getByTestId(\"plan-row-\" + pl_cam_1).getByTestId(\"plan-n"
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33461,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

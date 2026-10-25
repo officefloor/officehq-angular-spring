@@ -1,0 +1,66 @@
+{
+  "checkpoint": 238,
+  "checkpoint_id": "cp238_merge-undo",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "71072c4fefeaaa23842bb170d1a503fdf3b38812",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T20:06:51",
+  "seconds": 146,
+  "build_log_file": "cp238.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp238_merge-undo.spec.ts::merge undo": true,
+      "cp238_merge-undo.spec.ts::merge undo scenario 1": true,
+      "cp238_merge-undo.spec.ts::merge undo scenario 2": true,
+      "cp238_merge-undo.spec.ts::merge undo scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14870,
+        "failure": ""
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30198,
+        "failure": ""
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25770,
+        "failure": ""
+      },
+      {
+        "test_id": "cp238_merge-undo.spec.ts::merge undo scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26075,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 75,
+  "checkpoint_id": "cp75_bulk-grade",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "f4a7b5fcae46a3946a3c628e320902c1aec90e27",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-24T18:34:33",
+  "seconds": 107,
+  "build_log_file": "cp75.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp75_bulk-grade.spec.ts::bulk grade": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 1": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 2": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5508,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7390,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 54221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 12449,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  737 |     expect(await ui.addPatron(pg_uma, p_ben, \"Cam\")).toBe(false);\n  738 |     expect(await ui.claimAction(pg_uma, c_cam_0, \"open\")).toBe(false);\n> 739 |     expect(await ui.addProof(pg_uma, c_ada_0)).toBe(true);\n      |                                                ^\n  740 |     expect(await ui.retire(pg_uma, p_cam, \"2026-03-09\")).toBe(true);\n  741 |     await ui.showRetired(pg_uma, true);\n  742 |     expect(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"0.40\"})).toBeNull();\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp75_bulk-grade.spec.ts:739:48 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

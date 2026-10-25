@@ -1,0 +1,45 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp134-hxxkz_03
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting (8.7s)
+  ✓  2 [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 (17.7s)
+  ✓  3 [chromium] › cp134_sorting.spec.ts:556:7 › sorting › sorting scenario 2 (21.7s)
+  ✓  4 [chromium] › cp134_sorting.spec.ts:801:7 › sorting › sorting scenario 3 (13.6s)
+
+
+  1) [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting ────────────────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 6[39m
+    [31m+ Received  + 1[39m
+
+    [32m- Array [[39m
+    [32m-   "1",[39m
+    [32m-   "2",[39m
+    [32m-   "3",[39m
+    [32m-   "4",[39m
+    [32m- ][39m
+    [31m+ Array [][39m
+
+      33 |     await ui.setSetting(pg_uma, "cap", "");
+      34 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+    > 35 |     expect(await ui.personOrder(pg_vic)).toEqual([p_cam, p_ada, p_ben, p_dot]);
+         |                                          ^
+      36 |     await ui.refresh(pg_uma);
+      37 |     expect(await ui.personOrder(pg_uma)).toEqual([p_dot, p_ben, p_ada, p_cam]);
+      38 |     expect(await ui.bulkOpen(pg_uma, [c_ada_0])).toEqual({ opened: 0, refused: 1 });
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp134_sorting.spec.ts:35:42
+
+  1 failed
+    [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting ─────────────────────────────────────
+  3 passed (1.1m)

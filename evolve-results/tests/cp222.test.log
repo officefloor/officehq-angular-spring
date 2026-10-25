@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp222-qmhgpden
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree (14.7s)
+  ✘  2 [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 (28.4s)
+  ✓  3 [chromium] › cp222_dashboard-over-tree.spec.ts:661:7 › dashboard over tree › dashboard over tree scenario 2 (23.6s)
+  ✓  4 [chromium] › cp222_dashboard-over-tree.spec.ts:1255:7 › dashboard over tree › dashboard over tree scenario 3 (34.0s)
+
+
+  1) [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      46 |     await ui.refresh(pg_wes);
+      47 |     await ui.loadSheet(pg_wes, `${sheet}-c1`);
+    > 48 |     expect(await ui.claimAction(pg_wes, c_cy_0, "settle")).toBe(false);
+         |                                                            ^
+      49 |     await ui.setToday(pg_wes, "2026-03-20");
+      50 |     await ui.loadSheet(pg_wes, sheet);
+      51 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:48:60
+
+  2) [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-7').getByTestId('claim-proofs-receipt')
+    Expected string: [32m"0"[39m
+    Received string: [31m"1"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-7').getByTestId('claim-proofs-receipt')[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3916548624="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+
+
+      449 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-review-late")).toHaveText("no");
+      450 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-waived")).toHaveText("no");
+    > 451 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-proofs-receipt")).toHaveText("0");
+          |                                                                                                  ^
+      452 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-proofs-photo")).toHaveText("0");
+      453 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-held")).toHaveText("no");
+      454 |     await expect(pg_vic.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-shares")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp222_dashboard-over-tree.spec.ts:451:98
+
+  2 failed
+    [chromium] › cp222_dashboard-over-tree.spec.ts:6:7 › dashboard over tree › dashboard over tree ─
+    [chromium] › cp222_dashboard-over-tree.spec.ts:87:7 › dashboard over tree › dashboard over tree scenario 1 
+  2 passed (1.8m)

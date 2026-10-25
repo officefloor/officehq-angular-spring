@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp91-hx89el9u
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments (7.1s)
+  ✓  2 [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 (15.5s)
+  ✓  3 [chromium] › cp91_claim-comments.spec.ts:344:7 › claim comments › claim comments scenario 2 (10.1s)
+  ✓  4 [chromium] › cp91_claim-comments.spec.ts:816:7 › claim comments › claim comments scenario 3 (14.1s)
+
+
+  1) [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments ────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      21 |     expect(await ui.addComment(pg_vic, c_ada_0, "second")).toBe(true);
+      22 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 23 |     expect(await ui.addComment(pg_wes, c_ada_0, "nope")).toBe(false);
+         |                                                          ^
+      24 |     await ui.refresh(pg_vic);
+      25 |     expect(await ui.claimAction(pg_vic, c_ada_0, "settle")).toBe(true);
+      26 |     expect(await ui.addComment(pg_vic, c_ada_0, "paid")).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp91_claim-comments.spec.ts:23:58
+
+  1 failed
+    [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments ─────────────────
+  3 passed (50.1s)

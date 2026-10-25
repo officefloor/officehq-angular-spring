@@ -1,0 +1,66 @@
+{
+  "checkpoint": 99,
+  "checkpoint_id": "cp99_person-contact",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "8d66057a81011e8a62cd9249191cb924578c2855",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-24T20:47:53",
+  "seconds": 122,
+  "build_log_file": "cp99.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp99_person-contact.spec.ts::person contact": false,
+      "cp99_person-contact.spec.ts::person contact scenario 1": true,
+      "cp99_person-contact.spec.ts::person contact scenario 2": true,
+      "cp99_person-contact.spec.ts::person contact scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 11966,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  20 |     expect(await ui.editSave(pg_vic, {\"contact\": \"vic@x\"})).toBe(true);\n  21 |     expect(await ui.editSave(pg_uma, {\"contact\": \"ada@x\"})).toBe(false);\n> 22 |     expect(await ui.editPerson(pg_uma, p_cam, {\"contact\": \"\", \"grade\": \"A\"})).toBe(true);\n     |                                                                               ^\n  23 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n  24 |     expect(await ui.editPerson(pg_wes, p_ada, {\"contact\": \"ben@x\"})).toBe(false);\n  25 |     await ui.refresh(pg_uma);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp99_person-contact.spec.ts:22:79 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29551,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17508,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24294,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

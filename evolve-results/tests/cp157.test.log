@@ -1,0 +1,55 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp157-lee6hvt_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp157_user-locale.spec.ts:6:7 › user locale › user locale (8.1s)
+  ✓  2 [chromium] › cp157_user-locale.spec.ts:126:7 › user locale › user locale scenario 1 (21.4s)
+  ✘  3 [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 (11.6s)
+  ✘  4 [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 (12.0s)
+
+
+  1) [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 ───────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31mnull[39m
+
+      676 |     expect(await ui.bulkOpen(pg_wes, [c_cam_0, c_ben_0])).toEqual({ opened: 0, refused: 2 });
+      677 |     expect(await ui.importRates(pg_wes, "B,10.00\nB,10.00,2026-03-05")).toBeNull();
+    > 678 |     expect(await ui.generatePlans(pg_wes)).toBe(0);
+          |                                            ^
+      679 |     await ui.refresh(pg_wes);
+      680 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+      681 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:678:44
+
+  2) [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      1084 |     expect(await ui.editPerson(pg_uma, p_ben, {"grade": "A", "gradeFrom": "2026-03-01"})).toBe(true);
+      1085 |     expect(await ui.importRates(pg_uma, "A,33.33\nB,10.00,2026-03-05")).toBe(2);
+    > 1086 |     expect(await ui.remind(pg_uma, c_ben_1)).toBe(true);
+           |                                              ^
+      1087 |     expect(await ui.defer(pg_uma, c_ben_1, "2026-04-30")).toBe(false);
+      1088 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      1089 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:1086:46
+
+  2 failed
+    [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 ────────────
+    [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ───────────
+  2 passed (56.1s)

@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp191-ntatcbes
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp191_clerk-limit-per-grade.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (14.7s)
+  ✘  2 [chromium] › cp191_clerk-limit-per-grade.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (9.6s)
+  ✓  3 [chromium] › cp191_clerk-limit-per-grade.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (23.0s)
+  ✘  4 [chromium] › cp191_clerk-limit-per-grade.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (18.8s)
+
+
+  1) [chromium] › cp191_clerk-limit-per-grade.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"6"[39m
+
+      173 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+      174 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 175 |     expect(await ui.settlePart(pg_wes, p_cam, c_ben_0, "0.01")).toBeNull();
+          |                                                                 ^
+      176 |     expect(await ui.pasteClaims(pg_wes, "Ben,1.00,,\nBen,12.50,2026-03-20,paste")).toBeNull();
+      177 |     expect(await ui.claimAction(pg_wes, c_ben_0, "settle")).toBe(true);
+      178 |     expect(await ui.setRate(pg_wes, {"grade": "C", "pct": "12.50", "from": "2026-04-19"})).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp191_clerk-limit-per-grade.spec.ts:175:65
+
+  2) [chromium] › cp191_clerk-limit-per-grade.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 
+
+    Error: audit line 20
+      expected: PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A terms=
+      actual:   PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1599
+
+      1597 |     const e = expected[i];
+      1598 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1599 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1600 |   });
+      1601 | }
+      1602 |
+
+        at forEach (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1599:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1596:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp191_clerk-limit-per-grade.spec.ts:1581:14
+
+  2 failed
+    [chromium] › cp191_clerk-limit-per-grade.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 
+    [chromium] › cp191_clerk-limit-per-grade.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 
+  2 passed (1.2m)

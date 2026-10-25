@@ -1,0 +1,66 @@
+{
+  "checkpoint": 158,
+  "checkpoint_id": "cp158_column-chooser",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "84afd106831f2ee75b65e269686834ad71328999",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T04:07:27",
+  "seconds": 112,
+  "build_log_file": "cp158.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp158_column-chooser.spec.ts::column chooser": true,
+      "cp158_column-chooser.spec.ts::column chooser scenario 1": true,
+      "cp158_column-chooser.spec.ts::column chooser scenario 2": true,
+      "cp158_column-chooser.spec.ts::column chooser scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9090,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14603,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17625,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

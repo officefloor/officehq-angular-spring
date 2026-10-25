@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp187-hms8qm9b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp187_cut-history.spec.ts:6:7 › cut history › cut history (11.0s)
+  ✓  2 [chromium] › cp187_cut-history.spec.ts:83:7 › cut history › cut history scenario 1 (17.0s)
+  ✓  3 [chromium] › cp187_cut-history.spec.ts:575:7 › cut history › cut history scenario 2 (19.3s)
+  ✘  4 [chromium] › cp187_cut-history.spec.ts:1061:7 › cut history › cut history scenario 3 (22.7s)
+
+
+  1) [chromium] › cp187_cut-history.spec.ts:1061:7 › cut history › cut history scenario 3 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2080072354="" data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1139 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("n/a");
+      1140 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+    > 1141 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+           |                                                                                             ^
+      1142 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      1143 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+      1144 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-due")).toHaveText("2.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp187_cut-history.spec.ts:1141:93
+
+  Slow test file: [chromium] › cp187_cut-history.spec.ts (1.2m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp187_cut-history.spec.ts:1061:7 › cut history › cut history scenario 3 ───────────
+  3 passed (1.2m)

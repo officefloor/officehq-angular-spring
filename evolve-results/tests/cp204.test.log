@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp204-lt8769_t
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp204_trim-at-consolidation.spec.ts:6:7 › trim at consolidation › trim at consolidation (13.3s)
+  ✓  2 [chromium] › cp204_trim-at-consolidation.spec.ts:116:7 › trim at consolidation › trim at consolidation scenario 1 (31.2s)
+  ✘  3 [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 (30.4s)
+  ✓  4 [chromium] › cp204_trim-at-consolidation.spec.ts:1293:7 › trim at consolidation › trim at consolidation scenario 3 (33.8s)
+
+
+  1) [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-2').getByTestId('plan-next-dates')
+    Expected string: [32m"2026-04-30"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-2').getByTestId('plan-next-dates')[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3949458226="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+
+
+      1254 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+      1255 |     await expect(pg_wes.getByTestId("plan-row-" + pl_ben_1).getByTestId("plan-generated")).toHaveText("0");
+    > 1256 |     await expect(pg_wes.getByTestId("plan-row-" + pl_ben_1).getByTestId("plan-next-dates")).toHaveText("2026-04-30");
+           |                                                                                             ^
+      1257 |     await expect(pg_wes.getByTestId("plan-row-" + pl_ben_1).getByTestId("plan-paused")).toHaveText("yes");
+      1258 |     await ui.expectAudit(sheet, [
+      1259 |       `ROLE_SET sheet=${sheet} by=uma user=wes role=steward`,
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp204_trim-at-consolidation.spec.ts:1256:93
+
+  1 failed
+    [chromium] › cp204_trim-at-consolidation.spec.ts:817:7 › trim at consolidation › trim at consolidation scenario 2 
+  3 passed (1.9m)

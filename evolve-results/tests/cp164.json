@@ -1,0 +1,72 @@
+{
+  "checkpoint": 164,
+  "checkpoint_id": "cp164_correction-limit",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "654c4aac54a4c236dd89c51c3638fa2311ad955e",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T05:29:38",
+  "seconds": 188,
+  "build_log_file": "cp164.test.log",
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp164_correction-limit.spec.ts::correction limit": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 1": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 2": false,
+      "cp164_correction-limit.spec.ts::correction limit scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12628,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21240,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 54023,
+        "failure": "Error: save claim editor: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp164_correction-limit.spec.ts:814:12 | Error: save claim editor: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35268,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

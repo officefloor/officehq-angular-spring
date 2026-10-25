@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "44df682fb0ae1bf2831f6d1eb7118ee165c3383a",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T19:50:48",
+  "seconds": 155,
+  "build_log_file": "cp232.test.log",
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive": true,
+      "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 1": true,
+      "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 2": true,
+      "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10046,
+        "failure": ""
+      },
+      {
+        "test_id": "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18967,
+        "failure": ""
+      },
+      {
+        "test_id": "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34975,
+        "failure": ""
+      },
+      {
+        "test_id": "cp232_grade-merge-retroactive.spec.ts::grade merge retroactive scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21742,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

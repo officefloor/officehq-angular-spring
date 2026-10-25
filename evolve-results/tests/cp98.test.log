@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp98-nxs4tiri
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp98_settle-batches.spec.ts:6:7 › settle batches › settle batches (13.0s)
+  ✓  2 [chromium] › cp98_settle-batches.spec.ts:106:7 › settle batches › settle batches scenario 1 (15.5s)
+  ✓  3 [chromium] › cp98_settle-batches.spec.ts:420:7 › settle batches › settle batches scenario 2 (34.9s)
+  ✓  4 [chromium] › cp98_settle-batches.spec.ts:775:7 › settle batches › settle batches scenario 3 (14.8s)
+
+  Slow test file: [chromium] › cp98_settle-batches.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.4m)

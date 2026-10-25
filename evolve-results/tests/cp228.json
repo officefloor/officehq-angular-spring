@@ -1,0 +1,71 @@
+{
+  "checkpoint": 228,
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "52e63e823bd2d945c93d93638c25a56b750d9f29",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T17:40:23",
+  "seconds": 119,
+  "build_log_file": "cp228.test.log",
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1": false,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2": false,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7304,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Cam  0.00\",\u001b[39m\n\u001b[31m+   \"Cam  n/a\",\u001b[39m\n\u001b[2m  ]\u001b[22m\n\n  457 |     const pl_cam_1 = ui.must(await ui.addPlan(pg_uma, p_cam, {\"amount\": \"1.00\", \"start\": \"2026-03-01\", \"end\": \"2026-04-30\", \"day\": \"15\"}));\n  458 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);\n> 459 |     expect(await ui.snapshotCompare(pg_uma, \"2026-03-20\", \"\")).toEqual([\"Cam  0.00\"]);\n      |                                                                ^\n  460 |     const c_cam_0 = ui.must(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"0.40\", \"date\": \"2026-02-25\"}));\n  461 |     expect(await ui.claimAction(pg_uma, c_cam_0, \"void\")).toBe(false);\n  462 |     const c_cam_1 = ui.must(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"7.77\", \"date\": \"2026-03-20\", \"note\": \"n\"}));\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:459:64 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Cam  0.00\",\u001b[39m\n\u001b[31m+   \"Cam  n/a\",\u001b[39m\n\u001b[2m  ]\u001b[22m"
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18115,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-4').getByTestId('person-open-total')\nExpected string: \u001b[32m\"1.\u001b[7m0\u001b[27m0\"\u001b[39m\nReceived string: \u001b[31m\"1.\u001b[7m5\u001b[27m0\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-4').getByTestId('person-open-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c3273685995=\"\" data-testid=\"person-open-total\">1.50</td>\u001b[22m\n\u001b[2m  -   unexpected value \"1.50\"\u001b[22m\n\n\n  1500 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-aged-61\")).toHaveText(\"0.00\");\n  1501 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-settled"
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34047,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

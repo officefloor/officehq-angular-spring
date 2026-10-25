@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp156-7nhxfcj3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp156_forward-only-rates.spec.ts:6:7 › forward only rates › forward only rates (12.7s)
+  ✘  2 [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 (49.4s)
+  ✓  3 [chromium] › cp156_forward-only-rates.spec.ts:758:7 › forward only rates › forward only rates scenario 2 (35.8s)
+  ✓  4 [chromium] › cp156_forward-only-rates.spec.ts:1219:7 › forward only rates › forward only rates scenario 3 (18.2s)
+
+
+  1) [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      191 |     expect(await ui.claimEditOpen(pg_uma, c_cam_0)).toBe(false);
+      192 |     await ui.refresh(pg_wes);
+    > 193 |     expect(await ui.claimEditSave(pg_wes, c_cam_0, {"amount": "10.25"})).toBe(false);
+          |                                                                          ^
+      194 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "B", "gradeFrom": "2026-03-28"}, {"grade": "C"})).toBe(true);
+      195 |     const c_cam_0_2 = ui.must(await ui.addClaim(pg_wes, p_cam, {"amount": "10.35", "ref": "inv 7"}));
+      196 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:193:74
+
+  1 failed
+    [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+  3 passed (2.0m)

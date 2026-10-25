@@ -1,0 +1,66 @@
+{
+  "checkpoint": 186,
+  "checkpoint_id": "cp186_quarterly-periods",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "b0e1a794f929c3c0cfccb57198f85225131bc6f3",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T09:05:48",
+  "seconds": 184,
+  "build_log_file": "cp186.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp186_quarterly-periods.spec.ts::quarterly periods": true,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 1": true,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 2": true,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8318,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35005,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25981,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 55174,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

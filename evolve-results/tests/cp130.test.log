@@ -1,0 +1,260 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp130-z12lfzbb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+atement scenario 2 (20.7s)
+  ✓  397 [chromium] › cp72_retired-leave-totals.spec.ts:149:7 › retired leave totals › retired leave totals scenario 1 (16.4s)
+  ✓  394 [chromium] › cp70_soft-close.spec.ts:732:7 › soft close › soft close scenario 3 (34.5s)
+  ✓  398 [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 (20.9s)
+  ✓  400 [chromium] › cp73_statement-as-of.spec.ts:6:7 › statement as of › statement as of (19.6s)
+  ✓  401 [chromium] › cp74_as-of-view.spec.ts:6:7 › as of view › as of view (19.5s)
+  ✓  402 [chromium] › cp73_statement-as-of.spec.ts:246:7 › statement as of › statement as of scenario 1 (16.1s)
+  ✓  399 [chromium] › cp72_retired-leave-totals.spec.ts:421:7 › retired leave totals › retired leave totals scenario 2 (41.6s)
+  ✓  404 [chromium] › cp73_statement-as-of.spec.ts:457:7 › statement as of › statement as of scenario 2 (16.2s)
+  ✓  405 [chromium] › cp72_retired-leave-totals.spec.ts:622:7 › retired leave totals › retired leave totals scenario 3 (15.6s)
+  ✓  403 [chromium] › cp74_as-of-view.spec.ts:277:7 › as of view › as of view scenario 1 (28.2s)
+  ✓  407 [chromium] › cp75_bulk-grade.spec.ts:6:7 › bulk grade › bulk grade (6.9s)
+  ✓  406 [chromium] › cp73_statement-as-of.spec.ts:829:7 › statement as of › statement as of scenario 3 (19.5s)
+  ✓  408 [chromium] › cp74_as-of-view.spec.ts:702:7 › as of view › as of view scenario 2 (18.2s)
+  ✓  409 [chromium] › cp75_bulk-grade.spec.ts:101:7 › bulk grade › bulk grade scenario 1 (14.0s)
+  ✓  410 [chromium] › cp76_snapshots.spec.ts:6:7 › snapshots › snapshots (6.5s)
+  ✓  411 [chromium] › cp74_as-of-view.spec.ts:1050:7 › as of view › as of view scenario 3 (26.3s)
+  ✓  412 [chromium] › cp75_bulk-grade.spec.ts:366:7 › bulk grade › bulk grade scenario 2 (27.2s)
+  ✓  413 [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 (26.3s)
+  ✓  414 [chromium] › cp77_note-required.spec.ts:6:7 › note required › note required (15.8s)
+  ✓  416 [chromium] › cp76_snapshots.spec.ts:429:7 › snapshots › snapshots scenario 2 (25.8s)
+  ✓  415 [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 (27.4s)
+  ✓  417 [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 (22.5s)
+  ✓  419 [chromium] › cp78_age-buckets.spec.ts:6:7 › age buckets › age buckets (10.1s)
+  ✓  418 [chromium] › cp76_snapshots.spec.ts:819:7 › snapshots › snapshots scenario 3 (20.6s)
+  ✓  420 [chromium] › cp77_note-required.spec.ts:441:7 › note required › note required scenario 2 (13.7s)
+  ✓  422 [chromium] › cp79_entry-date.spec.ts:6:7 › entry date › entry date (10.0s)
+  ✓  423 [chromium] › cp77_note-required.spec.ts:674:7 › note required › note required scenario 3 (22.2s)
+  ✓  425 [chromium] › cp80_period-by-due-by.spec.ts:6:7 › period by due by › period by due by (8.3s)
+  ✓  421 [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 (52.8s)
+  ✓  426 [chromium] › cp80_period-by-due-by.spec.ts:164:7 › period by due by › period by due by scenario 1 (17.3s)
+  ✓  424 [chromium] › cp79_entry-date.spec.ts:99:7 › entry date › entry date scenario 1 (47.7s)
+  ✓  427 [chromium] › cp78_age-buckets.spec.ts:608:7 › age buckets › age buckets scenario 2 (17.1s)
+  ✓  428 [chromium] › cp80_period-by-due-by.spec.ts:710:7 › period by due by › period by due by scenario 2 (15.8s)
+  ✓  429 [chromium] › cp79_entry-date.spec.ts:363:7 › entry date › entry date scenario 2 (9.7s)
+  ✓  430 [chromium] › cp78_age-buckets.spec.ts:879:7 › age buckets › age buckets scenario 3 (10.0s)
+  ✓  432 [chromium] › cp79_entry-date.spec.ts:704:7 › entry date › entry date scenario 3 (17.0s)
+  ✓  433 [chromium] › cp81_remind.spec.ts:6:7 › remind › remind (20.0s)
+  ✓  431 [chromium] › cp80_period-by-due-by.spec.ts:1121:7 › period by due by › period by due by scenario 3 (25.3s)
+  ✓  434 [chromium] › cp82_settled-and-open-totals.spec.ts:6:7 › settled and open totals › settled and open totals (12.5s)
+  ✓  436 [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays (9.0s)
+  ✓  435 [chromium] › cp81_remind.spec.ts:68:7 › remind › remind scenario 1 (22.7s)
+  ✓  437 [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 (24.3s)
+  ✓  439 [chromium] › cp81_remind.spec.ts:459:7 › remind › remind scenario 2 (21.8s)
+  ✓  438 [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 (34.4s)
+  ✓  440 [chromium] › cp82_settled-and-open-totals.spec.ts:507:7 › settled and open totals › settled and open totals scenario 2 (25.0s)
+  ✓  441 [chromium] › cp81_remind.spec.ts:826:7 › remind › remind scenario 3 (19.4s)
+  ✓  442 [chromium] › cp83_holidays.spec.ts:591:7 › holidays › holidays scenario 2 (19.5s)
+  ✓  444 [chromium] › cp84_business-day-terms.spec.ts:6:7 › business day terms › business day terms (8.7s)
+  ✓  445 [chromium] › cp83_holidays.spec.ts:1053:7 › holidays › holidays scenario 3 (24.7s)
+  ✓  447 [chromium] › cp85_grace-per-grade.spec.ts:6:7 › grace per grade › grace per grade (9.8s)
+  ✓  443 [chromium] › cp82_settled-and-open-totals.spec.ts:1018:7 › settled and open totals › settled and open totals scenario 3 (50.8s)
+  ✓  446 [chromium] › cp84_business-day-terms.spec.ts:127:7 › business day terms › business day terms scenario 1 (43.5s)
+  ✓  448 [chromium] › cp85_grace-per-grade.spec.ts:137:7 › grace per grade › grace per grade scenario 1 (20.0s)
+  ✓  449 [chromium] › cp86_inline-amount.spec.ts:6:7 › inline amount › inline amount (17.1s)
+  ✓  450 [chromium] › cp84_business-day-terms.spec.ts:493:7 › business day terms › business day terms scenario 2 (16.3s)
+  ✓  451 [chromium] › cp85_grace-per-grade.spec.ts:451:7 › grace per grade › grace per grade scenario 2 (18.2s)
+  ✓  452 [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 (19.2s)
+  ✓  453 [chromium] › cp84_business-day-terms.spec.ts:882:7 › business day terms › business day terms scenario 3 (21.4s)
+  ✓  454 [chromium] › cp85_grace-per-grade.spec.ts:932:7 › grace per grade › grace per grade scenario 3 (23.2s)
+  ✓  456 [chromium] › cp87_external-reference.spec.ts:6:7 › external reference › external reference (13.1s)
+  ✓  457 [chromium] › cp88_compound-late-charge.spec.ts:6:7 › compound late charge › compound late charge (9.4s)
+  ✓  458 [chromium] › cp87_external-reference.spec.ts:77:7 › external reference › external reference scenario 1 (12.2s)
+  ✓  455 [chromium] › cp86_inline-amount.spec.ts:369:7 › inline amount › inline amount scenario 2 (47.4s)
+  ✓  459 [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 (31.8s)
+  ✓  460 [chromium] › cp87_external-reference.spec.ts:364:7 › external reference › external reference scenario 2 (22.5s)
+  ✓  461 [chromium] › cp86_inline-amount.spec.ts:666:7 › inline amount › inline amount scenario 3 (20.3s)
+  ✓  464 [chromium] › cp89_claim-tags.spec.ts:6:7 › claim tags › claim tags (7.4s)
+  ✓  463 [chromium] › cp87_external-reference.spec.ts:785:7 › external reference › external reference scenario 3 (22.3s)
+  ✓  462 [chromium] › cp88_compound-late-charge.spec.ts:593:7 › compound late charge › compound late charge scenario 2 (24.7s)
+  ✓  465 [chromium] › cp89_claim-tags.spec.ts:105:7 › claim tags › claim tags scenario 1 (17.4s)
+  ✓  466 [chromium] › cp90_void-reasons.spec.ts:6:7 › void reasons › void reasons (15.2s)
+  ✓  468 [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 (20.4s)
+  ✓  469 [chromium] › cp90_void-reasons.spec.ts:101:7 › void reasons › void reasons scenario 1 (27.6s)
+  ✓  470 [chromium] › cp89_claim-tags.spec.ts:715:7 › claim tags › claim tags scenario 3 (12.9s)
+  ✓  467 [chromium] › cp88_compound-late-charge.spec.ts:965:7 › compound late charge › compound late charge scenario 3 (49.9s)
+  ✓  472 [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments (9.4s)
+  ✓  471 [chromium] › cp90_void-reasons.spec.ts:338:7 › void reasons › void reasons scenario 2 (16.3s)
+  ✓  473 [chromium] › cp92_four-eyes-editor.spec.ts:6:7 › four eyes editor › four eyes editor (15.5s)
+  ✓  474 [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 (13.9s)
+  ✓  475 [chromium] › cp90_void-reasons.spec.ts:684:7 › void reasons › void reasons scenario 3 (12.0s)
+  ✓  478 [chromium] › cp93_bulk-reassign.spec.ts:6:7 › bulk reassign › bulk reassign (9.2s)
+  ✓  477 [chromium] › cp91_claim-comments.spec.ts:344:7 › claim comments › claim comments scenario 2 (14.5s)
+  ✓  476 [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 (19.1s)
+  ✓  479 [chromium] › cp93_bulk-reassign.spec.ts:99:7 › bulk reassign › bulk reassign scenario 1 (12.0s)
+  ✓  480 [chromium] › cp91_claim-comments.spec.ts:816:7 › claim comments › claim comments scenario 3 (18.3s)
+  ✓  482 [chromium] › cp93_bulk-reassign.spec.ts:380:7 › bulk reassign › bulk reassign scenario 2 (10.5s)
+  ✓  481 [chromium] › cp92_four-eyes-editor.spec.ts:439:7 › four eyes editor › four eyes editor scenario 2 (18.0s)
+  ✓  483 [chromium] › cp94_proof-threshold-per-grade.spec.ts:6:7 › proof threshold per grade › proof threshold per grade (15.0s)
+  ✓  484 [chromium] › cp93_bulk-reassign.spec.ts:711:7 › bulk reassign › bulk reassign scenario 3 (16.2s)
+  ✓  485 [chromium] › cp92_four-eyes-editor.spec.ts:910:7 › four eyes editor › four eyes editor scenario 3 (17.8s)
+  ✓  487 [chromium] › cp95_rate-preview.spec.ts:6:7 › rate preview › rate preview (11.9s)
+  ✓  488 [chromium] › cp96_holidays-redate.spec.ts:6:7 › holidays redate › holidays redate (9.1s)
+  ✓  486 [chromium] › cp94_proof-threshold-per-grade.spec.ts:87:7 › proof threshold per grade › proof threshold per grade scenario 1 (21.6s)
+  ✓  490 [chromium] › cp96_holidays-redate.spec.ts:100:7 › holidays redate › holidays redate scenario 1 (14.4s)
+  ✓  489 [chromium] › cp95_rate-preview.spec.ts:83:7 › rate preview › rate preview scenario 1 (16.7s)
+  ✓  492 [chromium] › cp96_holidays-redate.spec.ts:562:7 › holidays redate › holidays redate scenario 2 (13.1s)
+  ✓  491 [chromium] › cp94_proof-threshold-per-grade.spec.ts:591:7 › proof threshold per grade › proof threshold per grade scenario 2 (24.7s)
+  ✓  495 [chromium] › cp94_proof-threshold-per-grade.spec.ts:911:7 › proof threshold per grade › proof threshold per grade scenario 3 (12.6s)
+  ✓  496 [chromium] › cp97_monthly-totals.spec.ts:6:7 › monthly totals › monthly totals (4.2s)
+  ✓  493 [chromium] › cp95_rate-preview.spec.ts:537:7 › rate preview › rate preview scenario 2 (32.6s)
+  ✓  494 [chromium] › cp96_holidays-redate.spec.ts:892:7 › holidays redate › holidays redate scenario 3 (27.4s)
+  ✓  497 [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 (11.6s)
+  ✓  499 [chromium] › cp98_settle-batches.spec.ts:6:7 › settle batches › settle batches (5.0s)
+  ✓  498 [chromium] › cp95_rate-preview.spec.ts:837:7 › rate preview › rate preview scenario 3 (26.0s)
+  ✓  501 [chromium] › cp98_settle-batches.spec.ts:107:7 › settle batches › settle batches scenario 1 (19.9s)
+  ✓  500 [chromium] › cp97_monthly-totals.spec.ts:542:7 › monthly totals › monthly totals scenario 2 (21.8s)
+  ✓  502 [chromium] › cp99_person-contact.spec.ts:6:7 › person contact › person contact (15.4s)
+  ✓  504 [chromium] › cp97_monthly-totals.spec.ts:738:7 › monthly totals › monthly totals scenario 3 (18.6s)
+  ✘  505 [chromium] › cp99_person-contact.spec.ts:57:7 › person contact › person contact scenario 1 (15.8s)
+  ✓  503 [chromium] › cp98_settle-batches.spec.ts:421:7 › settle batches › settle batches scenario 2 (42.5s)
+  ✓  506 [chromium] › cp99_person-contact.spec.ts:928:7 › person contact › person contact scenario 2 (20.6s)
+  ✓  507 [chromium] › cp98_settle-batches.spec.ts:776:7 › settle batches › settle batches scenario 3 (12.9s)
+  ✓  508 [chromium] › cp99_person-contact.spec.ts:1360:7 › person contact › person contact scenario 3 (21.2s)
+
+
+  1) [chromium] › cp05_claims.spec.ts:6:7 › claims › claims ────────────────────────────────────────
+
+    Error: edit claim: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at Object.editClaim (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:789:14)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp05_claims.spec.ts:17:12
+
+  2) [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts ──────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('pool-member-P2-109').getByTestId('pool-cut')
+    Expected string: [32m""[39m
+    Received string: [31m"0.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('pool-member-P2-109').getByTestId('pool-cut')[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-cut" _ngcontent-ng-c3447223040="">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+       96 |     await expect(pg_uma.getByTestId("pool-row-P2").getByTestId("pool-balanced")).toHaveText("yes");
+       97 |     await expect(pg_uma.getByTestId("pool-member-P2-" + p_ada).getByTestId("pool-share")).toHaveText("50.00");
+    >  98 |     await expect(pg_uma.getByTestId("pool-member-P2-" + p_ada).getByTestId("pool-cut")).toHaveText("");
+          |                                                                                         ^
+       99 |     await expect(pg_uma.getByTestId("pool-member-P2-" + p_ben).getByTestId("pool-share")).toHaveText("50.00");
+      100 |     await expect(pg_uma.getByTestId("pool-member-P2-" + p_ben).getByTestId("pool-cut")).toHaveText("");
+      101 |     await expect(pg_uma.getByTestId("pool-row-P3").getByTestId("pool-total-share")).toHaveText("70.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp106_pool-cuts.spec.ts:98:89
+
+  3) [chromium] › cp110_consolidated-figures.spec.ts:720:7 › consolidated figures › consolidated figures scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      777 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+      778 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 779 |     expect(await ui.reassign(pg_wes, c_ada_0, "Ben")).toBe(true);
+          |                                                       ^
+      780 |     await ui.refresh(pg_wes);
+      781 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+      782 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp110_consolidated-figures.spec.ts:779:55
+
+  4) [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Object {[22m
+    [32m-   "reassigned": 1,[39m
+    [32m-   "refused": 1,[39m
+    [31m+   "reassigned": 0,[39m
+    [31m+   "refused": 2,[39m
+    [2m  }[22m
+
+      866 |     expect(await ui.claimAction(pg_uma, c_ada_0, "open")).toBe(false);
+      867 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+    > 868 |     expect(await ui.bulkReassign(pg_vic, [c_cam_0, c_ada_0], "Cam")).toEqual({ reassigned: 1, refused: 1 });
+          |                                                                      ^
+      869 |     expect(await ui.statementAsOf(pg_vic, p_cam, "2026-03-01")).toBe(false);
+      870 |     expect(await ui.addClaim(pg_vic, p_cam, {"amount": "0.04", "date": "2026-03-01", "note": "n"})).toBeNull();
+      871 |     expect(await ui.editPerson(pg_vic, p_ada, {"grade": "A"})).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp112_uniqueness-across-tree.spec.ts:868:70
+
+  5) [chromium] › cp99_person-contact.spec.ts:57:7 › person contact › person contact scenario 1 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Object {[22m
+    [32m-   "reassigned": 2,[39m
+    [32m-   "refused": 0,[39m
+    [31m+   "reassigned": 1,[39m
+    [31m+   "refused": 1,[39m
+    [2m  }[22m
+
+      113 |     expect(await ui.addProof(pg_wes, c_ada_0)).toBe(true);
+      114 |     await ui.refresh(pg_wes);
+    > 115 |     expect(await ui.bulkReassign(pg_wes, [c_ada_1, c_ada_0], "Ada")).toEqual({ reassigned: 2, refused: 0 });
+          |                                                                      ^
+      116 |     expect(await ui.claimAction(pg_wes, c_ada_0, "void", "late")).toBe(true);
+      117 |     const c_dot_0 = ui.must(await ui.quickAdd(pg_wes, {"name": "Dot", "amount": "3.33"}));
+      118 |     const p_dot = await ui.personId(pg_wes, "Dot");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp99_person-contact.spec.ts:115:70
+
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (2.2m)
+  Slow test file: [chromium] › cp108_patron-shares.spec.ts (2.1m)
+  Slow test file: [chromium] › cp115_nested-pools.spec.ts (2.0m)
+  Slow test file: [chromium] › cp117_list-positions.spec.ts (2.0m)
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (2.0m)
+  Consider splitting slow test files to speed up parallel execution
+  5 failed
+    [chromium] › cp05_claims.spec.ts:6:7 › claims › claims ─────────────────────────────────────────
+    [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts ───────────────────────────────
+    [chromium] › cp110_consolidated-figures.spec.ts:720:7 › consolidated figures › consolidated figures scenario 3 
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 
+    [chromium] › cp99_person-contact.spec.ts:57:7 › person contact › person contact scenario 1 ─────
+  503 passed (51.9m)

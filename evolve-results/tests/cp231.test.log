@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp231-lm6cz4eo
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp231_period-export.spec.ts:6:7 › period export › period export (4.9s)
+  ✓  2 [chromium] › cp231_period-export.spec.ts:25:7 › period export › period export scenario 1 (22.6s)
+  ✓  3 [chromium] › cp231_period-export.spec.ts:802:7 › period export › period export scenario 2 (23.3s)
+  ✘  4 [chromium] › cp231_period-export.spec.ts:1404:7 › period export › period export scenario 3 (34.1s)
+
+
+  1) [chromium] › cp231_period-export.spec.ts:1404:7 › period export › period export scenario 3 ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-11').getByTestId('claim-proofs-receipt')
+    Expected string: [32m"0"[39m
+    Received string: [31m"1"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-proofs-receipt')[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c1362848179="" data-testid="claim-proofs-receipt">1</span>[22m
+    [2m  -   unexpected value "1"[22m
+
+
+      1813 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-review-late")).toHaveText("no");
+      1814 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-waived")).toHaveText("no");
+    > 1815 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-proofs-receipt")).toHaveText("0");
+           |                                                                                                  ^
+      1816 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-proofs-photo")).toHaveText("0");
+      1817 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-held")).toHaveText("no");
+      1818 |     await expect(pg_wes.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-shares")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp231_period-export.spec.ts:1815:98
+
+  Slow test file: [chromium] › cp231_period-export.spec.ts (1.4m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp231_period-export.spec.ts:1404:7 › period export › period export scenario 3 ─────
+  3 passed (1.5m)

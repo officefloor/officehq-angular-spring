@@ -1,0 +1,66 @@
+{
+  "checkpoint": 202,
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "e70897ff5efdce01b060ef217c08a7eae5e944c5",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T12:52:57",
+  "seconds": 136,
+  "build_log_file": "cp202.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp202_snapshot-comparison.spec.ts::snapshot comparison": true,
+      "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 1": true,
+      "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 2": true,
+      "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp202_snapshot-comparison.spec.ts::snapshot comparison",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16494,
+        "failure": ""
+      },
+      {
+        "test_id": "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26964,
+        "failure": ""
+      },
+      {
+        "test_id": "cp202_snapshot-comparison.spec.ts::snapshot comparison scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35866,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,83 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp228-h2ko2nci
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp228_rollover-soft-closes.spec.ts:6:7 › rollover soft closes › rollover soft closes (7.5s)
+  ✘  2 [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 (7.3s)
+  ✘  3 [chromium] › cp228_rollover-soft-closes.spec.ts:1192:7 › rollover soft closes › rollover soft closes scenario 2 (18.1s)
+  ✓  4 [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 (34.0s)
+
+
+  1) [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 1[39m
+
+    [2m  Array [[22m
+    [32m-   "Cam  0.00",[39m
+    [31m+   "Cam  n/a",[39m
+    [2m  ][22m
+
+      457 |     const pl_cam_1 = ui.must(await ui.addPlan(pg_uma, p_cam, {"amount": "1.00", "start": "2026-03-01", "end": "2026-04-30", "day": "15"}));
+      458 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);
+    > 459 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-20", "")).toEqual(["Cam  0.00"]);
+          |                                                                ^
+      460 |     const c_cam_0 = ui.must(await ui.addClaim(pg_uma, p_cam, {"amount": "0.40", "date": "2026-02-25"}));
+      461 |     expect(await ui.claimAction(pg_uma, c_cam_0, "void")).toBe(false);
+      462 |     const c_cam_1 = ui.must(await ui.addClaim(pg_uma, p_cam, {"amount": "7.77", "date": "2026-03-20", "note": "n"}));
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:459:64
+
+  2) [chromium] › cp228_rollover-soft-closes.spec.ts:1192:7 › rollover soft closes › rollover soft closes scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-4').getByTestId('person-open-total')
+    Expected string: [32m"1.[7m0[27m0"[39m
+    Received string: [31m"1.[7m5[27m0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-4').getByTestId('person-open-total')[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">1.50</td>[22m
+    [2m  -   unexpected value "1.50"[22m
+
+
+      1500 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-aged-61")).toHaveText("0.00");
+      1501 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-settled-total")).toHaveText("0.00");
+    > 1502 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-open-total")).toHaveText("1.00");
+           |                                                                                              ^
+      1503 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-contact")).toHaveText("");
+      1504 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-aliases")).toHaveText("");
+      1505 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-clashing")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:1502:94
+
+  2 failed
+    [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 
+    [chromium] › cp228_rollover-soft-closes.spec.ts:1192:7 › rollover soft closes › rollover soft closes scenario 2 
+  2 passed (1.2m)

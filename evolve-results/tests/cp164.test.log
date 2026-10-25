@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp164-1fj112qo
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp164_correction-limit.spec.ts:6:7 › correction limit › correction limit (12.6s)
+  ✓  2 [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 (21.2s)
+  ✘  3 [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 (54.0s)
+  ✓  4 [chromium] › cp164_correction-limit.spec.ts:1247:7 › correction limit › correction limit scenario 3 (35.3s)
+
+
+  1) [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp164_correction-limit.spec.ts:814:12
+
+  1 failed
+    [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+  3 passed (2.1m)

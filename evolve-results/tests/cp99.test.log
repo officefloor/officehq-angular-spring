@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp99-_a5v576n
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp99_person-contact.spec.ts:6:7 › person contact › person contact (12.0s)
+  ✓  2 [chromium] › cp99_person-contact.spec.ts:57:7 › person contact › person contact scenario 1 (29.6s)
+  ✓  3 [chromium] › cp99_person-contact.spec.ts:928:7 › person contact › person contact scenario 2 (17.5s)
+  ✓  4 [chromium] › cp99_person-contact.spec.ts:1360:7 › person contact › person contact scenario 3 (24.3s)
+
+
+  1) [chromium] › cp99_person-contact.spec.ts:6:7 › person contact › person contact ────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      20 |     expect(await ui.editSave(pg_vic, {"contact": "vic@x"})).toBe(true);
+      21 |     expect(await ui.editSave(pg_uma, {"contact": "ada@x"})).toBe(false);
+    > 22 |     expect(await ui.editPerson(pg_uma, p_cam, {"contact": "", "grade": "A"})).toBe(true);
+         |                                                                               ^
+      23 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      24 |     expect(await ui.editPerson(pg_wes, p_ada, {"contact": "ben@x"})).toBe(false);
+      25 |     await ui.refresh(pg_uma);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp99_person-contact.spec.ts:22:79
+
+  1 failed
+    [chromium] › cp99_person-contact.spec.ts:6:7 › person contact › person contact ─────────────────
+  3 passed (1.5m)

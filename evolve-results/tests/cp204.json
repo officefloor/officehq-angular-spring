@@ -1,0 +1,69 @@
+{
+  "checkpoint": 204,
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "a4a059d251915b12515a4b056e9b2fa6ac820324",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T12:58:42",
+  "seconds": 170,
+  "build_log_file": "cp204.test.log",
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2": false,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13278,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31248,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30416,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('plan-row-2').getByTestId('plan-next-dates')\nExpected string: \u001b[32m\"2026-04-30\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan-row-2').getByTestId('plan-next-dates')\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3949458226=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n  1254 |     await expect(pg_wes.getByTestId(\"note-line\")).toHaveText([]);\n  1255 |     await expect(pg_wes.getByTestId(\"plan-row-\" + pl_ben_1).getByTestId(\"plan-generated\")).toHaveText(\"0\");\n> 1256 |     await expect(pg_wes.getByTestId(\"plan-row-\" + pl_ben_1).getByTestId(\"plan-next-dates\"))"
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33786,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

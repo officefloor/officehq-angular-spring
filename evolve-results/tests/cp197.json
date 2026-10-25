@@ -1,0 +1,66 @@
+{
+  "checkpoint": 197,
+  "checkpoint_id": "cp197_activity-counts",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "f0f55206d0b5870e467de0ccd80c76c8fc86b3be",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T11:02:49",
+  "seconds": 127,
+  "build_log_file": "cp197.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp197_activity-counts.spec.ts::activity counts": true,
+      "cp197_activity-counts.spec.ts::activity counts scenario 1": false,
+      "cp197_activity-counts.spec.ts::activity counts scenario 2": true,
+      "cp197_activity-counts.spec.ts::activity counts scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11668,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 13308,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  65 |     expect(await ui.addCrew(pg_uma, \"C1\", \"Cam\")).toBe(true);\n  66 |     expect(await ui.addCrewMember(pg_uma, \"C1\", \"Ada\")).toBe(true);\n> 67 |     expect(await ui.addCrewMember(pg_uma, \"C1\", \"Ben\")).toBe(true);\n     |                                                         ^\n  68 |     expect(await ui.editPerson(pg_uma, p_ben, {\"terms\": \"3\", \"termsFrom\": \"2026-03-01\"})).toBe(true);\n  69 |     const pl_cam_1 = ui.must(await ui.addPlan(pg_uma, p_cam, {\"amount\": \"25.00\", \"start\": \"2026-03-09\", \"end\": \"2026-04-30\", \"day\": \"1\"}));\n  70 |     await ui.setToday(pg_uma, \"2026-03-26\");\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp197_activity-counts.spec.ts:67:57 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21072,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_activity-counts.spec.ts::activity counts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18103,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

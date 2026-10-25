@@ -1,0 +1,66 @@
+{
+  "checkpoint": 225,
+  "checkpoint_id": "cp225_grade-merge",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "71f964f267f0d631c776273f8f5faa99859a0a28",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T17:31:34",
+  "seconds": 177,
+  "build_log_file": "cp225.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp225_grade-merge.spec.ts::grade merge": true,
+      "cp225_grade-merge.spec.ts::grade merge scenario 1": true,
+      "cp225_grade-merge.spec.ts::grade merge scenario 2": true,
+      "cp225_grade-merge.spec.ts::grade merge scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp225_grade-merge.spec.ts::grade merge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18820,
+        "failure": ""
+      },
+      {
+        "test_id": "cp225_grade-merge.spec.ts::grade merge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23957,
+        "failure": ""
+      },
+      {
+        "test_id": "cp225_grade-merge.spec.ts::grade merge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23688,
+        "failure": ""
+      },
+      {
+        "test_id": "cp225_grade-merge.spec.ts::grade merge scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 27537,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('pool-row-C1').getByTestId('pool-total-share')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')\u001b[22m\n\n\n  1930 |     await expect(pg_wes.getByTestId(\"pool-row-P1\").getByTestId(\"pool-total-share\")).toHaveText(\"0.00\");\n  1931 |     await expect(pg_wes.getByTestId(\"pool-row-P1\").getByTestId(\"pool-balanced\")).toHaveText(\"no\");\n> 1932 |     await expect(pg_wes.getByTestId(\"pool-row-C1\").getByTestId(\"pool-total-share\")).toHaveText(\"0.00\");\n       |                                                                                     ^\n  1933 |     await expect(pg_wes.getByTestId(\"pool-row-C1\").getByTestId(\"pool-balanced\")).toHaveText(\"no\");\n  1934 |     await expect(pg_wes.getByTestId(\"crew-row-C1\").getByTestId(\"crew-lead\")).toHaveText(\"\");\n  1935 |     await expect(pg_wes.getByTestId(\"crew-row-C1\").getByTestId(\"crew-due-total\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp225_grade-merge.spec.ts:1932:85 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('pool-row-C1').getByTestId('pool-total-share')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')\u001b[22m\n"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

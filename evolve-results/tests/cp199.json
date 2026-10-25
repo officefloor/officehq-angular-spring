@@ -1,0 +1,66 @@
+{
+  "checkpoint": 199,
+  "checkpoint_id": "cp199_approvers",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "af31e73b4da59a4f7be7bd7c9d7251a01c3e95e8",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T11:07:17",
+  "seconds": 160,
+  "build_log_file": "cp199.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp199_approvers.spec.ts::approvers": true,
+      "cp199_approvers.spec.ts::approvers scenario 1": true,
+      "cp199_approvers.spec.ts::approvers scenario 2": true,
+      "cp199_approvers.spec.ts::approvers scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33858,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22011,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28167,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

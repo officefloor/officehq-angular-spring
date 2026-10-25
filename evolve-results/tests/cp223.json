@@ -1,0 +1,66 @@
+{
+  "checkpoint": 223,
+  "checkpoint_id": "cp223_grade-retire",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "f55294cd7bfa7cca154a84713a041e15676ce27c",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T17:25:28",
+  "seconds": 193,
+  "build_log_file": "cp223.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp223_grade-retire.spec.ts::grade retire": true,
+      "cp223_grade-retire.spec.ts::grade retire scenario 1": true,
+      "cp223_grade-retire.spec.ts::grade retire scenario 2": true,
+      "cp223_grade-retire.spec.ts::grade retire scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp223_grade-retire.spec.ts::grade retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21372,
+        "failure": ""
+      },
+      {
+        "test_id": "cp223_grade-retire.spec.ts::grade retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26332,
+        "failure": ""
+      },
+      {
+        "test_id": "cp223_grade-retire.spec.ts::grade retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42623,
+        "failure": ""
+      },
+      {
+        "test_id": "cp223_grade-retire.spec.ts::grade retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34541,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

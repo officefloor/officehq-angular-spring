@@ -1,0 +1,66 @@
+{
+  "checkpoint": 239,
+  "checkpoint_id": "cp239_period-claim-counts",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "b4ac34ab1fdd0cc1dd1a6840631fd65206375d1d",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T20:09:17",
+  "seconds": 129,
+  "build_log_file": "cp239.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp239_period-claim-counts.spec.ts::period claim counts": true,
+      "cp239_period-claim-counts.spec.ts::period claim counts scenario 1": true,
+      "cp239_period-claim-counts.spec.ts::period claim counts scenario 2": true,
+      "cp239_period-claim-counts.spec.ts::period claim counts scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp239_period-claim-counts.spec.ts::period claim counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7261,
+        "failure": ""
+      },
+      {
+        "test_id": "cp239_period-claim-counts.spec.ts::period claim counts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26827,
+        "failure": ""
+      },
+      {
+        "test_id": "cp239_period-claim-counts.spec.ts::period claim counts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18038,
+        "failure": ""
+      },
+      {
+        "test_id": "cp239_period-claim-counts.spec.ts::period claim counts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29036,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

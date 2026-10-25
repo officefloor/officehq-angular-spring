@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp35-ooje8kw5
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period (4.6s)
+  ✓  2 [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 (7.8s)
+  ✓  3 [chromium] › cp35_numbering-per-period.spec.ts:378:7 › numbering per period › numbering per period scenario 2 (7.5s)
+  ✓  4 [chromium] › cp35_numbering-per-period.spec.ts:647:7 › numbering per period › numbering per period scenario 3 (5.9s)
+
+  Slow test file: [chromium] › cp35_numbering-per-period.spec.ts (25.7s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (27.2s)

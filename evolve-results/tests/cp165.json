@@ -1,0 +1,66 @@
+{
+  "checkpoint": 165,
+  "checkpoint_id": "cp165_escalate",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "a10c0a767b7234cf86004cbe08be46e6eb7c7a11",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T05:32:46",
+  "seconds": 142,
+  "build_log_file": "cp165.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp165_escalate.spec.ts::escalate": true,
+      "cp165_escalate.spec.ts::escalate scenario 1": true,
+      "cp165_escalate.spec.ts::escalate scenario 2": true,
+      "cp165_escalate.spec.ts::escalate scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20708,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23119,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18971,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

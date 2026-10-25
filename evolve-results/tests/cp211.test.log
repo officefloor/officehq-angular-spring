@@ -1,0 +1,78 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp211-_msc76kt
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp211_score-lines.spec.ts:6:7 › score lines › score lines (13.5s)
+  ✓  2 [chromium] › cp211_score-lines.spec.ts:88:7 › score lines › score lines scenario 1 (33.2s)
+  ✘  3 [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 (35.3s)
+  ✘  4 [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 (30.4s)
+
+
+  1) [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-1').getByTestId('plan-next-dates')
+    Expected string: [32m"2026-04-01"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-next-dates')[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c3548440529="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+
+
+      1297 |     await expect(pg_vic.getByTestId("note-line")).toHaveText([]);
+      1298 |     await expect(pg_vic.getByTestId("plan-row-" + pl_ada_1).getByTestId("plan-generated")).toHaveText("0");
+    > 1299 |     await expect(pg_vic.getByTestId("plan-row-" + pl_ada_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
+           |                                                                                             ^
+      1300 |     await expect(pg_vic.getByTestId("plan-row-" + pl_ada_1).getByTestId("plan-paused")).toHaveText("yes");
+      1301 |     await expect(pg_vic.getByTestId("plan-row-" + pl_ada_1).getByTestId("plan-change-line")).toHaveText([]);
+      1302 |     await ui.expectAudit(sheet, [
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp211_score-lines.spec.ts:1299:93
+
+  2) [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      1470 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "7.77", "date": "2026-02-25"})).toBeNull();
+      1471 |     await ui.refresh(pg_wes);
+    > 1472 |     expect(await ui.reassign(pg_wes, c_cam_0, "Ben")).toBe(false);
+           |                                                       ^
+      1473 |     expect(await ui.bulkVoid(pg_wes, [c_cam_0, c_ben_0])).toEqual({ voided: 1, refused: 1 });
+      1474 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "A", "gradeFrom": "2026-04-02"}, {"grade": "C"})).toBe(true);
+      1475 |     expect(await ui.claimEditOpen(pg_wes, c_ben_0)).toBe(false);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp211_score-lines.spec.ts:1472:55
+
+  2 failed
+    [chromium] › cp211_score-lines.spec.ts:751:7 › score lines › score lines scenario 2 ────────────
+    [chromium] › cp211_score-lines.spec.ts:1350:7 › score lines › score lines scenario 3 ───────────
+  2 passed (2.0m)

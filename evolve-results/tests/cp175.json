@@ -1,0 +1,66 @@
+{
+  "checkpoint": 175,
+  "checkpoint_id": "cp175_transfer-undo",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "4c1dde72cba1cc98ad211083e8d07863292884f7",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T07:14:18",
+  "seconds": 151,
+  "build_log_file": "cp175.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp175_transfer-undo.spec.ts::transfer undo": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 1": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 2": false,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9880,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19911,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18648,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  678 |     expect(await ui.inlineGrade(pg_vic, p_ada, \"B\")).toBe(true);\n  679 |     expect(await ui.periodAction(pg_vic, \"P2\", \"close\")).toBe(true);\n> 680 |     expect(await ui.editInline(pg_vic, c_ben_0, \"4.00\")).toBe(false);\n      |                                                          ^\n  681 |     expect(await ui.pasteClaims(pg_vic, \"Ben,10.35,2026-02-25,\\nBen,25.00,2026-03-20,\")).toBeNull();\n  682 |     await ui.refresh(pg_vic);\n  683 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:680:58 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 43602,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31mnull\u001b[39m\n\n  1136 |     expect(await ui.quickAdd(pg_vic, {\"name\": \"Ada\", \"amount\": \"25.00\"})).toBeNull();\n  1137 |     expect(await ui.addClaim(pg_vic, p_cam, {\"amount\": \"0.40\", \"note\": \"n\", \"tags\": \" c \"})).toBeNull();\n> 1138 |     expect(await ui.generatePlans(pg_vic)).toBe(0);\n       |                                            ^\n  1139 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n  1140 |     expect(await ui.editPerson(pg_wes, p_ada, {\"grade\": \"C\"})).toBe(true);\n  1141 |     expect(await ui.periodAction(pg_wes, \"P1\", \"close\")).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:1138:44 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31mnull\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

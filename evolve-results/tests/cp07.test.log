@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp07-olp6xqci
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due (3.2s)
+  ✓  2 [chromium] › cp07_rates-and-due.spec.ts:59:7 › rates and due › rates and due scenario 1 (8.4s)
+  ✓  3 [chromium] › cp07_rates-and-due.spec.ts:205:7 › rates and due › rates and due scenario 2 (5.9s)
+  ✓  4 [chromium] › cp07_rates-and-due.spec.ts:328:7 › rates and due › rates and due scenario 3 (8.8s)
+
+  Slow test file: [chromium] › cp07_rates-and-due.spec.ts (26.3s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (27.3s)

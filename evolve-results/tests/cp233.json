@@ -1,0 +1,66 @@
+{
+  "checkpoint": 233,
+  "checkpoint_id": "cp233_due-by-override",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "1958b131b3ee430a99f996fdde5915e171b8c229",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T19:53:23",
+  "seconds": 158,
+  "build_log_file": "cp233.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp233_due-by-override.spec.ts::due by override": true,
+      "cp233_due-by-override.spec.ts::due by override scenario 1": true,
+      "cp233_due-by-override.spec.ts::due by override scenario 2": true,
+      "cp233_due-by-override.spec.ts::due by override scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp233_due-by-override.spec.ts::due by override",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp233_due-by-override.spec.ts::due by override scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 59022,
+        "failure": ""
+      },
+      {
+        "test_id": "cp233_due-by-override.spec.ts::due by override scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21445,
+        "failure": ""
+      },
+      {
+        "test_id": "cp233_due-by-override.spec.ts::due by override scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21738,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

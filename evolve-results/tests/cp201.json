@@ -1,0 +1,66 @@
+{
+  "checkpoint": 201,
+  "checkpoint_id": "cp201_consolidated-grades",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "397f89b61beaecafdd49121d5b13c92f7d6ce0fb",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T12:49:51",
+  "seconds": 186,
+  "build_log_file": "cp201.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp201_consolidated-grades.spec.ts::consolidated grades": true,
+      "cp201_consolidated-grades.spec.ts::consolidated grades scenario 1": true,
+      "cp201_consolidated-grades.spec.ts::consolidated grades scenario 2": true,
+      "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp201_consolidated-grades.spec.ts::consolidated grades",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17729,
+        "failure": ""
+      },
+      {
+        "test_id": "cp201_consolidated-grades.spec.ts::consolidated grades scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp201_consolidated-grades.spec.ts::consolidated grades scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22383,
+        "failure": ""
+      },
+      {
+        "test_id": "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24381,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

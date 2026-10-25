@@ -1,0 +1,44 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp139-hla_js8l
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp139_tree-audit.spec.ts:6:7 › tree audit › tree audit (9.4s)
+  ✓  2 [chromium] › cp139_tree-audit.spec.ts:74:7 › tree audit › tree audit scenario 1 (18.6s)
+  ✘  3 [chromium] › cp139_tree-audit.spec.ts:372:7 › tree audit › tree audit scenario 2 (12.7s)
+  ✓  4 [chromium] › cp139_tree-audit.spec.ts:1076:7 › tree audit › tree audit scenario 3 (20.1s)
+
+
+  1) [chromium] › cp139_tree-audit.spec.ts:372:7 › tree audit › tree audit scenario 2 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Object {[22m
+    [32m-   "reassigned": 2,[39m
+    [32m-   "refused": 1,[39m
+    [31m+   "reassigned": 0,[39m
+    [31m+   "refused": 3,[39m
+    [2m  }[22m
+
+      498 |     expect(await ui.periodAction(pg_wes, "P2", "close")).toBe(true);
+      499 |     await ui.refresh(pg_wes);
+    > 500 |     expect(await ui.bulkReassign(pg_wes, [c_cam_5, c_cam_4, c_cam_2], "Cam")).toEqual({ reassigned: 2, refused: 1 });
+          |                                                                               ^
+      501 |     await ui.setAsOf(pg_wes, "2026-03-20");
+      502 |     await ui.refresh(pg_wes);
+      503 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp139_tree-audit.spec.ts:500:79
+
+  1 failed
+    [chromium] › cp139_tree-audit.spec.ts:372:7 › tree audit › tree audit scenario 2 ───────────────
+  3 passed (1.1m)

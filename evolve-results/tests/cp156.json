@@ -1,0 +1,70 @@
+{
+  "checkpoint": 156,
+  "checkpoint_id": "cp156_forward-only-rates",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "0f2fa41251065118db4b39aa157c576c510f9bdc",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T04:03:13",
+  "seconds": 161,
+  "build_log_file": "cp156.test.log",
+  "replaced_tests": [
+    "cp118_import-rates.spec.ts::import rates",
+    "cp118_import-rates.spec.ts::import rates scenario 3",
+    "cp69_claim-lock.spec.ts::claim lock scenario 2"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp156_forward-only-rates.spec.ts::forward only rates": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 1": false,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 2": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12745,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 49350,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  191 |     expect(await ui.claimEditOpen(pg_uma, c_cam_0)).toBe(false);\n  192 |     await ui.refresh(pg_wes);\n> 193 |     expect(await ui.claimEditSave(pg_wes, c_cam_0, {\"amount\": \"10.25\"})).toBe(false);\n      |                                                                          ^\n  194 |     expect(await ui.editPerson(pg_wes, p_ben, {\"grade\": \"B\", \"gradeFrom\": \"2026-03-28\"}, {\"grade\": \"C\"})).toBe(true);\n  195 |     const c_cam_0_2 = ui.must(await ui.addClaim(pg_wes, p_cam, {\"amount\": \"10.35\", \"ref\": \"inv 7\"}));\n  196 |     await ui.refresh(pg_wes);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:193:74 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35795,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18208,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

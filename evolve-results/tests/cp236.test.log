@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp236-21hu_sgu
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp236_deferred-bound-counts.spec.ts:6:7 › deferred bound counts › deferred bound counts (9.8s)
+  ✓  2 [chromium] › cp236_deferred-bound-counts.spec.ts:122:7 › deferred bound counts › deferred bound counts scenario 1 (23.7s)
+  ✓  3 [chromium] › cp236_deferred-bound-counts.spec.ts:777:7 › deferred bound counts › deferred bound counts scenario 2 (18.7s)
+  ✘  4 [chromium] › cp236_deferred-bound-counts.spec.ts:1410:7 › deferred bound counts › deferred bound counts scenario 3 (40.0s)
+
+
+  1) [chromium] › cp236_deferred-bound-counts.spec.ts:1410:7 › deferred bound counts › deferred bound counts scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-13').getByTestId('person-period-2026-03-due-total')
+    Expected string: [32m"[7m1[27m.00"[39m
+    Received string: [31m"[7m6[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-period-2026-03-due-total')[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c2917870156="" data-testid="person-period-2026-03-due-total">6.00</td>[22m
+    [2m  -   unexpected value "6.00"[22m
+
+
+      1785 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-band")).toHaveText("MID");
+      1786 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-02-due-total")).toHaveText("0.00");
+    > 1787 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-03-due-total")).toHaveText("1.00");
+           |                                                                                                            ^
+      1788 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-04-due-total")).toHaveText("0.00");
+      1789 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-02-carried")).toHaveText("0.00");
+      1790 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-03-carried")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp236_deferred-bound-counts.spec.ts:1787:108
+
+  Slow test file: [chromium] › cp236_deferred-bound-counts.spec.ts (1.5m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp236_deferred-bound-counts.spec.ts:1410:7 › deferred bound counts › deferred bound counts scenario 3 
+  3 passed (1.6m)

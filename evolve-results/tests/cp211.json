@@ -1,0 +1,66 @@
+{
+  "checkpoint": 211,
+  "checkpoint_id": "cp211_score-lines",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "8d41b30f974e9a2e46accb32e0f11e47973dfeaf",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T15:03:36",
+  "seconds": 180,
+  "build_log_file": "cp211.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp211_score-lines.spec.ts::score lines": true,
+      "cp211_score-lines.spec.ts::score lines scenario 1": true,
+      "cp211_score-lines.spec.ts::score lines scenario 2": false,
+      "cp211_score-lines.spec.ts::score lines scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13525,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33207,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 35298,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('plan-row-1').getByTestId('plan-next-dates')\nExpected string: \u001b[32m\"2026-04-01\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-next-dates')\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span _ngcontent-ng-c3548440529=\"\" data-testid=\"plan-next-dates\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n  1297 |     await expect(pg_vic.getByTestId(\"note-line\")).toHaveText([]);\n  1298 |     await expect(pg_vic.getByTestId(\"plan-row-\" + pl_ada_1).getByTestId(\"plan-generated\")).toHaveText(\"0\");\n> 1299 |     await expect(pg_vic.getByTestId(\"plan-row-\" + pl_ada_1).getByTestId(\"plan-next-dates\"))"
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30403,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  1470 |     expect(await ui.addClaim(pg_uma, p_ben, {\"amount\": \"7.77\", \"date\": \"2026-02-25\"})).toBeNull();\n  1471 |     await ui.refresh(pg_wes);\n> 1472 |     expect(await ui.reassign(pg_wes, c_cam_0, \"Ben\")).toBe(false);\n       |                                                       ^\n  1473 |     expect(await ui.bulkVoid(pg_wes, [c_cam_0, c_ben_0])).toEqual({ voided: 1, refused: 1 });\n  1474 |     expect(await ui.editPerson(pg_wes, p_ben, {\"grade\": \"A\", \"gradeFrom\": \"2026-04-02\"}, {\"grade\": \"C\"})).toBe(true);\n  1475 |     expect(await ui.claimEditOpen(pg_wes, c_ben_0)).toBe(false);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp211_score-lines.spec.ts:1472:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,344 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp170-_c4dyqok
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+    56 |     await ui.refresh(pg_wes);
+      57 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("70.00");
+      58 |     await expect(pg_wes.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("7.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp152_imported-claims-open.spec.ts:55:57
+
+  14) [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-32').getByTestId('plan-generated')
+    Expected string: [32m"0"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-32').getByTestId('plan-generated')[22m
+
+
+      1143 |     await expect(pg_vic.getByTestId("month-2026-02-due-total")).toHaveText("1.00");
+      1144 |     await expect(pg_vic.getByTestId("month-2026-03-due-total")).toHaveText("2.50");
+    > 1145 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
+           |                                                                                            ^
+      1146 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
+      1147 |     await ui.expectAudit(sheet, [
+      1148 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp152_imported-claims-open.spec.ts:1145:92
+
+  15) [chromium] › cp152_imported-claims-open.spec.ts:1201:7 › imported claims open › imported claims open scenario 3 
+
+    Error: audit line 27
+      expected: PERSON_EDITED sheet=smvmyk29cd36b by=uma name=Ada grade=B
+      actual:   PERSON_EDITED sheet=smvmyk29cd36b by=uma name=Ada grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1599
+
+      1597 |     const e = expected[i];
+      1598 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1599 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1600 |   });
+      1601 | }
+      1602 |
+
+        at forEach (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1599:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1596:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp152_imported-claims-open.spec.ts:1342:14
+
+  16) [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      191 |     expect(await ui.claimEditOpen(pg_uma, c_cam_0)).toBe(false);
+      192 |     await ui.refresh(pg_wes);
+    > 193 |     expect(await ui.claimEditSave(pg_wes, c_cam_0, {"amount": "10.25"})).toBe(false);
+          |                                                                          ^
+      194 |     expect(await ui.editPerson(pg_wes, p_ben, {"grade": "B", "gradeFrom": "2026-03-28"}, {"grade": "C"})).toBe(true);
+      195 |     const c_cam_0_2 = ui.must(await ui.addClaim(pg_wes, p_cam, {"amount": "10.35", "ref": "inv 7"}));
+      196 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:193:74
+
+  17) [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31mnull[39m
+
+      676 |     expect(await ui.bulkOpen(pg_wes, [c_cam_0, c_ben_0])).toEqual({ opened: 0, refused: 2 });
+      677 |     expect(await ui.importRates(pg_wes, "B,10.00\nB,10.00,2026-03-05")).toBeNull();
+    > 678 |     expect(await ui.generatePlans(pg_wes)).toBe(0);
+          |                                            ^
+      679 |     await ui.refresh(pg_wes);
+      680 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+      681 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:678:44
+
+  18) [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      1084 |     expect(await ui.editPerson(pg_uma, p_ben, {"grade": "A", "gradeFrom": "2026-03-01"})).toBe(true);
+      1085 |     expect(await ui.importRates(pg_uma, "A,33.33\nB,10.00,2026-03-05")).toBe(2);
+    > 1086 |     expect(await ui.remind(pg_uma, c_ben_1)).toBe(true);
+           |                                              ^
+      1087 |     expect(await ui.defer(pg_uma, c_ben_1, "2026-04-30")).toBe(false);
+      1088 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      1089 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:1086:46
+
+  19) [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-1153').getByTestId('claim-due')
+    Expected string: [32m"1.29"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-1153').getByTestId('claim-due')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due" _ngcontent-ng-c2078249242="">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      798 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-date")).toHaveText("2026-03-01");
+      799 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-note")).toHaveText("n");
+    > 800 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-due")).toHaveText("1.29");
+          |                                                                                         ^
+      801 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-status")).toHaveText("DRAFT");
+      802 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-number")).toHaveText("");
+      803 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-opened-by")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp163_statement-lines.spec.ts:800:89
+
+  20) [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp164_correction-limit.spec.ts:814:12
+
+  21) [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 ───────────
+
+    Error: paste claims: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at Object.pasteClaims (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:778:14)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp57_split-claim.spec.ts:850:12
+
+  22) [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ──────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31mnull[39m
+
+      119 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("2.50");
+      120 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("2.50");
+    > 121 |     expect(await ui.pasteClaims(pg_uma, "Ada,1.00,2026-03-28,a, b\nAda,7.77,2026-03-09,paste\nAda,20.00,2026-03-28,")).toBe(3);
+          |                                                                                                                        ^
+      122 |     const c_ada_2 = await ui.claimAt(pg_uma, p_ada, 2);
+      123 |     const c_ada_3 = await ui.claimAt(pg_uma, p_ada, 3);
+      124 |     const c_ada_4 = await ui.claimAt(pg_uma, p_ada, 4);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp62_archive-sheet.spec.ts:121:120
+
+  23) [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 ──────────────
+
+    TimeoutError: locator.click: Timeout 30000ms exceeded.
+    Call log:
+      [2m- waiting for getByTestId('claim-row-2142').getByTestId('claim-cancel')[22m
+
+
+       at ../support/ui.ts:921
+
+      919 |
+      920 | export async function claimEditCancel(page: Page, claimId: string): Promise<void> {
+    > 921 |   await claimRow(page, claimId).getByTestId('claim-cancel').click();
+          |                                                             ^
+      922 | }
+      923 |
+      924 | /** open | settle | void | approve | reject(reason) | void(reason): true when the status changed.
+
+        at Object.claimEditCancel (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:921:61)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp69_claim-lock.spec.ts:461:14
+
+  24) [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp71_cancel-statement.spec.ts:758:12
+
+  25) [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      742 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "0.40"})).toBeNull();
+      743 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 744 |     expect(await ui.reassign(pg_wes, c_ada_0, "Ben")).toBe(false);
+          |                                                       ^
+      745 |     await ui.refresh(pg_wes);
+      746 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+      747 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp75_bulk-grade.spec.ts:744:55
+
+  26) [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 ──────
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp77_note-required.spec.ts:163:12
+
+  27) [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m3[39m
+
+      102 |     const c_cam_1 = await ui.claimAt(pg_wes, p_cam, 1);
+      103 |     const c_cam_2 = ui.must(await ui.quickAdd(pg_wes, {"name": "Cam", "amount": "0.40"}, p_cam));
+    > 104 |     expect(await ui.pasteClaims(pg_wes, "Ben,0.04,2026-04-02,\nCam,7.77,,\nBen,4.00,,")).toBeNull();
+          |                                                                                          ^
+      105 |     const c_ben_0 = ui.must(await ui.quickAdd(pg_wes, {"name": "Ben", "amount": "99.95"}, p_ben));
+      106 |     const c_ben_1 = ui.must(await ui.addClaim(pg_wes, p_ben, {"amount": "4.00", "date": "2026-03-01", "note": "n"}));
+      107 |     expect(await ui.statement(pg_wes, p_cam)).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp78_age-buckets.spec.ts:104:90
+
+  28) [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 ─────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31mnull[39m
+
+      200 |     expect(await ui.claimAction(pg_vic, c_ben_1, "settle")).toBe(true);
+      201 |     expect(await ui.watch(pg_vic, p_cam, true)).toBe(true);
+    > 202 |     expect(await ui.pasteClaims(pg_vic, "Ben,1.00,,a, b\nCam,10.25,2026-03-20,\nCam,12.50,2026-03-01,a, b")).toBe(3);
+          |                                                                                                              ^
+      203 |     const c_ben_2 = await ui.claimAt(pg_vic, p_ben, 2);
+      204 |     const c_cam_3 = await ui.claimAt(pg_vic, p_cam, 3);
+      205 |     const c_cam_4 = await ui.claimAt(pg_vic, p_cam, 4);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp83_holidays.spec.ts:202:110
+
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (2.6m)
+  Slow test file: [chromium] › cp86_inline-amount.spec.ts (2.3m)
+  Slow test file: [chromium] › cp143_fiscal-year.spec.ts (2.3m)
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (2.2m)
+  Slow test file: [chromium] › cp141_monthly-plans.spec.ts (2.2m)
+  Consider splitting slow test files to speed up parallel execution
+  28 failed
+    [chromium] › cp06_audit.spec.ts:6:7 › audit › audit ────────────────────────────────────────────
+    [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts ───────────────────────────────
+    [chromium] › cp107_merge-people.spec.ts:1335:7 › merge people › merge people scenario 3 ────────
+    [chromium] › cp118_import-rates.spec.ts:870:7 › import rates › import rates scenario 3 ─────────
+    [chromium] › cp120_hold-pauses-cuts.spec.ts:929:7 › hold pauses cuts › hold pauses cuts scenario 3 
+    [chromium] › cp121_history-follows.spec.ts:1215:7 › history follows › history follows scenario 3 
+    [chromium] › cp125_unretire.spec.ts:154:7 › unretire › unretire scenario 1 ─────────────────────
+    [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 
+    [chromium] › cp131_plans.spec.ts:1101:7 › plans › plans scenario 3 ─────────────────────────────
+    [chromium] › cp133_person-tags.spec.ts:551:7 › person tags › person tags scenario 2 ────────────
+    [chromium] › cp137_claim-lines.spec.ts:1121:7 › claim lines › claim lines scenario 3 ───────────
+    [chromium] › cp149_period-claim-cap.spec.ts:425:7 › period claim cap › period claim cap scenario 2 
+    [chromium] › cp152_imported-claims-open.spec.ts:6:7 › imported claims open › imported claims open 
+    [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+    [chromium] › cp152_imported-claims-open.spec.ts:1201:7 › imported claims open › imported claims open scenario 3 
+    [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 
+    [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 ────────────
+    [chromium] › cp157_user-locale.spec.ts:1019:7 › user locale › user locale scenario 3 ───────────
+    [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+    [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+    [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ────────
+    [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 ────────────────
+    [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+    [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 ────────
+    [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 ──────────────
+    [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 ───────────────────────
+  640 passed (1.3h)

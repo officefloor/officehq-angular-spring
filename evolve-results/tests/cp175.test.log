@@ -1,0 +1,55 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp175-9831nxmh
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp175_transfer-undo.spec.ts:6:7 › transfer undo › transfer undo (9.9s)
+  ✓  2 [chromium] › cp175_transfer-undo.spec.ts:103:7 › transfer undo › transfer undo scenario 1 (19.9s)
+  ✘  3 [chromium] › cp175_transfer-undo.spec.ts:598:7 › transfer undo › transfer undo scenario 2 (18.6s)
+  ✘  4 [chromium] › cp175_transfer-undo.spec.ts:1044:7 › transfer undo › transfer undo scenario 3 (43.6s)
+
+
+  1) [chromium] › cp175_transfer-undo.spec.ts:598:7 › transfer undo › transfer undo scenario 2 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      678 |     expect(await ui.inlineGrade(pg_vic, p_ada, "B")).toBe(true);
+      679 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
+    > 680 |     expect(await ui.editInline(pg_vic, c_ben_0, "4.00")).toBe(false);
+          |                                                          ^
+      681 |     expect(await ui.pasteClaims(pg_vic, "Ben,10.35,2026-02-25,\nBen,25.00,2026-03-20,")).toBeNull();
+      682 |     await ui.refresh(pg_vic);
+      683 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:680:58
+
+  2) [chromium] › cp175_transfer-undo.spec.ts:1044:7 › transfer undo › transfer undo scenario 3 ────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31mnull[39m
+
+      1136 |     expect(await ui.quickAdd(pg_vic, {"name": "Ada", "amount": "25.00"})).toBeNull();
+      1137 |     expect(await ui.addClaim(pg_vic, p_cam, {"amount": "0.40", "note": "n", "tags": " c "})).toBeNull();
+    > 1138 |     expect(await ui.generatePlans(pg_vic)).toBe(0);
+           |                                            ^
+      1139 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+      1140 |     expect(await ui.editPerson(pg_wes, p_ada, {"grade": "C"})).toBe(true);
+      1141 |     expect(await ui.periodAction(pg_wes, "P1", "close")).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp175_transfer-undo.spec.ts:1138:44
+
+  2 failed
+    [chromium] › cp175_transfer-undo.spec.ts:598:7 › transfer undo › transfer undo scenario 2 ──────
+    [chromium] › cp175_transfer-undo.spec.ts:1044:7 › transfer undo › transfer undo scenario 3 ─────
+  2 passed (1.6m)

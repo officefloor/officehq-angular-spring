@@ -1,0 +1,47 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp10-frqq2g7u
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 28 tests using 3 workers
+
+  ✓  3 [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today (1.6s)
+  ✓  1 [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet (1.9s)
+  ✓  2 [chromium] › cp03_people.spec.ts:6:7 › people › people (6.5s)
+  ✓  4 [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness (5.8s)
+  ✓  5 [chromium] › cp05_claims.spec.ts:6:7 › claims › claims (6.5s)
+  ✓  7 [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due (3.1s)
+  ✓  6 [chromium] › cp06_audit.spec.ts:6:7 › audit › audit (5.6s)
+  ✓  8 [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1 (5.0s)
+  ✓  10 [chromium] › cp06_audit.spec.ts:28:7 › audit › audit scenario 1 (5.0s)
+  ✓  11 [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2 (4.5s)
+  ✓  9 [chromium] › cp07_rates-and-due.spec.ts:65:7 › rates and due › rates and due scenario 1 (8.0s)
+  ✓  12 [chromium] › cp06_audit.spec.ts:125:7 › audit › audit scenario 2 (5.1s)
+  ✓  13 [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3 (5.0s)
+  ✓  14 [chromium] › cp07_rates-and-due.spec.ts:211:7 › rates and due › rates and due scenario 2 (4.9s)
+  ✓  15 [chromium] › cp06_audit.spec.ts:216:7 › audit › audit scenario 3 (6.5s)
+  ✓  16 [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow (8.4s)
+  ✓  17 [chromium] › cp07_rates-and-due.spec.ts:334:7 › rates and due › rates and due scenario 3 (7.8s)
+  ✓  18 [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering (3.0s)
+  ✓  20 [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due (2.5s)
+  ✓  19 [chromium] › cp08_workflow.spec.ts:53:7 › workflow › workflow scenario 1 (6.9s)
+  ✓  22 [chromium] › cp10_settle-freezes-due.spec.ts:38:7 › settle freezes due › settle freezes due scenario 1 (4.6s)
+  ✓  21 [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1 (7.0s)
+  ✓  24 [chromium] › cp10_settle-freezes-due.spec.ts:156:7 › settle freezes due › settle freezes due scenario 2 (5.0s)
+  ✓  23 [chromium] › cp08_workflow.spec.ts:210:7 › workflow › workflow scenario 2 (6.3s)
+  ✓  25 [chromium] › cp09_numbering.spec.ts:172:7 › numbering › numbering scenario 2 (9.1s)
+  ✓  26 [chromium] › cp10_settle-freezes-due.spec.ts:257:7 › settle freezes due › settle freezes due scenario 3 (9.2s)
+  ✓  27 [chromium] › cp08_workflow.spec.ts:342:7 › workflow › workflow scenario 3 (9.7s)
+  ✓  28 [chromium] › cp09_numbering.spec.ts:309:7 › numbering › numbering scenario 3 (8.5s)
+
+  Slow test file: [chromium] › cp08_workflow.spec.ts (31.4s)
+  Slow test file: [chromium] › cp09_numbering.spec.ts (27.6s)
+  Slow test file: [chromium] › cp07_rates-and-due.spec.ts (23.9s)
+  Slow test file: [chromium] › cp06_audit.spec.ts (22.3s)
+  Slow test file: [chromium] › cp10_settle-freezes-due.spec.ts (21.3s)
+  Consider splitting slow test files to speed up parallel execution
+  28 passed (58.3s)

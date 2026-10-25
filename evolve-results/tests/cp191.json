@@ -1,0 +1,66 @@
+{
+  "checkpoint": 191,
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "54b29cd22c91213374859a200d81bff1d0dc895a",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T10:46:40",
+  "seconds": 141,
+  "build_log_file": "cp191.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1": false,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14680,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 9645,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m\n\n  173 |     await expect(pg_vic.getByTestId(\"my-crew-due-total\")).toHaveText(\"\");\n  174 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n> 175 |     expect(await ui.settlePart(pg_wes, p_cam, c_ben_0, \"0.01\")).toBeNull();\n      |                                                                 ^\n  176 |     expect(await ui.pasteClaims(pg_wes, \"Ben,1.00,,\\nBen,12.50,2026-03-20,paste\")).toBeNull();\n  177 |     expect(await ui.claimAction(pg_wes, c_ben_0, \"settle\")).toBe(true);\n  178 |     expect(await ui.setRate(pg_wes, {\"grade\": \"C\", \"pct\": \"12.50\", \"from\": \"2026-04-19\"})).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp191_clerk-limit-per-grade.spec.ts:175:65 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeNull\u001b[2m()\u001b[22m\n\nReceived: \u001b[31m\"6\"\u001b[39m"
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22968,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18838,
+        "failure": "Error: audit line 20\n  expected: PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A terms=\n  actual:   PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   at ../support/ui.ts:1599\n\n  1597 |     const e = expected[i];\n  1598 |     const ok = line === e || line.startsWith(e + ' ');\n> 1599 |     expect(ok, `audit line ${i + 1}\\n  expected: ${e}\\n  actual:   ${line}`).toBe(true);\n       |                                                                              ^\n  1600 |   });\n  1601 | }\n  1602 |\n\n    at forEach (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1599:78)\n    at Object.expectAudit (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:1596:9)\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp191_clerk-limit-per-grade.spec.ts:1581:14 | Error: audit line 20\n  expected: PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A terms=\n  actual:   PERSON_EDITED sheet=smvn8aqiybspv by=uma name=Ada grade=A\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

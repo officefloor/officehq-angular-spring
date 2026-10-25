@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp226-2lw26xv3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp226_preview-date.spec.ts:6:7 › preview date › preview date (12.0s)
+  ✘  2 [chromium] › cp226_preview-date.spec.ts:255:7 › preview date › preview date scenario 1 (26.1s)
+  ✓  3 [chromium] › cp226_preview-date.spec.ts:714:7 › preview date › preview date scenario 2 (1.3m)
+  ✓  4 [chromium] › cp226_preview-date.spec.ts:1330:7 › preview date › preview date scenario 3 (26.0s)
+
+
+  1) [chromium] › cp226_preview-date.spec.ts:255:7 › preview date › preview date scenario 1 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-4').getByTestId('person-open-total')
+    Expected string: [32m"[7m1.0[27m0"[39m
+    Received string: [31m"[7m0.5[27m0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-4').getByTestId('person-open-total')[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3273685995="" data-testid="person-open-total">0.50</td>[22m
+    [2m  -   unexpected value "0.50"[22m
+
+
+      413 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-aged-61")).toHaveText("0.00");
+      414 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-settled-total")).toHaveText("0.00");
+    > 415 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-open-total")).toHaveText("1.00");
+          |                                                                                              ^
+      416 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-contact")).toHaveText("ada@x");
+      417 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-aliases")).toHaveText("");
+      418 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-clashing")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp226_preview-date.spec.ts:415:94
+
+  1 failed
+    [chromium] › cp226_preview-date.spec.ts:255:7 › preview date › preview date scenario 1 ─────────
+  3 passed (2.5m)

@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp214-p0pw9h2b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp214_max-open-claims.spec.ts:6:7 › max open claims › max open claims (9.0s)
+  ✓  2 [chromium] › cp214_max-open-claims.spec.ts:78:7 › max open claims › max open claims scenario 1 (18.4s)
+  ✘  3 [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 (26.0s)
+  ✓  4 [chromium] › cp214_max-open-claims.spec.ts:1087:7 › max open claims › max open claims scenario 3 (33.5s)
+
+
+  1) [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-1').getByTestId('plan-next-dates')
+    Expected string: [32m"2026-03-15, 2026-04-15"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-next-dates')[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span _ngcontent-ng-c2711238297="" data-testid="plan-next-dates"></span>[22m
+    [2m  -   unexpected value ""[22m
+
+
+      1033 |     await expect(pg_uma.getByTestId("note-line")).toHaveText([]);
+      1034 |     await expect(pg_uma.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
+    > 1035 |     await expect(pg_uma.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-03-15, 2026-04-15");
+           |                                                                                             ^
+      1036 |     await expect(pg_uma.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-paused")).toHaveText("yes");
+      1037 |     await expect(pg_uma.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-change-line")).toHaveText([]);
+      1038 |     await ui.expectAudit(sheet, [
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp214_max-open-claims.spec.ts:1035:93
+
+  1 failed
+    [chromium] › cp214_max-open-claims.spec.ts:682:7 › max open claims › max open claims scenario 2 
+  3 passed (1.5m)

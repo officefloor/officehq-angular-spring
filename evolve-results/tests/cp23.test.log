@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp23-3zd5_x7l
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit (6.6s)
+  ✓  2 [chromium] › cp23_roles-and-clerk-limit.spec.ts:70:7 › roles and clerk limit › roles and clerk limit scenario 1 (5.1s)
+  ✓  3 [chromium] › cp23_roles-and-clerk-limit.spec.ts:220:7 › roles and clerk limit › roles and clerk limit scenario 2 (5.2s)
+  ✓  4 [chromium] › cp23_roles-and-clerk-limit.spec.ts:384:7 › roles and clerk limit › roles and clerk limit scenario 3 (6.0s)
+
+  Slow test file: [chromium] › cp23_roles-and-clerk-limit.spec.ts (23.0s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (24.0s)

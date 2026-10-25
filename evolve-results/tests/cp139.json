@@ -1,0 +1,66 @@
+{
+  "checkpoint": 139,
+  "checkpoint_id": "cp139_tree-audit",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "1b400d908ba9783c31f0e3c5733e7231a085ad5c",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T01:33:15",
+  "seconds": 123,
+  "build_log_file": "cp139.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp139_tree-audit.spec.ts::tree audit": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 1": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 2": false,
+      "cp139_tree-audit.spec.ts::tree audit scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9427,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18641,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 12650,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"reassigned\": 2,\u001b[39m\n\u001b[32m-   \"refused\": 1,\u001b[39m\n\u001b[31m+   \"reassigned\": 0,\u001b[39m\n\u001b[31m+   \"refused\": 3,\u001b[39m\n\u001b[2m  }\u001b[22m\n\n  498 |     expect(await ui.periodAction(pg_wes, \"P2\", \"close\")).toBe(true);\n  499 |     await ui.refresh(pg_wes);\n> 500 |     expect(await ui.bulkReassign(pg_wes, [c_cam_5, c_cam_4, c_cam_2], \"Cam\")).toEqual({ reassigned: 2, refused: 1 });\n      |                                                                               ^\n  501 |     await ui.setAsOf(pg_wes, \"2026-03-20\");\n  502 |     await ui.refresh(pg_wes);\n  503 |     await expect(pg_wes.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp139_tree-audit.spec.ts:500:79 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 2\u001b[39m\n\u001b[31m+ Received  + 2\u001b[39m\n\n\u001b[2m  Object {\u001b[22m\n\u001b[32m-   \"reassigned\": 2,\u001b[39m\n\u001b[32m-   \"refused\": 1,\u001b[39m\n\u001b[31m+   \"reassigned\": 0,\u001b[39m\n\u001b[31m+   \"refused\": 3,\u001b[39m\n\u001b[2m  }\u001b[22m"
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20127,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

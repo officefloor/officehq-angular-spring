@@ -1,0 +1,39 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp75-tkmj7n_g
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp75_bulk-grade.spec.ts:6:7 › bulk grade › bulk grade (5.5s)
+  ✓  2 [chromium] › cp75_bulk-grade.spec.ts:101:7 › bulk grade › bulk grade scenario 1 (7.4s)
+  ✓  3 [chromium] › cp75_bulk-grade.spec.ts:362:7 › bulk grade › bulk grade scenario 2 (54.2s)
+  ✘  4 [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 (12.4s)
+
+
+  1) [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      737 |     expect(await ui.addPatron(pg_uma, p_ben, "Cam")).toBe(false);
+      738 |     expect(await ui.claimAction(pg_uma, c_cam_0, "open")).toBe(false);
+    > 739 |     expect(await ui.addProof(pg_uma, c_ada_0)).toBe(true);
+          |                                                ^
+      740 |     expect(await ui.retire(pg_uma, p_cam, "2026-03-09")).toBe(true);
+      741 |     await ui.showRetired(pg_uma, true);
+      742 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "0.40"})).toBeNull();
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp75_bulk-grade.spec.ts:739:48
+
+  Slow test file: [chromium] › cp75_bulk-grade.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 ────────────────
+  3 passed (1.3m)

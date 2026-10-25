@@ -1,0 +1,66 @@
+{
+  "checkpoint": 237,
+  "checkpoint_id": "cp237_today-permission",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "570393bd3a1d9ae4c084e31f6ce322dd76e4141a",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T20:03:30",
+  "seconds": 201,
+  "build_log_file": "cp237.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp237_today-permission.spec.ts::today permission": true,
+      "cp237_today-permission.spec.ts::today permission scenario 1": true,
+      "cp237_today-permission.spec.ts::today permission scenario 2": true,
+      "cp237_today-permission.spec.ts::today permission scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp237_today-permission.spec.ts::today permission",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17814,
+        "failure": ""
+      },
+      {
+        "test_id": "cp237_today-permission.spec.ts::today permission scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42451,
+        "failure": ""
+      },
+      {
+        "test_id": "cp237_today-permission.spec.ts::today permission scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14590,
+        "failure": ""
+      },
+      {
+        "test_id": "cp237_today-permission.spec.ts::today permission scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43382,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

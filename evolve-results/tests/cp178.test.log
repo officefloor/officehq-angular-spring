@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp178-24pcuotk
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp178_steward-dashboard.spec.ts:6:7 › steward dashboard › steward dashboard (19.4s)
+  ✓  2 [chromium] › cp178_steward-dashboard.spec.ts:78:7 › steward dashboard › steward dashboard scenario 1 (32.4s)
+  ✓  3 [chromium] › cp178_steward-dashboard.spec.ts:535:7 › steward dashboard › steward dashboard scenario 2 (21.9s)
+  ✘  4 [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 (25.6s)
+
+
+  1) [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"12.50"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td _ngcontent-ng-c3266497608="" data-testid="rate-current-A">…</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1169 |     await expect(pg_uma.getByTestId("period-row-P2").getByTestId("period-fy")).toHaveText("FY2025");
+      1170 |     await expect(pg_uma.getByTestId("period-row-P2").getByTestId("period-cap")).toHaveText("");
+    > 1171 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("12.50");
+           |                                                        ^
+      1172 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("7.50");
+      1173 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("20.00");
+      1174 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp178_steward-dashboard.spec.ts:1171:56
+
+  Slow test file: [chromium] › cp178_steward-dashboard.spec.ts (1.7m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+  3 passed (1.7m)

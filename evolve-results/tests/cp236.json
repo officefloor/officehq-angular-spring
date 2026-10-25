@@ -1,0 +1,71 @@
+{
+  "checkpoint": 236,
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "c921776c33e53f9fac11ed84f03a98668b5377cc",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T20:01:01",
+  "seconds": 149,
+  "build_log_file": "cp236.test.log",
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 1": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 2": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9797,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23659,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18651,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 39989,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-13').getByTestId('person-period-2026-03-due-total')\nExpected string: \u001b[32m\"\u001b[7m1\u001b[27m.00\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7m6\u001b[27m.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-13').getByTestId('person-period-2026-03-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <td _ngcontent-ng-c2917870156=\"\" data-testid=\"person-period-2026-03-due-total\">6.00</td>\u001b[22m\n\u001b[2m  -   unexpected value \"6.00\"\u001b[22m\n\n\n  1785 |     await expect(pg_wes.getByTestId(\"person-row-\""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

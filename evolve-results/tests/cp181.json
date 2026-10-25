@@ -1,0 +1,66 @@
+{
+  "checkpoint": 181,
+  "checkpoint_id": "cp181_sheet-notes",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "0a87273377954dcb8172c8d13507d53288860dc0",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T08:51:13",
+  "seconds": 175,
+  "build_log_file": "cp181.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp181_sheet-notes.spec.ts::sheet notes": true,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 1": true,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 2": true,
+      "cp181_sheet-notes.spec.ts::sheet notes scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17658,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 47209,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 37558,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_sheet-notes.spec.ts::sheet notes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31118,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

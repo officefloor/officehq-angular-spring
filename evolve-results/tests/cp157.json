@@ -1,0 +1,66 @@
+{
+  "checkpoint": 157,
+  "checkpoint_id": "cp157_user-locale",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610241-as/just-solve/chain1",
+  "commit_sha": "6c2c186a2a9cbda91a670707c0e907180e86e8fe",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-25T04:05:54",
+  "seconds": 93,
+  "build_log_file": "cp157.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp157_user-locale.spec.ts::user locale": true,
+      "cp157_user-locale.spec.ts::user locale scenario 1": true,
+      "cp157_user-locale.spec.ts::user locale scenario 2": false,
+      "cp157_user-locale.spec.ts::user locale scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8100,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21416,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 11589,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31mnull\u001b[39m\n\n  676 |     expect(await ui.bulkOpen(pg_wes, [c_cam_0, c_ben_0])).toEqual({ opened: 0, refused: 2 });\n  677 |     expect(await ui.importRates(pg_wes, \"B,10.00\\nB,10.00,2026-03-05\")).toBeNull();\n> 678 |     expect(await ui.generatePlans(pg_wes)).toBe(0);\n      |                                            ^\n  679 |     await ui.refresh(pg_wes);\n  680 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n  681 |     await expect(pg_wes.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:678:44 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31mnull\u001b[39m"
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 12015,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  1084 |     expect(await ui.editPerson(pg_uma, p_ben, {\"grade\": \"A\", \"gradeFrom\": \"2026-03-01\"})).toBe(true);\n  1085 |     expect(await ui.importRates(pg_uma, \"A,33.33\\nB,10.00,2026-03-05\")).toBe(2);\n> 1086 |     expect(await ui.remind(pg_uma, c_ben_1)).toBe(true);\n       |                                              ^\n  1087 |     expect(await ui.defer(pg_uma, c_ben_1, \"2026-04-30\")).toBe(false);\n  1088 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n  1089 |     await ui.refresh(pg_wes);\n\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp157_user-locale.spec.ts:1086:46 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,44 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp225-5ohtk2ql
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp225_grade-merge.spec.ts:6:7 › grade merge › grade merge (18.8s)
+  ✓  2 [chromium] › cp225_grade-merge.spec.ts:157:7 › grade merge › grade merge scenario 1 (24.0s)
+  ✓  3 [chromium] › cp225_grade-merge.spec.ts:766:7 › grade merge › grade merge scenario 2 (23.7s)
+  ✘  4 [chromium] › cp225_grade-merge.spec.ts:1526:7 › grade merge › grade merge scenario 3 (27.5s)
+
+
+  1) [chromium] › cp225_grade-merge.spec.ts:1526:7 › grade merge › grade merge scenario 3 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('pool-row-C1').getByTestId('pool-total-share')
+    Expected string: [32m"0.00"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')[22m
+
+
+      1930 |     await expect(pg_wes.getByTestId("pool-row-P1").getByTestId("pool-total-share")).toHaveText("0.00");
+      1931 |     await expect(pg_wes.getByTestId("pool-row-P1").getByTestId("pool-balanced")).toHaveText("no");
+    > 1932 |     await expect(pg_wes.getByTestId("pool-row-C1").getByTestId("pool-total-share")).toHaveText("0.00");
+           |                                                                                     ^
+      1933 |     await expect(pg_wes.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("no");
+      1934 |     await expect(pg_wes.getByTestId("crew-row-C1").getByTestId("crew-lead")).toHaveText("");
+      1935 |     await expect(pg_wes.getByTestId("crew-row-C1").getByTestId("crew-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp225_grade-merge.spec.ts:1932:85
+
+  Slow test file: [chromium] › cp225_grade-merge.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp225_grade-merge.spec.ts:1526:7 › grade merge › grade merge scenario 3 ───────────
+  3 passed (1.6m)
