@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -31,6 +32,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
+        <label for="import-rates">Import rates, one per line: grade,rate,from,to</label>
+        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-rates-submit" [disabled]="importing()">Import rates</button>
+        @if (importCount() !== null) {
+          <p>Set: <strong data-testid="import-rates-set">{{ importCount() }}</strong></p>
+        }
+        @if (importError()) {
+          <p role="alert" data-testid="import-rates-error">{{ importError() }}</p>
         }
       </form>
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
@@ -100,6 +112,10 @@ export class Rates {
   protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from, to: this.to });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly importForm = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
+  protected readonly importing = signal(false);
+  protected readonly importError = signal('');
+  protected readonly importCount = signal<number | null>(null);
   protected readonly previewGrade = new FormControl<Grade>('A', { nonNullable: true });
   protected readonly previewPct = new FormControl('', { nonNullable: true });
   protected readonly previewForm = new FormGroup({ grade: this.previewGrade, pct: this.previewPct });
@@ -110,12 +126,16 @@ export class Rates {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.previewForm.valueChanges.subscribe(() => this.previewError.set(''));
+    this.importForm.valueChanges.subscribe(() => this.importError.set(''));
     // Each load of a sheet starts the forms without the error or preview from the last one.
     effect(() => {
       this.session.loaded();
       this.error.set('');
       this.previewError.set('');
       this.previewed.set(null);
+      this.importError.set('');
+      this.importCount.set(null);
+      this.importForm.reset({ text: '' }, { emitEvent: false });
     });
   }
 
@@ -167,6 +187,36 @@ export class Rates {
       this.error.set('The rate could not be set.');
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** Set a rate per line of grade,rate,from,to, all or none. The last count is cleared while the
+   *  import runs, so two equal results are still told apart. */
+  protected async importRates(): Promise<void> {
+    if (this.importing()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.importError.set('');
+    this.importCount.set(null);
+    const text = this.importForm.getRawValue().text;
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing.set(true);
+    try {
+      const result = await this.api.importRates(sheet.id, text);
+      if (this.session.sheet()?.id === sheet.id) {
+        this.importCount.set(result.set);
+        for (const rate of result.rates) this.saved.emit(rate);
+      }
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
+        ? ' ' + e.error.message : '';
+      this.importError.set('No rates were set: a line was refused.' + reason);
+    } finally {
+      this.importing.set(false);
     }
   }
 

@@ -63,6 +63,12 @@ export interface RatePreview {
   diff: string;
 }
 
+/** What an import set: how many rates, and the rates, in the order of their lines. */
+export interface ImportRatesView {
+  set: number;
+  rates: RateView[];
+}
+
 // The sheet's rates per grade, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class RatesApi {
@@ -81,6 +87,12 @@ export class RatesApi {
    *  (null: until the grade's next rate), replacing the one it had for that from-date. */
   set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
+  }
+
+  /** Set a rate per line of grade,rate,from,to, in order, as the rate form would; refused as a whole,
+   *  setting nothing, when any line is refused. */
+  importRates(sheetId: string, text: string): Promise<ImportRatesView> {
+    return firstValueFrom(this.http.post<ImportRatesView>(`${this.url(sheetId)}/import`, { text }));
   }
 
   /** Preview the grade's candidate percent on every date; nothing is saved. */

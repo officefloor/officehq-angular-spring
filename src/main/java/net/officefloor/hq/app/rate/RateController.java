@@ -15,6 +15,7 @@ import net.officefloor.hq.app.person.Grade;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -51,12 +52,31 @@ public class RateController {
     public record PreviewView(int count, String diff) {
     }
 
+    /** The rate import box's text: lines of grade,rate,from,to. */
+    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How many rates the import set, and the rates, in the order of their lines. */
+    public record ImportView(int set, List<RateView> rates) {
+    }
+
     private final RateService service;
+    private final ImportRatesService importer;
     private final ClaimService claims;
 
-    public RateController(RateService service, ClaimService claims) {
+    public RateController(RateService service, ImportRatesService importer, ClaimService claims) {
         this.service = service;
+        this.importer = importer;
         this.claims = claims;
+    }
+
+    /** Set a rate per line of grade,rate,from,to, in order, all or none. */
+    @PostMapping("/import")
+    public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ImportForm form) {
+        List<RateView> set = importer.importRates(sheetId.trim(), SignedInUser.name(user), form.text())
+                .stream().map(RateView::of).toList();
+        return new ImportView(set.size(), set);
     }
 
     /** Preview a candidate percent for a grade on every date against the sheet's OPEN and PENDING
