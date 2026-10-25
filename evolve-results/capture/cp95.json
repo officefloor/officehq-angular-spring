@@ -1,0 +1,64 @@
+{
+  "checkpoint": 95,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp95_rate-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a60aa9516b14a21bb93a02c5216cf0b7f209d413",
+  "reset_sha": "",
+  "preagent_sha": "ff0ed6d89b1950babd4d59238ee492097eab5352",
+  "prev_sha": "ff0ed6d89b1950babd4d59238ee492097eab5352",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7948009999999998,
+    "input_tokens": 6,
+    "output_tokens": 698,
+    "cache_read_tokens": 135654,
+    "cache_creation_tokens": 3072,
+    "num_turns": 2,
+    "duration_ms": 11308,
+    "duration_api_ms": 112402,
+    "model": "claude-opus-5-5",
+    "session_id": "7e23df9e-5472-468e-a3d4-07a2f483661b",
+    "stop_reason": "success",
+    "result_text": "The rates panel now has a preview, and `bin/e2e` passes all 4 tests.\n\n**On screen:** below the \"Set rate\" form there's a small form with a grade, a candidate rate and a Preview button. It shows how many claims would change and the sum of the differences. The old result disappears as soon as you press Preview, so two presses with the same answer can still be told apart. A rate that isn't a valid number shows an error and no result.\n\n**On the server:** I added a read-only endpoint, `GET /api/sheets/{sheetId}/rates/{grade}/preview?pct=\u2026` (in `RateController`). The calculation is `ClaimService.previewRate`, which reuses the existing due logic so the preview matches what the screen shows:\n- It looks only at OPEN and PENDING claims whose person had that grade on the claim's date.\n- It skips claims bound by a statement and any claim with a settled due.\n- For each remaining claim it works out the new due the normal way: the candidate rate, the claim's rounding, its late charge and the floor in force on its date. It compares that with the current due and counts the claim if they differ.\n- The sum is new due minus current due, with two decimals.\n\nNothing is saved and nothing is written to the audit file. No database change was needed.\n\n**One rule I chose myself:** if a claim currently has no due because no rate applied on its date, the preview treats its current due as 0.00. Such a claim counts as changed, and its whole new due goes into the sum. The request didn't cover this case and none of the tests exercise it.\n\nThe changes are in `ClaimService.java`, `RateController.java`, `rates-api.ts` and `rates.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7948009999999998,
+        "num_turns": 2,
+        "duration_ms": 11308,
+        "duration_api_ms": 112402,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp95.agent.jsonl",
+  "agent_diff_file": "cp95.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
