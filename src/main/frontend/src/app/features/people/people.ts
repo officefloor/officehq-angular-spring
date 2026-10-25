@@ -28,6 +28,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
+import { Consolidated } from '../summary/consolidated';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
@@ -35,10 +36,12 @@ import { PasteClaims } from '../claims/paste-claims';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, PoolsList],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, Consolidated, PoolsList],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
+    <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
+      [ownOverdueTotal]="money(sheetOverdue().cents)" />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />

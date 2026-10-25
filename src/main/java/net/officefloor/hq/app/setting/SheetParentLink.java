@@ -25,6 +25,10 @@ public class SheetParentLink {
         this.parentId = parentId;
     }
 
+    public String getSheetId() {
+        return sheetId;
+    }
+
     public String getParentId() {
         return parentId;
     }
