@@ -1,0 +1,283 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 7558f3f0..3eca74b6 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -78,6 +78,8 @@ export interface PersonView {
+   origin: string | null;
+   /** The person's tags, lower-cased and sorted; empty when they have none. */
+   tags: string[];
++  /** One line per snapshot written for the person, oldest first: the day being left and their due-total. */
++  snapshots: string[];
+ }
+ 
+ /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1876a3f6..89f9d06c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -240,7 +240,7 @@ import { PersonPlans } from '../plans/person-plans';
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+         <table data-testid="people-list">
+           <thead>
+-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Change grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Change grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+           </thead>
+           <tbody>
+             @for (p of shownPeople(); track p.id) {
+@@ -283,6 +283,13 @@ import { PersonPlans } from '../plans/person-plans';
+                 <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
++                <td>
++                  <ul [attr.aria-label]="'Snapshots of ' + p.name">
++                    @for (line of p.snapshots; track $index) {
++                      <li data-testid="person-snapshot-line">{{ line }}</li>
++                    }
++                  </ul>
++                </td>
+                 <td data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) }}</td>
+                 <td data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) }}</td>
+                 @for (q of periods(); track q.id) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 04bd6520..74e35467 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -10,6 +10,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.SignedInUser;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+@@ -44,11 +45,12 @@ public class PersonController {
+      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
+      *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
+      *  user watches them; clashing whether their name or an alias is used on another sheet of the
+-     *  sheet's tree; origin the sheet they were transferred from, null when added here. */
++     *  sheet's tree; origin the sheet they were transferred from, null when added here; snapshots
++     *  one line per snapshot written for them, oldest first: the day being left and their due-total. */
+     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
+             List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing,
+-            String origin, List<String> tags) {
++            String origin, List<String> tags, List<String> snapshots) {
+         /** A person with no patrons, with the grade in force on the sheet's today. */
+         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
+             return of(person, List.of(), today, watched, clashing);
+@@ -65,7 +67,13 @@ public class PersonController {
+                     person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
+                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+-                    person.getOriginSheetId(), person.getTags());
++                    person.getOriginSheetId(), person.getTags(), List.of());
++        }
++
++        /** The same person with these snapshot lines. */
++        public PersonView withSnapshots(List<String> lines) {
++            return new PersonView(id, name, grade, grades, version, retired, retiredFrom, retirements, held, holds,
++                    patronIds, watched, terms, contact, aliases, clashing, origin, tags, lines);
+         }
+     }
+ 
+@@ -148,9 +156,12 @@ public class PersonController {
+     private final MergeService merges;
+     private final TransferService transfers;
+     private final SheetService sheets;
++    private final Rollup rollup;
+ 
+     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
+-            TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire) {
++            TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire,
++            Rollup rollup) {
++        this.rollup = rollup;
+         this.bulkRetire = bulkRetire;
+         this.service = service;
+         this.imports = imports;
+@@ -170,9 +181,11 @@ public class PersonController {
+                 : service.watchedIds(sheet, SignedInUser.name(user));
+         LocalDate today = sheets.today(sheet);
+         Set<Long> clashing = service.clashingIds(sheet);
++        Map<Long, List<String>> snapshots = rollup.snapshotLines(sheet);
+         return service.list(sheet).stream()
+                 .map(p -> PersonView.of(p, patronIds.getOrDefault(p.getId(), List.of()), today,
+-                        watched.contains(p.getId()), clashing.contains(p.getId())))
++                        watched.contains(p.getId()), clashing.contains(p.getId()))
++                        .withSnapshots(snapshots.getOrDefault(p.getId(), List.of())))
+                 .toList();
+     }
+ 
+@@ -302,6 +315,7 @@ public class PersonController {
+ 
+     private PersonView view(Person person, String user) {
+         return PersonView.of(person, service.patronIdsOf(person.getId()), sheets.today(person.getSheetId()),
+-                service.isWatched(person.getId(), SignedInUser.name(user)), service.isClashing(person));
++                service.isWatched(person.getId(), SignedInUser.name(user)), service.isClashing(person))
++                .withSnapshots(rollup.snapshotLinesOf(person.getId()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshot.java b/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshot.java
+new file mode 100644
+index 00000000..24ebc65a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshot.java
+@@ -0,0 +1,64 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A person's due-total as it stood on the day the sheet's today left: one per SNAPSHOT written for them. */
++@Entity
++@Table(name = "person_snapshot")
++public class PersonSnapshot {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    /** The day being left. */
++    @Column(name = "left_on", nullable = false)
++    private LocalDate day;
++
++    /** The person's due-total on that day; null when it was n/a. */
++    @Column(name = "due_total")
++    private BigDecimal dueTotal;
++
++    protected PersonSnapshot() {
++    }
++
++    public PersonSnapshot(String sheetId, Long personId, LocalDate day, BigDecimal dueTotal) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.day = day;
++        this.dueTotal = dueTotal;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public LocalDate getDay() {
++        return day;
++    }
++
++    public BigDecimal getDueTotal() {
++        return dueTotal;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshotRepository.java b/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshotRepository.java
+new file mode 100644
+index 00000000..091a60c1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/PersonSnapshotRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.rollup;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonSnapshotRepository extends JpaRepository<PersonSnapshot, Long> {
++
++    /** The sheet's snapshots in the order they were taken. */
++    List<PersonSnapshot> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The person's snapshots in the order they were taken. */
++    List<PersonSnapshot> findByPersonIdOrderByIdAsc(Long personId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index e35d9899..c32ccb6e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -63,11 +63,13 @@ public class Rollup {
+     private final SheetSettingRepository settings;
+     private final SheetSettingDatedRepository dated;
+     private final SheetParentRepository parents;
++    private final PersonSnapshotRepository snapshots;
+     private final Audit audit;
+ 
+     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+             SheetSettingRepository settings, SheetSettingDatedRepository dated, SheetParentRepository parents,
+-            Audit audit) {
++            PersonSnapshotRepository snapshots, Audit audit) {
++        this.snapshots = snapshots;
+         this.people = people;
+         this.claims = claims;
+         this.rates = rates;
+@@ -146,12 +148,35 @@ public class Rollup {
+         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+     }
+ 
+-    /** Audit, once the transaction commits, each person's due-total as it stood in the snapshot, in the
+-     *  order they were added. */
++    /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
++     *  in the order they were added, against the sheet's today: the day being left. */
+     public void recordSnapshot(String user, Snapshot before) {
+         String prefix = " sheet=" + before.sheetId() + " by=" + user;
+-        before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix + " name="
+-                + figures.name() + " due-total=" + text(figures.dueTotal())));
++        LocalDate day = sheets.findById(before.sheetId()).map(Sheet::getToday).orElse(null);
++        before.people().forEach((id, figures) -> {
++            if (day != null) snapshots.save(new PersonSnapshot(before.sheetId(), id, day, figures.dueTotal()));
++            audit.recordOnCommit("SNAPSHOT" + prefix + " name=" + figures.name() + " due-total="
++                    + text(figures.dueTotal()));
++        });
++    }
++
++    /** The lines of each person's snapshots, by person id, oldest first: the day being left and the
++     *  due-total then. */
++    public Map<Long, List<String>> snapshotLines(String sheetId) {
++        Map<Long, List<String>> lines = new LinkedHashMap<>();
++        for (PersonSnapshot s : snapshots.findBySheetIdOrderByIdAsc(sheetId)) {
++            lines.computeIfAbsent(s.getPersonId(), p -> new ArrayList<>()).add(snapshotLine(s));
++        }
++        return lines;
++    }
++
++    /** The lines of the person's snapshots, oldest first. */
++    public List<String> snapshotLinesOf(Long personId) {
++        return snapshots.findByPersonIdOrderByIdAsc(personId).stream().map(Rollup::snapshotLine).toList();
++    }
++
++    private static String snapshotLine(PersonSnapshot s) {
++        return s.getDay() + " " + text(s.getDueTotal());
+     }
+ 
+     /** Audit, once the transaction commits, the figures that moved since the snapshot was taken. */
+diff --git a/src/main/resources/db/migration/V70__person_snapshot.sql b/src/main/resources/db/migration/V70__person_snapshot.sql
+new file mode 100644
+index 00000000..1e49b7c3
+--- /dev/null
++++ b/src/main/resources/db/migration/V70__person_snapshot.sql
+@@ -0,0 +1,11 @@
++-- A person's due-total as it stood on a day the sheet's today left, one per SNAPSHOT written for them;
++-- the id keeps the order they were taken. A null due-total is n/a. Kept by the person's id alone, so a
++-- person merged or transferred away leaves theirs behind unseen.
++CREATE TABLE person_snapshot (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100)  NOT NULL REFERENCES sheet (id),
++    person_id BIGINT        NOT NULL,
++    left_on   DATE          NOT NULL,
++    due_total DECIMAL(12, 2)
++);
++CREATE INDEX person_snapshot_sheet ON person_snapshot (sheet_id, id);

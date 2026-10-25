@@ -1,0 +1,64 @@
+{
+  "checkpoint": 147,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp147_snapshot-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "57d1e4bef1d7e2c84760bdccde09b83926217f1c",
+  "reset_sha": "",
+  "preagent_sha": "6df0ce4b078aafb62fcb2f4c53e213a260414fa2",
+  "prev_sha": "6df0ce4b078aafb62fcb2f4c53e213a260414fa2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8664214,
+    "input_tokens": 46,
+    "output_tokens": 10571,
+    "cache_read_tokens": 1037647,
+    "cache_creation_tokens": 55911,
+    "num_turns": 23,
+    "duration_ms": 296532,
+    "duration_api_ms": 135377,
+    "model": "claude-opus-5-5",
+    "session_id": "6f6d1760-bf21-42a1-bd07-1126fc3ffa74",
+    "stop_reason": "success",
+    "result_text": "Each person now shows a \"Snapshots\" list: one line per SNAPSHOT written for them, oldest first, as `<day being left> <due-total>` (for example `2026-03-10 1.00`, or `2026-03-12 n/a`). `bin/e2e` passes all 4 tests.\n\n**How it works:**\n- **Stored data:** a new migration, `V70__person_snapshot.sql`, adds a `person_snapshot` table. Each row holds the sheet, the person's id, the day being left and the due-total, which is null when it was n/a. Because the table has a `sheet_id` column, the as-of view picks it up with no extra work.\n- **Server:**\n  - SNAPSHOT lines are only written when the sheet's today changes. At that point `Rollup.recordSnapshot` now also saves one row per person, dated with the today being left. The audit lines themselves are unchanged.\n  - The person data sent to the screen has a new `snapshots` list of ready-formatted lines (in `PersonController`). The new code is in `PersonSnapshot` and `PersonSnapshotRepository`.\n- **Front end:** a \"Snapshots\" column sits after \"Due\" in `people.ts`, with each line under `data-testid=\"person-snapshot-line\"`.\n\n**Behaviour to be aware of:**\n- **Merges and transfers:** the table has no foreign key to `person`, so a person deleted by a merge or transfer leaves their snapshot rows behind. Nothing shows those rows, but they stay in the store.\n- **Copies don't carry snapshots:** a transferred or cloned person starts with no snapshot lines on the new sheet.\n\nThe tests pass with both of these as they are.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8664214,
+        "num_turns": 23,
+        "duration_ms": 296532,
+        "duration_api_ms": 135377,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp147.agent.jsonl",
+  "agent_diff_file": "cp147.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
