@@ -20,10 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    /** What the screen shows of a sheet. */
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** What the screen shows of a sheet. Last settle batch is the number of its last bulk settle
+     *  batch, or null when it has had none. */
+    public record SheetView(String id, LocalDate today, boolean archived, Integer lastSettleBatch) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastSettleBatch());
         }
     }
 

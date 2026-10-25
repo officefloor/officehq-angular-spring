@@ -26,6 +26,11 @@ public class BulkChangeService {
     public record Result(List<Claim> changed, int refused) {
     }
 
+    /** What a bulk settle did: as {@link Result}, and the number of the batch it made, or null when it
+     *  settled none and so made no batch. */
+    public record SettleResult(List<Claim> changed, int refused, Integer batch) {
+    }
+
     private final ClaimService service;
     private final ClaimRepository claims;
     private final PersonRepository people;
@@ -49,8 +54,10 @@ public class BulkChangeService {
 
     /** Settle the claims of these ids in list order, each by the rules of settling one: a claim left
      *  PENDING counts as settled, one that cannot be settled is refused. An id not of the sheet is refused. */
-    public Result settle(String sheetId, String user, Collection<Long> ids) {
-        return change(sheetId, user, ids, ClaimStatus.SETTLED);
+    public SettleResult settle(String sheetId, String user, Collection<Long> ids) {
+        Result result = change(sheetId, user, ids, ClaimStatus.SETTLED);
+        Integer batch = result.changed().isEmpty() ? null : service.markSettleBatch(sheetId, result.changed());
+        return new SettleResult(result.changed(), result.refused(), batch);
     }
 
     /** Move the claims of these ids to another person in list order, each by the rules of moving one;

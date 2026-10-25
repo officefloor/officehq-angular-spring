@@ -232,6 +232,21 @@ public class ClaimService {
         return changeStatus(sheetId, user, id, next, null);
     }
 
+    /** Make the claims a bulk settle settled (or left pending) the sheet's next settle batch: each shows
+     *  its number. Returns the batch's number. */
+    @Transactional
+    public int markSettleBatch(String sheetId, List<Claim> settled) {
+        int batch = sheets.nextSettleBatch(sheetId);
+        for (Claim claim : settled) {
+            Claim row = claims.findForUpdate(claim.getId(), sheetId).orElseThrow();
+            row.setSettleBatch(batch);
+            claims.save(row);
+            claim.setSettleBatch(batch);
+        }
+        claims.flush();
+        return batch;
+    }
+
     /** Void a claim, as {@link #changeStatus}; while the sheet has void reasons, a void without one of
      *  them is refused. The reason is kept on the claim and ends its audit line. */
     @Transactional
@@ -271,6 +286,8 @@ public class ClaimService {
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, person, claim, dueNow);
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, due(sheetId, person, claim));
+        // Settled one at a time until a bulk settle marks it with its batch.
+        if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();

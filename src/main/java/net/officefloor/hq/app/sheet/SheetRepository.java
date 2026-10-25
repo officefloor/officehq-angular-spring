@@ -19,6 +19,15 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query("select s.claimNumbersUsed from Sheet s where s.id = :id")
     int claimNumbersUsed(@Param("id") String id);
 
+    /** Count one more settle batch; the sheet's row stays locked until the transaction ends. */
+    @Modifying(flushAutomatically = true)
+    @Query("update Sheet s set s.settleBatchesUsed = s.settleBatchesUsed + 1 where s.id = :id")
+    int takeSettleBatch(@Param("id") String id);
+
+    /** How many settle batches the sheet has had. */
+    @Query("select s.settleBatchesUsed from Sheet s where s.id = :id")
+    int settleBatchesUsed(@Param("id") String id);
+
     /** How many numbers one of the sheet's per-period sequences has given out; null when none. */
     @Query(value = "select used from claim_number_sequence where sheet_id = :id and sequence_key = :key",
             nativeQuery = true)

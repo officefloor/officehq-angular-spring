@@ -26,6 +26,10 @@ public class Sheet {
     @Column(name = "claim_numbers_used", nullable = false)
     private int claimNumbersUsed;
 
+    /** How many bulk settle batches the sheet has had; the last batch has this number, none when 0. */
+    @Column(name = "settle_batches_used", nullable = false)
+    private int settleBatchesUsed;
+
     /** An archived sheet stays visible, and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -53,6 +57,11 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    /** The number of the sheet's last settle batch, or null when it has had none. */
+    public Integer getLastSettleBatch() {
+        return settleBatchesUsed == 0 ? null : settleBatchesUsed;
     }
 
     public boolean isArchived() {

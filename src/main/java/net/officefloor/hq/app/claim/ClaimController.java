@@ -37,13 +37,14 @@ public class ClaimController {
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
      *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none.
      *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first.
-     *  Edited by is who last edited it, or null when it never was. */
+     *  Edited by is who last edited it, or null when it never was. Settle batch is the number of the bulk
+     *  settle batch that settled it, or null when it was settled one at a time or never. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
-            List<CommentView> comments, String editedBy) {
+            List<CommentView> comments, String editedBy, Integer settleBatch) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -54,7 +55,8 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy());
+                    claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
+                    claim.getSettleBatch());
         }
     }
 
@@ -97,8 +99,9 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
-    /** What a bulk settle did: the claims it settled (or left pending), and how many were settled and refused. */
-    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    /** What a bulk settle did: the claims it settled (or left pending), how many were settled and refused,
+     *  and the number of the batch it made, or null when it settled none. */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims, Integer batch) {
     }
 
     /** The claims selected to move together, and the person they move to. */
@@ -181,9 +184,9 @@ public class ClaimController {
     @PostMapping("/claims/settle")
     public BulkSettleView settleSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
-        BulkChangeService.Result result = bulk.settle(sheetId.trim(), SignedInUser.name(user), form.ids());
+        BulkChangeService.SettleResult result = bulk.settle(sheetId.trim(), SignedInUser.name(user), form.ids());
         return new BulkSettleView(result.changed().size(), result.refused(),
-                result.changed().stream().map(ClaimView::of).toList());
+                result.changed().stream().map(ClaimView::of).toList(), result.batch());
     }
 
     /** Move the selected claims to another person together in list order; each that cannot be moved

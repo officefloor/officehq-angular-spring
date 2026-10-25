@@ -93,6 +93,17 @@ public class SheetService {
     }
 
     /**
+     * The sheet's next settle batch number: 1 for its first bulk settle that settled a claim, then 2,
+     * and so on. The sheet stays locked until the transaction ends, so two batches never share a number.
+     */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        load(id);
+        sheets.takeSettleBatch(id);
+        return sheets.settleBatchesUsed(id);
+    }
+
+    /**
      * The next number of one of the sheet's per-period sequences (by key): 1 for its first, then 2,
      * and so on. The sheet stays locked until the transaction ends, so two claims opened at once
      * never share a number.

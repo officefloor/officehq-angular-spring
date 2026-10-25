@@ -134,6 +134,11 @@ public class Claim {
     @Column(name = "void_reason")
     private String voidReason;
 
+    /** The number of the bulk settle batch that last settled the claim; none when it was settled one at
+     *  a time, or never settled. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -325,6 +330,14 @@ public class Claim {
 
     public void setSettledDue(BigDecimal settledDue) {
         this.settledDue = settledDue;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     public String getOpenedBy() {

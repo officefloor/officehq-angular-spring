@@ -128,6 +128,7 @@ import { PasteClaims } from '../claims/paste-claims';
         <p>
           <button type="button" data-testid="bulk-settle" (click)="settleSelected()" [disabled]="bulkSettling()">
             Settle selected claims</button>
+          Last batch <strong data-testid="bulk-settle-batch">{{ session.sheet()?.lastSettleBatch ?? '' }}</strong>
           @if (bulkSettleResult(); as r) {
             Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
             refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
@@ -1047,6 +1048,7 @@ export class People {
       const result = await this.claimsApi.settleSelected(sheet.id, [...this.selectedClaims()]);
       if (this.session.sheet()?.id !== sheet.id) return;
       for (const claim of result.claims) this.claimSaved(claim);
+      if (result.batch !== null) this.session.settleBatchMade(sheet.id, result.batch);
       this.selectedClaims.set(new Set());
       this.bulkSettleResult.set({ settled: result.settled, refused: result.refused });
     } catch {

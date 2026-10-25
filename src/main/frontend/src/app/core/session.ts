@@ -8,6 +8,8 @@ export interface SheetView {
   today: string;
   /** An archived sheet stays visible, and every change on it is refused. */
   archived: boolean;
+  /** The number of the sheet's last bulk settle batch; null when it has had none. */
+  lastSettleBatch: number | null;
 }
 
 // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the
@@ -66,6 +68,12 @@ export class Session {
       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(current.id)}/today`, { today }),
     );
     if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
+  }
+
+  /** Note a bulk settle batch made on the sheet: it is now the sheet's last. */
+  settleBatchMade(sheetId: string, batch: number): void {
+    const current = this.sheetState();
+    if (current?.id === sheetId) this.sheetState.set({ ...current, lastSettleBatch: batch });
   }
 
   /** Archive the active sheet; the store's answer replaces what the screen holds. */

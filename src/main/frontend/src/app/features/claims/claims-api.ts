@@ -99,6 +99,8 @@ export interface ClaimView {
   comments: ClaimComment[];
   /** Who last edited the claim through its form or its row's amount entry; null when it never was. */
   editedBy: string | null;
+  /** The number of the bulk settle batch that settled the claim; null when settled one at a time or never. */
+  settleBatch: number | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -141,6 +143,8 @@ export interface BulkSettleView {
   settled: number;
   refused: number;
   claims: ClaimView[];
+  /** The number of the batch the settle made; null when it settled none. */
+  batch: number | null;
 }
 
 /** What moving selected claims together did: how many were moved and refused, and the claims moved,
