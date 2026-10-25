@@ -1,0 +1,25 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4fbe6968..92681fb7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -478,7 +478,8 @@ public class ClaimService {
+     }
+ 
+     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
+-     *  keeps its number and date and loses any figure a statement bound it to (it is live again until
++     *  keeps its date, takes the next number in the sequence it is numbered in (a draft, having none,
++     *  gets none; its old number is never used again) and loses any figure a statement bound it to (it is live again until
+      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
+      *  role to reassign (by default, a steward), and for a
+      *  settled or voided claim, a claim dated inside a closed period, a move to the claim's own person,
+@@ -509,6 +510,10 @@ public class ClaimService {
+         refuseIfRetired(to, claim.getDate());
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+         claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));
++        // Moved to another person, a numbered claim takes the next number; its old one is not reused.
++        if (claim.getNumber() != null && !from.getId().equals(to.getId())) {
++            claim.setNumber(nextNumber(sheetId, claim));
++        }
+         Claim saved = claims.saveAndFlush(claim);
+         recordChange("CLAIM_REASSIGNED", user, to, saved, saved.getNumber(),
+                 " from=" + from.getName() + " to=" + to.getName());
