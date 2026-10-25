@@ -1,0 +1,64 @@
+{
+  "checkpoint": 79,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp79_entry-date",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "46c694fe5a9fb0820ff412f8ffee14ff6e85844e",
+  "reset_sha": "",
+  "preagent_sha": "e519b9282c05d81e1794ce130faf9f1a60ddf39f",
+  "prev_sha": "e519b9282c05d81e1794ce130faf9f1a60ddf39f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5553089999999996,
+    "input_tokens": 64,
+    "output_tokens": 14583,
+    "cache_read_tokens": 2343285,
+    "cache_creation_tokens": 99342,
+    "num_turns": 34,
+    "duration_ms": 860526,
+    "duration_api_ms": 177777,
+    "model": "claude-opus-5-5",
+    "session_id": "8304ded4-76de-48c3-b5a8-91b5ef13b9f3",
+    "stop_reason": "success",
+    "result_text": "The entry date setting is in, and all 4 tests in `bin/e2e` now pass. To get there I also had to change two existing viewer behaviours that the test expects; they're described below so you can review them.\n\n**Entry date**\n- **Settings screen:** there's a new \"Entry date\" field (`setting-entry-date`) and a \"now\" value (`setting-entry-date-current`). It isn't dated, and leaving it blank turns it off. Saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=entry-date value=<date or blank>` to the audit file. It's stored like the other single-value settings, such as period numbering, so no database migration was needed.\n- **Server:** `SettingService.entryDate`/`setEntryDate`, a `PUT /settings/entry-date` endpoint, and a new `entryDate` field in the settings response.\n- **New claims:** when a new claim has no date, `ClaimService.add` now uses the entry date if one is set, and the sheet's today otherwise. The claim form, the quick-add bar, pasted lines with a blank date and corrections all go through this one method, so all four pick it up. A claim whose default date falls in a closed period is still refused as usual.\n- **Not changed:** saving an existing claim's editor with a blank date still uses the sheet's today. The request only covers new claims; say if you want the editor to follow the entry date too.\n\n**Two fixes outside the entry date**\n1. **Viewer opening a claim editor** (`person-claims.ts`): when a viewer's edit was refused, the editor used to close. The test expects it to stay open with the claim's values and the error showing, so it can press Cancel. It now behaves the same way as when another user has the claim locked. Saving from it is still refused.\n2. **Viewer bulk grade** (`ViewerGuard`, `BulkGradeService`): this used to show an error. The test expects \"Changed 0\", the same way a viewer's bulk open or settle of claims works. The request is now let through and changes nobody. `ArchiveGuard` uses the same list of let-through requests, so I added a check that a bulk grade on an archived sheet also changes nobody. Without it, archived sheets would have become editable that way.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5553089999999996,
+        "num_turns": 34,
+        "duration_ms": 860526,
+        "duration_api_ms": 177777,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp79.agent.jsonl",
+  "agent_diff_file": "cp79.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
