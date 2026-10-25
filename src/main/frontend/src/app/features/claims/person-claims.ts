@@ -14,7 +14,7 @@ import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitVie
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The claim form's fields, as typed. */
-type ClaimFields = { amount: string; date: string; note: string; corrects: string; ref: string };
+type ClaimFields = { amount: string; date: string; note: string; corrects: string; ref: string; tags: string };
 /** Whether the store refused a claim because its reference is already used on the sheet. */
 function refUsed(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
@@ -39,6 +39,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" />
       <label [for]="fieldId('ref')">Reference</label>
       <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" />
+      <label [for]="fieldId('tags')">Tags</label>
+      <input [id]="fieldId('tags')" data-testid="claim-form-tags" formControlName="tags"
+        [attr.aria-describedby]="fieldId('tags-hint')" />
+      <span [id]="fieldId('tags-hint')">Comma separated</span>
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -57,6 +61,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
@@ -174,8 +179,9 @@ export class PersonClaims {
   protected readonly note = new FormControl('', { nonNullable: true });
   protected readonly corrects = new FormControl('', { nonNullable: true });
   protected readonly ref = new FormControl('', { nonNullable: true });
+  protected readonly tags = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ amount: this.amount, date: this.date, note: this.note, corrects: this.corrects,
-    ref: this.ref });
+    ref: this.ref, tags: this.tags });
 
   /** The claim the editor has open, or null when the form adds a claim; it stays open while the sheet
    *  is re-loaded. An editor whose claim is no longer the person's (moved to another) is closed. */
@@ -260,20 +266,20 @@ export class PersonClaims {
     this.setEditing(null);
     this.filledFor = null;
     this.error.set('');
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
   }
 
   private fill(claim: ClaimView): void {
     this.filledFor = claim.id;
     this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
-      ref: claim.ref ?? '' },
+      ref: claim.ref ?? '', tags: claim.tags.join(', ') },
       { emitEvent: false });
   }
 
   /** Fill the fields of the form not typed in since the editor was opened with the claim's values. */
   private fillUntyped(claim: ClaimView): void {
     const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
-      ref: claim.ref ?? '' };
+      ref: claim.ref ?? '', tags: claim.tags.join(', ') };
     for (const [key, control] of Object.entries(this.form.controls)) {
       if (control.pristine) control.setValue(values[key as keyof typeof values], { emitEvent: false });
     }
@@ -308,7 +314,7 @@ export class PersonClaims {
     this.setEditing(claim.id);
     this.filledFor = claim.id;
     this.error.set('');
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
     this.opening = this.lock(sheet.id, claim, was, typed, filled);
     await this.opening;
   }
@@ -568,7 +574,7 @@ export class PersonClaims {
     this.inlineSaving.add(claim.id);
     try {
       const saved = await this.api.update(sheet.id, claim.id, { amount, date: claim.date, note: claim.note,
-        corrects: correction ? claim.corrects : null, ref: claim.ref });
+        corrects: correction ? claim.corrects : null, ref: claim.ref, tags: claim.tags.join(',') });
       if (this.session.sheet()?.id !== sheet.id) return;
       // The save released the user's own lock: an editor the user had open on the claim is closed.
       if (this.editingId() === claim.id) this.reset();
@@ -620,7 +626,7 @@ export class PersonClaims {
       return;
     }
     const form = { amount, date: date === '' ? null : date, note: value.note.trim(),
-      corrects: correction ? corrects : null, ref: value.ref.trim() || null };
+      corrects: correction ? corrects : null, ref: value.ref.trim() || null, tags: value.tags };
     const id = this.editingId();
     this.saving.set(true);
     try {

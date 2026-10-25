@@ -83,6 +83,21 @@ import { PasteClaims } from '../claims/paste-claims';
           open in total: <strong data-testid="rollup-open-total">{{ money(sheetSettledOpen().open) }}</strong></p>
         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
+        @if (tagTotals().length > 0) {
+          <table aria-label="Due by tag">
+            <thead>
+              <tr><th scope="col">Tag</th><th scope="col">Due</th></tr>
+            </thead>
+            <tbody>
+              @for (t of tagTotals(); track t.tag) {
+                <tr>
+                  <th scope="row">{{ t.tag }}</th>
+                  <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
         <p>
           <button type="button" data-testid="bulk-open" (click)="openSelected()" [disabled]="bulkOpening()">
             Open selected claims</button>
@@ -369,6 +384,24 @@ export class People {
     }
     return by;
   });
+  /** Every tag ever used on the sheet, as the store last told it. */
+  private readonly sheetTags = signal<string[]>([]);
+  /** For every tag ever used on the sheet (those the store keeps and those claims carry now), sorted: the
+   *  figures of the claims that count which carry it added up, skipping those that are n/a; a claim with
+   *  several tags counts in each. */
+  protected readonly tagTotals = computed(() => {
+    const totals = new Map<string, number>(this.sheetTags().map((t) => [t, 0]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+      const person = byId.get(c.personId);
+      if (person === undefined || c.tags.length === 0 || !this.countsLive(c)) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
+      for (const t of c.tags) totals.set(t, totals.get(t)! + due);
+    }
+    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([tag, total]) => ({ tag, dueTotal: money(total) }));
+  });
   /** Everyone's settled-total and open-total added up, not trimmed. */
   protected readonly sheetSettledOpen = computed(() => {
     let settled = 0;
@@ -484,6 +517,7 @@ export class People {
       this.reset();
       this.people.set([]);
       this.claims.set([]);
+      this.sheetTags.set([]);
       this.rates.set([]);
       this.periods.set([]);
       this.statements.set(new Map());
@@ -503,14 +537,15 @@ export class People {
 
   private async reload(sheetId: string): Promise<void> {
     try {
-      const [people, claims, rates, statements, periods] = await Promise.all([
+      const [people, claims, rates, statements, periods, tags] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId),
-        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId)]);
+        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]);
       if (this.session.sheet()?.id === sheetId) {
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.rates.set(rates);
         this.periods.set(periods);
         this.claims.set(claims);
+        this.sheetTags.set(tags);
         this.people.set(people);
       }
     } catch {

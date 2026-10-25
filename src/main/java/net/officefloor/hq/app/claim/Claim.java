@@ -121,6 +121,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The claim's tags, lower-cased, sorted and comma separated; none when it has none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -214,6 +218,16 @@ public class Claim {
     /** Give the claim its external reference, or (null) none. */
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the claim its tags, each lower-cased and sorted, or (empty) none. */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
     }
 
     public ClaimStatus getStatus() {
@@ -378,6 +392,7 @@ public class Claim {
         split.number = number;
         split.openedBy = user;
         split.splitFrom = this.number;
+        split.tags = this.tags;
         this.amount = amount.subtract(part).setScale(2);
         unbind(today);
         return split;

@@ -35,12 +35,12 @@ public class ClaimController {
      *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. Proofs is
      *  the claim's proofs count. Split from is the number of the claim it was split off from, or null.
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
-     *  external reference, or null when it has none. */
+     *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
-            boolean lateEntry, LocalDate reminded, String ref) {
+            boolean lateEntry, LocalDate reminded, String ref, List<String> tags) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -49,7 +49,8 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
+                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                    claim.getTags());
         }
     }
 
@@ -68,7 +69,8 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 1000) String note,
             @Size(max = 220) String corrects,
-            @Size(max = 220) String ref) {
+            @Size(max = 220) String ref,
+            @Size(max = 1000) String tags) {
     }
 
     /** The number a form's correction names, trimmed; none when blank. */
@@ -102,13 +104,19 @@ public class ClaimController {
         return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
     }
 
+    /** Every tag ever used on the sheet, by name. */
+    @GetMapping("/tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return service.tags(sheetId.trim());
+    }
+
     /** Add a claim to a person. */
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.add(sheetId.trim(), SignedInUser.name(user), personId,
-                form.amount(), form.date(), form.note(), correctsOf(form), form.ref()));
+                form.amount(), form.date(), form.note(), correctsOf(form), form.ref(), form.tags()));
     }
 
     /** Edit a claim. */
@@ -116,7 +124,7 @@ public class ClaimController {
     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.update(sheetId.trim(), SignedInUser.name(user), id,
-                form.amount(), form.date(), form.note(), correctsOf(form), form.ref()));
+                form.amount(), form.date(), form.note(), correctsOf(form), form.ref(), form.tags()));
     }
 
     /** Open a claim's editor, locking the claim for other users. */

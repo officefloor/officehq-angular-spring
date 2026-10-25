@@ -61,7 +61,7 @@ public class PasteClaimsService {
         List<Claim> added = new ArrayList<>();
         for (Line line : lines) {
             added.add(claimService.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null,
-                    line.ref()));
+                    line.ref(), null));
         }
         return added;
     }

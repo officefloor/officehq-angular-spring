@@ -3,7 +3,9 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
@@ -44,11 +46,14 @@ public class ClaimService {
     private final HolidayService holidays;
     private final Rollup rollup;
     private final Audit audit;
+    private final SheetTagRepository sheetTags;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonWatchRepository watches,
             RateService rates, SheetService sheets, SheetRepository sheetRows, PeriodRepository periods,
-            SettingService settings, HolidayService holidays, Rollup rollup, Audit audit) {
+            SettingService settings, HolidayService holidays, Rollup rollup, Audit audit,
+            SheetTagRepository sheetTags) {
         this.claims = claims;
+        this.sheetTags = sheetTags;
         this.people = people;
         this.watches = watches;
         this.rates = rates;
@@ -79,7 +84,7 @@ public class ClaimService {
      *  its adding. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : entryDateOr(sheetId);
         // The terms are fixed now, those in force on the claim's date; the due-by counts them in business days.
@@ -93,14 +98,18 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects, terms, dueBy);
         claim.setRef(reference);
+        List<String> tagged = tagsOf(tags);
+        claim.setTags(tagged);
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         boolean late = periods.isSoftClosedOn(sheetId, dueBy);
         if (late) claim.markLateEntry();
         claim = claims.saveAndFlush(claim);
+        useTags(sheetId, tagged);
         logStatus(sheetId, user, person, claim);
         recordChange("CLAIM_ADDED", user, person, claim, claim.getNumber(),
-                reference == null ? "" : " ref=" + reference);
+                (reference == null ? "" : " ref=" + reference)
+                        + (tagged.isEmpty() ? "" : " tags=" + String.join(",", tagged)));
         if (late) recordChange("LATE_ENTRY", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -174,7 +183,7 @@ public class ClaimService {
      *  another user's editor locks is refused; saving releases the user's own lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         LocalDate dated = dateOr(sheetId, date);
@@ -188,6 +197,9 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dated, noteOf(note), corrects);
         claim.setRef(reference);
+        List<String> tagged = tagsOf(tags);
+        claim.setTags(tagged);
+        useTags(sheetId, tagged);
         claim.lockFor(null);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
@@ -715,6 +727,26 @@ public class ClaimService {
     private LocalDate entryDateOr(String sheetId) {
         LocalDate entry = settings.entryDate(sheetId);
         return entry != null ? entry : sheets.today(sheetId);
+    }
+
+    /** Every tag ever used on the sheet, by name. */
+    @Transactional(readOnly = true)
+    public List<String> tags(String sheetId) {
+        return sheetTags.findBySheetIdOrderByNameAsc(sheetId).stream().map(SheetTag::getName).toList();
+    }
+
+    /** Keep the tags as used on the sheet. */
+    private void useTags(String sheetId, List<String> tagged) {
+        for (String tag : tagged) {
+            if (!sheetTags.existsBySheetIdAndName(sheetId, tag)) sheetTags.save(new SheetTag(sheetId, tag));
+        }
+    }
+
+    /** Tags as typed, comma separated: each trimmed and lower-cased, blanks and repeats dropped, sorted. */
+    public static List<String> tagsOf(String tags) {
+        if (tags == null) return List.of();
+        return Arrays.stream(tags.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT)).filter(t -> !t.isEmpty())
+                .distinct().sorted().toList();
     }
 
     /** A reference as given, trimmed; none when blank. */

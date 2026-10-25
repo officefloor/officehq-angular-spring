@@ -91,6 +91,8 @@ export interface ClaimView {
   reminded: string | null;
   /** The claim's external reference; null when it has none. */
   ref: string | null;
+  /** The claim's tags, lower-cased and sorted; empty when it has none. */
+  tags: string[];
 }
 
 /** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */
@@ -137,6 +139,8 @@ export interface ClaimForm {
   corrects: string | null;
   /** The claim's external reference, trimmed; null for none. */
   ref: string | null;
+  /** The claim's tags, comma separated as typed; the store trims, lower-cases and sorts them, dropping repeats. */
+  tags: string;
 }
 
 /** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */
@@ -268,6 +272,11 @@ export class ClaimsApi {
   /** The sheet's claims, newest first. */
   list(sheetId: string): Promise<ClaimView[]> {
     return firstValueFrom(this.http.get<ClaimView[]>(`${this.url(sheetId)}/claims`));
+  }
+
+  /** Every tag ever used on the sheet, by name. */
+  tags(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/tags`));
   }
 
   add(sheetId: string, personId: number, form: ClaimForm): Promise<ClaimView> {
