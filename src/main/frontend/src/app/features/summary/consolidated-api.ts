@@ -1,6 +1,7 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { LIVE_READ } from '../../core/as-of.interceptor';
 
 /** A sheet's descendants (its children, then theirs, and so on) and their figures added up. */
 export interface DescendantsView {
@@ -10,14 +11,20 @@ export interface DescendantsView {
   dueTotal: string;
   /** Each descendant's overdue-total as that sheet shows it, added up, with two decimals. */
   overdueTotal: string;
+  /** The sheet's own figures as it shows them now. */
+  ownPeopleCount: number;
+  ownDueTotal: string;
+  ownOverdueTotal: string;
 }
 
-// The figures of a sheet's descendants, as the store holds them.
+// The figures of a sheet's descendants, and its own, as the store holds them now: read live even while
+// the screen shows the sheet as of a date.
 @Injectable({ providedIn: 'root' })
 export class ConsolidatedApi {
   private readonly http = inject(HttpClient);
 
   descendants(sheetId: string): Promise<DescendantsView> {
-    return firstValueFrom(this.http.get<DescendantsView>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
+    return firstValueFrom(this.http.get<DescendantsView>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`,
+      { context: new HttpContext().set(LIVE_READ, true) }));
   }
 }

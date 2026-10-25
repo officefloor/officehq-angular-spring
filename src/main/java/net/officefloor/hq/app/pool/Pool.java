@@ -79,6 +79,11 @@ public class Pool {
         }
     }
 
+    /** Take the person out of the pool; nothing when they are not in it. */
+    public void removeMember(long personId) {
+        members.removeIf((m) -> m.getPersonId() == personId);
+    }
+
     private PoolMember memberOf(long personId) {
         return members.stream().filter((m) -> m.getPersonId() == personId).findFirst().orElse(null);
     }

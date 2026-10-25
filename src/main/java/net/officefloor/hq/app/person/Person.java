@@ -90,6 +90,20 @@ public class Person {
         grades.add(new PersonGrade(grade, null, addedOn));
     }
 
+    /** A copy of the person for another sheet: their name, every grade they were given (each with its
+     *  from-date), terms, contact and aliases; not their holds, nor their retirement. */
+    public Person copyTo(String otherSheetId) {
+        Person copy = new Person();
+        copy.sheetId = otherSheetId;
+        copy.addedOn = addedOn;
+        copy.setName(name);
+        for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
+        copy.terms = terms;
+        copy.contact = contact;
+        getAliases().forEach(copy::addAlias);
+        return copy;
+    }
+
     public LocalDate getAddedOn() {
         return addedOn;
     }

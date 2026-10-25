@@ -150,6 +150,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/aliases`, { alias }));
   }
 
+  /** Transfer the person to another sheet by id; a steward only, refused for a retired person, to this
+   *  sheet itself, and when their name, an alias or their contact is already on the other sheet. */
+  transfer(sheetId: string, id: number, to: string): Promise<void> {
+    return firstValueFrom(this.http.post<void>(`${this.url(sheetId)}/${id}/transfer`, { to }));
+  }
+
   /** Merge the person into another; a steward only, refused into the person themselves and when either
    *  is retired. The person merged into is answered. */
   merge(sheetId: string, id: number, intoId: number): Promise<PersonView> {

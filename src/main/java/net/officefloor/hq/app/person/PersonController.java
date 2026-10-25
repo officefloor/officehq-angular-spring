@@ -86,6 +86,10 @@ public class PersonController {
     public record MergeForm(@NotNull Long intoId) {
     }
 
+    /** The id of the sheet a person is to be transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 100) String to) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -109,13 +113,15 @@ public class PersonController {
     private final PersonService service;
     private final BulkGradeService bulkGrade;
     private final MergeService merges;
+    private final TransferService transfers;
     private final SheetService sheets;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
-            SheetService sheets) {
+            TransferService transfers, SheetService sheets) {
         this.service = service;
         this.bulkGrade = bulkGrade;
         this.merges = merges;
+        this.transfers = transfers;
         this.sheets = sheets;
     }
 
@@ -194,6 +200,14 @@ public class PersonController {
     public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid MergeForm form) {
         return view(merges.merge(sheetId.trim(), SignedInUser.name(user), id, form.intoId()), user);
+    }
+
+    /** Transfer a person to another sheet; they leave this one. */
+    @PostMapping("/{id}/transfer")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TransferForm form) {
+        transfers.transfer(sheetId.trim(), SignedInUser.name(user), id, form.to().trim());
     }
 
     /** Start or stop the signed-in user watching a person. */

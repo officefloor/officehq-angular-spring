@@ -44,6 +44,10 @@ public class PersonGrade {
         return grade;
     }
 
+    LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     void setGrade(Grade grade, LocalDate madeOn) {
         this.grade = grade;
         this.madeOn = madeOn;

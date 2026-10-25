@@ -311,6 +311,11 @@ import { Consolidated } from '../summary/consolidated';
                   </select>
                   <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
                     [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                  <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
+                  <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
+                    placeholder="Sheet id" (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)"
+                    [disabled]="transferring() === p.id" [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
                 </td>
               </tr>
             }
@@ -763,6 +768,40 @@ export class People {
       }
     } finally {
       this.merging.set(null);
+    }
+  }
+
+  /** The person being transferred to another sheet. */
+  protected readonly transferring = signal<number | null>(null);
+
+  /** Transfer the person to the sheet whose id is entered in the row, then re-read the sheet's people,
+   *  claims, statements and pools, which the transfer changes. */
+  protected async transfer(person: PersonView, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.transferring() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const to = input.value.trim();
+    if (to === '') {
+      this.personError.set({ id: person.id, message: 'Enter the sheet to transfer to.' });
+      return;
+    }
+    if (to === sheet.id) {
+      this.personError.set({ id: person.id, message: 'A person cannot be transferred to their own sheet.' });
+      return;
+    }
+    this.transferring.set(person.id);
+    try {
+      await this.api.transfer(sheet.id, person.id, to);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id)]);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can transfer people.' : 'The person could not be transferred.' });
+      }
+    } finally {
+      this.transferring.set(null);
     }
   }
 

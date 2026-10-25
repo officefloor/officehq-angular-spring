@@ -200,6 +200,50 @@ public class Claim {
         unbind(today);
     }
 
+    /** A copy of the claim for a person on another sheet, at the place in its list given: its status,
+     *  dates, terms, note, tags, frozen figure, proofs, log and comments, with the number given (null:
+     *  none) and the numbers it corrects and was split from as given; no reference, no binding to a
+     *  statement's figure, no lock and no settle batch. */
+    public Claim copyTo(String otherSheetId, Long otherPersonId, long otherListed, String otherNumber,
+            String otherCorrects, String otherSplitFrom) {
+        Claim copy = new Claim();
+        copy.sheetId = otherSheetId;
+        copy.personId = otherPersonId;
+        copy.amount = amount;
+        copy.date = date;
+        copy.dueBy = dueBy;
+        copy.dueFrom = dueFrom;
+        copy.terms = terms;
+        copy.note = note;
+        copy.status = status;
+        copy.number = otherNumber;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.corrects = otherCorrects;
+        copy.listed = otherListed;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.splitFrom = otherSplitFrom;
+        copy.lateEntry = lateEntry;
+        copy.remindedOn = remindedOn;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        for (ClaimLogLine line : log) {
+            copy.log.add(new ClaimLogLine(line.getStatus(), line.getBy(), line.getOn(), line.getDue()));
+        }
+        for (ClaimComment comment : comments) {
+            copy.comments.add(new ClaimComment(comment.getBy(), comment.getOn(), comment.getText()));
+        }
+        return copy;
+    }
+
+    /** The sheet's today when the claim was first opened, as its log records it; null when it never was. */
+    public LocalDate openedOn() {
+        for (ClaimLogLine line : log) if (line.getStatus() == ClaimStatus.OPEN) return line.getOn();
+        return null;
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }
