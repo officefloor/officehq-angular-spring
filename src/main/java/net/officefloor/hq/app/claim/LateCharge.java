@@ -9,7 +9,8 @@ import java.util.function.Function;
 /**
  * The late charge on a claim: an open claim past its due-by (fixed when it was added) gains, for every
  * full 30 days it is overdue, the sheet's late percent in force on that boundary (the due-by plus 30, 60,
- * 90 ... days, counted from the due-by plus the grace days of its person's grade, if any) of its figure, each rounded as the claim's {@link Rounding} decides, like due, and added up;
+ * 90 ... days, counted from the due-by plus the grace days of its person's grade, if any) of its figure plus the
+ * charges of the boundaries before it (compounding), each rounded as the claim's {@link Rounding} decides, like due, and added up;
  * a boundary whose percent is 0.00 adds nothing, and a correction gains none. The charge is worked out on the rate figure alone (or the
  * figure a statement bound), before the floor, which is applied last. A statement never binds the charge; it follows the sheet's today until the claim is settled.
  */
@@ -40,7 +41,7 @@ public final class LateCharge {
         BigDecimal charge = ZERO;
         for (long step = 1; step <= steps; step++) {
             BigDecimal pct = latePctOn.apply(lateFrom.plusDays(step * DAYS_PER_CHARGE));
-            charge = charge.add(figure.multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding));
+            charge = charge.add(figure.add(charge).multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding));
         }
         return charge;
     }

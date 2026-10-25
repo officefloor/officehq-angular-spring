@@ -227,8 +227,8 @@ export interface Lateness {
 }
 
 /** The late charge on the claim of `figureCents`, in cents: for every full 30 days the claim is overdue, the
- *  late percent in force on that boundary (its due-by plus its grace days plus 30, 60, 90 ... days) of the figure, rounded like its
- *  due, added up; none unless it is overdue, and none on a correction. */
+ *  late percent in force on that boundary (its due-by plus its grace days plus 30, 60, 90 ... days) of the figure plus the
+ *  charges of the boundaries before it (compounding), rounded like its due, added up; none unless it is overdue, and none on a correction. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
   const grace = late.grace(claim);
   if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today, grace)) return 0;
@@ -236,7 +236,7 @@ export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lat
   const steps = Math.floor((epochDay(late.today) - dueBy) / DAYS_PER_CHARGE);
   let charge = 0;
   for (let step = 1; step <= steps; step++) {
-    charge += dueCents(figureCents, late.latePct(dateOfEpochDay(dueBy + step * DAYS_PER_CHARGE)), halfUp);
+    charge += dueCents(figureCents + charge, late.latePct(dateOfEpochDay(dueBy + step * DAYS_PER_CHARGE)), halfUp);
   }
   return charge;
 }

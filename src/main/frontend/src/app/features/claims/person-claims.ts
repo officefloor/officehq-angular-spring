@@ -178,10 +178,11 @@ export class PersonClaims {
     ref: this.ref });
 
   /** The claim the editor has open, or null when the form adds a claim; it stays open while the sheet
-   *  is re-loaded. */
+   *  is re-loaded. An editor whose claim is no longer the person's (moved to another) is closed. */
   protected readonly editingId = computed(() => {
     const sheet = this.session.sheet();
-    return sheet ? this.editors.editing(sheet.id, this.personId()) : null;
+    const id = sheet ? this.editors.editing(sheet.id, this.personId()) : null;
+    return id !== null && this.claims().some((c) => c.id === id) ? id : null;
   });
   /** The claim whose values the form was last filled with. */
   private filledFor: number | null = null;
@@ -624,6 +625,8 @@ export class PersonClaims {
     this.saving.set(true);
     try {
       if (id === null) {
+        // An editor left on a claim that is no longer the person's is closed: the form adds.
+        this.setEditing(null);
         const claim = await this.api.add(sheet.id, this.personId(), form);
         if (this.session.sheet()?.id === sheet.id) this.added.emit(claim);
       } else {
