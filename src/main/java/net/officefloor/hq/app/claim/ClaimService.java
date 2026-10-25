@@ -264,7 +264,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal old = claim.getSettledDue();
         BigDecimal dueNow = LateCharge.dueAsOpen(claim, dueNow(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePct(sheetId, claim.getDate()), rounding(sheetId, claim));
+                settings.dated(sheetId)::latePctOn, rounding(sheetId, claim));
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setSettledDue(dueNow);
         logStatus(sheetId, user, person, claim);
@@ -389,7 +389,7 @@ public class ClaimService {
      *  overdue (the charge is never bound by a statement); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         return LateCharge.dueOf(claim, figure(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePct(sheetId, claim.getDate()), rounding(sheetId, claim));
+                settings.dated(sheetId)::latePctOn, rounding(sheetId, claim));
     }
 
     /** The figure under the claim's due, before any late charge: the due fixed when it was settled, else the figure

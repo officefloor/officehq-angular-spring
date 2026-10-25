@@ -106,7 +106,7 @@ public class Rollup {
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
                 BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()),
                         values.floorOn(claim.getDate()), rounding);
-                BigDecimal owed = LateCharge.dueOf(claim, figure, today, values.latePctOn(claim.getDate()), rounding);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, today, values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
                 if (owed != null && isOverdue(claim, today)) overdue = overdue.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {

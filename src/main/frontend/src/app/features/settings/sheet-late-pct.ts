@@ -5,8 +5,8 @@ import { DatedValue, valueOn } from './dated';
 export const DEFAULT_LATE_PCT = '0.00';
 
 // The loaded sheet's late percent, what an overdue claim gains of its figure for every full 30 days
-// overdue, shared by the screens that show due. It is dated: a claim's late percent is the one in
-// force on the claim's date.
+// overdue, shared by the screens that show due. It is dated: each 30-day step of a claim's charge takes the
+// percent in force on that step's boundary date.
 @Injectable({ providedIn: 'root' })
 export class SheetLatePct {
   /** The late percent's values from their from-dates, in date order. */

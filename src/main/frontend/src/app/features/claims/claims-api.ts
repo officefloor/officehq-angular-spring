@@ -173,6 +173,20 @@ function epochDay(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
+/** The yyyy-mm-dd date of a count of days since 1970-01-01, worked out from the calendar, not a clock. */
+function dateOfEpochDay(day: number): string {
+  const z = day + 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 /** Whether the claim is overdue: open and not deferred, with its due-by before the sheet's today. */
 export function isOverdue(claim: ClaimView, today: string | undefined): boolean {
   return isOpen(claim) && !isDeferred(claim, today) && today !== undefined && claim.dueBy < today;
@@ -181,7 +195,7 @@ export function isOverdue(claim: ClaimView, today: string | undefined): boolean 
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
-/** What the late charge depends on: the sheet's today and its late percent in force on a claim's date; and the
+/** What the late charge depends on: the sheet's today and its late percent in force on a date; and the
  *  policy date in force (the sheet's, else its today) that decides how a claim's figures round. */
 export interface Lateness {
   today: string | undefined;
@@ -189,13 +203,18 @@ export interface Lateness {
   policyDate: string | undefined;
 }
 
-/** The late charge on the claim of `figureCents`, in cents: the late percent of the figure for every
- *  full 30 days the claim is overdue, rounded like its due; none unless it is overdue, and
- *  none on a correction. */
+/** The late charge on the claim of `figureCents`, in cents: for every full 30 days the claim is overdue, the
+ *  late percent in force on that boundary (its due-by plus 30, 60, 90 ... days) of the figure, rounded like its
+ *  due, added up; none unless it is overdue, and none on a correction. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
   if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today)) return 0;
-  const steps = Math.floor((epochDay(late.today) - epochDay(claim.dueBy)) / DAYS_PER_CHARGE);
-  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct(claim.date), halfUp);
+  const dueBy = epochDay(claim.dueBy);
+  const steps = Math.floor((epochDay(late.today) - dueBy) / DAYS_PER_CHARGE);
+  let charge = 0;
+  for (let step = 1; step <= steps; step++) {
+    charge += dueCents(figureCents, late.latePct(dateOfEpochDay(dueBy + step * DAYS_PER_CHARGE)), halfUp);
+  }
+  return charge;
 }
 
 /** What is due on the claim now, in cents: its figure (see claimDueCents) with the late charge on top
