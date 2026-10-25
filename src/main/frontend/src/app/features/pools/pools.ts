@@ -221,6 +221,22 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
   return out;
 }
 
+/** Each person's cut total in cents, by person id: their cuts across every pool they are a member of added
+ *  up; a pool that shows no cuts adds nothing. */
+export function personCutTotals(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null): Map<number, number> {
+  const cuts = allCuts(pools, people, pot);
+  const totals = new Map<number, number>();
+  for (const pool of pools) {
+    const poolCuts = cuts.get(pool.id);
+    if (!poolCuts) continue;
+    for (const m of pool.members) {
+      if (m.personId === null) continue;
+      totals.set(m.personId, (totals.get(m.personId) ?? 0) + Number(poolCuts.get(String(m.personId)) ?? 0n));
+    }
+  }
+  return totals;
+}
+
 /** A whole number of cents divided by 10000, rounded half to even. */
 function divideHalfEven(value: bigint, by: bigint): bigint {
   const quotient = value / by;
