@@ -1,0 +1,73 @@
+{
+  "checkpoint": 228,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    207,
+    215,
+    219
+  ],
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "request": {
+    "spec": "The rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "52e63e823bd2d945c93d93638c25a56b750d9f29",
+  "reset_sha": "",
+  "preagent_sha": "5c518f36002c9b986c7c0c4071d0f39307977c63",
+  "prev_sha": "5c518f36002c9b986c7c0c4071d0f39307977c63",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4219924,
+    "input_tokens": 24,
+    "output_tokens": 4458,
+    "cache_read_tokens": 363162,
+    "cache_creation_tokens": 32513,
+    "num_turns": 12,
+    "duration_ms": 804284,
+    "duration_api_ms": 60939,
+    "model": "claude-opus-5-5",
+    "session_id": "b87e3432-5522-4d5e-8ffb-ce3baae61fa2",
+    "stop_reason": "success",
+    "result_text": "A rollover now soft-closes every period of the old fiscal year that is still open, in start-date order, each writing `PERIOD_SOFT_CLOSED` after the `ROLLOVER` line. The main test, \"rollover soft closes\", passes. Two of the four tests in the spec still fail, but those failures don't come from this change.\n\n**What changed:** only `src/main/java/net/officefloor/hq/app/period/PeriodService.java`.\n- After writing the `ROLLOVER` record, `rollover()` goes through the old year's periods by start date and soft-closes each one that isn't already closed. Periods that were already closed are skipped: in the test, 2026-11 gets no record.\n- The soft-close work (fixing totals, carried figures and pool cuts, then the audit line) is now a private `softClose(Period, String)`. The existing soft-close action and the rollover both use it, so they behave the same. The permission checks stay in the public method; rollover already requires a steward.\n- No schema or front-end changes were needed.\n\n**Test results (`bin/e2e`):** 2 passed, 2 failed.\n- **Passing:** \"rollover soft closes\" and \"scenario 3\".\n- **Failing:** \"scenario 1\" fails at line 459: the snapshot compare shows `Cam  n/a` where the test expects `Cam  0.00`. \"scenario 2\" fails at line 1502: `person-open-total` shows `1.50`, expected `1.00`.\n- **Why I don't think they're mine:** neither scenario does a rollover (the only `ui.rollover` call in the spec is in the main test), so they never reach the new code. I also ran the suite with the new loop removed, and both scenarios failed the same way. They look like gaps in other features (snapshot compare, open totals) that this change request doesn't cover, so I left them alone.\n\nOne thing to decide: undoing a rollover doesn't reopen the periods it soft-closed. The request didn't mention undo, so I left it as is. If undo should reverse the soft closes too, the rollover would need to record which periods it closed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4219924,
+        "num_turns": 12,
+        "duration_ms": 804284,
+        "duration_api_ms": 60939,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp228.agent.jsonl",
+  "agent_diff_file": "cp228.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,41 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index fa7ee63c..643f1f9b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -148,7 +148,8 @@ public class PeriodService {
+      * period (see {@link #personOpenOf}) to their opening balance for the new year's first period, and
+      * record it; the periods made. Refused when the user is not a steward or no period's from-date falls
+      * in the old year. A year whose earlier rollover still stands (is not undone) has its opening balances
+-     * carried already, so they are not added again. The rollover is kept so it can be undone (see {@link #undoRollover}). */
++     * carried already, so they are not added again. Then every period of the old year still open is
++     * soft-closed, by from-date, as {@link #softClose(String, String, long)} would. The rollover is kept so it can be undone (see {@link #undoRollover}). */
+     @Transactional
+     public List<Period> rollover(String sheetId, String user, int year) {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+@@ -186,6 +187,10 @@ public class PeriodService {
+                 });
+         rollovers.saveAndFlush(rollover);
+         audit.change("ROLLOVER", sheetId, user, "fy=FY" + year, "periods=" + made.size());
++        for (Period each : old) {
++            Period period = periods.lockByIdAndSheetId(each.getId(), sheetId).orElseThrow(PeriodNotFoundException::new);
++            if (!period.isClosed()) softClose(period, user);
++        }
+         return made;
+     }
+ 
+@@ -309,9 +314,13 @@ public class PeriodService {
+         if (period.isClosed()) {
+             throw new PeriodRefusedException("already closed");
+         }
+-        period.close(personTotalsOf(period), personCarriedOf(period), pools.cutsNow(sheetId), true);
++        return softClose(period, user);
++    }
++
++    private Period softClose(Period period, String user) {
++        period.close(personTotalsOf(period), personCarriedOf(period), pools.cutsNow(period.getSheetId()), true);
+         periods.flush();
+-        audit.change("PERIOD_SOFT_CLOSED", sheetId, user, "period=" + period.getName(),
++        audit.change("PERIOD_SOFT_CLOSED", period.getSheetId(), user, "period=" + period.getName(),
+                 "total=" + period.getClosedTotal().toPlainString());
+         return period;
+     }
