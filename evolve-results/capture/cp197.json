@@ -1,0 +1,64 @@
+{
+  "checkpoint": 197,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp197_activity-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f0f55206d0b5870e467de0ccd80c76c8fc86b3be",
+  "reset_sha": "",
+  "preagent_sha": "faeaa1ecb65d6f8fc8e13e9d80e12f6f0515bc12",
+  "prev_sha": "faeaa1ecb65d6f8fc8e13e9d80e12f6f0515bc12",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6140289999999999,
+    "input_tokens": 36,
+    "output_tokens": 7594,
+    "cache_read_tokens": 621705,
+    "cache_creation_tokens": 42208,
+    "num_turns": 20,
+    "duration_ms": 436868,
+    "duration_api_ms": 101446,
+    "model": "claude-opus-5-5",
+    "session_id": "d2a3b21a-9f14-49c6-9b78-239e3589a9e9",
+    "stop_reason": "success",
+    "result_text": "The sheet now has an activity view, and all 4 tests in `bin/e2e` pass.\n\n**What it does:** a new \"Activity\" section with a **Show activity** button reads the sheet's lines from the audit file. It counts them per user (the `by=` field) and per event, and shows one `<user> <EVENT> <count>` line for each pair, sorted by user and then by event. It only reads the file and writes nothing to it.\n\n- **Server:** the counting is a new `activity(sheetId)` method in `Audit.java`. `AuditService` passes it through, and a new endpoint `GET /api/sheets/{sheetId}/audit/activity` in `AuditController` returns it.\n- **Front end:** a new component, `features/people/activity.ts`, sits under the audit viewer. The button is `activity-show`, each line is `activity-line`, and a failed read shows `activity-error`. Lines clear when the sheet is reloaded.\n\n**One extra fix outside the request:** \"activity counts scenario 1\" was failing on a step that has nothing to do with activity. A viewer pressing \"Generate plan claims\" got an error, but the test expects the press to go through and report 0 made. That's how a viewer's bulk actions already behave. So I added the generate endpoint to the exclusions in `ViewerGuard`, and `PlanService.generate` now makes nothing for a viewer. Viewers still can't create claims this way, but they get \"0 made\" instead of an error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6140289999999999,
+        "num_turns": 20,
+        "duration_ms": 436868,
+        "duration_api_ms": 101446,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp197.agent.jsonl",
+  "agent_diff_file": "cp197.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

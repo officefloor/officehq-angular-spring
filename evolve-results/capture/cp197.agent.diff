@@ -1,0 +1,254 @@
+diff --git a/src/main/frontend/src/app/features/people/activity.ts b/src/main/frontend/src/app/features/people/activity.ts
+new file mode 100644
+index 00000000..c5e0e913
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/activity.ts
+@@ -0,0 +1,69 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { AuditService } from './audit.service';
++
++// The sheet's activity: for every user and every event in the sheet's audit lines, one line
++// `<user> <EVENT> <count>`, sorted by user then event. It reads the file; it records nothing.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h2 id="activity-heading">Activity</h2>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error(); as message) {
++        <p role="alert" class="error" data-testid="activity-error">{{ message }}</p>
++      }
++      @if (lines().length > 0) {
++        <ol data-testid="activity-list">
++          @for (line of lines(); track $index) {
++            <li data-testid="activity-line">{{ line }}</li>
++          }
++        </ol>
++      }
++    </section>
++  `,
++  styles: `
++    ol {
++      list-style: none;
++      padding: 0;
++      font-family: monospace;
++      overflow-wrap: anywhere;
++    }
++    .error {
++      color: #a40000;
++      margin: 0;
++    }
++  `,
++})
++export class Activity {
++  private readonly session = inject(Session);
++  private readonly service = inject(AuditService);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  private asked = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.asked++;
++      this.lines.set([]);
++      this.error.set(null);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const ask = ++this.asked;
++    this.lines.set([]);
++    this.error.set(null);
++    try {
++      const lines = await this.service.activity(sheet);
++      if (ask === this.asked) this.lines.set(lines);
++    } catch {
++      if (ask === this.asked) this.error.set('The activity could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/audit.service.ts b/src/main/frontend/src/app/features/people/audit.service.ts
+index 1e1e9294..42dfa696 100644
+--- a/src/main/frontend/src/app/features/people/audit.service.ts
++++ b/src/main/frontend/src/app/features/people/audit.service.ts
+@@ -27,4 +27,13 @@ export class AuditService {
+       }),
+     );
+   }
++
++  /** The sheet's activity: one line `<user> <EVENT> <count>` per user and event, by user then event. */
++  activity(sheet: string): Promise<string[]> {
++    return firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/activity`, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 89c9b69e..4d5ce002 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -27,6 +27,7 @@ import { CrewsService, crewDueCents } from './crews.service';
+ import { Plans } from './plans';
+ import { Plan, PlansService } from './plans.service';
+ import { PoolsService } from './pools.service';
++import { Activity } from './activity';
+ import { Audit } from './audit';
+ import { FigurePipe } from '../../core/figure.pipe';
+ 
+@@ -67,7 +68,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // Each signed-in user can watch people from their row; the row shows whether that user watches them.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
++  imports: [FigurePipe, Activity, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -102,6 +103,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+     <app-templates />
+     <app-tree-search />
+     <app-audit />
++    <app-activity />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
+     <app-dashboard [counts]="dashboard()" />
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index a5a1d975..f4d1d8e7 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -12,6 +12,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.settings.DelegationService;
+ import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.beans.factory.annotation.Value;
+@@ -123,6 +124,22 @@ public class Audit {
+         return found;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's lines, one line
++     * {@code <user> <EVENT> <count>}, sorted by user then event.
++     */
++    public synchronized List<String> activity(String sheetId) {
++        Map<String, Map<String, Integer>> counts = new TreeMap<>();
++        for (String line : lines(sheetId, "")) {
++            String event = line.split(" ", 2)[0];
++            String user = fieldsOf(line).getOrDefault("by", "");
++            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
++        }
++        List<String> found = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
++        return found;
++    }
++
+     /** A line's fields by name, each the first of that name (a value runs to the next field). */
+     private static Map<String, String> fieldsOf(String line) {
+         Map<String, String> fields = new HashMap<>();
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 42b3f7b5..ae9ab7b2 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -31,6 +31,12 @@ public class AuditController {
+         return audit.lines(sheetId.trim(), name);
+     }
+ 
++    /** The sheet's activity: one line per user and event with its count, by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return audit.activity(sheetId.trim());
++    }
++
+     /** The claim's timeline: the lines about it, newest first. */
+     @GetMapping("/claims/{claimId}")
+     public List<String> claimLines(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditService.java b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+index b8948649..25404927 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditService.java
+@@ -69,6 +69,11 @@ public class AuditService {
+                 String.valueOf(claim.getDate()));
+     }
+ 
++    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, by user then event. */
++    public List<String> activity(String sheetId) {
++        return audit.activity(sheetId);
++    }
++
+     /** The ids of the sheet's children, their children, and so on, in id order. */
+     private Set<String> descendantsOf(String sheetId) {
+         Set<String> found = new TreeSet<>();
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 41732f65..661b9882 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -11,6 +11,8 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -34,15 +36,18 @@ public class PlanService {
+     private final ClaimService claims;
+     private final Audit audit;
+     private final TransactionTemplate eachClaim;
++    private final SettingsService settings;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, SheetRepository sheetRepository,
+-            SheetService sheets, ClaimService claims, Audit audit, PlatformTransactionManager transactions) {
++            SheetService sheets, ClaimService claims, Audit audit, PlatformTransactionManager transactions,
++            SettingsService settings) {
+         this.plans = plans;
+         this.people = people;
+         this.sheetRepository = sheetRepository;
+         this.sheets = sheets;
+         this.claims = claims;
+         this.audit = audit;
++        this.settings = settings;
+         this.eachClaim = new TransactionTemplate(transactions);
+         this.eachClaim.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+     }
+@@ -81,6 +86,7 @@ public class PlanService {
+      * plan, by date; the claims made, in the order they were made. Not one change: each claim is. */
+     public List<Claim> generate(String sheetId, String user) {
+         if (sheetRepository.findById(sheetId).isEmpty()) return List.of();
++        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
+         LocalDate today = sheets.today(sheetId);
+         List<Claim> made = new ArrayList<>();
+         for (Plan plan : plans(sheetId)) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+index c4f03f4d..f050fbe9 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+@@ -12,7 +12,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ 
+ /** Refuses every change a viewer asks of a sheet before it reaches its controller, so it writes nothing.
+  * Reads go through, as does loading the sheet; a bulk change goes through to {@code ClaimBulkService},
+- * which refuses each claim a viewer asks of it. */
++ * which refuses each claim a viewer asks of it, and generating plans goes through to {@code PlanService},
++ * which makes nothing for a viewer. */
+ @Configuration
+ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+ 
+@@ -27,7 +28,7 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*",
+-                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
++                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/plans/generate");
+     }
+ 
+     @Override
