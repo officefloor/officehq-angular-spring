@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade } from '../people/people-api';
+import { DatedValue } from './dated';
 
 /** The terms of a sheet that has not set them, in days. */
 export const DEFAULT_TERMS = 14;
@@ -36,6 +37,9 @@ export interface SettingsView {
   gradeTerms: Partial<Record<Grade, number>>;
   /** The most a person's due-total can be, with two decimals, or null when there is no cap. */
   cap: string | null;
+  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap) take
+   *  from their from-dates, in date order. */
+  dated: Partial<Record<string, DatedValue[]>>;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -51,34 +55,34 @@ export class SettingsApi {
     return firstValueFrom(this.http.get<SettingsView>(`${this.url(sheetId)}/settings`));
   }
 
-  /** Set the clerk limit; null clears it, leaving no limit. */
-  setClerkLimit(sheetId: string, value: string | null): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit`, { value }));
+  /** Record the clerk limit from a date (null: the sheet's today); null clears it from then, leaving no limit. */
+  setClerkLimit(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit`, { value, from }));
   }
 
-  /** Set the cap; null clears it, leaving no cap. */
-  setCap(sheetId: string, value: string | null): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/cap`, { value }));
+  /** Record the cap from a date (null: the sheet's today); null clears it from then, leaving no cap. */
+  setCap(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/cap`, { value, from }));
   }
 
-  /** Set the floor. */
-  setFloor(sheetId: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value }));
+  /** Record the floor from a date (null: the sheet's today). */
+  setFloor(sheetId: string, value: string, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value, from }));
   }
 
-  /** Set the terms, in days. */
-  setTerms(sheetId: string, value: number): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value }));
+  /** Record the terms, in days, from a date (null: the sheet's today). */
+  setTerms(sheetId: string, value: number, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value, from }));
   }
 
-  /** Set a grade's own terms, in days; null clears them, leaving the sheet's terms. */
-  setGradeTerms(sheetId: string, grade: Grade, value: number | null): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms/${grade}`, { value }));
+  /** Record a grade's own terms, in days, from a date (null: the sheet's today); null clears them from then, leaving the sheet's terms. */
+  setGradeTerms(sheetId: string, grade: Grade, value: number | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms/${grade}`, { value, from }));
   }
 
-  /** Set the late percent. */
-  setLatePct(sheetId: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/late-pct`, { value }));
+  /** Record the late percent from a date (null: the sheet's today). */
+  setLatePct(sheetId: string, value: string, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/late-pct`, { value, from }));
   }
 
   /** Set the policy date; null clears it, leaving the sheet's today. */

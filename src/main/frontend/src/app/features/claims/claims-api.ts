@@ -157,11 +157,11 @@ export function isOverdue(claim: ClaimView, today: string | undefined): boolean 
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
-/** What the late charge depends on: the sheet's today and its late percent; and the
+/** What the late charge depends on: the sheet's today and its late percent in force on a claim's date; and the
  *  policy date in force (the sheet's, else its today) that decides how a claim's figures round. */
 export interface Lateness {
   today: string | undefined;
-  latePct: string;
+  latePct: (date: string) => string;
   policyDate: string | undefined;
 }
 
@@ -171,7 +171,7 @@ export interface Lateness {
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
   if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today)) return 0;
   const steps = Math.floor((epochDay(late.today) - epochDay(claim.dueBy)) / DAYS_PER_CHARGE);
-  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct, halfUp);
+  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct(claim.date), halfUp);
 }
 
 /** What is due on the claim now, in cents: its figure (see claimDueCents) with the late charge on top

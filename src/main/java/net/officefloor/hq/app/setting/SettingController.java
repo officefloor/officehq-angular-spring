@@ -37,9 +37,15 @@ public class SettingController {
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
-     *  has two decimals, or is null when there is no cap. */
+     *  has two decimals, or is null when there is no cap. Each of these figures is the one in force on the
+     *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
+            List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+            Map<String, List<DatedView>> dated) {
+    }
+
+    /** A value a dated setting takes from a date; blank when the setting is cleared from then. */
+    public record DatedView(LocalDate from, String value) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -50,27 +56,29 @@ public class SettingController {
     }
 
     /** The clerk limit as entered; none means no limit. */
-    public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** The cap as entered; none means no cap. */
-    public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** The floor as entered. */
-    public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
     }
 
     /** The terms as entered: whole days. */
-    public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value) {
+    public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
     /** A grade's own terms as entered: whole days; none means the sheet's terms. */
-    public record GradeTermsForm(@Min(0) @Max(36500) Integer value) {
+    public record GradeTermsForm(@Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
     /** The late percent as entered. */
-    public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
     }
 
     /** The policy date as entered; none means the sheet's today. */
@@ -93,8 +101,7 @@ public class SettingController {
 
     @GetMapping("/settings")
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        String id = sheetId.trim();
-        return view(id, service.clerkLimit(id), service.floor(id));
+        return view(sheetId.trim());
     }
 
     /** Set the sheet's clerk limit, or clear it. */
@@ -102,8 +109,8 @@ public class SettingController {
     public SettingsView setClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClerkLimitForm form) {
         String id = sheetId.trim();
-        BigDecimal limit = service.setClerkLimit(id, SignedInUser.name(user), form.value());
-        return view(id, limit, service.floor(id));
+        service.setClerkLimit(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
     }
 
     /** Set the sheet's floor: the least a claim's live due can be. */
@@ -111,8 +118,8 @@ public class SettingController {
     public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FloorForm form) {
         String id = sheetId.trim();
-        BigDecimal floor = service.setFloor(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), floor);
+        service.setFloor(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
     }
 
     /** Set the sheet's terms: the days after a claim's date it is due by. */
@@ -120,8 +127,8 @@ public class SettingController {
     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TermsForm form) {
         String id = sheetId.trim();
-        service.setTerms(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        service.setTerms(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
     }
 
     /** Set a grade's own terms, or clear them to use the sheet's. */
@@ -132,8 +139,8 @@ public class SettingController {
         String id = sheetId.trim();
         Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
-        service.setGradeTerms(id, SignedInUser.name(user), g, form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        service.setGradeTerms(id, SignedInUser.name(user), g, form.value(), form.from());
+        return view(id);
     }
 
     /** Set the sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */
@@ -141,8 +148,8 @@ public class SettingController {
     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid LatePctForm form) {
         String id = sheetId.trim();
-        service.setLatePct(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        service.setLatePct(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
     }
 
     /** Set the sheet's policy date, or clear it: a claim dated before it rounds half up, on or after it half to even. */
@@ -151,7 +158,7 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PolicyDateForm form) {
         String id = sheetId.trim();
         service.setPolicyDate(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        return view(id);
     }
 
     /** Set the date the sheet numbers claims within their periods from, or clear it. */
@@ -160,7 +167,7 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PeriodNumberingFromForm form) {
         String id = sheetId.trim();
         service.setPeriodNumberingFrom(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        return view(id);
     }
 
     /** Set the sheet's cap: the most a person's due-total can be; or clear it. */
@@ -168,8 +175,8 @@ public class SettingController {
     public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid CapForm form) {
         String id = sheetId.trim();
-        service.setCap(id, SignedInUser.name(user), form.value());
-        return view(id, service.clerkLimit(id), service.floor(id));
+        service.setCap(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
     }
 
     /** Assign a user name a role on the sheet. */
@@ -181,24 +188,26 @@ public class SettingController {
         return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.name(user), form.user().trim(), role));
     }
 
-    private SettingsView view(String sheetId, BigDecimal limit, BigDecimal floor) {
-        return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                service.terms(sheetId), service.latePct(sheetId).toPlainString(),
-                service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList(),
-                service.periodNumberingFrom(sheetId), gradeTerms(sheetId), cap(sheetId));
-    }
-
-    private String cap(String sheetId) {
-        BigDecimal cap = service.cap(sheetId);
-        return cap == null ? null : cap.toPlainString();
-    }
-
-    private Map<String, Integer> gradeTerms(String sheetId) {
-        Map<String, Integer> terms = new LinkedHashMap<>();
+    /** The settings in force on the sheet's today, with every dated value recorded. */
+    private SettingsView view(String sheetId) {
+        LocalDate today = service.today(sheetId);
+        DatedSettings dated = service.dated(sheetId);
+        Map<String, Integer> gradeTerms = new LinkedHashMap<>();
         for (Grade grade : Grade.values()) {
-            Integer own = service.gradeTerms(sheetId, grade);
-            if (own != null) terms.put(grade.name(), own);
+            Integer own = dated.gradeTermsOn(grade, today);
+            if (own != null) gradeTerms.put(grade.name(), own);
         }
-        return terms;
+        Map<String, List<DatedView>> history = new LinkedHashMap<>();
+        for (String key : dated.keys()) {
+            history.put(key, dated.history(key).stream().map((s) -> new DatedView(s.getFrom(), s.getValue())).toList());
+        }
+        return new SettingsView(text(dated.clerkLimitOn(today)), dated.floorOn(today).toPlainString(),
+                dated.termsOn(today), dated.latePctOn(today).toPlainString(), service.policyDate(sheetId),
+                service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
+                gradeTerms, text(dated.capOn(today)), history);
+    }
+
+    private static String text(BigDecimal value) {
+        return value == null ? null : value.toPlainString();
     }
 }

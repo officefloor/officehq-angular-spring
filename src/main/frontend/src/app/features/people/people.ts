@@ -203,7 +203,7 @@ export class People {
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
-    ({ today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+    ({ today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
       policyDate: this.policyDate.date() ?? this.session.sheet()?.today }));
 
   protected readonly grades = GRADES;
@@ -264,7 +264,7 @@ export class People {
     for (const c of this.claims()) {
       const person = byId.get(c.personId);
       if (person === undefined || !this.countsLive(c) || !isOverdue(c, today)) continue;
-      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });
     }
@@ -295,7 +295,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (period === null || period.closed || person === undefined) continue;
-      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       const of = by.get(person.id)!;
       if (due !== null) of.set(period.id, (of.get(period.id) ?? 0) + due);
     }
@@ -604,7 +604,7 @@ export class People {
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c)) continue;
       const grade = gradeOn(person.grades, c.date);
-      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness(), this.claims());
+      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.centsOn(c.date), this.lateness(), this.claims());
       if (due !== null) total += due;
       if (keepsFigure(c)) keptFigure = true;
       // A live figure at a grade other than today's is not undone by today's grade having no rate.

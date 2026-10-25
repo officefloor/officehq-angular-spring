@@ -19,7 +19,9 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.setting.DatedSettings;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetSettingDatedRepository;
 import net.officefloor.hq.app.setting.SheetSettingRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -56,24 +58,26 @@ public class Rollup {
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
+    private final SheetSettingDatedRepository dated;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            SheetSettingRepository settings, Audit audit) {
+            SheetSettingRepository settings, SheetSettingDatedRepository dated, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
         this.settings = settings;
+        this.dated = dated;
         this.audit = audit;
     }
 
     /** The sheet's figures as the store holds them now, within the caller's transaction. */
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
-        BigDecimal floor = SettingService.floorOf(settings, sheetId);
-        BigDecimal latePct = SettingService.latePctOf(settings, sheetId);
-        BigDecimal cap = SettingService.capOf(settings, sheetId);
+        // The floor and late percent are those in force on each claim's date; the cap that in force today.
+        DatedSettings values = DatedSettings.of(dated, sheetId);
+        BigDecimal cap = values.capOn(today);
         LocalDate policyDate = Rounding.policyDate(SettingService.policyDateOf(settings, sheetId), today);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
@@ -100,8 +104,9 @@ public class Rollup {
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
-                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding);
-                BigDecimal owed = LateCharge.dueOf(claim, figure, today, latePct, rounding);
+                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()),
+                        values.floorOn(claim.getDate()), rounding);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, today, values.latePctOn(claim.getDate()), rounding);
                 if (owed != null) due = due.add(owed);
                 if (owed != null && isOverdue(claim, today)) overdue = overdue.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {

@@ -67,7 +67,7 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         // The due-by is fixed now, from the terms of the person's grade in force on the claim's date.
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects,
-                settings.terms(sheetId, person.gradeOn(dated)));
+                settings.terms(sheetId, person.gradeOn(dated), dated));
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         claim = claims.saveAndFlush(claim);
@@ -212,7 +212,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal old = claim.getSettledDue();
         BigDecimal dueNow = LateCharge.dueAsOpen(claim, dueNow(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePct(sheetId), rounding(sheetId, claim));
+                settings.latePct(sheetId, claim.getDate()), rounding(sheetId, claim));
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setSettledDue(dueNow);
         logStatus(sheetId, user, person, claim);
@@ -320,7 +320,7 @@ public class ClaimService {
      *  overdue (the charge is never bound by a statement); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         return LateCharge.dueOf(claim, figure(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePct(sheetId), rounding(sheetId, claim));
+                settings.latePct(sheetId, claim.getDate()), rounding(sheetId, claim));
     }
 
     /** The figure under the claim's due, before any late charge: the due fixed when it was settled, else the figure
@@ -341,7 +341,7 @@ public class ClaimService {
         if (rate == null) return null;
         BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2,
                 rounding(sheetId, claim));
-        return claim.isCorrection() ? due : due.max(settings.floor(sheetId));
+        return claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate()));
     }
 
     /** How the claim's live figures round under the sheet's policy date: by the date of the claim a

@@ -152,8 +152,8 @@ export class PersonClaims {
    *  an open overdue claim has its late charge on top. */
   protected due(claim: ClaimView): string {
     const grade = gradeOn(this.grades(), claim.date);
-    const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.cents(),
-      { today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+    const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.centsOn(claim.date),
+      { today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
         policyDate: this.policyDate.date() ?? this.session.sheet()?.today }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
