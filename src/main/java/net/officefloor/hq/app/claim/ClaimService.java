@@ -694,7 +694,7 @@ public class ClaimService {
 
     /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
      *  today on or after the setting's date), the next of the claim's period (the one its due-by falls in), <period name>-<n>, or of
-     *  claims in no period, X-<n>; otherwise the sheet's next sheet-wide number. */
+     *  claims in no period, X-<n> (each per sheet); otherwise the next number of the sequence the sheets of its tree share. */
     public String nextNumber(String sheetId, Claim claim) {
         if (!isPeriodNumbering(sheetId)) {
             return Integer.toString(sheets.nextClaimNumber(sheetId));

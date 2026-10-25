@@ -2,10 +2,18 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetParentLink;
+import net.officefloor.hq.app.setting.SheetParentRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,9 +31,11 @@ public class SheetService {
     private final Audit audit;
     // The settings read the sheet's today, so they are looked up when needed rather than injected.
     private final ObjectProvider<SettingService> settings;
+    private final SheetParentRepository parents;
 
     public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events, Audit audit,
-            ObjectProvider<SettingService> settings) {
+            ObjectProvider<SettingService> settings, SheetParentRepository parents) {
+        this.parents = parents;
         this.sheets = sheets;
         this.rollup = rollup;
         this.events = events;
@@ -88,14 +98,35 @@ public class SheetService {
     }
 
     /**
-     * The sheet's next claim number: 1 for its first opened claim, then 2, and so on. The sheet stays
-     * locked until the transaction ends, so two claims opened at once never share a number.
+     * The sheet's next claim number, from the one sequence shared by the sheets of its tree (the sheet at
+     * its top, reached through the parents, and all that sheet's descendants): the next after the last
+     * number given on any sheet of the tree. The tree's top sheet stays locked until the transaction
+     * ends, so two claims opened at once anywhere in the tree never share a number.
      */
     @Transactional
     public int nextClaimNumber(String id) {
         load(id);
-        sheets.takeClaimNumber(id);
-        return sheets.claimNumbersUsed(id);
+        String top = id;
+        Set<String> up = new HashSet<>(List.of(id));
+        for (String parent = parentOf(top); parent != null && up.add(parent); parent = parentOf(parent)) {
+            top = parent;
+        }
+        sheets.findForUpdate(top);
+        Set<String> tree = new LinkedHashSet<>(List.of(top));
+        Deque<String> next = new ArrayDeque<>(tree);
+        while (!next.isEmpty()) {
+            for (SheetParentLink child : parents.findByParentId(next.pop())) {
+                if (tree.add(child.getSheetId())) next.add(child.getSheetId());
+            }
+        }
+        int number = sheets.lastClaimNumber(tree) + 1;
+        sheets.setClaimNumbersUsed(id, number);
+        return number;
+    }
+
+    /** The sheet's parent; null when it names none. */
+    private String parentOf(String id) {
+        return parents.findById(id).map(SheetParentLink::getParentId).orElse(null);
     }
 
     /**
