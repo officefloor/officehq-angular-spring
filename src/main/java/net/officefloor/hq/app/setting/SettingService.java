@@ -7,7 +7,9 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import net.officefloor.hq.app.ActingFor;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -18,9 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (such as the clerk limit) and the roles it assigns user names. */
+/** The sheet's settings (such as the clerk limit), the roles it assigns user names, and the stewards'
+ *  delegations of their role. */
 @Service
-public class SettingService {
+public class SettingService implements ActingFor {
 
     /** The key of the clerk limit: the highest due a clerk may settle; no value means no limit. */
     public static final String CLERK_LIMIT = "clerk-limit";
@@ -76,15 +79,18 @@ public class SettingService {
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
     private final SheetRoleRepository roles;
+    private final DelegationRepository delegations;
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
     public SettingService(SheetSettingRepository settings, SheetSettingDatedRepository dated,
-            SheetRoleRepository roles, SheetService sheets, Rollup rollup, Audit audit) {
+            SheetRoleRepository roles, DelegationRepository delegations, SheetService sheets, Rollup rollup,
+            Audit audit) {
         this.settings = settings;
         this.dated = dated;
         this.roles = roles;
+        this.delegations = delegations;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -416,10 +422,58 @@ public class SettingService {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
     }
 
-    /** The role the sheet gives a user name: a clerk unless it was assigned another. */
+    /** The role the user name acts in on the sheet: a steward while a delegation to it covers the
+     *  sheet's today, otherwise the one it was assigned (a clerk unless it was assigned another). */
     @Transactional(readOnly = true)
     public Role roleOf(String sheetId, String user) {
+        return delegationOn(sheetId, user).isPresent() ? Role.STEWARD : assignedRoleOf(sheetId, user);
+    }
+
+    /** The role the sheet assigned a user name, leaving out any delegation: a clerk unless assigned another. */
+    @Transactional(readOnly = true)
+    public Role assignedRoleOf(String sheetId, String user) {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+    }
+
+    /** The steward the user acts for while a delegation to it covers the sheet's today; the latest
+     *  made when more than one does. */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> actingFor(String sheetId, String user) {
+        return delegationOn(sheetId, user).map(Delegation::getDelegatedBy);
+    }
+
+    private Optional<Delegation> delegationOn(String sheetId, String user) {
+        List<Delegation> made = delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user);
+        if (made.isEmpty()) return Optional.empty();
+        LocalDate today = sheets.today(sheetId);
+        return made.stream().filter((d) -> d.covers(today)).findFirst();
+    }
+
+    /** The sheet's delegations in the order they were made. */
+    @Transactional(readOnly = true)
+    public List<Delegation> delegations(String sheetId) {
+        return delegations.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Delegate the steward role to a user name from a date to a date, inclusive (blank from: the
+     *  sheet's today); refused to anyone the sheet did not assign the steward role, and when the
+     *  to-date is before the from-date. */
+    @Transactional
+    public Delegation delegate(String sheetId, String user, String userName, LocalDate from, LocalDate to) {
+        sheets.load(sheetId);
+        if (assignedRoleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can delegate the steward role.");
+        }
+        LocalDate start = from != null ? from : sheets.today(sheetId);
+        LocalDate end = to != null ? to : start;
+        if (end.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
+        }
+        Delegation saved = delegations.saveAndFlush(new Delegation(sheetId, userName, start, end, user));
+        audit.recordOnCommit("DELEGATED sheet=" + sheetId + " by=" + user + " user=" + userName + " from=" + start
+                + " to=" + end);
+        return saved;
     }
 
     /** Assign a user name a role on the sheet, replacing the one it had. */

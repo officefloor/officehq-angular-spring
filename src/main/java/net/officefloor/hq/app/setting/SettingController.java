@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,11 +41,23 @@ public class SettingController {
      *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off). Each of these figures is the one in force on the
-     *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates. */
+     *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
+     *  delegations are the stewards' delegations of their role, in the order they were made. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
-            Integer graceDays) {
+            Integer graceDays, List<DelegationView> delegations) {
+    }
+
+    /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
+    public record DelegationView(long id, String user, LocalDate from, LocalDate to, String by) {
+        static DelegationView of(Delegation d) {
+            return new DelegationView(d.getId(), d.getUserName(), d.getFrom(), d.getTo(), d.getDelegatedBy());
+        }
+    }
+
+    /** A delegation as entered on the form; no from-date means the sheet's today. */
+    public record DelegateForm(@NotBlank @Size(max = 200) String user, LocalDate from, @NotNull LocalDate to) {
     }
 
     /** A value a dated setting takes from a date; blank when the setting is cleared from then. */
@@ -232,6 +245,14 @@ public class SettingController {
         return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.name(user), form.user().trim(), role));
     }
 
+    /** Delegate the steward role to a user from a date to a date, inclusive; refused to all but a steward. */
+    @PostMapping("/delegations")
+    public DelegationView delegate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid DelegateForm form) {
+        return DelegationView.of(service.delegate(sheetId.trim(), SignedInUser.name(user), form.user().trim(),
+                form.from(), form.to()));
+    }
+
     /** The settings in force on the sheet's today, with every dated value recorded. */
     private SettingsView view(String sheetId) {
         LocalDate today = service.today(sheetId);
@@ -249,7 +270,8 @@ public class SettingController {
                 dated.termsOn(today), dated.latePctOn(today).toPlainString(), service.policyDate(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
                 gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
-                service.permissions(sheetId), service.graceDays(sheetId));
+                service.permissions(sheetId), service.graceDays(sheetId),
+                service.delegations(sheetId).stream().map(DelegationView::of).toList());
     }
 
     private static String text(BigDecimal value) {

@@ -3,7 +3,7 @@ import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@a
 import { Session } from '../../core/session';
 import { GRADES, Grade } from '../people/people-api';
 import { DatedValue, valueOn } from './dated';
-import { DEFAULT_TERMS, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
+import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { SheetCap } from './sheet-cap';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
@@ -41,6 +41,8 @@ function settled(control: AbstractControl): void {
 // numbering from (once the sheet's today reaches it, a claim opened is numbered within its period; blank: off) and the cap
 // (the most a person's due-total can be; blank: no cap) and the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank: none), and the roles it assigns user names, with one form for each.
+// A steward can delegate the steward role to a user from a date (blank: the sheet's today) to a date, inclusive;
+// while the sheet's today is inside the range the user acts as a steward.
 // The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
@@ -145,6 +147,24 @@ function settled(control: AbstractControl): void {
           }
         </tbody>
       </table>
+      <h3 id="delegations-heading">Delegations</h3>
+      <form [formGroup]="delegateForm" (ngSubmit)="saveDelegation()" aria-label="Delegate the steward role">
+        <label for="delegate-user">User</label>
+        <input id="delegate-user" data-testid="delegate-user" formControlName="user" />
+        <label for="delegate-from">From (yyyy-mm-dd; blank: the sheet's today)</label>
+        <input id="delegate-from" data-testid="delegate-from" formControlName="from" />
+        <label for="delegate-to">To (yyyy-mm-dd)</label>
+        <input id="delegate-to" data-testid="delegate-to" formControlName="to" />
+        <button type="submit" data-testid="delegate-submit" [disabled]="savingDelegation()">Delegate</button>
+        @if (delegateError()) {
+          <p role="alert" data-testid="delegate-error">{{ delegateError() }}</p>
+        }
+      </form>
+      <ul data-testid="delegations-list" aria-labelledby="delegations-heading">
+        @for (d of delegations(); track d.id) {
+          <li data-testid="delegate-line">{{ d.by }} delegated to {{ d.user }} from {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -181,6 +201,7 @@ export class Settings {
   protected readonly graceDays = signal<number | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
   protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
+  protected readonly delegations = signal<DelegationView[]>([]);
 
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
@@ -224,6 +245,13 @@ export class Settings {
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
   });
+  protected readonly delegateForm = new FormGroup({
+    user: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly savingDelegation = signal(false);
+  protected readonly delegateError = signal('');
   protected readonly savingSettings = signal(false);
   protected readonly savingRole = signal(false);
   protected readonly settingsError = signal('');
@@ -235,12 +263,14 @@ export class Settings {
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
+    this.delegateForm.valueChanges.subscribe(() => this.delegateError.set(''));
     // Each load of a sheet re-reads its settings from the store and starts the forms afresh.
     effect(() => {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {}, permissions: {}, graceDays: null });
+      this.delegateError.set('');
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [] });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -440,6 +470,7 @@ export class Settings {
     this.assigned.set(settings.roles);
     this.permissions.set(settings.permissions);
     this.graceDays.set(settings.graceDays);
+    this.delegations.set(settings.delegations);
   }
 
   protected async saveRole(): Promise<void> {
@@ -468,6 +499,38 @@ export class Settings {
       this.roleError.set('The role could not be assigned.');
     } finally {
       this.savingRole.set(false);
+    }
+  }
+
+  protected async saveDelegation(): Promise<void> {
+    if (this.savingDelegation()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.delegateError.set('');
+    const { user, from, to } = this.delegateForm.getRawValue();
+    const name = user.trim();
+    const start = from.trim();
+    const end = to.trim();
+    if (name === '') {
+      this.delegateError.set('Type the user name to delegate the steward role to.');
+      return;
+    }
+    if ((start !== '' && !isDate(start)) || !isDate(end)) {
+      this.delegateError.set('Type the dates as yyyy-mm-dd.');
+      return;
+    }
+    if (end < (start === '' ? sheet.today : start)) {
+      this.delegateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.savingDelegation.set(true);
+    try {
+      const saved = await this.api.delegate(sheet.id, name, start === '' ? null : start, end);
+      if (this.session.sheet()?.id === sheet.id) this.delegations.update((list) => [...list, saved]);
+    } catch {
+      this.delegateError.set('Only a steward can delegate the steward role.');
+    } finally {
+      this.savingDelegation.set(false);
     }
   }
 }

@@ -20,6 +20,16 @@ export interface RoleView {
   role: Role;
 }
 
+/** A steward's delegation of the steward role to a user, from a date to a date (yyyy-mm-dd), inclusive. */
+export interface DelegationView {
+  id: number;
+  user: string;
+  from: string;
+  to: string;
+  /** The steward who delegated. */
+  by: string;
+}
+
 export interface SettingsView {
   /** The highest due a clerk may settle, with two decimals, or null when there is no limit. */
   clerkLimit: string | null;
@@ -50,6 +60,8 @@ export interface SettingsView {
   permissions: Partial<Record<PermissionAction, string>>;
   /** The days after an open period's to-date before a change of the sheet's today closes it, or null when blank (off). */
   graceDays: number | null;
+  /** The stewards' delegations of their role, in the order they were made. */
+  delegations: DelegationView[];
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -123,5 +135,11 @@ export class SettingsApi {
   /** Assign a user name a role on the sheet. */
   setRole(sheetId: string, user: string, role: Role): Promise<RoleView> {
     return firstValueFrom(this.http.put<RoleView>(`${this.url(sheetId)}/roles`, { user, role }));
+  }
+
+  /** Delegate the steward role to a user from a date (null: the sheet's today) to a date, inclusive;
+   *  refused to all but a steward, and when the to-date is before the from-date. */
+  delegate(sheetId: string, user: string, from: string | null, to: string): Promise<DelegationView> {
+    return firstValueFrom(this.http.post<DelegationView>(`${this.url(sheetId)}/delegations`, { user, from, to }));
   }
 }
