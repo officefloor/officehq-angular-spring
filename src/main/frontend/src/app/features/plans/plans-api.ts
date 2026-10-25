@@ -7,7 +7,8 @@ import { ClaimView } from '../claims/claims-api';
 /** A person's plan: a claim of the amount (two decimals) on the start date and every `every` days after
  *  it, or, for a monthly plan, on its `day` of every month from the start's month (a day beyond the
  *  month's length falling on its last day, those before the start left out), up to the end date
- *  (yyyy-mm-dd). Generated is how many claims it has made so far. */
+ *  (yyyy-mm-dd). Generated is how many claims it has made so far; next dates are its first five plan
+ *  dates after the sheet's today and on or before the end, oldest first. */
 export interface PlanView {
   id: number;
   personId: number;
@@ -17,6 +18,7 @@ export interface PlanView {
   day: number | null;
   end: string;
   generated: number;
+  nextDates: string[];
 }
 
 /** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */

@@ -87,6 +87,11 @@ public class Plan {
         return dates;
     }
 
+    /** Up to the first count plan dates, oldest first, after the date and on or before its end. */
+    public List<LocalDate> datesAfter(LocalDate after, int count) {
+        return datesUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
+    }
+
     boolean hasGenerated(LocalDate date) {
         return generated.contains(date);
     }

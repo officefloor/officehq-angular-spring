@@ -8,7 +8,7 @@ const EVERY = /^\d{1,6}$/;
 const DAY = /^\d{1,2}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// A person's plans, each with how many claims it has made so far, and a form to add one.
+// A person's plans, each with how many claims it has made so far and its next dates, and a form to add one.
 @Component({
   selector: 'app-person-plans',
   imports: [ReactiveFormsModule],
@@ -18,7 +18,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
-          from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
         </li>
       }
     </ul>

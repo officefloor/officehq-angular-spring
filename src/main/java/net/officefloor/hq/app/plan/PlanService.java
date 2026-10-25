@@ -46,6 +46,12 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     /** Add a plan to a person: refused for an amount not above 0.00, neither or both of an interval and a
      *  day of the month, an interval below 1 day, a day of the month outside 1 to 31, or an end before the
      *  start. No start means the sheet's today. */

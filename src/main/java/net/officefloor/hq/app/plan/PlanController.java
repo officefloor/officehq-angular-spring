@@ -27,12 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** What the screen shows of a plan; the amount always has two decimals. Generated is how many claims
-     *  it has made so far. */
+     *  it has made so far; next dates are its first five plan dates after the sheet's today, on or before
+     *  its end, oldest first. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated) {
-        static PlanView of(Plan plan) {
+            Integer day, LocalDate end, int generated, List<LocalDate> nextDates) {
+        static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount());
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount(),
+                    plan.datesAfter(today, 5));
         }
     }
 
@@ -55,7 +57,9 @@ public class PlanController {
     /** The sheet's plans in the order they were added. */
     @GetMapping
     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PlanView::of).toList();
+        String id = sheetId.trim();
+        LocalDate today = service.today(id);
+        return service.list(id).stream().map((plan) -> PlanView.of(plan, today)).toList();
     }
 
     /** Add a plan to a person. */
@@ -63,8 +67,9 @@ public class PlanController {
     @ResponseStatus(HttpStatus.CREATED)
     public PlanView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PlanForm form) {
-        return PlanView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.personId(), form.amount(),
-                form.start(), form.every(), form.day(), form.end()));
+        String id = sheetId.trim();
+        return PlanView.of(service.add(id, SignedInUser.name(user), form.personId(), form.amount(),
+                form.start(), form.every(), form.day(), form.end()), service.today(id));
     }
 
     /** Make the plans' claims due by the sheet's today. */
@@ -73,6 +78,8 @@ public class PlanController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         String id = sheetId.trim();
         List<ClaimView> claims = service.generate(id, SignedInUser.name(user)).stream().map(ClaimView::of).toList();
-        return new GenerateView(claims.size(), claims, service.list(id).stream().map(PlanView::of).toList());
+        LocalDate today = service.today(id);
+        return new GenerateView(claims.size(), claims,
+                service.list(id).stream().map((plan) -> PlanView.of(plan, today)).toList());
     }
 }
