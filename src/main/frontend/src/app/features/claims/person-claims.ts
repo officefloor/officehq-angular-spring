@@ -89,7 +89,11 @@ export class PersonClaims {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
 
   constructor() {
-    this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.form.valueChanges.subscribe(() => {
+      this.error.set('');
+      // A refused save shown on the claim being edited belongs to the form too.
+      if (this.editingId() !== null && this.claimError()?.id === this.editingId()) this.claimError.set(null);
+    });
   }
 
   /** What is due on the claim: the figure fixed when it was settled, else the figure its person's
@@ -103,6 +107,10 @@ export class PersonClaims {
   /** The name of the period whose dates contain the claim's date, or blank when none does. */
   protected periodName(claim: ClaimView): string {
     return periodOf(this.periods(), claim.date)?.name ?? '';
+  }
+
+  private inClosedPeriod(date: string): boolean {
+    return date !== '' && (periodOf(this.periods(), date)?.closed ?? false);
   }
 
   protected fieldId(field: string): string {
@@ -152,6 +160,7 @@ export class PersonClaims {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.error.set('');
+    this.claimError.set(null);
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
     const date = value.date.trim();
@@ -176,9 +185,16 @@ export class PersonClaims {
       }
       if (this.session.sheet()?.id === sheet.id) this.reset();
     } catch (e) {
-      this.error.set(e instanceof HttpErrorResponse && e.status === 409
-        ? 'A claim dated inside a closed period cannot be added or changed.'
-        : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+      const conflict = e instanceof HttpErrorResponse && e.status === 409;
+      const editing = id === null ? undefined : this.claims().find((c) => c.id === id);
+      if (conflict && editing && !this.inClosedPeriod(editing.date) && !this.inClosedPeriod(date)) {
+        // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
+        this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
+      } else {
+        this.error.set(conflict
+          ? 'A claim dated inside a closed period cannot be added or changed.'
+          : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+      }
     } finally {
       this.saving.set(false);
     }

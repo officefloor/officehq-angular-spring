@@ -1,0 +1,3 @@
+-- Only a DRAFT claim can be edited; an OPEN claim is changed by voiding it and adding a new one.
+-- A voided claim now keeps the number it was given when opened (still never reused); claims voided
+-- before this change had theirs cleared and stay without one.

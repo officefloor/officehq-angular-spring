@@ -62,14 +62,19 @@ public class ClaimService {
         return claim;
     }
 
-    /** Change a claim's amount, date and note; a blank date takes the sheet's today. */
+    /** Change a draft claim's amount, date and note; a blank date takes the sheet's today. A claim that
+     *  is no longer a draft is refused: to change an open claim, void it and add a new one. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+        Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         LocalDate dated = dateOr(sheetId, date);
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, dated);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
+        }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dated, noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -98,8 +103,8 @@ public class ClaimService {
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
-        // A void claim keeps no number; the number it had is never given to another claim.
-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        // A voided claim keeps its number, which is never given to another claim.
+        claim.setNumber(number);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(figure(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
@@ -150,7 +155,7 @@ public class ClaimService {
         recordChange(event, user, person, claim, claim.getNumber(), "");
     }
 
-    /** The claim's audit line; a claim with a number (or that had one, when voided) carries it, then any extra fields. */
+    /** The claim's audit line; a claim with a number carries it, then any extra fields. */
     private void recordChange(String event, String user, Person person, Claim claim, Integer number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()

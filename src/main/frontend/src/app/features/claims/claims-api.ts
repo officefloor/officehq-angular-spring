@@ -23,7 +23,7 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number for the claim, given when it is opened; null while a draft or once void. */
+  /** The sheet's number for the claim, given when it is opened and kept once void; null while a draft. */
   number: number | null;
   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
   settledDue: string | null;
