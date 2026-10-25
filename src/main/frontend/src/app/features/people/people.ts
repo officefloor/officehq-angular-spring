@@ -41,7 +41,8 @@ import { Consolidated } from '../summary/consolidated';
   imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
-      [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
+      [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
       [ownOverdueTotal]="money(sheetOverdue().cents)" />
     @if (session.sheet()) {
@@ -433,6 +434,15 @@ export class People {
     const by = new Map<Grade, RateView[]>();
     for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
     return by;
+  });
+  /** The person on the sheet with the signed-in user's name, by name or alias as names are compared
+   *  (without surrounding spaces or regard to case); null when there is none. */
+  protected readonly me = computed(() => {
+    const user = this.session.user();
+    if (user === null) return null;
+    const key = (name: string) => name.trim().toLowerCase();
+    const mine = key(user);
+    return this.people().find((p) => key(p.name) === mine || p.aliases.some((a) => key(a) === mine)) ?? null;
   });
   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
   protected readonly sheetDueTotal = computed(() => {

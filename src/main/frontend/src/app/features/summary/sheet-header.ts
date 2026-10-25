@@ -2,7 +2,8 @@ import { Component, input } from '@angular/core';
 import { StatusSummary } from './summary';
 
 // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
-// each status as the summary counts them, and the sheet's due-total and overdue-total.
+// each status as the summary counts them, the sheet's due-total and overdue-total, and
+// the signed-in user's own when a person on the sheet has their name or alias.
 @Component({
   selector: 'app-sheet-header',
   template: `
@@ -18,6 +19,10 @@ import { StatusSummary } from './summary';
         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
         <dt>Overdue</dt>
         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        <dt>My due</dt>
+        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        <dt>My overdue</dt>
+        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
       </dl>
     </section>
   `,
@@ -27,4 +32,7 @@ export class SheetHeader {
   readonly statuses = input.required<StatusSummary[]>();
   readonly dueTotal = input.required<string>();
   readonly overdueTotal = input.required<string>();
+  /** The signed-in user's own due-total and overdue-total; blank when no one on the sheet has their name. */
+  readonly myDueTotal = input.required<string>();
+  readonly myOverdueTotal = input.required<string>();
 }
