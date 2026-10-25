@@ -83,6 +83,14 @@ export interface ClaimView {
   deferredUntil: string | null;
   /** How many proofs the claim has had added; a claim due above the proof threshold needs one to be settled. */
   proofs: number;
+  /** The number of the claim this one was split off from; null when it was not split off. */
+  splitFrom: string | null;
+}
+
+/** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */
+export interface SplitView {
+  original: ClaimView;
+  split: ClaimView;
 }
 
 /** A line of a claim's status log: the status, who gave it, the sheet's today then (yyyy-mm-dd), and
@@ -261,6 +269,12 @@ export class ClaimsApi {
    *  a date not after today, and a claim dated inside a closed period. */
   defer(sheetId: string, id: number, until: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/defer`, { until }));
+  }
+
+  /** Split an amount (more than 0.00, less than the claim's amount) off an OPEN claim into a new OPEN
+   *  claim: refused for a claim that is not OPEN, a deferred claim, and a claim dated inside a closed period. */
+  split(sheetId: string, id: number, amount: string): Promise<SplitView> {
+    return firstValueFrom(this.http.post<SplitView>(`${this.url(sheetId)}/claims/${id}/split`, { amount }));
   }
 
   /** Raise a claim's proofs count by one: refused for a SETTLED or VOID claim, and a claim dated inside a

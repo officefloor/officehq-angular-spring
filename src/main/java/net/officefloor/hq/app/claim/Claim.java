@@ -90,6 +90,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this one was split off from; none when it was not split off. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -240,6 +244,25 @@ public class Claim {
     /** Raise the claim's proofs count by one. */
     public void addProof() {
         proofs++;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    /** Split the amount given off the claim into a new OPEN claim of the same person, date and note,
+     *  with the number given, opened by the user and due by the terms given from its date, split from
+     *  this claim's number. This claim keeps the rest of its amount and loses any figure a statement
+     *  bound it to. */
+    public Claim splitOff(BigDecimal part, String number, String user, int terms) {
+        Claim split = new Claim(sheetId, personId, part, date, note, null, terms);
+        split.status = ClaimStatus.OPEN;
+        split.number = number;
+        split.openedBy = user;
+        split.splitFrom = this.number;
+        this.amount = amount.subtract(part).setScale(2);
+        unbind();
+        return split;
     }
 
     public BigDecimal getStatedDue() {

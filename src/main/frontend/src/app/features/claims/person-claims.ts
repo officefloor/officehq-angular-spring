@@ -8,7 +8,7 @@ import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, isDeferred, isOverdue, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitView, claimOwedCents, isDeferred, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled' };
@@ -56,6 +56,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Deferred <span data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
@@ -81,6 +82,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+          <label [for]="'claim-split-amount-' + c.id">Split off</label>
+          <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
+          <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
+            [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to">
             <option value="">Choose a person</option>
@@ -134,6 +139,8 @@ export class PersonClaims {
   readonly changed = output<ClaimView>();
   /** A claim moved to another person. */
   readonly reassigned = output<ClaimView>();
+  /** A claim split in two. */
+  readonly split = output<SplitView>();
 
   protected readonly amount = new FormControl('', { nonNullable: true });
   protected readonly date = new FormControl('', { nonNullable: true });
@@ -279,6 +286,34 @@ export class PersonClaims {
         const message = periodOf(this.periods(), claim.date)?.closed
           ? 'This claim is dated inside a closed period, so no proof can be added.'
           : `A ${claim.status} claim cannot have a proof added.`;
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Split an amount off an OPEN claim into a new OPEN claim; the store refuses a claim that is not OPEN,
+   *  a deferred claim, a claim dated inside a closed period, and an amount not between 0.00 and the claim's. */
+  protected async splitClaim(claim: ClaimView, amount: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const part = amount.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(part) || Number(part) <= 0) {
+      this.claimError.set({ id: claim.id, message: 'Type an amount to split off, more than 0.00 and less than the claim\'s.' });
+      return;
+    }
+    try {
+      const split = await this.api.split(sheet.id, claim.id, part);
+      if (this.session.sheet()?.id === sheet.id) this.split.emit(split);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = periodOf(this.periods(), claim.date)?.closed
+          ? 'This claim is dated inside a closed period, so it cannot be split.'
+          : claim.status !== 'OPEN'
+          ? 'Only an OPEN claim can be split.'
+          : this.deferred(claim)
+          ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be split.`
+          : 'The amount split off must be more than 0.00 and less than the claim\'s amount.';
         this.claimError.set({ id: claim.id, message });
       }
     }

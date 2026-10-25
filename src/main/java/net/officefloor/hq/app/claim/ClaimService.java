@@ -174,6 +174,48 @@ public class ClaimService {
         return saved;
     }
 
+    /** Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim into a new
+     *  OPEN claim of the same person, date and note, given the next number, opened by the user and due
+     *  by the terms in force on the date; the claim keeps the rest and loses any figure a statement bound
+     *  it to. Refused for a claim that is not OPEN (a PENDING one included), a deferred claim, and a claim
+     *  dated inside a closed period. */
+    @Transactional
+    public Split split(String sheetId, String user, long id, BigDecimal part) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be split; only an OPEN one can.");
+        }
+        if (claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be split.");
+        }
+        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The amount split off must be more than 0.00 and less than the claim's amount.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        String number = nextNumber(sheetId, claim);
+        // The due-by is fixed now, from the terms of the person's grade in force on the claim's date.
+        Claim split = claim.splitOff(part, number, user,
+                settings.terms(sheetId, person.gradeOn(claim.getDate()), claim.getDate()));
+        split.setListed(claims.lastListed(sheetId) + 1);
+        Claim saved = claims.saveAndFlush(claim);
+        split = claims.saveAndFlush(split);
+        logStatus(sheetId, user, person, split);
+        recordChange("CLAIM_SPLIT", user, person, saved, saved.getNumber(), " into=" + number);
+        recordChange("CLAIM_OPENED", user, person, split);
+        rollup.recordChanges(user, before);
+        return new Split(saved, split);
+    }
+
+    /** What a split did: the claim split, keeping the rest of its amount, and the claim split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim dated
      *  inside a closed period. No figure moves. */
     @Transactional

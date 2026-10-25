@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -177,7 +177,7 @@ import { PasteClaims } from '../claims/paste-claims';
                     [people]="people()" [rates]="rates()" [grades]="p.grades" [periods]="periods()"
                     [selected]="selectedClaims()" (selectedChange)="selectClaim($event.id, $event.on)"
                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)"
-                    (reassigned)="claimReassigned($event)" />
+                    (reassigned)="claimReassigned($event)" (split)="claimSplit($event)" />
                 </td>
                 <td>
                   <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -674,6 +674,11 @@ export class People {
   /** A claim moved to another person: listed first, as their newest claim, whatever its date. */
   protected claimReassigned(claim: ClaimView): void {
     this.claims.update((list) => [claim, ...list.filter((c) => c.id !== claim.id)]);
+  }
+
+  /** A split claim, with the rest of its amount, and the new claim split off it, listed first. */
+  protected claimSplit(split: SplitView): void {
+    this.claims.update((list) => [split.split, ...list.map((c) => (c.id === split.original.id ? split.original : c))]);
   }
 
   /** A quick-add's claim, and its person when the quick-add added them. */

@@ -33,11 +33,11 @@ public class ClaimController {
      *  the number of the claim a correction corrects, or null when the claim is not a correction. The log is
      *  its status log, oldest first. Deferred until is the date the claim was last deferred until, or null when
      *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. Proofs is
-     *  the claim's proofs count. */
+     *  the claim's proofs count. Split from is the number of the claim it was split off from, or null. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
-            List<LogLineView> log, LocalDate deferredUntil, int proofs) {
+            List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -45,7 +45,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    claim.getDeferredUntil(), claim.getProofs());
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -188,6 +188,23 @@ public class ClaimController {
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return ClaimView.of(service.addProof(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** The amount split off a claim. */
+    public record SplitForm(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
+    }
+
+    /** What a split did: the claim split, with the rest of its amount, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {
+    }
+
+    /** Split an amount off an open claim into a new open claim. */
+    @PostMapping("/claims/{id}/split")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SplitView split(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid SplitForm form) {
+        ClaimService.Split split = service.split(sheetId.trim(), SignedInUser.name(user), id, form.amount());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
     /** The person a claim is moved to. */
