@@ -86,8 +86,10 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  /** What is due on the claim at the person's grade's rate, or n/a when the grade has no rate. */
+  /** What is due on the claim: the figure fixed when it was settled, else at the person's grade's
+   *  rate, or n/a when the grade has no rate. */
   protected due(claim: ClaimView): string {
+    if (claim.settledDue !== null) return claim.settledDue;
     const pct = this.pct();
     return pct === null ? 'n/a' : money(dueCents(cents(claim.amount), pct));
   }

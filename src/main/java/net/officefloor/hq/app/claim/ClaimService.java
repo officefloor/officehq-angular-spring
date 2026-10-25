@@ -1,12 +1,15 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,12 +21,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -63,12 +69,20 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        Person person = person(sheetId, claim.getPersonId());
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
         // A void claim keeps no number; the number it had is never given to another claim.
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
-        recordChange(EVENTS.get(next), user, person(sheetId, saved.getPersonId()), saved, number);
+        String event = EVENTS.get(next);
+        if (next == ClaimStatus.SETTLED) {
+            BigDecimal due = saved.getSettledDue();
+            recordChange(event, user, person, saved, number, " due=" + (due == null ? "n/a" : due.toPlainString()));
+        } else {
+            recordChange(event, user, person, saved, number, "");
+        }
         return saved;
     }
 
@@ -80,15 +94,23 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
     }
 
-    private void recordChange(String event, String user, Person person, Claim claim) {
-        recordChange(event, user, person, claim, claim.getNumber());
+    /** What is due on the claim now at its person's grade's rate, rounded half up; null when the grade has no rate. */
+    private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
+        return rates.findById(new Rate.Key(sheetId, person.getGrade()))
+                .map(rate -> claim.getAmount().multiply(rate.getPct())
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                .orElse(null);
     }
 
-    /** The claim's audit line; a claim with a number (or that had one, when voided) carries it at the end. */
-    private void recordChange(String event, String user, Person person, Claim claim, Integer number) {
+    private void recordChange(String event, String user, Person person, Claim claim) {
+        recordChange(event, user, person, claim, claim.getNumber(), "");
+    }
+
+    /** The claim's audit line; a claim with a number (or that had one, when voided) carries it, then any extra fields. */
+    private void recordChange(String event, String user, Person person, Claim claim, Integer number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
-                + (number == null ? "" : " number=" + number));
+                + (number == null ? "" : " number=" + number) + extra);
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {
