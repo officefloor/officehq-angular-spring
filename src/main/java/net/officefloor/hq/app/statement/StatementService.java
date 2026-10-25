@@ -109,7 +109,7 @@ public class StatementService {
         Map<Long, BigDecimal> shown = new HashMap<>();
         for (Claim claim : stood) {
             if (!RollupService.countsLive(claim, then, date)) continue;
-            figures.put(claim.getId(), rollup.figureOf(claim, then, basis));
+            figures.put(claim.getId(), rollup.statedFigureOf(claim, then, basis));
             shown.put(claim.getId(), rollup.shownOf(claim, then, basis));
         }
         int counted = figures.size();

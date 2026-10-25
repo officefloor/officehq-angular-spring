@@ -49,7 +49,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 // today is overdue. Each row, and the sheet, shows how many of the claims that count are overdue and
 // what is due on them. An overdue claim's due gains, for every full 30 days it is overdue, the sheet's
 // late percent in force on that boundary date of its figure, each rounded like the claim; a statement never binds that charge, settling fixes it in. The floor is
-// applied last: the live due is the greater of the floor in force on the claim's date and its figure plus that charge.
+// applied first: the live due is its figure, at least the floor in force on the claim's date, plus that charge worked
+// out on the floored figure; a statement binds the floored figure.
 // A person can name other people on the sheet as their patrons, one at a time from their row; the
 // patrons carry shares: 100.00 split equally in the order they were named, each rounded half to even,
 // the remainder to the first named. The row shows each patron as "<name> <share>", sorted by name, and

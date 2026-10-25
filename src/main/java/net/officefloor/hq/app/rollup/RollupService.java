@@ -429,9 +429,9 @@ public class RollupService {
     }
 
     /** The live due on the claim whose figure (at its rate, or as a statement bound it) is
-     * {@code figure}: the greater of the sheet's floor in force on the claim's date and that figure plus
-     * its late charge (see {@link #lateChargeOf}); a correction has neither floor nor charge. Null when
-     * {@code figure} is. */
+     * {@code figure}: that figure, at least the sheet's floor in force on the claim's date, plus the late
+     * charge worked out on that floored figure (see {@link #lateChargeOf}); a correction has neither floor
+     * nor charge. Null when {@code figure} is. */
     public BigDecimal liveDueOf(Claim claim, BigDecimal figure) {
         return liveDueOf(claim, figure, live(claim.getSheetId()));
     }
@@ -439,7 +439,17 @@ public class RollupService {
     private BigDecimal liveDueOf(Claim claim, BigDecimal figure, Basis basis) {
         if (figure == null) return null;
         if (claim.isCorrection()) return figure;
-        return floored(claim, figure.add(lateChargeOf(claim, figure, basis)), basis);
+        BigDecimal floored = floored(claim, figure, basis);
+        return floored.add(lateChargeOf(claim, floored, basis));
+    }
+
+    /** The figure a statement taken on {@code basis} binds the claim to: what was fixed when it was
+     * settled at a rate; otherwise its figure (see {@link #figureOf(Claim, Person, Basis)}), at least the
+     * sheet's floor in force on its date (a correction has no floor). Null when it has no figure. */
+    public BigDecimal statedFigureOf(Claim claim, Person person, Basis basis) {
+        BigDecimal figure = figureOf(claim, person, basis);
+        if (figure == null || frozen(claim) || claim.isCorrection()) return figure;
+        return floored(claim, figure, basis);
     }
 
     /** {@code due}, at least the sheet's floor in force on the claim's date. */
@@ -461,13 +471,15 @@ public class RollupService {
     }
 
     /** What would be due on the claim now were it an OPEN claim bound by no statement: its due at its
-     * person's rate (see {@link #dueOf}) plus the late charge it would have then, at least the sheet's
-     * floor in force on its date (a correction has neither); null when it would have no figure. */
+     * person's rate (see {@link #dueOf}), at least the sheet's floor in force on its date, plus the late
+     * charge it would have then on that floored figure (a correction has neither); null when it would
+     * have no figure. */
     public BigDecimal openShownOf(Claim claim, Person person) {
         Basis basis = live(claim.getSheetId());
         BigDecimal figure = dueOf(claim, person, basis);
         if (figure == null || claim.isCorrection()) return figure;
-        return floored(claim, figure.add(overdueChargeOf(claim, figure, basis)), basis);
+        BigDecimal floored = floored(claim, figure, basis);
+        return floored.add(overdueChargeOf(claim, floored, basis));
     }
 
     /** The late charge on a claim whose figure is {@code figure}, whatever its status (see {@link #lateChargeOf}). */

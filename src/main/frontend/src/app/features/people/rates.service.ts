@@ -188,8 +188,8 @@ export function lateChargeCents(
 
 /** What is due on a claim as it shows and totals, in cents: a claim settled at a rate keeps what was
  *  due on it then; a claim a statement bound shows what was due on it as it showed then, late charge
- *  included; otherwise the greater of the sheet's floor in force on the claim's date and its
- *  figure (see claimDueCents) plus its late charge (a correction has neither); null when it has no
+ *  included; otherwise its figure (see claimDueCents), at least the sheet's floor in force on the
+ *  claim's date, plus the late charge on that floored figure (a correction has neither); null when it has no
  *  figure. `floors` is every floor recorded, oldest first. */
 export function claimShownCents(
   claim: Claim,
@@ -203,7 +203,8 @@ export function claimShownCents(
   if (figure === null || isCorrection(claim)) return figure;
   if (isFrozen(claim)) return figure;
   if (claim.stated && claim.statedShown !== null) return cents(claim.statedShown);
-  return Math.max(figure + lateChargeCents(claim, figure, late, rounding, grades), cents(inForce(floors, claim.date, FLOOR)));
+  const floored = Math.max(figure, cents(inForce(floors, claim.date, FLOOR)));
+  return floored + lateChargeCents(claim, floored, late, rounding, grades);
 }
 
 // The rates of the grades on a sheet, read from and written to the server.
