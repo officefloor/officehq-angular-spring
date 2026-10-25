@@ -1,0 +1,72 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 917c034a..868273b3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -99,6 +99,15 @@ import { PersonPlans } from '../plans/person-plans';
+             (change)="showRetired.set($any($event.target).checked)" />
+           Show retired
+         </label>
++        <label>
++          Sort by
++          <select data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set($any($event.target).value)">
++            <option value="added">added</option>
++            <option value="name">name</option>
++            <option value="grade">grade</option>
++            <option value="due-total">due-total</option>
++          </select>
++        </label>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+@@ -412,7 +421,19 @@ export class People {
+   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
+   protected readonly showRetired = signal(false);
+   /** The people listed: the retired ones only while show retired is on. */
+-  protected readonly shownPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
++  protected readonly listedPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
++  /** What this screen sorts the listed people by; added (list order) when the screen opens, and kept as
++   *  it is by loading a sheet. Sorting changes only what is shown, never the list order. */
++  protected readonly sortKey = signal<SortKey>('added');
++  /** The people listed, sorted by the sort key; equal keys keep list order. */
++  protected readonly shownPeople = computed(() => {
++    const listed = this.listedPeople();
++    const by = this.sortKey();
++    if (by === 'added') return listed;
++    const keyed = listed.map((p, i) => ({ p, i, k: this.sortValue(p, by) }));
++    keyed.sort((a, b) => compareSortValues(a.k, b.k) || a.i - b.i);
++    return keyed.map((e) => e.p);
++  });
+   /** The person being moved up or down the list. */
+   protected readonly moving = signal<number | null>(null);
+   /** The person being retired. */
+@@ -1173,6 +1194,16 @@ export class People {
+     return this.ratesOf(gradeOn(person.grades, date));
+   }
+ 
++  /** The person's key to sort by: their name as names are compared (without surrounding spaces or
++   *  regard to case), the place of their grade today, or their due-total in cents (null, n/a, last). */
++  private sortValue(person: PersonView, by: Exclude<SortKey, 'added'>): string | number | null {
++    switch (by) {
++      case 'name': return person.name.trim().toLowerCase();
++      case 'grade': return GRADES.indexOf(this.gradeToday(person));
++      case 'due-total': return this.dueCentsOf(person);
++    }
++  }
++
+   /** The person's grade in force on the sheet's today. */
+   protected gradeToday(person: PersonView): Grade {
+     const today = this.session.sheet()?.today;
+@@ -1623,3 +1654,13 @@ function sharesOf(patronIds: readonly number[]): [number, bigint][] {
+   const each = divideHalfEven(10000n, count);
+   return patronIds.map((id, i) => [id, i === 0 ? 10000n - each * (count - 1n) : each]);
+ }
++
++/** What the people list can be sorted by on the screen. */
++type SortKey = 'added' | 'name' | 'grade' | 'due-total';
++
++/** Orders two sort keys ascending, a null (n/a) one last. */
++function compareSortValues(a: string | number | null, b: string | number | null): number {
++  if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
++  if (typeof a === 'number' && typeof b === 'number') return a - b;
++  return a < b ? -1 : a > b ? 1 : 0;
++}
