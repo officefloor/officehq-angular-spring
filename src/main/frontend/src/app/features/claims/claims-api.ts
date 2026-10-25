@@ -101,6 +101,15 @@ export interface ClaimView {
   editedBy: string | null;
   /** The number of the bulk settle batch that settled the claim; null when settled one at a time or never. */
   settleBatch: number | null;
+  /** The claim's lines, in the order they were added; while it has any, its amount is their total. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: its label, whole quantity and unit amount (two decimals). */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -361,6 +370,12 @@ export class ClaimsApi {
   /** Comment a claim: refused for an empty comment. */
   comment(sheetId: string, id: number, text: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/comments`, { text }));
+  }
+
+  /** Add a line to a draft claim, its amount becoming the total of its lines: refused for a claim that is
+   *  not a DRAFT, one whose due-by is inside a closed period and one another user's editor locks. */
+  addLine(sheetId: string, id: number, line: { label: string; qty: number; unit: string }): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/lines`, line));
   }
 
   /** Remind an open or pending claim: refused for a claim in any other status, and for one already

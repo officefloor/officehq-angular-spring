@@ -99,6 +99,22 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
               <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.on }}: {{ comment.text }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ line.label }} {{ line.qty }} x {{ line.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input #lineLabel [id]="'claim-line-label-' + c.id" data-testid="claim-line-label"
+            (input)="clearClaimError(c)" />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input #lineQty [id]="'claim-line-qty-' + c.id" data-testid="claim-line-qty" inputmode="numeric"
+            (input)="clearClaimError(c)" />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input #lineUnit [id]="'claim-line-unit-' + c.id" data-testid="claim-line-unit" inputmode="decimal"
+            (input)="clearClaimError(c)" />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c, lineLabel, lineQty, lineUnit)"
+            [attr.aria-label]="'Add line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input #commentText [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text"
             (input)="clearClaimError(c)" />
@@ -559,6 +575,44 @@ export class PersonClaims {
     }
   }
 
+  /** Add a line to a draft claim, its amount becoming the total of its lines: a label, a whole quantity
+   *  of at least 1 and a unit amount with up to two decimals are needed; the store refuses a claim that
+   *  is not a DRAFT, is due by a date inside a closed period or is locked by another user's editor. */
+  protected async addLine(claim: ClaimView, label: HTMLInputElement, qty: HTMLInputElement,
+      unit: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const text = label.value.trim();
+    const quantity = qty.value.trim();
+    const amount = unit.value.trim();
+    if (text === '' || !/^[0-9]+$/.test(quantity) || Number(quantity) < 1 || !/^[0-9]+(\.[0-9]{1,2})?$/.test(amount)) {
+      this.claimError.set({ id: claim.id,
+        message: 'A line needs a label, a whole quantity of at least 1 and a unit amount with up to two decimals.' });
+      return;
+    }
+    try {
+      const lined = await this.api.addLine(sheet.id, claim.id, { label: text, qty: Number(quantity), unit: amount });
+      if (this.session.sheet()?.id === sheet.id) {
+        label.value = '';
+        qty.value = '';
+        unit.value = '';
+        this.saved.emit(lined);
+      }
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const message = status === 423
+        ? 'Someone else is editing this claim, so no line can be added until they save or cancel.'
+        : this.inClosedPeriod(claim.dueBy)
+        ? 'This claim\'s due-by is inside a closed period, so it cannot have a line added.'
+        : status === 409
+        ? 'Only a draft claim can have lines added.'
+        : 'The line could not be added.';
+      this.claimError.set({ id: claim.id, message });
+    }
+  }
+
   /** Remind an OPEN or PENDING claim; the store refuses a claim in any other status and one already
    *  reminded on the sheet's today. */
   protected async remind(claim: ClaimView): Promise<void> {
@@ -660,6 +714,10 @@ export class PersonClaims {
       return;
     }
     const correction = amount.startsWith('-') && Number(amount) !== 0;
+    if (claim.lines.length > 0 && Number(amount) !== Number(claim.amount)) {
+      this.claimError.set({ id: claim.id, message: 'This claim has lines: its amount is their total.' });
+      return;
+    }
     if (correction && claim.corrects === null) {
       this.claimError.set({ id: claim.id, message: 'A negative amount is a correction: only a claim that corrects a settled claim can have one.' });
       return;

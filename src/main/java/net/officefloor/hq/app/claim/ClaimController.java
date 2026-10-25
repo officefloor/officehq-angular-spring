@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -37,14 +39,15 @@ public class ClaimController {
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
      *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none.
      *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first.
-     *  Edited by is who last edited it, or null when it never was. Settle batch is the number of the bulk
-     *  settle batch that settled it, or null when it was settled one at a time or never. */
+     *  Lines are its lines, in the order they were added. Edited by is who last edited it, or null when
+     *  it never was. Settle batch is the number of the bulk settle batch that settled it, or null when it
+     *  was settled one at a time or never. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
-            List<CommentView> comments, String editedBy, Integer settleBatch) {
+            List<CommentView> comments, String editedBy, Integer settleBatch, List<LineView> lines) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -56,7 +59,7 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch());
+                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -72,6 +75,13 @@ public class ClaimController {
     public record CommentView(String by, LocalDate on, String text) {
         public static CommentView of(ClaimComment comment) {
             return new CommentView(comment.getBy(), comment.getOn(), comment.getText());
+        }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount (two decimals). */
+    public record LineView(String label, int qty, String unit) {
+        public static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().toPlainString());
         }
     }
 
@@ -333,5 +343,18 @@ public class ClaimController {
     public ClaimView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid CommentForm form) {
         return ClaimView.of(service.comment(sheetId.trim(), SignedInUser.name(user), id, form.text()));
+    }
+
+    /** A line added to a claim: a label, a whole quantity of at least 1 and a unit amount with two decimals. */
+    public record LineForm(@NotBlank @Size(max = 200) String label, @NotNull @Min(1) Integer qty,
+            @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal unit) {
+    }
+
+    /** Add a line to a draft claim; its amount becomes the total of its lines. */
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid LineForm form) {
+        return ClaimView.of(service.addLine(sheetId.trim(), SignedInUser.name(user), id, form.label(), form.qty(),
+                form.unit()));
     }
 }

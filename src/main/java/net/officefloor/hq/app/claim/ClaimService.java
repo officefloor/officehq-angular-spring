@@ -205,6 +205,10 @@ public class ClaimService {
         if (!dated.equals(claim.getDate())) {
             refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
         }
+        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim with lines has the total of its lines as its amount.");
+        }
         refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
         String reference = refOf(ref);
         refuseIfRefUsed(sheetId, reference, claim.getId());
@@ -521,6 +525,33 @@ public class ClaimService {
         claim.comment(user, sheets.today(sheetId), trimmed);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("COMMENT_ADDED", user, person, saved, saved.getNumber(), " text=" + trimmed);
+        return saved;
+    }
+
+    /** Add a line to a DRAFT claim, its amount becoming the total of its lines, writing CLAIM_LINE_ADDED
+     *  with the new amount. Adding a line edits the claim: refused, as an edit is, for a claim that is not
+     *  a DRAFT, one whose due-by is inside a closed period and one another user's editor locks. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long id, String label, int qty, BigDecimal unit) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        String trimmed = label == null ? "" : label.trim();
+        if (trimmed.isEmpty() || qty < 1 || unit == null || unit.signum() < 0 || unit.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A line needs a label, a whole quantity of at least 1 and a unit amount with two decimals.");
+        }
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseUnlessDraft(claim);
+        refuseIfLocked(claim, user);
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = unit.setScale(2);
+        claim.addLine(trimmed, qty, scaled);
+        claim.setEditedBy(user);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_LINE_ADDED", user, person, saved, saved.getNumber(),
+                " label=" + trimmed + " qty=" + qty + " unit=" + scaled.toPlainString());
+        rollup.recordChanges(user, before);
         return saved;
     }
 

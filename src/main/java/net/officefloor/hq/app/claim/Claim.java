@@ -157,6 +157,12 @@ public class Claim {
     @OrderColumn(name = "position")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order they were added; while it has any its amount is their total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "position")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -208,7 +214,7 @@ public class Claim {
     }
 
     /** A copy of the claim for a person on another sheet, at the place in its list given: its status,
-     *  dates, terms, note, tags, frozen figure, proofs, log and comments, with the number given (null:
+     *  dates, terms, note, tags, frozen figure, proofs, log, comments and lines, with the number given (null:
      *  none) and the numbers it corrects and was split from as given, and any figure a statement bound it
      *  to (with its binding history); no reference, no lock and no settle batch. */
     public Claim copyTo(String otherSheetId, Long otherPersonId, long otherListed, String otherNumber,
@@ -246,6 +252,9 @@ public class Claim {
         }
         for (ClaimComment comment : comments) {
             copy.comments.add(new ClaimComment(comment.getBy(), comment.getOn(), comment.getText()));
+        }
+        for (ClaimLine line : lines) {
+            copy.lines.add(new ClaimLine(line.getLabel(), line.getQty(), line.getUnit()));
         }
         return copy;
     }
@@ -377,6 +386,18 @@ public class Claim {
     /** Add a comment written by the user while the sheet's today is the date given. */
     public void comment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    /** Add a line; the claim's amount becomes the total of its lines. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (ClaimLine line : lines) total = total.add(line.total());
+        this.amount = total;
     }
 
     public String getNumber() {
