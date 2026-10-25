@@ -1,0 +1,93 @@
+{
+  "checkpoint": 40,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp40_hold-interval",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    22,
+    26,
+    27,
+    29,
+    30,
+    31,
+    33,
+    35,
+    36,
+    37,
+    39
+  ],
+  "replaced_tests": [
+    "cp22_hold.spec.ts::hold",
+    "cp22_hold.spec.ts::hold scenario 3",
+    "cp26_late-charge.spec.ts::late charge scenario 1",
+    "cp26_late-charge.spec.ts::late charge scenario 3",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 1",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+    "cp29_reopen-period.spec.ts::reopen period scenario 1",
+    "cp30_corrections.spec.ts::corrections scenario 1",
+    "cp31_summary.spec.ts::summary scenario 2",
+    "cp33_export-people.spec.ts::export people scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 3",
+    "cp36_approvals.spec.ts::approvals scenario 1",
+    "cp37_reassign-claim.spec.ts::reassign claim scenario 3",
+    "cp39_claim-log.spec.ts::claim log scenario 3"
+  ],
+  "request": {
+    "spec": "A hold now has a from-date (default the sheet's today) and an optional to-date, and a person may\nhave several holds over time. Only a person's OPEN claims dated within a hold are left out of the\nlive totals; their other open claims count, and a claim bound by a statement stays in the totals\nwhatever its date. Show hold yes/no as whether the person has any hold. Holding writes\nPERSON_HELD name=<name> from=<date>; releasing is no longer a separate action (a hold ends on\nits to-date).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA hold now has a from-date (default the sheet's today) and an optional to-date, and a person may\nhave several holds over time. Only a person's OPEN claims dated within a hold are left out of the\nlive totals; their other open claims count, and a claim bound by a statement stays in the totals\nwhatever its date. Show hold yes/no as whether the person has any hold. Holding writes\nPERSON_HELD name=<name> from=<date>; releasing is no longer a separate action (a hold ends on\nits to-date).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d24d06d436bea13ea578182168137489725a2a70",
+  "reset_sha": "",
+  "preagent_sha": "bed065d9ff43a53d854a5d8a4d190c3eadc90118",
+  "prev_sha": "bed065d9ff43a53d854a5d8a4d190c3eadc90118",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9884897999999999,
+    "input_tokens": 36,
+    "output_tokens": 12037,
+    "cache_read_tokens": 875109,
+    "cache_creation_tokens": 71573,
+    "num_turns": 19,
+    "duration_ms": 271317,
+    "duration_api_ms": 127719,
+    "model": "claude-opus-5-5",
+    "session_id": "00db260f-dbbc-498c-a5fd-7f723d8626d6",
+    "stop_reason": "success",
+    "result_text": "A hold now has dates, and a person can have several. `bin/e2e` passes all 4 tests in the spec.\n\n**Stored data**\n- A new migration, `V28__person_hold.sql`, adds a `person_hold` table with a from-date and an optional to-date, and drops the old `held` column.\n- Anyone who was held before the change gets one hold with no start or end date, so their totals stay exactly as they were.\n\n**Server**\n- `PersonHold` is the new hold record. `Person` keeps a list of holds and has two checks: `isHeld()` (does the person have any hold) and `isHeldOn(date)` (does a date fall inside one of them).\n- The hold endpoint now takes a from-date and a to-date. A blank from-date means the sheet's today; a blank to-date means the hold has no end.\n- A hold whose to-date is before its from-date is refused.\n- Each hold writes `PERSON_HELD \u2026 name=<name> from=<date>` to the audit file. When the hold changes the figures, the usual `ROLLUP`/`TOTALS` lines follow.\n- The release endpoint and the `PERSON_RELEASED` record are removed.\n- The rule for what counts is updated in all three places that apply it: the live totals (`Rollup`), statements, and the period due-total worked out when a period is closed. An open claim is now left out only if its date falls within one of the person's holds and no statement binds it.\n\n**Front end** (`people.ts`, `people-api.ts`)\n- Each person's row shows \"yes\"/\"no\" for whether they have any hold, then lists each hold on its own line (`person-hold-line`).\n- Below that are from-date and to-date fields and a Hold button. The Release button is gone.\n- The totals on screen use the same rule as the server.\n- Bad dates, or a to-date before the from-date, show the row's error (`person-error`). The error clears when either date field is edited or the next action is taken.\n\n**Decisions for you**\n- Pending claims count as open here, as they did before, so they're held too.\n- A statement binds held claims that already carry a figure from an earlier statement again; held claims that were never bound stay unbound.\n- Holds may overlap, and there's no way to delete one. The request says a hold simply ends on its to-date.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9884897999999999,
+        "num_turns": 19,
+        "duration_ms": 271317,
+        "duration_api_ms": 127719,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp40.agent.jsonl",
+  "agent_diff_file": "cp40.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
