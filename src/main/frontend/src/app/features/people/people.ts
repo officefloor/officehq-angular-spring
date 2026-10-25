@@ -299,6 +299,30 @@ import { FigurePipe } from '../../core/figure.pipe';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
 
+      <section aria-labelledby="snapshot-compare-heading">
+        <h3 id="snapshot-compare-heading">Compare snapshots</h3>
+        <label for="snapshot-from">From</label>
+        <input
+          id="snapshot-from"
+          data-testid="snapshot-from"
+          placeholder="YYYY-MM-DD"
+          [value]="snapshotFrom()"
+          (input)="snapshotFrom.set(value($event))"
+        />
+        <label for="snapshot-to">To</label>
+        <input
+          id="snapshot-to"
+          data-testid="snapshot-to"
+          placeholder="YYYY-MM-DD"
+          [value]="snapshotTo()"
+          (input)="snapshotTo.set(value($event))"
+        />
+        <button type="button" data-testid="snapshot-compare" (click)="compareSnapshots()">Compare</button>
+        @for (line of snapshotComparison(); track $index) {
+          <div data-testid="snapshot-line">{{ line }}</div>
+        }
+      </section>
+
       <p>
         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
         @if (bulkOpened(); as result) {
@@ -1037,6 +1061,16 @@ export class People {
     for (const s of this.snapshots()) by.set(s.personId, [...(by.get(s.personId) ?? []), `${s.day} ${s.dueTotal}`]);
     return by;
   });
+  /** The from- and to-dates typed in the snapshot comparison. */
+  protected readonly snapshotFrom = signal('');
+  protected readonly snapshotTo = signal('');
+  /** The last snapshot comparison: each listed person's name and their two figures ('' for none). */
+  private readonly snapshotRows = signal<string[][]>([]);
+  private readonly figure = new FigurePipe();
+  /** The last snapshot comparison as "<name> <then> <now>" per person in list order, trimmed. */
+  protected readonly snapshotComparison = computed(() =>
+    this.snapshotRows().map(([name, ...figures]) => [name, ...figures.map((f) => this.figure.transform(f))].join(' ').trim()),
+  );
   /** The patron chosen on each person's row (a person id), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into (a person id), by person id. */
@@ -1747,6 +1781,35 @@ export class People {
    *  transfer brought over before their own). */
   protected statementLinesOf(personId: number): Statement[] {
     return this.statementsOf(personId);
+  }
+
+  /** Compares each listed person's snapshot of the from-date with that of the to-date (or their
+   *  due-total now when the to-date is blank); a missing snapshot shows as nothing. */
+  protected async compareSnapshots(): Promise<void> {
+    const from = this.snapshotFrom().trim();
+    const to = this.snapshotTo().trim();
+    const sheet = this.sheet();
+    this.snapshotRows.set([]);
+    if (!sheet) return;
+    // A change of today since the sheet was read writes snapshots: read them as they are now.
+    let written: Snapshot[];
+    try {
+      written = await this.service.snapshots(sheet);
+    } catch {
+      written = this.snapshots();
+    }
+    if (this.sheet() !== sheet) return;
+    this.snapshots.set(written);
+    const dueOn = (personId: number, day: string): string => {
+      let due = '';
+      for (const s of written) if (s.personId === personId && s.day === day) due = s.dueTotal;
+      return due;
+    };
+    this.snapshotRows.set(this.shownPeople().map((p) => [
+      p.name,
+      from === '' ? '' : dueOn(p.id, from),
+      to === '' ? (this.dueTotalOf(p) ?? 'n/a') : dueOn(p.id, to),
+    ]));
   }
 
   protected snapshotLinesOf(personId: number): string[] {
