@@ -283,9 +283,12 @@ export class ClaimsService {
    *  the user who opened it asks to settle or approve it or one who is not a steward asks to approve or
    *  reject it or review a REVIEW claim, (400) when a reject gives no one-word reason, and (422) when a void gives no reason
    *  from the sheet's list while it is not empty, and (410) when a restore is asked on a later
-   *  sheet-today than the claim was deleted on. A reject's or void's reason travels with it. */
+   *  sheet-today than the claim was deleted on. A reject's or void's reason travels with it, as does
+   *  the date (YYYY-MM-DD) a settle is as of, refused (400) when after the sheet's today or before the
+   *  claim was added. */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<Claim> {
-    const body = action === 'reject' || action === 'void' ? { reason: reason ?? null } : null;
+    const body = action === 'reject' || action === 'void' ? { reason: reason ?? null }
+      : action === 'settle' ? { on: reason ?? null } : null;
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/${action}`, body, {
         headers: this.session.headers(),

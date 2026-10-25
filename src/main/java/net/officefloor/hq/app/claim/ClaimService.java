@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.SheetAsOf;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -54,11 +56,13 @@ public class ClaimService {
     private final Audit audit;
     private final SheetTagRepository tagRepository;
     private final VoidReasonService voidReasons;
+    private final SheetHistory history;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
             Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons,
-            ClaimCommentRepository comments, ClaimLineRepository lines) {
+            ClaimCommentRepository comments, ClaimLineRepository lines, SheetHistory history) {
+        this.history = history;
         this.comments = comments;
         this.lines = lines;
         this.voidReasons = voidReasons;
@@ -307,7 +311,16 @@ public class ClaimService {
      * be one on it (see {@link VoidReasonService#refuseUnlisted}), and is kept on the claim. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
-        return changeStatus(sheetId, user, claimId, next, voidReason, false);
+        return changeStatus(sheetId, user, claimId, next, voidReason, false, null);
+    }
+
+    /** Settle the claim as {@link #changeStatus(String, String, long, ClaimStatus)} does, but as of
+     * {@code on} (now when null): the figure fixed is its due as it stood at the end of that date, worked
+     * out as the sheet's as-of view does (see {@link SheetHistory#asOf}), and CLAIM_SETTLED ends with the
+     * date. Refused when the date is after the sheet's today, and when the claim had not been added then. */
+    @Transactional
+    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
+        return changeStatus(sheetId, user, claimId, ClaimStatus.SETTLED, null, false, on);
     }
 
     /** Part-settle an OPEN claim: split {@code amount} off it as {@link #split} does, then settle the new
@@ -327,14 +340,15 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         refuseUnproved(claim, person, rollup.shownOf(claim, person));
         List<Claim> split = split(sheetId, user, claimId, amount);
-        Claim settled = changeStatus(sheetId, user, split.get(1).getId(), ClaimStatus.SETTLED, null, true);
+        Claim settled = changeStatus(sheetId, user, split.get(1).getId(), ClaimStatus.SETTLED, null, true, null);
         return List.of(split.get(0), settled);
     }
 
     /** Move the claim to {@code next}; with {@code judged}, who may settle it and the proof rule have
-     * already been judged (on the claim a part-settle split it from). */
+     * already been judged (on the claim a part-settle split it from); a settle with {@code on} is as of
+     * that date (see {@link #settle}). */
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
-            boolean judged) {
+            boolean judged, LocalDate on) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         Action action = switch (next) {
             case OPEN -> Action.OPEN;
@@ -370,8 +384,17 @@ public class ClaimService {
             number = nextNumber(sheetId, claim.getDueBy());
             claim.setOpenedBy(user);
         }
+        BigDecimal dueThen = null;
+        if (next == ClaimStatus.SETTLED && on != null) {
+            if (on.isAfter(sheets.today(sheetId))) throw new ClaimSettleDateException();
+            SheetAsOf then = history.asOf(sheetId, on);
+            Claim stood = then.claims().stream().filter(c -> c.getId().equals(claim.getId())).findFirst()
+                    .orElseThrow(ClaimSettleDateException::new);
+            Person personThen = then.person(person.getId()).orElseThrow(ClaimSettleDateException::new);
+            dueThen = rollup.shownOf(stood, personThen, then);
+        }
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = rollup.shownOf(claim, person);
+            BigDecimal due = on == null ? rollup.shownOf(claim, person) : dueThen;
             if (!judged) refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, person, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
@@ -390,7 +413,9 @@ public class ClaimService {
             case DRAFT, DELETED -> throw new IllegalStateException();
         };
         if (next == ClaimStatus.SETTLED) {
-            record(event, user, person, claim, number, "due=" + dueText(claim.getSettledDue()));
+            List<String> extra = new ArrayList<>(List.of("due=" + dueText(claim.getSettledDue())));
+            if (on != null) extra.add("on=" + on);
+            record(event, user, person, claim, number, extra.toArray(String[]::new));
             notifyWatchers(user, person, claim);
         } else {
             List<String> extra = new ArrayList<>();

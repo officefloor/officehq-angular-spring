@@ -233,6 +233,14 @@ const PAST: Record<ClaimAction, string> = {
                 }
               </select>
             }
+            <label [for]="fieldId('settle-date-' + c.id)">Settle as of</label>
+            <input
+              [id]="fieldId('settle-date-' + c.id)"
+              type="date"
+              data-testid="claim-settle-date"
+              [value]="settleDates()[c.id] ?? ''"
+              (input)="setSettleDate(c.id, value($event))"
+            />
             @for (a of actions; track a.action) {
               <button
                 type="button"
@@ -507,6 +515,8 @@ export class Claims {
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The line typed on each draft claim, by claim id. */
   protected readonly lineFields = signal<Record<number, LineFields>>({});
+  /** The date typed to settle each claim as of, by claim id; blank settles it as of today. */
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The date typed to re-date each claim to, by claim id. */
@@ -729,12 +739,15 @@ export class Claims {
       this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Choose a reason to void that claim.' }));
       return;
     }
+    const settleDate = (this.settleDates()[claim.id] ?? '').trim();
     try {
-      const given = action === 'reject' ? reason : action === 'void' && voidReason !== '' ? voidReason : undefined;
+      const given = action === 'reject' ? reason : action === 'void' && voidReason !== '' ? voidReason
+        : action === 'settle' && settleDate !== '' ? settleDate : undefined;
       const changed = await this.service.act(sheet, claim.id, action, given);
       if (this.session.sheetId() !== sheet) return;
       if (action === 'reject') this.rejectReasons.update(({ [claim.id]: _, ...rest }) => rest);
       if (action === 'void') this.voidReasons.update(({ [claim.id]: _, ...rest }) => rest);
+      if (action === 'settle') this.settleDates.update(({ [claim.id]: _, ...rest }) => rest);
       this.saved.emit(changed);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
@@ -752,6 +765,8 @@ export class Claims {
             : action === 'approve' || action === 'reject'
             ? `Only a steward${action === 'approve' ? ' who did not open or last edit that claim' : ''} can ${action} it.`
             : `Your role may not ${action} a claim on this sheet.`
+          : e instanceof HttpErrorResponse && e.status === 400 && action === 'settle'
+          ? "A claim can only be settled as of a date on or before the sheet's today, and not before it was added."
           : e instanceof HttpErrorResponse && e.status === 400
           ? 'Type a one-word reason to reject that claim.'
           : e instanceof HttpErrorResponse && e.status === 410 && action === 'restore'
@@ -1004,6 +1019,11 @@ export class Claims {
           : 'That comment could not be added.',
       }));
     }
+  }
+
+  protected setSettleDate(id: number, on: string): void {
+    this.settleDates.update((dates) => ({ ...dates, [id]: on }));
+    this.clearRowError(id);
   }
 
   protected setDeferDate(id: number, until: string): void {

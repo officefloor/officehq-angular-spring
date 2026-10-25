@@ -158,6 +158,10 @@ public class ClaimController {
     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
     }
 
+    /** The date a claim is settled as of; now when null. */
+    public record SettleRequest(LocalDate on) {
+    }
+
     /** The reason from the sheet's list a claim is voided with; none when null or blank. */
     public record VoidRequest(@Size(max = 200) String reason) {
     }
@@ -321,8 +325,9 @@ public class ClaimController {
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) SettleRequest request) {
+        return view(service.settle(sheetId.trim(), user.trim(), claimId, request == null ? null : request.on()));
     }
 
     @PostMapping("/claims/{claimId}/review")
