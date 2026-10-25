@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -23,12 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class StatementController {
 
     /** What the screen shows of a person's statements: how many were taken, and the last one's
-     *  due-total (two decimals, or n/a) and the sheet's today when it was taken. */
+     *  due-total (two decimals, or n/a) and its date: the date it was taken as of, else the sheet's today
+     *  when it was taken. */
     public record StatementView(long personId, int count, String lastDueTotal, LocalDate lastDate) {
         static StatementView of(StatementService.Summary summary) {
             Statement last = summary.last();
             return new StatementView(summary.personId(), summary.count(),
-                    last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(), last.getTakenOn());
+                    last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(), last.getStatedOn());
         }
     }
 
@@ -39,6 +41,10 @@ public class StatementController {
     /** A statement just cancelled: the person's statements after it (none when none is left), and their
      *  claims, live again. */
     public record CancelledView(StatementView statement, List<ClaimView> claims) {
+    }
+
+    /** What a statement is taken as of: a date on or before the sheet's today; none takes it now. */
+    public record TakeForm(LocalDate asOf) {
     }
 
     private final StatementService service;
@@ -53,12 +59,13 @@ public class StatementController {
         return service.list(sheetId.trim()).stream().map(StatementView::of).toList();
     }
 
-    /** Take a person's statement. */
+    /** Take a person's statement, now or as of a date. */
     @PostMapping("/people/{personId}/statements")
     @ResponseStatus(HttpStatus.CREATED)
     public TakenView take(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        StatementService.Taken taken = service.take(sheetId.trim(), SignedInUser.name(user), personId);
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody(required = false) TakeForm form) {
+        StatementService.Taken taken = service.take(sheetId.trim(), SignedInUser.name(user), personId,
+                form == null ? null : form.asOf());
         return new TakenView(StatementView.of(taken.summary()),
                 taken.claims().stream().map(ClaimView::of).toList());
     }

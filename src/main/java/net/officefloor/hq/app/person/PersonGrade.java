@@ -27,20 +27,31 @@ public class PersonGrade {
     @Column(name = "from_date")
     private LocalDate from;
 
+    /** The sheet's today when the grade was given; null when given before this was kept. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected PersonGrade() {
     }
 
-    PersonGrade(Grade grade, LocalDate from) {
+    PersonGrade(Grade grade, LocalDate from, LocalDate madeOn) {
         this.grade = grade;
         this.from = from;
+        this.madeOn = madeOn;
     }
 
     public Grade getGrade() {
         return grade;
     }
 
-    void setGrade(Grade grade) {
+    void setGrade(Grade grade, LocalDate madeOn) {
         this.grade = grade;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the grade was given while the sheet's today was on or before the date. */
+    boolean madeBy(LocalDate date) {
+        return madeOn == null || !madeOn.isAfter(date);
     }
 
     /** The date the grade is in force from, or null when it applies from the beginning of time. */

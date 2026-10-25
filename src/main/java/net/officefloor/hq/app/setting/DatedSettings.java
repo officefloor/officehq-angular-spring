@@ -25,10 +25,13 @@ public final class DatedSettings {
 
     /** The sheet's dated settings as the store holds them, within the caller's transaction. */
     public static DatedSettings of(SheetSettingDatedRepository settings, String sheetId) {
+        return of(settings.findBySheetIdOrderByKeyAscFromAsc(sheetId));
+    }
+
+    /** Dated settings of the values given, in key then date order. */
+    public static DatedSettings of(List<SheetSettingDated> settings) {
         Map<String, List<SheetSettingDated>> byKey = new LinkedHashMap<>();
-        for (SheetSettingDated s : settings.findBySheetIdOrderByKeyAscFromAsc(sheetId)) {
-            byKey.computeIfAbsent(s.getKey(), k -> new ArrayList<>()).add(s);
-        }
+        for (SheetSettingDated s : settings) byKey.computeIfAbsent(s.getKey(), k -> new ArrayList<>()).add(s);
         return new DatedSettings(byKey);
     }
 

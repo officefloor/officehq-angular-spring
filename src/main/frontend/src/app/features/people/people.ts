@@ -153,7 +153,10 @@ import { PasteClaims } from '../claims/paste-claims';
                   <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                   taken; last <span data-testid="person-stated-total">{{ statementOf(p.id)?.lastDueTotal ?? '' }}</span>
                   on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span>
-                  <button type="button" data-testid="person-statement" (click)="takeStatement(p)"
+                  <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take {{ p.name }}'s statement as of</label>
+                  <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
+                    #statementAsOf (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-statement" (click)="takeStatement(p, statementAsOf)"
                     [disabled]="stating() === p.id" [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
                   <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
                     [disabled]="stating() === p.id" [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
@@ -429,16 +432,23 @@ export class People {
     return this.statements().get(personId);
   }
 
-  /** Take the person's statement, then show it and their claims as it bound them. */
-  protected async takeStatement(person: PersonView): Promise<void> {
+  /** Take the person's statement, now or as of the date entered (blank: now), then show it and their
+   *  claims as it bound them; the date entered is cleared once it is taken. */
+  protected async takeStatement(person: PersonView, asOfInput: HTMLInputElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.stating() !== null) return;
     this.personError.set(null);
     this.patronError.set(null);
+    const asOf = asOfInput.value.trim();
+    if (asOf !== '' && !DATE.test(asOf)) {
+      this.personError.set({ id: person.id, message: 'Enter the statement date as yyyy-mm-dd.' });
+      return;
+    }
     this.stating.set(person.id);
     try {
-      const taken = await this.statementsApi.take(sheet.id, person.id);
+      const taken = await this.statementsApi.take(sheet.id, person.id, asOf || null);
       if (this.session.sheet()?.id !== sheet.id) return;
+      asOfInput.value = '';
       const bound = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => bound.get(c.id) ?? c));
       this.statements.update((by) => new Map(by).set(person.id, taken.statement));

@@ -1,19 +1,25 @@
 package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimBinding;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.LateCharge;
+import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.DatedSettings;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -69,46 +75,114 @@ public class StatementService {
     }
 
     /** Take the person's statement: record their due-total now, bind each of their counting claims to
-     *  the figure it shows now, and leave every other claim of theirs unbound. */
+     *  the figure it shows now, and leave every other claim of theirs unbound. Taken as of a date (asOf),
+     *  it does so with their claims as they stood at the end of that date: every change made while the
+     *  sheet's today was on or before it counts, every later one does not, and the date stands in for the
+     *  sheet's today in every figure. Refused for a date after the sheet's today, and one before the
+     *  person was added. */
     @Transactional
-    public Taken take(String sheetId, String user, long personId) {
+    public Taken take(String sheetId, String user, long personId, LocalDate asOf) {
         Person person = people.findForUpdate(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         LocalDate today = sheets.today(sheetId);
+        if (asOf != null && asOf.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A statement cannot be taken as of a date after the sheet's today.");
+        }
+        if (asOf != null && person.getAddedOn() != null && asOf.isBefore(person.getAddedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " was not yet on the sheet on " + asOf + ".");
+        }
+        LocalDate on = asOf != null ? asOf : today;
+        DatedSettings dated = asOf != null ? settings.datedAsOf(sheetId, asOf) : settings.dated(sheetId);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findForStatement(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean keptFigure = false;
         int counting = 0;
         for (Claim claim : theirs) {
-            if (!counts(person, claim, today)) {
-                claim.unbind();
+            Stood stood = asOf != null ? stoodAsOf(sheetId, person, claim, asOf, dated) : stoodNow(sheetId, person, claim, today);
+            if (stood == null) {
+                claim.unbind(today);
                 continue;
             }
             counting++;
-            // The statement binds the rate figure, before late charge and floor; the due-total it records is the due.
-            BigDecimal figure = claimService.figure(sheetId, person, claim);
-            BigDecimal due = claimService.due(sheetId, person, claim);
-            if (due != null) total = total.add(due);
-            if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) keptFigure = true;
-            // A live figure at a grade other than today's is not undone by today's grade having no rate.
-            if (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today)) keptFigure = true;
-            // Nor is a live figure on a claim dated by today undone by its rate having ended since.
-            if (figure != null && !claim.getDate().isAfter(today)) keptFigure = true;
-            claim.bind(figure);
+            if (stood.due() != null) total = total.add(stood.due());
+            if (stood.keptFigure()) keptFigure = true;
+            claim.bind(stood.figure(), today);
         }
-        // As the screen shows it: n/a when no rate of the grade in force today is in force today and no
-        // claim keeps a figure; held to the sheet's cap.
-        BigDecimal dueTotal = SettingService.capped(
-                rates.inForce(sheetId, person.gradeOn(today), today) == null && !keptFigure ? null : total,
-                settings.cap(sheetId));
+        // As the screen shows it: n/a when no rate of the grade in force on the statement's date is in force
+        // then and no claim keeps a figure; held to the sheet's cap.
+        Grade grade = person.gradeOn(on, asOf);
+        boolean noRate = (asOf != null ? rates.inForceAsOf(sheetId, grade, on, asOf) : rates.inForce(sheetId, grade, on)) == null;
+        BigDecimal dueTotal = SettingService.capped(noRate && !keptFigure ? null : total, dated.capOn(on));
         claims.saveAllAndFlush(theirs);
-        statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, user));
+        statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, on, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counting);
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counting
+                + (asOf == null ? "" : " asof=" + asOf));
         rollup.recordChanges(user, before);
         List<Statement> all = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
+    }
+
+    /** How a counting claim stood for a statement: the figure it binds (before late charge and floor; null:
+     *  n/a), its due, and whether it keeps a figure should the grade's rate be n/a. */
+    private record Stood(BigDecimal figure, BigDecimal due, boolean keptFigure) {
+    }
+
+    /** How the claim stands now; null when it does not count. */
+    private Stood stoodNow(String sheetId, Person person, Claim claim, LocalDate today) {
+        if (!counts(person, claim, today)) return null;
+        // The statement binds the rate figure, before late charge and floor; the due-total it records is the due.
+        BigDecimal figure = claimService.figure(sheetId, person, claim);
+        BigDecimal due = claimService.due(sheetId, person, claim);
+        boolean kept = claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)
+                // A live figure at a grade other than today's is not undone by today's grade having no rate.
+                || (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today))
+                // Nor is a live figure on a claim dated by today undone by its rate having ended since.
+                || (figure != null && !claim.getDate().isAfter(today));
+        return new Stood(figure, due, kept);
+    }
+
+    /** How the claim stood at the end of the date (asOf), which stands in for the sheet's today: its status,
+     *  settled due and binding then, the grade, rate, floor, late percent and holds and retirement in force
+     *  as they stood then; null when it did not count then (or was not yet added). */
+    private Stood stoodAsOf(String sheetId, Person person, Claim claim, LocalDate asOf, DatedSettings dated) {
+        ClaimStatus status = claim.statusAsOf(asOf);
+        if (status == null) return null;
+        BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAsOf(asOf) : null;
+        ClaimBinding binding = status == ClaimStatus.PENDING ? null : claim.bindingAsOf(asOf);
+        boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+                && asOf.isBefore(claim.getDeferredUntil());
+        boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
+                && (binding != null || !person.isLeftOutAsOf(claim.getDate(), asOf)));
+        if (!counts) return null;
+        RoundingMode rounding = claimService.rounding(sheetId, claim, asOf);
+        Grade grade = person.gradeOn(claim.getDate(), asOf);
+        BigDecimal figure;
+        if (settled != null) {
+            figure = settled;
+        } else if (binding != null) {
+            figure = binding.getStatedDue();
+        } else {
+            Rate rate = rates.inForceAsOf(sheetId, grade, claim.getDate(), asOf);
+            figure = rate == null ? null
+                    : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
+        }
+        BigDecimal floor = dated.floorOn(claim.getDate());
+        BigDecimal due;
+        if (figure == null || settled != null) {
+            due = figure;
+        } else if (status.isOpen() && !deferred) {
+            due = LateCharge.dueAsOpen(claim, figure, floor, asOf, dated::latePctOn, rounding);
+        } else {
+            due = LateCharge.floored(claim, figure, floor);
+        }
+        boolean kept = settled != null || (binding != null && binding.getStatedDue() != null)
+                || (figure != null && grade != person.gradeOn(asOf, asOf))
+                || (figure != null && !claim.getDate().isAfter(asOf));
+        return new Stood(figure, due, kept);
     }
 
     /** A statement just cancelled: the person's summary after it (none when no statement is left), and
@@ -134,7 +208,8 @@ public class StatementService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findForStatement(sheetId, personId);
         // Only the last statement binds claims, so every claim it bound is unbound.
-        theirs.forEach(Claim::unbind);
+        LocalDate today = sheets.today(sheetId);
+        theirs.forEach((claim) -> claim.unbind(today));
         claims.saveAllAndFlush(theirs);
         statements.delete(last);
         statements.flush();

@@ -9,7 +9,7 @@ export interface StatementView {
   count: number;
   /** The person's due-total when the last statement was taken, with two decimals, or n/a. */
   lastDueTotal: string;
-  /** yyyy-mm-dd: the sheet's today when the last statement was taken. */
+  /** yyyy-mm-dd: the last statement's date: the date it was taken as of, else the sheet's today then. */
   lastDate: string;
 }
 
@@ -40,9 +40,11 @@ export class StatementsApi {
     return firstValueFrom(this.http.get<StatementView[]>(`${this.url(sheetId)}/statements`));
   }
 
-  /** Take a person's statement, binding their counting claims to the figures they show now. */
-  take(sheetId: string, personId: number): Promise<TakenView> {
-    return firstValueFrom(this.http.post<TakenView>(`${this.url(sheetId)}/people/${personId}/statements`, {}));
+  /** Take a person's statement, binding their counting claims to the figures they show now, or (asOf,
+   *  yyyy-mm-dd) to the figures they stood at as of the end of that date. */
+  take(sheetId: string, personId: number, asOf: string | null = null): Promise<TakenView> {
+    return firstValueFrom(this.http.post<TakenView>(`${this.url(sheetId)}/people/${personId}/statements`,
+      asOf ? { asOf } : {}));
   }
 
   /** Cancel a person's last statement, making the claims it bound live again. */

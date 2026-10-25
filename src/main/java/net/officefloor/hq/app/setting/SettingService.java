@@ -2,6 +2,7 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import net.officefloor.hq.app.ActingFor;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
@@ -78,6 +80,7 @@ public class SettingService implements ActingFor {
 
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
+    private final SettingChangeRepository changes;
     private final SheetRoleRepository roles;
     private final DelegationRepository delegations;
     private final SheetService sheets;
@@ -85,10 +88,11 @@ public class SettingService implements ActingFor {
     private final Audit audit;
 
     public SettingService(SheetSettingRepository settings, SheetSettingDatedRepository dated,
-            SheetRoleRepository roles, DelegationRepository delegations, SheetService sheets, Rollup rollup,
-            Audit audit) {
+            SettingChangeRepository changes, SheetRoleRepository roles, DelegationRepository delegations,
+            SheetService sheets, Rollup rollup, Audit audit) {
         this.settings = settings;
         this.dated = dated;
+        this.changes = changes;
         this.roles = roles;
         this.delegations = delegations;
         this.sheets = sheets;
@@ -100,6 +104,22 @@ public class SettingService implements ActingFor {
     @Transactional(readOnly = true)
     public DatedSettings dated(String sheetId) {
         return DatedSettings.of(dated, sheetId);
+    }
+
+    /** The sheet's dated settings as they stood at the end of a date: every value recorded while the
+     *  sheet's today was on or before it counts, every later one does not. */
+    @Transactional(readOnly = true)
+    public DatedSettings datedAsOf(String sheetId, LocalDate asOf) {
+        Map<String, Map<LocalDate, String>> byKey = new TreeMap<>();
+        for (SettingChange change : changes.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (change.madeBy(asOf)) {
+                byKey.computeIfAbsent(change.getKey(), k -> new TreeMap<>()).put(change.getFrom(), change.getValue());
+            }
+        }
+        List<SheetSettingDated> then = new ArrayList<>();
+        byKey.forEach((key, values) -> values.forEach((from, value) ->
+                then.add(new SheetSettingDated(sheetId, key, from, value))));
+        return DatedSettings.of(then);
     }
 
     /** The sheet's today. */
@@ -185,6 +205,7 @@ public class SettingService implements ActingFor {
         } catch (DataIntegrityViolationException raced) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
+        changes.saveAndFlush(new SettingChange(sheetId, key, on, value, sheets.today(sheetId)));
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + key
                 + " value=" + value + (from == null ? "" : " from=" + from));
     }

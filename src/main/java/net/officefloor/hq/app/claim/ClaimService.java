@@ -269,7 +269,8 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = nextNumber(sheetId, claim);
         // The due-by is fixed now, from the terms in force on the claim's date.
-        Claim split = claim.splitOff(part, number, user, termsOf(sheetId, person, claim.getDate()));
+        Claim split = claim.splitOff(part, number, user, termsOf(sheetId, person, claim.getDate()),
+                sheets.today(sheetId));
         split.setListed(claims.lastListed(sheetId) + 1);
         Claim saved = claims.saveAndFlush(claim);
         split = claims.saveAndFlush(split);
@@ -361,7 +362,7 @@ public class ClaimService {
         }
         refuseIfRetired(to, claim.getDate());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1);
+        claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_REASSIGNED", user, to, saved, saved.getNumber(),
                 " from=" + from.getName() + " to=" + to.getName());
@@ -591,11 +592,17 @@ public class ClaimService {
     /** How the claim's live figures round under the sheet's policy date: by the date of the claim a
      *  correction corrects, else by its own. */
     private RoundingMode rounding(String sheetId, Claim claim) {
+        return rounding(sheetId, claim, sheets.today(sheetId));
+    }
+
+    /** How the claim's figures round under the sheet's policy date with the date given standing in for
+     *  the sheet's today. */
+    public RoundingMode rounding(String sheetId, Claim claim, LocalDate today) {
         Claim corrected = claim.isCorrection() && claim.getCorrects() != null
                 ? claims.findBySheetIdAndPersonIdAndNumber(sheetId, claim.getPersonId(), claim.getCorrects()).orElse(null)
                 : null;
         return Rounding.of(Rounding.dateOf(claim, corrected),
-                Rounding.policyDate(settings.policyDate(sheetId), sheets.today(sheetId)));
+                Rounding.policyDate(settings.policyDate(sheetId), today));
     }
 
     /** Log the status the claim has just taken, with its due as worked out now. */

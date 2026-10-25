@@ -47,6 +47,14 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The sheet's today when the person was last retired; null when never, or before this was kept. */
+    @Column(name = "retired_made_on")
+    private LocalDate retiredMadeOn;
+
+    /** The sheet's today when the person was added; null when added before this was kept. */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
+
     /** Every hold put on the person; their open claims dated within one, unless bound by a statement,
      *  count in no live total. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
@@ -65,10 +73,16 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, Grade grade) {
+    /** A person added to the sheet while its today is the date given (addedOn). */
+    public Person(String sheetId, String name, Grade grade, LocalDate addedOn) {
         this.sheetId = sheetId;
+        this.addedOn = addedOn;
         setName(name);
-        grades.add(new PersonGrade(grade, null));
+        grades.add(new PersonGrade(grade, null, addedOn));
+    }
+
+    public LocalDate getAddedOn() {
+        return addedOn;
     }
 
     public Long getId() {
@@ -103,8 +117,15 @@ public class Person {
 
     /** The grade in force on a date: the one with the latest from-date on or before it. */
     public Grade gradeOn(LocalDate date) {
+        return gradeOn(date, null);
+    }
+
+    /** The grade in force on a date as the person's grades stood at the end of another date (asOf; null:
+     *  as they stand now): only the grades given while the sheet's today was on or before it count. */
+    public Grade gradeOn(LocalDate date, LocalDate asOf) {
         PersonGrade inForce = null;
         for (PersonGrade g : grades) {
+            if (asOf != null && !g.madeBy(asOf)) continue;
             if (g.appliesBy(date) && (inForce == null || g.startsAfter(inForce))) inForce = g;
         }
         return inForce == null ? null : inForce.getGrade();
@@ -112,22 +133,24 @@ public class Person {
 
     /** Give the person a grade from a date, replacing the grade they had from that same date and
      *  keeping every other one. */
-    public void setGrade(Grade grade, LocalDate from) {
+    public void setGrade(Grade grade, LocalDate from, LocalDate madeOn) {
         for (PersonGrade g : grades) {
             if (from.equals(g.getFrom())) {
-                g.setGrade(grade);
+                if (g.getGrade() != grade) g.setGrade(grade, madeOn);
                 return;
             }
         }
-        grades.add(new PersonGrade(grade, from));
+        grades.add(new PersonGrade(grade, from, madeOn));
     }
 
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }
 
-    public void setRetiredFrom(LocalDate retiredFrom) {
+    /** Retire the person from a date, while the sheet's today is the date given (madeOn). */
+    public void setRetiredFrom(LocalDate retiredFrom, LocalDate madeOn) {
         this.retiredFrom = retiredFrom;
+        this.retiredMadeOn = madeOn;
     }
 
     /** Whether the person is retired: true as soon as a retirement date is set, whatever the date. */
@@ -170,9 +193,20 @@ public class Person {
         return isHeldOn(date) || isRetiredBy(today);
     }
 
-    /** Put a hold on the person from a date to a date (none: no end). */
-    public void hold(LocalDate from, LocalDate to) {
-        holds.add(new PersonHold(from, to));
+    /** Whether the person's unbound open claim of this date left the totals at the end of another date
+     *  (asOf), which stands in for the sheet's today: dated within one of the holds put on them while the
+     *  sheet's today was on or before it, or their retirement then made reached by it. */
+    public boolean isLeftOutAsOf(LocalDate date, LocalDate asOf) {
+        boolean held = holds.stream().anyMatch(h -> h.madeBy(asOf) && h.covers(date));
+        boolean retired = retiredFrom != null && (retiredMadeOn == null || !retiredMadeOn.isAfter(asOf))
+                && !asOf.isBefore(retiredFrom);
+        return held || retired;
+    }
+
+    /** Put a hold on the person from a date to a date (none: no end), while the sheet's today is the date
+     *  given (madeOn). */
+    public void hold(LocalDate from, LocalDate to, LocalDate madeOn) {
+        holds.add(new PersonHold(from, to, madeOn));
     }
 
     public Integer getTerms() {

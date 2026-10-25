@@ -9,7 +9,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A statement taken of a person: their due-total at that moment and how many claims counted. */
+/** A statement taken of a person: their due-total at that moment, or as of the date it was taken as of,
+ *  and how many claims counted. */
 @Entity
 @Table(name = "statement")
 public class Statement {
@@ -35,6 +36,10 @@ public class Statement {
     @Column(name = "taken_on", nullable = false)
     private LocalDate takenOn;
 
+    /** The statement's date: the date it was taken as of, else the sheet's today when it was taken. */
+    @Column(name = "stated_on", nullable = false)
+    private LocalDate statedOn;
+
     @Column(name = "taken_by", nullable = false)
     private String takenBy;
 
@@ -42,12 +47,13 @@ public class Statement {
     }
 
     public Statement(String sheetId, Long personId, BigDecimal dueTotal, int claims, LocalDate takenOn,
-            String takenBy) {
+            LocalDate statedOn, String takenBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.dueTotal = dueTotal;
         this.claims = claims;
         this.takenOn = takenOn;
+        this.statedOn = statedOn;
         this.takenBy = takenBy;
     }
 
@@ -73,6 +79,10 @@ public class Statement {
 
     public LocalDate getTakenOn() {
         return takenOn;
+    }
+
+    public LocalDate getStatedOn() {
+        return statedOn;
     }
 
     public String getTakenBy() {

@@ -136,7 +136,7 @@ public class PersonService {
             throw nameInUse();
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Person fresh = new Person(sheetId, name, grade);
+        Person fresh = new Person(sheetId, name, grade, sheets.today(sheetId));
         fresh.setTerms(terms);
         Person person = save(fresh);
         recordChange("PERSON_ADDED", user, person, terms == null ? "" : " terms=" + terms);
@@ -161,7 +161,7 @@ public class PersonService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setName(name);
-        person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId));
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId));
         person.setTerms(terms);
         Person saved = save(person);
         recordChange("PERSON_EDITED", user, saved, termsChanged ? " terms=" + (terms == null ? "" : terms) : "");
@@ -178,7 +178,7 @@ public class PersonService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         LocalDate dated = from != null ? from : sheets.today(sheetId);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        person.setRetiredFrom(dated);
+        person.setRetiredFrom(dated, sheets.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + dated);
@@ -198,7 +198,7 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        person.hold(dated, to);
+        person.hold(dated, to, sheets.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + dated);

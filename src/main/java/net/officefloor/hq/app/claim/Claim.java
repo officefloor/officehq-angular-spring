@@ -108,6 +108,12 @@ public class Claim {
     @OrderColumn(name = "position")
     private List<ClaimLogLine> log = new ArrayList<>();
 
+    /** The claim's binding history, oldest first: a line for each binding to a figure and each loss of one. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_binding", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "position")
+    private List<ClaimBinding> bindings = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -139,12 +145,13 @@ public class Claim {
         this.listed = listed;
     }
 
-    /** Move the claim to another person, as their newest claim at the place given: it keeps its number
-     *  and date, and loses any figure a statement bound it to, its due live again. */
-    public void moveTo(Long personId, long listed) {
+    /** Move the claim to another person, as their newest claim at the place given, while the sheet's today
+     *  is the date given: it keeps its number and date, and loses any figure a statement bound it to, its
+     *  due live again. */
+    public void moveTo(Long personId, long listed, LocalDate today) {
         this.personId = personId;
         this.listed = listed;
-        unbind();
+        unbind(today);
     }
 
     public BigDecimal getAmount() {
@@ -181,6 +188,22 @@ public class Claim {
         ClaimStatus then = null;
         for (ClaimLogLine line : log) if (!line.getOn().isAfter(date)) then = line.getStatus();
         return then;
+    }
+
+    /** The due fixed on the claim at the end of the day given, as its log records it: the due of its last
+     *  line by then when that is SETTLED; null when it was not settled then, or its due was n/a. */
+    public BigDecimal settledDueAsOf(LocalDate date) {
+        ClaimLogLine then = null;
+        for (ClaimLogLine line : log) if (!line.getOn().isAfter(date)) then = line;
+        return then != null && then.getStatus() == ClaimStatus.SETTLED ? then.getDue() : null;
+    }
+
+    /** The claim's binding at the end of the day given: its last binding line made by then, when that bound
+     *  it to a figure; null when it was unbound then. */
+    public ClaimBinding bindingAsOf(LocalDate date) {
+        ClaimBinding then = null;
+        for (ClaimBinding line : bindings) if (line.madeBy(date)) then = line;
+        return then != null && then.isStated() ? then : null;
     }
 
     /** The day the claim was last settled, as its log records it; null when it never was. */
@@ -292,14 +315,14 @@ public class Claim {
      *  with the number given, opened by the user and due by the terms given from its date, split from
      *  this claim's number. This claim keeps the rest of its amount and loses any figure a statement
      *  bound it to. */
-    public Claim splitOff(BigDecimal part, String number, String user, int terms) {
+    public Claim splitOff(BigDecimal part, String number, String user, int terms, LocalDate today) {
         Claim split = new Claim(sheetId, personId, part, date, note, null, terms);
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = user;
         split.splitFrom = this.number;
         this.amount = amount.subtract(part).setScale(2);
-        unbind();
+        unbind(today);
         return split;
     }
 
@@ -312,14 +335,16 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to a figure (null: n/a) as a statement takes it. */
-    public void bind(BigDecimal figure) {
+    /** Bind the claim to a figure (null: n/a) as a statement takes it while the sheet's today is the date given. */
+    public void bind(BigDecimal figure, LocalDate today) {
         this.stated = true;
         this.statedDue = figure;
+        bindings.add(new ClaimBinding(today, true, figure));
     }
 
-    /** Leave the claim unbound, its due live again. */
-    public void unbind() {
+    /** Leave the claim unbound, its due live again, while the sheet's today is the date given. */
+    public void unbind(LocalDate today) {
+        if (stated) bindings.add(new ClaimBinding(today, false, null));
         this.stated = false;
         this.statedDue = null;
     }

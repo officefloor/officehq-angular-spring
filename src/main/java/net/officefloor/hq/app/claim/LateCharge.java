@@ -61,7 +61,7 @@ public final class LateCharge {
     }
 
     /** The due held to at least the floor, unless the claim is a correction, which has no floor. */
-    private static BigDecimal floored(Claim claim, BigDecimal due, BigDecimal floor) {
+    public static BigDecimal floored(Claim claim, BigDecimal due, BigDecimal floor) {
         return claim.isCorrection() ? due : due.max(floor);
     }
 }

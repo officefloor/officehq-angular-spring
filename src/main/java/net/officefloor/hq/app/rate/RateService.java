@@ -2,7 +2,10 @@ package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -17,12 +20,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateService {
 
     private final RateRepository rates;
+    private final RateChangeRepository changes;
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit) {
+    public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets, Rollup rollup,
+            Audit audit) {
         this.rates = rates;
+        this.changes = changes;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -39,6 +45,24 @@ public class RateService {
     @Transactional(readOnly = true)
     public Rate inForce(String sheetId, Grade grade, LocalDate date) {
         return Rate.inForce(rates.findForGrade(sheetId, grade), date);
+    }
+
+    /** The grade's rate in force on a date as the sheet's rates stood at the end of another date (asOf):
+     *  every setting made while the sheet's today was on or before it counts, every later one does not;
+     *  null when none is in force then. */
+    @Transactional(readOnly = true)
+    public Rate inForceAsOf(String sheetId, Grade grade, LocalDate date, LocalDate asOf) {
+        Map<LocalDate, Rate> byFrom = new HashMap<>();
+        Rate fromStart = null;
+        for (RateChange change : changes.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (change.getGrade() != grade || !change.madeBy(asOf)) continue;
+            if (change.getFrom() == null) fromStart = change.toRate();
+            else byFrom.put(change.getFrom(), change.toRate());
+        }
+        List<Rate> gradeRates = new ArrayList<>();
+        if (fromStart != null) gradeRates.add(fromStart);
+        byFrom.keySet().stream().sorted().forEach((from) -> gradeRates.add(byFrom.get(from)));
+        return Rate.inForce(gradeRates, date);
     }
 
     /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time) through
@@ -62,6 +86,7 @@ public class RateService {
         Rate saved;
         try {
             saved = rates.saveAndFlush(rate);
+            changes.saveAndFlush(new RateChange(saved, sheets.today(sheetId)));
         } catch (DataIntegrityViolationException raced) {
             // Another user set the same grade's rate for that from-date at the same moment.
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The rate was changed by someone else.");
