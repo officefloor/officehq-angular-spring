@@ -102,6 +102,10 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The last day (the sheet's today then) a reminder was written for the claim; none when never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -299,6 +303,15 @@ public class Claim {
     /** Mark the claim as added while its period was soft-closed. */
     public void markLateEntry() {
         this.lateEntry = true;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    /** Record a reminder written for the claim on the sheet's today given. */
+    public void remind(LocalDate today) {
+        this.remindedOn = today;
     }
 
     /** Whether the claim is locked by a user other than this one. */

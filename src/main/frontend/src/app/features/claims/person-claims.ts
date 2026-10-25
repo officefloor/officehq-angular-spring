@@ -61,6 +61,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
@@ -90,6 +91,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+          <button type="button" data-testid="claim-remind" (click)="remind(c)"
+            [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
           <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
@@ -424,6 +427,25 @@ export class PersonClaims {
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.claimError.set({ id: claim.id, message: `A ${claim.status} claim cannot have a proof added.` });
+      }
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim; the store refuses a claim in any other status and one already
+   *  reminded on the sheet's today. */
+  protected async remind(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    try {
+      const reminded = await this.api.remind(sheet.id, claim.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(reminded);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = !(claim.status === 'OPEN' || claim.status === 'PENDING')
+          ? 'Only an OPEN or PENDING claim can be reminded.'
+          : 'This claim cannot be reminded again today.';
+        this.claimError.set({ id: claim.id, message });
       }
     }
   }

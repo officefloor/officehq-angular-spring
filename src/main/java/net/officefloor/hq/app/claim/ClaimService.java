@@ -338,6 +338,28 @@ public class ClaimService {
         return saved;
     }
 
+    /** Remind an OPEN or PENDING claim, writing REMIND and showing the sheet's today as its reminded date.
+     *  Refused for a claim in any other status, and for one already reminded on the sheet's today. No
+     *  figure moves, so a claim dated inside a closed period may still be reminded. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded; only an OPEN or PENDING one can.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (claim.getRemindedOn() != null && claim.getRemindedOn().equals(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim has already been reminded today.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.remind(today);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("REMIND", user, person, saved);
+        return saved;
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
      *  keeps its number and date and loses any figure a statement bound it to (it is live again until
      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
