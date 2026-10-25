@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -108,6 +109,41 @@ public class StatementService {
         rollup.recordChanges(user, before);
         List<Statement> all = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
+    }
+
+    /** A statement just cancelled: the person's summary after it (none when no statement is left), and
+     *  their claims, live again, newest first. */
+    public record Cancelled(Summary summary, List<Claim> claims) {
+    }
+
+    /** Cancel the person's last statement: the claims it bound are live again (a figure an earlier
+     *  statement bound is not restored) and the statement before it is their last. Refused unless the
+     *  user is a steward of the sheet, or when the person has no statement. */
+    @Transactional
+    public Cancelled cancel(String sheetId, String user, long personId) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward cancels a statement.");
+        }
+        List<Statement> all = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (all.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel.");
+        }
+        Statement last = all.get(all.size() - 1);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        List<Claim> theirs = claims.findForStatement(sheetId, personId);
+        // Only the last statement binds claims, so every claim it bound is unbound.
+        theirs.forEach(Claim::unbind);
+        claims.saveAllAndFlush(theirs);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+        rollup.recordChanges(user, before);
+        List<Statement> left = all.subList(0, all.size() - 1);
+        return new Cancelled(left.isEmpty() ? null : new Summary(personId, left.size(), left.get(left.size() - 1)),
+                theirs);
     }
 
     /** Only open and settled claims count toward what is claimed and due; a person's open claims dated

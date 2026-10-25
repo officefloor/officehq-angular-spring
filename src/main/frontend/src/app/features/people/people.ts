@@ -155,6 +155,8 @@ import { PasteClaims } from '../claims/paste-claims';
                   on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span>
                   <button type="button" data-testid="person-statement" (click)="takeStatement(p)"
                     [disabled]="stating() === p.id" [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                  <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
+                    [disabled]="stating() === p.id" [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
                   @if (personError()?.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                   }
@@ -441,6 +443,33 @@ export class People {
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
+      }
+    } finally {
+      this.stating.set(null);
+    }
+  }
+
+  /** Cancel the person's last statement, then show the one before it and their claims live again. */
+  protected async cancelStatement(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.stating() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.stating.set(person.id);
+    try {
+      const cancelled = await this.statementsApi.cancel(sheet.id, person.id);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const live = new Map(cancelled.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => live.get(c.id) ?? c));
+      this.statements.update((by) => {
+        const next = new Map(by);
+        if (cancelled.statement) next.set(person.id, cancelled.statement);
+        else next.delete(person.id);
+        return next;
+      });
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'The statement could not be cancelled.' });
       }
     } finally {
       this.stating.set(null);

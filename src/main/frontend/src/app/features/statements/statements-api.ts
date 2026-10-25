@@ -19,6 +19,13 @@ export interface TakenView {
   claims: ClaimView[];
 }
 
+/** A statement just cancelled: the person's statements after it (null when none is left), and their
+ *  claims, live again. */
+export interface CancelledView {
+  statement: StatementView | null;
+  claims: ClaimView[];
+}
+
 // The statements taken of the people on a sheet, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class StatementsApi {
@@ -36,5 +43,10 @@ export class StatementsApi {
   /** Take a person's statement, binding their counting claims to the figures they show now. */
   take(sheetId: string, personId: number): Promise<TakenView> {
     return firstValueFrom(this.http.post<TakenView>(`${this.url(sheetId)}/people/${personId}/statements`, {}));
+  }
+
+  /** Cancel a person's last statement, making the claims it bound live again. */
+  cancel(sheetId: string, personId: number): Promise<CancelledView> {
+    return firstValueFrom(this.http.delete<CancelledView>(`${this.url(sheetId)}/people/${personId}/statements/last`));
   }
 }
