@@ -38,11 +38,13 @@ public class SettingController {
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
      *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none;
-     *  permissions holds, by action, the roles that may take it as set (blank: the standing rule). Each of these figures is the one in force on the
+     *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
+     *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions) {
+            Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
+            Integer graceDays) {
     }
 
     /** A value a dated setting takes from a date; blank when the setting is cleared from then. */
@@ -93,6 +95,10 @@ public class SettingController {
 
     /** The date to number claims within their periods from, as entered; none means off. */
     public record PeriodNumberingFromForm(LocalDate value) {
+    }
+
+    /** The grace days as entered: whole days; none means off. */
+    public record GraceDaysForm(@Min(0) @Max(36500) Integer value) {
     }
 
     /** The roles that may take an action as entered, comma separated; blank keeps the standing rule. */
@@ -198,6 +204,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's grace days, or clear them to turn the closing of periods off. */
+    @PutMapping("/settings/grace-days")
+    public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GraceDaysForm form) {
+        String id = sheetId.trim();
+        service.setGraceDays(id, SignedInUser.name(user), form.value());
+        return view(id);
+    }
+
     /** Set the roles that may take an action, or clear them to keep the standing rule. */
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -234,7 +249,7 @@ public class SettingController {
                 dated.termsOn(today), dated.latePctOn(today).toPlainString(), service.policyDate(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
                 gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
-                service.permissions(sheetId));
+                service.permissions(sheetId), service.graceDays(sheetId));
     }
 
     private static String text(BigDecimal value) {

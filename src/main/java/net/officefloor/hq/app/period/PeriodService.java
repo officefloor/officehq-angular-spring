@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -93,6 +96,26 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed.");
         }
+        return closeNow(sheetId, user, period, false);
+    }
+
+    /** Once the sheet's today is changed, close each open period whose to-date plus the sheet's grace days
+     *  is before the new today, in order of their to-dates, as a close by hand would; none when the grace
+     *  days are blank. Each is audited as closed automatically. */
+    @EventListener
+    @Transactional
+    public void closeOverdue(TodayChanged change) {
+        Integer grace = settings.graceDays(change.sheetId());
+        if (grace == null) return;
+        sheetRows.findForUpdate(change.sheetId());
+        List<Period> due = periods.findBySheetIdOrderByFromAsc(change.sheetId()).stream()
+                .filter((p) -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(change.today()))
+                .sorted(Comparator.comparing(Period::getTo)).toList();
+        for (Period period : due) closeNow(change.sheetId(), change.user(), period, true);
+    }
+
+    /** Close an open period now, fixing its figures; the audit line marks a close the today change made. */
+    private Period closeNow(String sheetId, String user, Period period, boolean auto) {
         Map<Long, Person> peopleById = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         LocalDate today = sheets.today(sheetId);
@@ -118,7 +141,7 @@ public class PeriodService {
         period.close(total, personTotals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));
         return saved;
     }
 

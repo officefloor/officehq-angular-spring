@@ -60,6 +60,10 @@ public class SettingService {
      *  without a proof; no value means none. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
 
+    /** The key of the grace days: once the sheet's today is changed to after an open period's to-date plus
+     *  these days, the period is closed; no value means off. Not dated. */
+    public static final String GRACE_DAYS = "grace-days";
+
     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 
@@ -250,6 +254,38 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PERIOD_NUMBERING_FROM
                 + " value=" + (date == null ? "" : date.toString()));
         return date;
+    }
+
+    /** The sheet's grace days, or null when it is blank (off). */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, GRACE_DAYS).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's grace days; null clears them, turning the closing of periods off. */
+    @Transactional
+    public Integer setGraceDays(String sheetId, String user, Integer days) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, GRACE_DAYS).orElse(null);
+        try {
+            if (days == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, GRACE_DAYS, days.toString()));
+            } else {
+                setting.setValue(days.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + GRACE_DAYS
+                + " value=" + (days == null ? "" : days.toString()));
+        return days;
     }
 
     /** The cap in force on the sheet's today, with two decimals, or null when there is no cap. */

@@ -48,6 +48,8 @@ export interface SettingsView {
   dated: Partial<Record<string, DatedValue[]>>;
   /** By action, the roles that may take it as the sheet set them, comma separated; blank keeps the standing rule. */
   permissions: Partial<Record<PermissionAction, string>>;
+  /** The days after an open period's to-date before a change of the sheet's today closes it, or null when blank (off). */
+  graceDays: number | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -106,6 +108,11 @@ export class SettingsApi {
   /** Set the date claims are numbered within their periods from; null clears it, leaving sheet-wide numbering. */
   setPeriodNumberingFrom(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the grace days; null clears them, turning the closing of periods off. */
+  setGraceDays(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/grace-days`, { value }));
   }
 
   /** Set the roles that may take an action, comma separated; blank keeps the standing rule. */
