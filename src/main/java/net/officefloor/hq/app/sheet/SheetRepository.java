@@ -41,4 +41,8 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Sheet s where s.id = :id")
     Optional<Sheet> findForUpdate(@Param("id") String id);
+
+    /** Whether the sheet is archived; false for a sheet never loaded. */
+    @Query("select count(s) > 0 from Sheet s where s.id = :id and s.archived = true")
+    boolean isArchived(@Param("id") String id);
 }

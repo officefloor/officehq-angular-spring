@@ -6,6 +6,8 @@ export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the real clock. */
   today: string;
+  /** An archived sheet stays visible, and every change on it is refused. */
+  archived: boolean;
 }
 
 // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the
@@ -43,6 +45,16 @@ export class Session {
     if (!current) throw new Error('No sheet is loaded.');
     const sheet = await firstValueFrom(
       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(current.id)}/today`, { today }),
+    );
+    if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
+  }
+
+  /** Archive the active sheet; the store's answer replaces what the screen holds. */
+  async archive(): Promise<void> {
+    const current = this.sheetState();
+    if (!current) throw new Error('No sheet is loaded.');
+    const sheet = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(current.id)}/archive`, null),
     );
     if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
   }

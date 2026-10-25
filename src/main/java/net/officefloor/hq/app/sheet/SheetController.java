@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** What the screen shows of a sheet. */
-    public record SheetView(String id, LocalDate today) {
+    public record SheetView(String id, LocalDate today, boolean archived) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
         }
     }
 
@@ -48,5 +48,12 @@ public class SheetController {
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TodayChange change) {
         return SheetView.of(service.setToday(id.trim(), SignedInUser.name(user), change.today()));
+    }
+
+    /** Archive the sheet; a steward only. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return SheetView.of(service.archive(id.trim(), SignedInUser.name(user)));
     }
 }

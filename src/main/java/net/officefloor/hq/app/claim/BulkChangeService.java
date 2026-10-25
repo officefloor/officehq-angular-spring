@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,13 +29,15 @@ public class BulkChangeService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SettingService settings;
+    private final SheetRepository sheets;
 
     public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people,
-            SettingService settings) {
+            SettingService settings, SheetRepository sheets) {
         this.service = service;
         this.claims = claims;
         this.people = people;
         this.settings = settings;
+        this.sheets = sheets;
     }
 
     /** Open the claims of these ids in list order: people in the order they were added, each person's
@@ -53,6 +56,9 @@ public class BulkChangeService {
         Set<Long> selected = new LinkedHashSet<>(ids);
         if (settings.roleOf(sheetId, user) == Role.VIEWER) {
             return new Result(List.of(), selected.size()); // a viewer changes nothing: each is refused
+        }
+        if (sheets.isArchived(sheetId)) {
+            return new Result(List.of(), selected.size()); // an archived sheet changes nothing: each is refused
         }
         List<Long> ordered = inListOrder(sheetId, selected);
         List<Claim> changed = new ArrayList<>();

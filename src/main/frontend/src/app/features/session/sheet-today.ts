@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 
 // The active sheet's today, shown and changeable. Every date decision and default date in the app
-// uses it, never the real clock.
+// uses it, never the real clock. A steward can archive the sheet here too.
 @Component({
   selector: 'app-sheet-today',
   imports: [ReactiveFormsModule],
@@ -14,6 +14,8 @@ import { Session } from '../../core/session';
         <label for="sheet-today-input">Change today</label>
         <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
         <button type="submit" data-testid="sheet-today-save" [disabled]="saving()">Set today</button>
+        <span>Archived: <strong data-testid="sheet-archived">{{ sheet.archived ? 'yes' : 'no' }}</strong></span>
+        <button type="button" data-testid="sheet-archive" [disabled]="saving()" (click)="archive()">Archive sheet</button>
         @if (error()) {
           <p role="alert" data-testid="sheet-error">{{ error() }}</p>
         }
@@ -53,6 +55,19 @@ export class SheetToday {
       await this.session.setToday(today);
     } catch {
       this.error.set("The sheet's today could not be changed.");
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    if (this.saving()) return;
+    this.error.set('');
+    this.saving.set(true);
+    try {
+      await this.session.archive();
+    } catch {
+      this.error.set('The sheet could not be archived.');
     } finally {
       this.saving.set(false);
     }

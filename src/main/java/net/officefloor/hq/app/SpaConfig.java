@@ -18,14 +18,17 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
 public class SpaConfig implements WebMvcConfigurer {
 
     private final ViewerGuard viewerGuard;
+    private final ArchiveGuard archiveGuard;
 
-    public SpaConfig(ViewerGuard viewerGuard) {
+    public SpaConfig(ViewerGuard viewerGuard, ArchiveGuard archiveGuard) {
         this.viewerGuard = viewerGuard;
+        this.archiveGuard = archiveGuard;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(viewerGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
+        registry.addInterceptor(archiveGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
     }
 
     @Override

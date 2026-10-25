@@ -2,11 +2,17 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SheetService {
@@ -14,11 +20,17 @@ public class SheetService {
     private final SheetRepository sheets;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
+    private final Audit audit;
+    // The settings read the sheet's today, so they are looked up when needed rather than injected.
+    private final ObjectProvider<SettingService> settings;
 
-    public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events) {
+    public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events, Audit audit,
+            ObjectProvider<SettingService> settings) {
         this.sheets = sheets;
         this.rollup = rollup;
         this.events = events;
+        this.audit = audit;
+        this.settings = settings;
     }
 
     /** The sheet with this id, as the store holds it now; a sheet never loaded before starts empty. */
@@ -46,6 +58,24 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(id, user, today));
         rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Archive the sheet: it stays visible, and every change on it is refused from then on (see
+     *  {@code ArchiveGuard}). Refused to anyone but a steward of the sheet, and when it is archived. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        load(id);
+        Sheet sheet = sheets.findForUpdate(id).orElseThrow();
+        if (settings.getObject().roleOf(id, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can archive the sheet.");
+        }
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is already archived.");
+        }
+        sheet.archive();
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
         return saved;
     }
 

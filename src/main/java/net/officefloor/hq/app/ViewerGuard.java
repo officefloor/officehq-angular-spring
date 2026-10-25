@@ -25,7 +25,7 @@ public class ViewerGuard implements HandlerInterceptor {
     /** The path of a sheet's requests; the sheet id is the segment after it. */
     public static final String SHEETS = "/api/sheets/";
 
-    private static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
+    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
 
     private final SettingService settings;
 

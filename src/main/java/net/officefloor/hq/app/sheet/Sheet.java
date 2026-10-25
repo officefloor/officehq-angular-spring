@@ -26,6 +26,10 @@ public class Sheet {
     @Column(name = "claim_numbers_used", nullable = false)
     private int claimNumbersUsed;
 
+    /** An archived sheet stays visible, and every change on it is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -49,5 +53,13 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void archive() {
+        this.archived = true;
     }
 }
