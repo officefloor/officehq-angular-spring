@@ -1,7 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi } from './claims-api';
+import { dueCents } from '../rates/rates-api';
+import { ClaimView, ClaimsApi, cents, money } from './claims-api';
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,6 +33,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editingId() === c.id) {
@@ -50,6 +52,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
+  /** The rate for the person's grade, or null when the grade has no rate. */
+  readonly pct = input.required<string | null>();
   readonly added = output<ClaimView>();
   readonly saved = output<ClaimView>();
 
@@ -64,6 +68,12 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  /** What is due on the claim at the person's grade's rate, or n/a when the grade has no rate. */
+  protected due(claim: ClaimView): string {
+    const pct = this.pct();
+    return pct === null ? 'n/a' : money(dueCents(cents(claim.amount), pct));
   }
 
   protected fieldId(field: string): string {

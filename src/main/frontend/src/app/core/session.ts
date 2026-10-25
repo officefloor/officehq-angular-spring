@@ -16,9 +16,13 @@ export class Session {
 
   private readonly userState = signal<string | null>(null);
   private readonly sheetState = signal<SheetView | null>(null);
+  private readonly loadState = signal<SheetView | null>(null);
 
   readonly user = this.userState.asReadonly();
   readonly sheet = this.sheetState.asReadonly();
+  /** The sheet as it was when it was last loaded: changes on each load, but not on a change of its
+   *  today, so what is kept per sheet is re-read from the store only when a sheet is loaded. */
+  readonly loaded = this.loadState.asReadonly();
 
   signIn(name: string): void {
     this.userState.set(name);
@@ -30,6 +34,7 @@ export class Session {
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
     this.sheetState.set(sheet);
+    this.loadState.set(sheet);
   }
 
   /** Change the active sheet's today; the store's answer replaces what the screen holds. */
