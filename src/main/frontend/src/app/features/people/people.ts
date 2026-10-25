@@ -7,6 +7,7 @@ import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, count
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
+import { PoolsList } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
@@ -32,13 +33,14 @@ import { PasteClaims } from '../claims/paste-claims';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader, PoolsList],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+      <app-pools [people]="people()" />
       <section aria-labelledby="people-heading">
         <h2 id="people-heading">People</h2>
         <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
