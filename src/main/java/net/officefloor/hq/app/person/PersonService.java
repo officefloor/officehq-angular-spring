@@ -82,6 +82,25 @@ public class PersonService {
         return saved;
     }
 
+    /** Put a person on hold (held) or take them off it; refused when they already are as asked.
+     *  While held, their open claims count in no live total; their settled claims still count. */
+    @Transactional
+    public Person hold(String sheetId, String user, long id, boolean held) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (person.isHeld() == held) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    held ? "The person is already on hold." : "The person is not on hold.");
+        }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        person.setHeld(held);
+        Person saved = save(person);
+        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName());
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     private void recordChange(String event, String user, Person person) {
         audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade());

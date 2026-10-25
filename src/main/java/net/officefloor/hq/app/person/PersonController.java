@@ -25,10 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** What the screen shows of a person. */
-    public record PersonView(long id, String name, Grade grade, long version, boolean retired, LocalDate retiredFrom) {
+    public record PersonView(long id, String name, Grade grade, long version, boolean retired, LocalDate retiredFrom,
+            boolean held) {
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -77,5 +78,19 @@ public class PersonController {
     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireForm form) {
         return PersonView.of(service.retire(sheetId.trim(), SignedInUser.name(user), id, form.from()));
+    }
+
+    /** Put a person on hold. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PersonView.of(service.hold(sheetId.trim(), SignedInUser.name(user), id, true));
+    }
+
+    /** Take a person off hold. */
+    @PostMapping("/{id}/release")
+    public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PersonView.of(service.hold(sheetId.trim(), SignedInUser.name(user), id, false));
     }
 }

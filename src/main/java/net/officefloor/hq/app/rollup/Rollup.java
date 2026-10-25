@@ -78,7 +78,7 @@ public class Rollup {
             BigDecimal due = ZERO;
             boolean keptFigure = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
-                if (!counts(claim)) continue;
+                if (!counts(person, claim)) continue;
                 claimed = claimed.add(claim.getAmount());
                 BigDecimal figure = figure(claim, gradeRates);
                 if (figure != null) due = due.add(figure);
@@ -111,9 +111,11 @@ public class Rollup {
         }
     }
 
-    /** Only open and settled claims count toward what is claimed and due. */
-    private static boolean counts(Claim claim) {
-        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED;
+    /** Only open and settled claims count toward what is claimed and due; a held person's open claims
+     *  do not. */
+    private static boolean counts(Person person, Claim claim) {
+        return claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,

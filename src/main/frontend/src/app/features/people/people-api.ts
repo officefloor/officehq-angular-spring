@@ -16,6 +16,8 @@ export interface PersonView {
   retired: boolean;
   /** The date the person is retired from, or null while they are not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: while held, their open claims count in no live total. */
+  held: boolean;
 }
 
 export interface PersonForm {
@@ -60,6 +62,11 @@ export class PeopleApi {
   /** Retire the person from a date; null means the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/retire`, { from }));
+  }
+
+  /** Put the person on hold (true) or take them off it (false); refused when they already are. */
+  hold(sheetId: string, id: number, held: boolean): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/${held ? 'hold' : 'release'}`, {}));
   }
 
   /** Add a draft claim to the named person, adding them with grade A first when the name is new;

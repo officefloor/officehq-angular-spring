@@ -1,0 +1,2 @@
+-- Whether the person is on hold: while held, their open claims count in no live total.
+ALTER TABLE person ADD COLUMN held BOOLEAN NOT NULL DEFAULT FALSE;
