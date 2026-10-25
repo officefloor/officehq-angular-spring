@@ -1,0 +1,64 @@
+{
+  "checkpoint": 26,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp26_late-charge",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a late percent (two decimals, settings, 0.00 unless changed; SETTING_CHANGED\nkey=late-pct value=<percent>). An overdue claim's due gains the late percent of its figure (the\nbound figure if a statement binds it, else the floored live figure) for every full 30 days it is\noverdue, rounded like due and added on top. The late charge is never bound by a statement: a\nstatement binds the figure under it, and the charge keeps following the sheet's today. Settling\nfreezes the charge in, and the overdue-total includes it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a late percent (two decimals, settings, 0.00 unless changed; SETTING_CHANGED\nkey=late-pct value=<percent>). An overdue claim's due gains the late percent of its figure (the\nbound figure if a statement binds it, else the floored live figure) for every full 30 days it is\noverdue, rounded like due and added on top. The late charge is never bound by a statement: a\nstatement binds the figure under it, and the charge keeps following the sheet's today. Settling\nfreezes the charge in, and the overdue-total includes it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "16a3a82626fb000f833f0413328eb4be8a97f3c7",
+  "reset_sha": "",
+  "preagent_sha": "e20e4281ead684e7001ab9e7b5742de1d516fd85",
+  "prev_sha": "e20e4281ead684e7001ab9e7b5742de1d516fd85",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9727780000000004,
+    "input_tokens": 60,
+    "output_tokens": 21771,
+    "cache_read_tokens": 2755070,
+    "cache_creation_tokens": 123263,
+    "num_turns": 32,
+    "duration_ms": 660016,
+    "duration_api_ms": 248820,
+    "model": "claude-opus-5-5",
+    "session_id": "c7f30421-64ff-4b89-9961-2e4628798db5",
+    "stop_reason": "success",
+    "result_text": "The late charge is in, and `bin/e2e` passes all 4 tests in the spec (the last run came after every code change except one blank line).\n\n**How it works**\n- **New setting:** the sheet has a late percent. It defaults to 0.00 and you change it in the settings form (`setting-late-pct` / `setting-late-pct-current`). Saving it writes `SETTING_CHANGED key=late-pct value=<pct>`, plus `ROLLUP`/`TOTALS` lines for any figures it moves. It's stored as a row in the existing settings table, so no database migration was needed.\n- **The charge:** an open claim past its due-by gains late % \u00d7 figure \u00d7 (full 30-day periods overdue), rounded half to even. The figure is the bound one if a statement binds the claim, otherwise the live one with the floor applied. The server works this out in a new `claim/LateCharge.java`, and the screen does the same sum in `claims-api.ts`.\n- **Where it shows up:** claim due, person and sheet due-totals, the overdue totals, and period due-totals. It also counts in the due-total a statement records and the total fixed when a period is closed.\n- **Statements:** a statement binds only the figure underneath. The charge keeps following the sheet's today.\n- **Settling:** settling freezes the due with the charge included. The clerk-limit check uses that same amount.\n\n**Two choices you may want to revisit**\n- **Rounding:** I round the charge once over all the periods together, not once per period. The tests can't tell the two apart, but they can differ by a cent.\n- **Changing the terms** now writes `ROLLUP`/`TOTALS` lines when it moves late charges, as the other settings that change figures already do.\n\n**Two fixes outside the feature that the tests needed**\n- **Statements and held people:** a statement of a held person no longer counts or binds their open claims. This now matches how the rollup and period close already treat them.\n- **Settings form:** it used to save only fields whose value changed, so re-saving a blank clerk limit wrote nothing. A field you've clicked into or edited since the last save is now saved. One side effect: clicking into a setting and saving without changing it writes a repeat `SETTING_CHANGED` line.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9727780000000004,
+        "num_turns": 32,
+        "duration_ms": 660016,
+        "duration_api_ms": 248820,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp26.agent.jsonl",
+  "agent_diff_file": "cp26.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
