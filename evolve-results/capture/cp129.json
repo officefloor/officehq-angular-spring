@@ -1,0 +1,64 @@
+{
+  "checkpoint": 129,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp129_export-claims",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ff7f9d98890b1e47615af0ed7c5893823d564514",
+  "reset_sha": "",
+  "preagent_sha": "f81531fab5219ed698de5e9153bb1d61445e631b",
+  "prev_sha": "f81531fab5219ed698de5e9153bb1d61445e631b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4464889999999999,
+    "input_tokens": 26,
+    "output_tokens": 4497,
+    "cache_read_tokens": 406385,
+    "cache_creation_tokens": 34396,
+    "num_turns": 13,
+    "duration_ms": 224957,
+    "duration_api_ms": 45899,
+    "model": "claude-opus-5-5",
+    "session_id": "5a9f286a-671a-4bb2-a8b1-12f33de581c6",
+    "stop_reason": "success",
+    "result_text": "There's now an \"Export claims as CSV\" button (`data-testid=\"export-claims\"`) next to the people export, and it downloads `claims.csv`. All 4 tests in the spec pass under `bin/e2e`.\n\n**What's in the file:**\n- A header line `person,number,date,amount,due,status,period`, then one line per claim.\n- People come in list order, and each person's claims oldest first. Retired people are included even when they're hidden on screen.\n- Each value is the same as on the claim's row. The due amount uses the same calculation as the screen, so it can show `n/a`. A claim with no number gets an empty field, and so does one whose due-by date falls in no period.\n\n**What changed:** Only `src/main/frontend/src/app/features/people/people.ts`; nothing on the server or in the stored data. The file is built in the browser, the same way the people export already worked.\n\nI moved the CSV quoting and download code out of the people export into one shared helper that both exports now use. That way quoting and line endings are the same in both files, as the request asks. The people export works as before, and the test still checks its output.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4464889999999999,
+        "num_turns": 13,
+        "duration_ms": 224957,
+        "duration_api_ms": 45899,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp129.agent.jsonl",
+  "agent_diff_file": "cp129.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
