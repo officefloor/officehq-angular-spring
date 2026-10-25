@@ -1,0 +1,64 @@
+{
+  "checkpoint": 245,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp245_rate-withdraw",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can withdraw a rate (a button on the rate row; RATE_WITHDRAWN grade=<grade> from=<date\nwhen one>): the newest version of that grade and from-date is removed and the version before it, when there is one, applies again; with no version before it the rate is gone. Anyone else is\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can withdraw a rate (a button on the rate row; RATE_WITHDRAWN grade=<grade> from=<date\nwhen one>): the newest version of that grade and from-date is removed and the version before it, when there is one, applies again; with no version before it the rate is gone. Anyone else is\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "14f61e8902819c49cc5e37db818997ce3511c202",
+  "reset_sha": "",
+  "preagent_sha": "1707e99dc1b2b75f205eb02293bcf4e5dcbe257e",
+  "prev_sha": "1707e99dc1b2b75f205eb02293bcf4e5dcbe257e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3337854000000002,
+    "input_tokens": 62,
+    "output_tokens": 15921,
+    "cache_read_tokens": 1861867,
+    "cache_creation_tokens": 80343,
+    "num_turns": 32,
+    "duration_ms": 746604,
+    "duration_api_ms": 200117,
+    "model": "claude-opus-5-5",
+    "session_id": "14dcf4a0-5d00-4adf-b89c-1a883144734f",
+    "stop_reason": "success",
+    "result_text": "I added rate withdrawal, and the main `rate withdraw` test passes. Two other tests in the same spec, \"scenario 2\" and \"scenario 3\", still fail. They also fail without my change, so I left them alone.\n\n**What it does now**\n- Each row in the \"All rates\" table has a Withdraw button (`rate-withdraw`).\n- Withdrawing removes the newest version of that grade and from-date. If there's an older version, it applies again and the version number goes down by one. If there isn't, the rate is deleted.\n- Only a steward can withdraw. Anyone else, or a rate that doesn't exist, is refused: the existing `rate-form-error` message shows and nothing is stored or audited.\n- A withdrawal writes `RATE_WITHDRAWN sheet=<id> by=<user> grade=<g>`, adding ` from=<date>` when the rate has a from-date. The usual ROLLUP/TOTALS lines follow it.\n\n**Where the change is**\n- **Server:**\n  - `RateService.withdraw` holds the logic; it's called through a new `DELETE /api/sheets/{sheetId}/rates/{grade}?from=\u2026` endpoint in `RateController`.\n  - Two new refusal exceptions: not a steward (403) and no such rate (404).\n- **Stored data:** a new migration, `V124__rate_version_terms.sql`, adds a `terms` column to `rate_version`. Without it, a version saved \"forward-only\" (one that only applies to claims added after it) would come back applying to every claim. Sheet cloning now copies this column too. Versions saved before this change come back as applying to every claim.\n- **Front end:** the button and the call are in `rates.ts` and `rates.service.ts`; `people.ts` updates the rate list from the response.\n\n**The two failing tests**\n- **Scenario 2**, line 671: a claim expected as `DRAFT` shows `OPEN`, after a paste of claims.\n- **Scenario 3**, line 1302: splitting 0.01 off a shared claim is expected to be refused, but it goes through.\n\nNeither step involves withdrawing a rate. To check, I ran both on a scratch copy with my changes taken out, and they failed at the same lines. Fixing them would mean changing how claims are pasted and split, which is outside this request; I can look into it separately if you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3337854000000002,
+        "num_turns": 32,
+        "duration_ms": 746604,
+        "duration_api_ms": 200117,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp245.agent.jsonl",
+  "agent_diff_file": "cp245.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

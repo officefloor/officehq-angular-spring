@@ -1,0 +1,436 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4abfc730..b4bfb1a7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,7 +13,7 @@ import { DescendantFigures, NO_DESCENDANTS, Grade, Patron, PeopleService, Person
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+-import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
++import { Graces, Lateness, Rate, RateWithdrawn, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
+ import { Settings } from './settings';
+ import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+@@ -122,7 +122,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+     <app-audit />
+     <app-activity />
+     <app-duplicates />
+-    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
++    <app-rates [rates]="rates()" (saved)="rateSaved($event)" (withdrawn)="rateWithdrawn($event)" />
+     <app-grades />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
+     <app-dashboard [counts]="dashboard()" />
+@@ -2638,6 +2638,13 @@ export class People {
+     ]);
+   }
+ 
++  protected rateWithdrawn(withdrawn: RateWithdrawn): void {
++    this.rates.update((list) => [
++      ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== withdrawn.grade || r.from !== withdrawn.from),
++      ...(withdrawn.rate === null ? [] : [withdrawn.rate]),
++    ]);
++  }
++
+   protected selectClaim(id: number, selected: boolean): void {
+     this.selectedClaims.update((ids) => {
+       const next = new Set(ids);
+diff --git a/src/main/frontend/src/app/features/people/rates.service.ts b/src/main/frontend/src/app/features/people/rates.service.ts
+index 8c426fa1..bc7e9522 100644
+--- a/src/main/frontend/src/app/features/people/rates.service.ts
++++ b/src/main/frontend/src/app/features/people/rates.service.ts
+@@ -48,6 +48,14 @@ export interface RatesImported {
+   rates: Rate[];
+ }
+ 
++/** A withdrawn rate's grade and from-date, and the rate left there: its version before, or null when
++ *  it had none and is gone. */
++export interface RateWithdrawn {
++  grade: Grade;
++  from: string | null;
++  rate: Rate | null;
++}
++
+ /** A rate preview: the claims whose due would differ, and the sum of the differences with two decimals. */
+ export interface RatePreview {
+   count: number;
+@@ -264,6 +272,17 @@ export class RatesService {
+     );
+   }
+ 
++  /** Withdraw the newest version of the grade's rate from a date (null: from the beginning of time);
++   *  refused unless the user is a steward. */
++  withdraw(sheet: string, grade: Grade, from: string | null): Promise<RateWithdrawn> {
++    return firstValueFrom(
++      this.http.delete<RateWithdrawn>(`${this.url(sheet)}/${grade}`, {
++        params: from === null ? {} : { from },
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** How many OPEN and PENDING claims of people on the grade would show a different due, and the sum
+    *  of the differences, were pct the grade's rate on every date. Saves nothing. */
+   preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
+diff --git a/src/main/frontend/src/app/features/people/rates.ts b/src/main/frontend/src/app/features/people/rates.ts
+index 7bba553f..0cf64774 100644
+--- a/src/main/frontend/src/app/features/people/rates.ts
++++ b/src/main/frontend/src/app/features/people/rates.ts
+@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { Session } from '../../core/session';
+ import { GradesService } from './grades.service';
+ import { Grade } from './people.service';
+-import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
++import { Rate, RatePreview, RateWithdrawn, RatesService, rateOn } from './rates.service';
+ import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+@@ -156,6 +156,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+               <th scope="col">To</th>
+               <th scope="col">Rate (%)</th>
+               <th scope="col">Versions</th>
++              <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -166,6 +167,14 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+                 <td data-testid="rate-to">{{ (r.to ?? '') | figure }}</td>
+                 <td data-testid="rate-pct">{{ (r.pct) | figure }}</td>
+                 <td data-testid="rate-version">{{ (r.version) | figure }}</td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid="rate-withdraw"
++                    [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
++                    (click)="withdraw(r)"
++                  >Withdraw</button>
++                </td>
+               </tr>
+             }
+           </tbody>
+@@ -193,6 +202,14 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+       text-align: left;
+       font-weight: bold;
+     }
++    .visually-hidden {
++      position: absolute;
++      width: 1px;
++      height: 1px;
++      overflow: hidden;
++      clip: rect(0 0 0 0);
++      white-space: nowrap;
++    }
+     th,
+     td {
+       text-align: left;
+@@ -219,6 +236,8 @@ export class Rates {
+   });
+   /** A grade's rate was set. */
+   readonly saved = output<Rate>();
++  /** A rate's newest version was withdrawn. */
++  readonly withdrawn = output<RateWithdrawn>();
+ 
+   protected readonly grades = inject(GradesService).all;
+   protected readonly grade = signal<Grade>('A');
+@@ -240,6 +259,8 @@ export class Rates {
+   private previewSeq = 0;
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+   private submitting = false;
++  /** A withdrawal is waiting for its answer; another meanwhile is ignored. */
++  private withdrawing = false;
+ 
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+@@ -300,6 +321,25 @@ export class Rates {
+     }
+   }
+ 
++  /** Withdraw the rate's newest version: the one before it applies again, or the rate is gone. */
++  protected async withdraw(rate: Rate): Promise<void> {
++    if (this.withdrawing) return;
++    this.error.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.withdrawing = true;
++    try {
++      const result = await this.service.withdraw(sheet, rate.grade, rate.from);
++      if (this.session.sheetId() !== sheet) return;
++      this.withdrawn.emit(result);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.error.set('That rate could not be withdrawn: only a steward can withdraw a rate.');
++    } finally {
++      this.withdrawing = false;
++    }
++  }
++
+   /** Set a rate per pasted line, in order; when any line is refused none is set. Shows how many were
+    *  set; the old count is gone while it runs. */
+   protected async importRates(event: Event): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 6fdb7c50..b13c0ff7 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -110,6 +110,19 @@ public class Rate {
+         }
+     }
+ 
++    /** The terms as kept (see {@link #terms}), for an older version to keep (see {@link RateVersion}). */
++    String getStoredTerms() {
++        return terms;
++    }
++
++    /** Brings back an older version: its percent, to-date and terms as kept. */
++    void restore(RateVersion older) {
++        this.pct = older.getPct();
++        this.to = older.getTo();
++        this.terms = older.getTerms();
++        this.version = older.getVersion();
++    }
++
+     /** The terms the rate was saved with, newest first: the newest version alone, for every claim, when
+      * it was not saved forward-only. */
+     public List<Term> getTerms() {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index db704e9c..deb1396e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.SheetHistory;
+ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -108,6 +109,20 @@ public class RateController {
+         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.pctValue()));
+     }
+ 
++    /** A withdrawn rate's grade and from-date (null: from the beginning of time), and the rate left there:
++     * its version before, or null when it had none and is gone. */
++    public record WithdrawnView(String grade, LocalDate from, RateView rate) {
++    }
++
++    @DeleteMapping("/{grade}")
++    public WithdrawnView withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
++        return new WithdrawnView(grade, from,
++                service.withdraw(sheetId.trim(), user.trim(), grade, from).map(RateView::of).orElse(null));
++    }
++
+     @PostMapping("/import")
+     public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java b/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java
+new file mode 100644
+index 00000000..df04c46f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A withdrawal of a rate the grade does not have for that from-date. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class RateNotFoundException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateNotStewardException.java b/src/main/java/net/officefloor/hq/app/rate/RateNotStewardException.java
+new file mode 100644
+index 00000000..2f3fd17a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateNotStewardException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A withdrawal of a rate asked by a user who is not a steward of the sheet. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class RateNotStewardException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index f61142dd..d2c81eb3 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.Optional;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+@@ -16,6 +17,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.Role;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -25,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
+ /** The rates each grade has on each sheet, each from its from-date on (or from the beginning of time)
+  * through its to-date (or with no end).
+  * Setting a grade's rate for a from-date it already has a rate for adds a new version of that rate, which is
+- * the one in force, and keeps the value it replaces as an older version. */
++ * the one in force, and keeps the value it replaces as an older version; a steward can withdraw the newest
++ * version, so the one before it applies again. */
+ @Service
+ public class RateService {
+ 
+@@ -38,9 +42,11 @@ public class RateService {
+     private final PersonRepository people;
+     private final RateVersionRepository versions;
+     private final GradeService grades;
++    private final SettingsService settings;
+ 
+     public RateService(RateRepository rates, RateVersionRepository versions, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
+-            ClaimRepository claims, PersonRepository people, GradeService grades) {
++            ClaimRepository claims, PersonRepository people, GradeService grades, SettingsService settings) {
++        this.settings = settings;
+         this.grades = grades;
+         this.versions = versions;
+         this.chain = chain;
+@@ -88,7 +94,7 @@ public class RateService {
+             rate.setTerms(List.of(term));
+             rate = rates.saveAndFlush(rate);
+         } else {
+-            versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
++            versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo(), rate.getStoredTerms()));
+             rate.setVersion(rate.getVersion() + 1);
+             List<Rate.Term> terms = new ArrayList<>();
+             terms.add(term);
+@@ -106,6 +112,40 @@ public class RateService {
+         return rate;
+     }
+ 
++    /** Withdraws the newest version of the grade's rate from {@code from} (null: from the beginning of
++     * time): the version before it applies again, as it applied to claims; with none before it the rate is
++     * gone. The rate left, or empty when it is gone. Refused when the user is not a steward of the sheet,
++     * and when the grade has no such rate. */
++    @Transactional
++    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
++        if (!sheets.existsById(sheetId)) {
++            throw new SheetNotFoundException();
++        }
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new RateNotStewardException();
++        }
++        Rate rate = (from == null ? rates.findUndated(sheetId, grade)
++                : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)).orElseThrow(RateNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Optional<RateVersion> older = versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1);
++        Optional<Rate> left;
++        if (older.isPresent()) {
++            rate.restore(older.get());
++            versions.delete(older.get());
++            left = Optional.of(rate);
++        } else {
++            versions.deleteAll(versions.findByRateIdOrderByVersionAsc(rate.getId()));
++            rates.delete(rate);
++            left = Optional.empty();
++        }
++        rates.flush();
++        List<String> fields = new ArrayList<>(List.of("grade=" + grade));
++        if (from != null) fields.add("from=" + from);
++        audit.change("RATE_WITHDRAWN", sheetId, user, fields.toArray(String[]::new));
++        rollup.recordSince(sheetId, user, before);
++        return left;
++    }
++
+     /** How many OPEN and PENDING claims would show a different due, and by how much in all (new minus
+      * current), were {@code pct} the grade's rate on every date. */
+     public record Preview(int count, BigDecimal diff) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+index 4e34051d..13017307 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** An older version of a rate: the percent and to-date it had before a newer version replaced them. */
++/** An older version of a rate: the percent, to-date and terms it had before a newer version replaced them. */
+ @Entity
+ @Table(name = "rate_version")
+ public class RateVersion {
+@@ -30,6 +30,11 @@ public class RateVersion {
+     @Column(name = "to_date")
+     private LocalDate to;
+ 
++    /** The rate's terms while this version was its newest, as {@link Rate} keeps them; null when it
++     * applied to every claim. */
++    @Column(name = "terms", length = 4000)
++    private String terms;
++
+     protected RateVersion() {
+     }
+ 
+@@ -40,6 +45,11 @@ public class RateVersion {
+         this.to = to;
+     }
+ 
++    public RateVersion(Long rateId, int version, BigDecimal pct, LocalDate to, String terms) {
++        this(rateId, version, pct, to);
++        this.terms = terms;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -59,4 +69,8 @@ public class RateVersion {
+     public LocalDate getTo() {
+         return to;
+     }
++
++    public String getTerms() {
++        return terms;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+index 680ed461..46aebe6e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+@@ -1,10 +1,13 @@
+ package net.officefloor.hq.app.rate;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface RateVersionRepository extends JpaRepository<RateVersion, Long> {
+ 
+     /** The rate's older versions, oldest first. */
+     List<RateVersion> findByRateIdOrderByVersionAsc(Long rateId);
++
++    Optional<RateVersion> findByRateIdAndVersion(Long rateId, int version);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 66471a67..73c450e3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -158,7 +158,7 @@ public class SheetCloneService {
+             copy.setTerms(r.getTerms());
+             Long copyId = rates.save(copy).getId();
+             rateVersions.findByRateIdOrderByVersionAsc(r.getId()).forEach(v ->
+-                    rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo())));
++                    rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo(), v.getTerms())));
+         });
+         holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new SheetHoliday(toSheetId, h.getDate())));
+         retiredGrades.findBySheetIdOrderByGradeAsc(sheetId).forEach(g ->
+diff --git a/src/main/resources/db/migration/V124__rate_version_terms.sql b/src/main/resources/db/migration/V124__rate_version_terms.sql
+new file mode 100644
+index 00000000..27a8e419
+--- /dev/null
++++ b/src/main/resources/db/migration/V124__rate_version_terms.sql
+@@ -0,0 +1,4 @@
++-- An older version of a rate keeps the terms the rate had while it was the newest (see rate.terms), so
++-- withdrawing the newer version can bring it back exactly as it applied to claims. Null: it applied to
++-- every claim (and so for every version kept before this column).
++ALTER TABLE rate_version ADD COLUMN terms VARCHAR(4000);
