@@ -46,22 +46,26 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a plan to a person: refused for an amount not above 0.00, an interval below 1 day, or an end
-     *  before the start. No start means the sheet's today. */
+    /** Add a plan to a person: refused for an amount not above 0.00, neither or both of an interval and a
+     *  day of the month, an interval below 1 day, a day of the month outside 1 to 31, or an end before the
+     *  start. No start means the sheet's today. */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (amount.signum() <= 0) throw refused("The amount must be more than 0.00.");
-        if (every < 1) throw refused("Every must be a whole number of days, at least 1.");
+        if ((every == null) == (day == null)) throw refused("Give either every (days) or a day of the month.");
+        if (every != null && every < 1) throw refused("Every must be a whole number of days, at least 1.");
+        if (day != null && (day < 1 || day > 31)) throw refused("The day of the month must be 1 to 31.");
         LocalDate from = start != null ? start : sheets.today(sheetId);
         if (end.isBefore(from)) throw refused("The end date cannot be before the start date.");
-        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount.setScale(2), from, every, end));
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount.setScale(2), from, every, day,
+                end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + plan.getAmount().toPlainString() + " start=" + from + " every=" + every + " end=" + end);
+                + " amount=" + plan.getAmount().toPlainString() + " start=" + from + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return plan;
     }
 

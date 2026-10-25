@@ -28,17 +28,18 @@ public class PlanController {
 
     /** What the screen shows of a plan; the amount always has two decimals. Generated is how many claims
      *  it has made so far. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every,
+            Integer day, LocalDate end, int generated) {
         static PlanView of(Plan plan) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getEnd(), plan.getGeneratedCount());
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount());
         }
     }
 
-    /** A plan's fields as entered on the person's row; no start means the sheet's today. */
+    /** A plan's fields as entered on the person's row; no start means the sheet's today. A plan has either
+     *  every (days) or day (of the month, for a monthly plan). */
     public record PlanForm(@NotNull Long personId, @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
-            LocalDate start, @NotNull Integer every, @NotNull LocalDate end) {
+            LocalDate start, Integer every, Integer day, @NotNull LocalDate end) {
     }
 
     /** How many claims a generate made, the claims, oldest first, and the sheet's plans as they are then. */
@@ -63,7 +64,7 @@ public class PlanController {
     public PlanView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PlanForm form) {
         return PlanView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.personId(), form.amount(),
-                form.start(), form.every(), form.end()));
+                form.start(), form.every(), form.day(), form.end()));
     }
 
     /** Make the plans' claims due by the sheet's today. */

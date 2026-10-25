@@ -5,22 +5,26 @@ import { Session } from '../../core/session';
 import { ClaimView } from '../claims/claims-api';
 
 /** A person's plan: a claim of the amount (two decimals) on the start date and every `every` days after
- *  it, up to the end date (yyyy-mm-dd). Generated is how many claims it has made so far. */
+ *  it, or, for a monthly plan, on its `day` of every month from the start's month (a day beyond the
+ *  month's length falling on its last day, those before the start left out), up to the end date
+ *  (yyyy-mm-dd). Generated is how many claims it has made so far. */
 export interface PlanView {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
   generated: number;
 }
 
-/** A plan's fields as entered; a null start is the sheet's today. */
+/** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */
 export interface PlanFields {
   amount: string;
   start: string | null;
-  every: string;
+  every: string | null;
+  day: string | null;
   end: string;
 }
 
@@ -45,11 +49,12 @@ export class PlansApi {
     return firstValueFrom(this.http.get<PlanView[]>(this.url(sheetId)));
   }
 
-  /** Add a plan to a person: refused for an amount not above 0.00 with up to two decimals, an interval
-   *  that is not a whole number of at least 1, or an end before the start. */
+  /** Add a plan to a person: refused for an amount not above 0.00 with up to two decimals, neither or
+   *  both of an interval and a day of the month, an interval that is not a whole number of at least 1, a
+   *  day of the month outside 1 to 31, or an end before the start. */
   add(sheetId: string, personId: number, f: PlanFields): Promise<PlanView> {
     return firstValueFrom(this.http.post<PlanView>(this.url(sheetId),
-      { personId, amount: f.amount, start: f.start, every: f.every, end: f.end }));
+      { personId, amount: f.amount, start: f.start, every: f.every, day: f.day, end: f.end }));
   }
 
   /** Make every plan's claims due by the sheet's today. */

@@ -5,6 +5,7 @@ import { Plans } from './plans-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 const EVERY = /^\d{1,6}$/;
+const DAY = /^\d{1,2}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's plans, each with how many claims it has made so far, and a form to add one.
@@ -15,7 +16,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
     <ul [attr.aria-label]="'Plans of ' + personName()">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          <span data-testid="plan-amount-shown">{{ pl.amount }}</span> every {{ pl.every }} days
+          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+          @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>
         </li>
       }
@@ -27,6 +29,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <input [id]="'plan-form-start-' + personId()" type="date" data-testid="plan-form-start" formControlName="start" />
       <label [for]="'plan-form-every-' + personId()">Every (days)</label>
       <input [id]="'plan-form-every-' + personId()" data-testid="plan-form-every" formControlName="every" inputmode="numeric" />
+      <label [for]="'plan-form-day-' + personId()">Or day of month</label>
+      <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" formControlName="day" inputmode="numeric" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit" [disabled]="saving()">Add plan</button>
@@ -49,6 +53,7 @@ export class PersonPlans {
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
     every: new FormControl('', { nonNullable: true }),
+    day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
   });
   protected readonly saving = signal(false);
@@ -60,7 +65,7 @@ export class PersonPlans {
     effect(() => {
       this.session.loaded();
       this.error.set('');
-      this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
   }
 
@@ -73,13 +78,22 @@ export class PersonPlans {
     const amount = v.amount.trim();
     const start = v.start.trim();
     const every = v.every.trim();
+    const day = v.day.trim();
     const end = v.end.trim();
     if (!AMOUNT.test(amount) || Number(amount) <= 0) {
       this.error.set('Enter an amount above 0.00 with up to two decimals.');
       return;
     }
-    if (!EVERY.test(every) || Number(every) < 1) {
+    if ((every === '') === (day === '')) {
+      this.error.set('Enter either every (days) or a day of the month.');
+      return;
+    }
+    if (every !== '' && (!EVERY.test(every) || Number(every) < 1)) {
       this.error.set('Enter every as a whole number of days, at least 1.');
+      return;
+    }
+    if (day !== '' && (!DAY.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Enter the day of the month as a whole number from 1 to 31.');
       return;
     }
     if ((start !== '' && !DATE.test(start)) || !DATE.test(end)) {
@@ -92,7 +106,7 @@ export class PersonPlans {
     }
     this.saving.set(true);
     try {
-      await this.store.add(sheet.id, this.personId(), { amount, start: start || null, every, end });
+      await this.store.add(sheet.id, this.personId(), { amount, start: start || null, every: every || null, day: day || null, end });
     } catch {
       if (this.session.sheet()?.id === sheet.id) this.error.set('The plan could not be added.');
     } finally {
