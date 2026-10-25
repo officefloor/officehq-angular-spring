@@ -120,6 +120,12 @@ export interface BulkRetired {
   people: Person[];
 }
 
+/** How a bulk hold went: how many people it held, and those people as saved. */
+export interface BulkHeld {
+  held: number;
+  people: Person[];
+}
+
 export interface PersonFields {
   name: string;
   grade: Grade;
@@ -259,6 +265,16 @@ export class PeopleService {
   bulkRetire(sheet: string, personIds: number[], from: string | null): Promise<BulkRetired> {
     return firstValueFrom(
       this.http.post<BulkRetired>(`${this.url(sheet)}/bulk-retire`, { personIds, from }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Put each of the people on a hold from `from` (the sheet's today when null) to `to` (no end when
+   *  null), in list order, each as the row's hold would. */
+  bulkHold(sheet: string, personIds: number[], from: string | null, to: string | null): Promise<BulkHeld> {
+    return firstValueFrom(
+      this.http.post<BulkHeld>(`${this.url(sheet)}/bulk-hold`, { personIds, from, to }, {
         headers: this.session.headers(),
       }),
     );

@@ -185,6 +185,16 @@ public class PersonController {
     public record BulkRetireView(int retired, List<PersonView> people) {
     }
 
+    /** The people {@code personIds} to hold together, from {@code from} (the sheet's today when left
+     * out) to {@code to} (no end when left out). */
+    public record BulkHoldRequest(@NotNull @Size(max = 1000) List<@NotNull Long> personIds, LocalDate from,
+            LocalDate to) {
+    }
+
+    /** How a bulk hold went: how many people it held, and those people. */
+    public record BulkHoldView(int held, List<PersonView> people) {
+    }
+
     /** The pasted lines of {@code name,grade,terms,contact}. */
     public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
     }
@@ -365,6 +375,15 @@ public class PersonController {
             @RequestBody @Valid BulkRetireRequest request) {
         List<Person> changed = bulk.retire(sheetId.trim(), user.trim(), request.personIds(), request.from());
         return new BulkRetireView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
+    }
+
+    @PostMapping("/bulk-hold")
+    public BulkHoldView bulkHold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkHoldRequest request) {
+        List<Person> changed = bulk.hold(sheetId.trim(), user.trim(), request.personIds(), request.from(),
+                request.to());
+        return new BulkHoldView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
     }
 
     @PostMapping("/{personId}/retire")

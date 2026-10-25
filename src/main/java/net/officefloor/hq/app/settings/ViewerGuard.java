@@ -28,7 +28,7 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
         registry.addInterceptor(this)
                 .addPathPatterns("/api/sheets/*/**")
                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*",
-                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/plans/generate",
+                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/people/bulk-hold", "/api/sheets/*/plans/generate",
                         "/api/sheets/*/periods/generate");
     }
 
