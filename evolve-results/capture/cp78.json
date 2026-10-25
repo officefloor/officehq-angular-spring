@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f806a84b7e68130ef885ff4da9408390ef2b01db",
+  "reset_sha": "",
+  "preagent_sha": "242e88f0142c55d570a7850c7dea8b864fe55dfe",
+  "prev_sha": "242e88f0142c55d570a7850c7dea8b864fe55dfe",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5286116,
+    "input_tokens": 26,
+    "output_tokens": 4533,
+    "cache_read_tokens": 451758,
+    "cache_creation_tokens": 43437,
+    "num_turns": 15,
+    "duration_ms": 244092,
+    "duration_api_ms": 55903,
+    "model": "claude-opus-5-5",
+    "session_id": "2690df32-b483-47a9-be9d-986096428b96",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows the due on their open and pending claims, split into three age groups. All 4 tests in `bin/e2e` pass.\n\n**What it shows:** three new cells on each person row, `person-aged-0-30`, `person-aged-31-60` and `person-aged-61`, under the headings \"Due aged 0\u201330 days\", \"31\u201360\" and \"61+\".\n\n**How it works:** the person row's figures are already worked out in the browser, so this needed only a front-end change, all in `src/main/frontend/src/app/features/people/people.ts`. There is no new stored data, no server change and no audit record.\n- Only open and pending claims are included. They must also count in the totals, so claims on hold, after retirement or deferred are left out unless a statement binds them. Settled claims are left out too.\n- Each claim's due is worked out exactly as the overdue figure already is, including any late charge and the floor. A claim with no due figure is skipped.\n- A claim's age is the number of days from its date to the sheet's today. Up to 30 days, or a date after today, goes in the first group; 31\u201360 in the second; 61 or more in the third.\n\n**Decision for you:** the three amounts are not limited by the sheet's cap, but the person's due-total is. So when the cap applies, the three can add up to more than the due-total shown on the same row. The request didn't say either way and the tests don't cover a cap. If they should match the due-total, I can scale or limit them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5286116,
+        "num_turns": 15,
+        "duration_ms": 244092,
+        "duration_api_ms": 55903,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
