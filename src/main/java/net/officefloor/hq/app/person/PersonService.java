@@ -160,9 +160,10 @@ public class PersonService {
         }
         // The terms are recorded when the save moves the terms shown, those in force today, changes
         // the undated terms to other than those shown before it, or gives other terms from a date.
+        // Undated terms saved other than those shown are recorded even when the undated terms were
+        // already those: dated terms then still decide what is shown.
         Integer termsBefore = person.termsOn(today);
-        boolean undatedChanged = termsFrom == null && !Objects.equals(person.getTerms(), terms)
-                && !Objects.equals(termsBefore, terms);
+        boolean undatedChanged = termsFrom == null && !Objects.equals(termsBefore, terms);
         boolean datedChanged = termsFrom != null && person.getDatedTerms().stream()
                 .noneMatch(t -> termsFrom.equals(t.getFrom()) && Objects.equals(t.getTerms(), terms));
         if (termsFrom == null) {
