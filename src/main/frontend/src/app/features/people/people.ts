@@ -13,6 +13,7 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { StatementView, StatementsApi } from '../statements/statements-api';
+import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
 
@@ -27,8 +28,10 @@ import { QuickAdd } from './quick-add';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, Summary],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, Summary, SheetHeader],
   template: `
+    <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+      [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
