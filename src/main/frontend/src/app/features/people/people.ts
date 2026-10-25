@@ -31,6 +31,7 @@ import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
+import { TreeSearch } from '../summary/tree-search';
 import { GeneratePlans } from '../plans/generate-plans';
 import { PersonPlans } from '../plans/person-plans';
 
@@ -40,13 +41,14 @@ import { PersonPlans } from '../plans/person-plans';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList, PersonPlans, GeneratePlans],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, TreeSearch, PoolsList, PersonPlans, GeneratePlans],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
       [ownOverdueTotal]="money(sheetOverdue().cents)" />
+    <app-tree-search />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />

@@ -28,3 +28,22 @@ export class ConsolidatedApi {
       { context: new HttpContext().set(LIVE_READ, true) }));
   }
 }
+
+/** A person found over a sheet's tree: their sheet, name and due-total (two decimals, or n/a). */
+export interface TreeSearchHit {
+  sheetId: string;
+  name: string;
+  dueTotal: string;
+}
+
+// The people over a sheet's tree whose name or an alias contains the text, case ignored: the sheet's
+// own first in list order, then the other sheets' by sheet id. Read live, as the store holds them now.
+@Injectable({ providedIn: 'root' })
+export class TreeSearchApi {
+  private readonly http = inject(HttpClient);
+
+  search(sheetId: string, text: string): Promise<TreeSearchHit[]> {
+    return firstValueFrom(this.http.get<TreeSearchHit[]>(`/api/sheets/${encodeURIComponent(sheetId)}/tree-search`,
+      { params: { text }, context: new HttpContext().set(LIVE_READ, true) }));
+  }
+}
