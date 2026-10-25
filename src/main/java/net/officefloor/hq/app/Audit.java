@@ -6,9 +6,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.person.Person;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -83,6 +87,40 @@ public class Audit {
         ActingFor delegations = actingFor.getIfAvailable();
         if (delegations == null) return "";
         return delegations.actingFor(head.group(2), head.group(3)).map((steward) -> " for=" + steward).orElse("");
+    }
+
+    /** A record's name= and person= fields: each value runs up to the next field or the end. */
+    private static final Pattern ABOUT = Pattern.compile(" (?:name|person)=(.*?)(?= [a-z][a-z-]*=|$)");
+
+    /**
+     * The sheet's records exactly as the file holds them, newest first. With a name, only the
+     * records carrying name=<the name> or person=<the name>, compared as names are compared.
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        List<String> all;
+        try {
+            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String key = name == null || name.isBlank() ? null : Person.keyOf(name);
+        List<String> found = new ArrayList<>();
+        for (String line : all) {
+            Matcher head = HEAD.matcher(line);
+            if (!head.find() || !head.group(2).equals(sheetId)) continue;
+            if (key != null && !isAbout(line.substring(head.end()), key)) continue;
+            found.add(line);
+        }
+        Collections.reverse(found);
+        return found;
+    }
+
+    private static boolean isAbout(String fields, String key) {
+        Matcher about = ABOUT.matcher(fields);
+        while (about.find()) {
+            if (Person.keyOf(about.group(1)).equals(key)) return true;
+        }
+        return false;
     }
 
     /** Truncate the audit file. */
