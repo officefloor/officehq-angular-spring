@@ -1,0 +1,27 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 21cb3c53..a74e786a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -526,13 +526,17 @@ export class People {
+       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+   }
+ 
+-  /** The person's backing: their patrons' due-totals added up, skipping those that are n/a. */
++  /** The person's backing: their patrons' settled figures added up, over their SETTLED claims dated
++   *  within the 90 days up to and including the sheet's today, each at its frozen figure; 0.00 with none. */
+   protected backing(person: PersonView): string {
+-    const byId = new Map(this.people().map((p) => [p.id, p]));
++    const today = this.session.sheet()?.today;
++    if (today === undefined) return money(0);
++    const from = daysBefore(today, 89);
++    const patrons = new Set(person.patronIds);
+     let total = 0;
+-    for (const id of person.patronIds) {
+-      const patron = byId.get(id);
+-      if (patron) total += this.dueCentsOf(patron) ?? 0;
++    for (const c of this.claims()) {
++      if (patrons.has(c.personId) && c.status === 'SETTLED' && c.settledDue !== null
++        && c.date >= from && c.date <= today) total += cents(c.settledDue);
+     }
+     return money(total);
+   }
