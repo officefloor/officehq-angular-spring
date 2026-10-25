@@ -141,6 +141,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<BulkGradeView>(`${this.url(sheetId)}/grade`, { ids, grade, from }));
   }
 
+  /** Swap the person with the one above (up) or below (down) them in the list; refused with 409 for
+   *  the top person moving up and the bottom person moving down. */
+  move(sheetId: string, id: number, direction: 'up' | 'down'): Promise<void> {
+    return firstValueFrom(this.http.post<void>(`${this.url(sheetId)}/${id}/move/${direction}`, {}));
+  }
+
   /** Retire the person from a date; null means the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/retire`, { from }));

@@ -44,10 +44,10 @@ public class PersonService {
         this.audit = audit;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in list order. */
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findInListOrder(sheetId);
     }
 
     /** The ids of the sheet's people whose name or an alias is used on another sheet of its tree. */
@@ -280,6 +280,31 @@ public class PersonService {
                 + " from=" + dated);
         rollup.recordChanges(user, before);
         return saved;
+    }
+
+    /** Swap the person with the one above them in the list (up) or below them (down); refused for the
+     *  top person moving up and the bottom person moving down. */
+    @Transactional
+    public void move(String sheetId, String user, long id, boolean up) {
+        sheets.lock(sheetId);
+        List<Person> listed = people.findInListOrder(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) if (listed.get(i).getId() == id) at = i;
+        if (at < 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The top person cannot move up." : "The bottom person cannot move down.");
+        }
+        Person moving = listed.get(at);
+        Person other = listed.get(to);
+        long movingPlace = moving.getPosition();
+        long otherPlace = other.getPosition();
+        String name = moving.getName();
+        people.placeAt(moving.getId(), otherPlace);
+        people.placeAt(other.getId(), movingPlace);
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + name
+                + " position=" + (to + 1));
     }
 
     /** The person's audit line, with the grade in force on the sheet's today, then the fields given. */

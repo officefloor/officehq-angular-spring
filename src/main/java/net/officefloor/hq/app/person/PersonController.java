@@ -190,6 +190,15 @@ public class PersonController {
         return new BulkGradeView(changed.stream().map(p -> view(p, user)).toList(), changed.size());
     }
 
+    /** Swap a person with the one above them in the list ("up") or below them ("down"). */
+    @PostMapping("/{id}/move/{direction}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void move(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @PathVariable @Pattern(regexp = "up|down") String direction,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        service.move(sheetId.trim(), SignedInUser.name(user), id, direction.equals("up"));
+    }
+
     /** Retire a person from a date. */
     @PostMapping("/{id}/retire")
     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,

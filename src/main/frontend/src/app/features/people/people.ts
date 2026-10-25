@@ -201,7 +201,13 @@ import { Consolidated } from '../summary/consolidated';
                   <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
                     (change)="selectPerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
                 </td>
-                <td data-testid="person-name">{{ p.name }}</td>
+                <td>
+                  <span data-testid="person-name">{{ p.name }}</span>
+                  <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                    [disabled]="moving() === p.id" [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                  <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+                    [disabled]="moving() === p.id" [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
+                </td>
                 <td>
                   <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
                   <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
@@ -368,6 +374,8 @@ export class People {
   protected readonly showRetired = signal(false);
   /** The people listed: the retired ones only while show retired is on. */
   protected readonly shownPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
+  /** The person being moved up or down the list. */
+  protected readonly moving = signal<number | null>(null);
   /** The person being retired. */
   protected readonly retiring = signal<number | null>(null);
   /** The person an alias is being added to. */
@@ -834,6 +842,28 @@ export class People {
 
   protected clearPersonError(personId: number): void {
     if (this.personError()?.id === personId) this.personError.set(null);
+  }
+
+  /** Swap the person with the one above or below them in the list, then show the list as it now stands. */
+  protected async move(person: PersonView, direction: 'up' | 'down'): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.moving() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.moving.set(person.id);
+    try {
+      await this.api.move(sheet.id, person.id, direction);
+      const people = await this.api.list(sheet.id);
+      if (this.session.sheet()?.id === sheet.id) this.people.set(people);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 409
+          ? (direction === 'up' ? 'The top person cannot move up.' : 'The bottom person cannot move down.')
+          : 'The person could not be moved.' });
+      }
+    } finally {
+      this.moving.set(null);
+    }
   }
 
   /** Retire the person from the date entered, or the sheet's today when it is left blank. */

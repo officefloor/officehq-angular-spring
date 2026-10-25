@@ -829,7 +829,7 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public RatePreview previewRate(String sheetId, Grade grade, BigDecimal pct) {
         Map<Long, Person> byId = new HashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
+        for (Person p : people.findInListOrder(sheetId)) byId.put(p.getId(), p);
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {

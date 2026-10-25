@@ -105,7 +105,7 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findInListOrder(sheetId)) {
             Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;

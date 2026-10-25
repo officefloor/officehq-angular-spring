@@ -102,7 +102,7 @@ public class BulkChangeService {
 
     private List<Long> inListOrder(String sheetId, Set<Long> ids) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> listed = people.findInListOrder(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
         return claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))

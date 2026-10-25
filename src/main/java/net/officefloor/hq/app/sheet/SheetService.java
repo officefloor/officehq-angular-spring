@@ -127,6 +127,14 @@ public class SheetService {
         return used + 1;
     }
 
+    /** Load the sheet and keep it locked until the transaction ends, so changes made under the lock are
+     *  taken one after the other. */
+    @Transactional
+    public void lock(String id) {
+        load(id);
+        sheets.findForUpdate(id);
+    }
+
     private Sheet create(String id) {
         try {
             // The only use of the real clock: a new sheet's today starts as the real date.

@@ -74,6 +74,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's place in the list, lowest first; null until they are moved, when their id is their place. */
+    @Column(name = "position")
+    private Long position;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -263,6 +267,11 @@ public class Person {
     /** A contact as stored: without surrounding spaces, lower-cased; null when blank or none. */
     public static String contactOf(String contact) {
         return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** The person's place in the list, lowest first. */
+    public long getPosition() {
+        return position != null ? position : id;
     }
 
     public long getVersion() {

@@ -166,7 +166,7 @@ public class PeriodService {
 
     /** Close (or soft-close) a period now, fixing its figures; the audit line marks a close the today change made. */
     private Period closeNow(String sheetId, String user, Period period, boolean auto, boolean soft) {
-        Map<Long, Person> peopleById = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> peopleById = people.findInListOrder(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         LocalDate today = sheets.today(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);

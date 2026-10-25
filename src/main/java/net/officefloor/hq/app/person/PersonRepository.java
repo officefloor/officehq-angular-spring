@@ -6,13 +6,20 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    /** The sheet's people in the order they were added. */
-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+    /** The sheet's people in list order: by their place, one who was never moved in their id's place. */
+    @Query("select p from Person p where p.sheetId = :sheetId order by coalesce(p.position, p.id), p.id")
+    List<Person> findInListOrder(@Param("sheetId") String sheetId);
+
+    /** Put the person in a place in the list, without bumping their version. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Person p set p.position = :position where p.id = :id")
+    int placeAt(@Param("id") Long id, @Param("position") long position);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 

@@ -38,7 +38,7 @@ public class BulkGradeService {
         if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) return List.of();
         Set<Long> selected = new LinkedHashSet<>(ids);
         List<Person> changed = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findInListOrder(sheetId)) {
             if (!selected.contains(person.getId())) continue;
             try {
                 changed.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
