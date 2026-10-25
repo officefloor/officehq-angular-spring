@@ -1,0 +1,123 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 6c38b27c..691e9fda 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -231,6 +231,8 @@ export class PersonClaims {
+           ? `Only a steward who did not open this claim can ${action} it.`
+           : forbidden && action === 'resettle'
+           ? 'Only a steward can re-settle this claim.'
++          : forbidden && action === 'void' && claim.status === 'SETTLED'
++          ? 'Only a steward can void a settled claim.'
+           : forbidden && action === 'settle' && claim.openedBy === this.session.user()
+           ? 'You opened this claim, so someone else must settle it.'
+           : forbidden
+@@ -241,6 +243,8 @@ export class PersonClaims {
+             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
+           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
+             ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
++          : action === 'void' && claim.status === 'SETTLED'
++            ? 'A settled claim can only be voided within 7 days of its settlement.'
+             : `This claim cannot be ${PAST[action]} from its status.`;
+         this.claimError.set({ id: claim.id, message });
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6f5db237..333c605a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -175,6 +175,13 @@ public class Claim {
+         return then;
+     }
+ 
++    /** The day the claim was last settled, as its log records it; null when it never was. */
++    public LocalDate settledOn() {
++        LocalDate on = null;
++        for (ClaimLogLine line : log) if (line.getStatus() == ClaimStatus.SETTLED) on = line.getOn();
++        return on;
++    }
++
+     /** Log the claim's status now: who gave it, the sheet's today and its due (null: n/a) then. */
+     public void logStatus(String by, LocalDate on, BigDecimal due) {
+         log.add(new ClaimLogLine(status, by, on, due));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index b6d0014d..f9b83c7a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -218,7 +218,7 @@ public class ClaimController {
+         return ClaimView.of(service.reassign(sheetId.trim(), SignedInUser.name(user), id, form.personId()));
+     }
+ 
+-    /** Void a draft or open (or pending) claim. */
++    /** Void a draft or open (or pending) claim, or, as a steward, a settled one within 7 days of its settlement. */
+     @PostMapping("/claims/{id}/void")
+     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e559e6ae..0118aed7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -121,12 +121,16 @@ public class ClaimService {
+         Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+         refuseIfClosed(sheetId, claim.getDate());
+-        if (!claim.getStatus().canBecome(next)) {
++        boolean voidingSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
++        if (voidingSettled) {
++            refuseUnlessSettledVoidable(sheetId, user, claim);
++        } else if (!claim.getStatus().canBecome(next)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
++        } else {
++            settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(next),
++                    "Your role may not " + ACTIONS.get(next) + " a claim on this sheet.");
+         }
+-        settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(next),
+-                "Your role may not " + ACTIONS.get(next) + " a claim on this sheet.");
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then.");
+@@ -153,6 +157,8 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED) {
+             recordChange(event, user, person, saved, number, " due=" + text(saved.getSettledDue()));
+             notifyWatchers(user, person, saved);
++        } else if (voidingSettled) {
++            recordChange(event, user, person, saved, number, " reversed=" + text(saved.getSettledDue()));
+         } else {
+             recordChange(event, user, person, saved, number, "");
+         }
+@@ -361,6 +367,23 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** How many days after its settlement a steward may still void a SETTLED claim. */
++    private static final int VOID_SETTLED_DAYS = 7;
++
++    /** Refuse voiding a SETTLED claim unless the user is a steward of the sheet and the sheet's today is
++     *  within {@value #VOID_SETTLED_DAYS} days of the claim's settlement, as its status log records it. */
++    private void refuseUnlessSettledVoidable(String sheetId, String user, Claim claim) {
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward voids a settled claim.");
++        }
++        LocalDate settledOn = claim.settledOn();
++        LocalDate today = sheets.today(sheetId);
++        if (settledOn == null || today == null || today.isAfter(settledOn.plusDays(VOID_SETTLED_DAYS))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A settled claim can only be voided within " + VOID_SETTLED_DAYS + " days of its settlement.");
++        }
++    }
++
+     /** The permission matrix's action for each status a claim is moved to by opening, settling or voiding it. */
+     private static final Map<ClaimStatus, String> ACTIONS = Map.of(
+             ClaimStatus.OPEN, "open", ClaimStatus.SETTLED, "settle", ClaimStatus.PENDING, "settle",
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 0a7c9bcf..b5ce2a72 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.claim;
+ 
+-/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID.
++/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID, and a steward
++ *  may void a SETTLED one within 7 days of its settlement.
+  *  A clerk's settling above the clerk limit leaves an OPEN claim PENDING, which a steward approves
+  *  (SETTLED) or rejects (OPEN again); a PENDING claim is otherwise handled as an OPEN one. */
+ public enum ClaimStatus {
