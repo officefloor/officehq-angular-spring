@@ -645,6 +645,14 @@ import { FigurePipe } from '../../core/figure.pipe';
                   >
                     Cancel statement
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-export-statement"
+                    [attr.aria-label]="'Download the last statement of ' + p.name"
+                    (click)="exportStatement(p)"
+                  >
+                    Download statement
+                  </button>
                   <label [for]="'person-inline-grade-' + p.id">Grade from today</label>
                   <select
                     [id]="'person-inline-grade-' + p.id"
@@ -2004,6 +2012,20 @@ export class People {
       }
     }
     this.downloadCsv('claims.csv', lines);
+  }
+
+  /** Download the person's statement as a CSV file: each claim of theirs their last statement bound,
+   *  oldest first, with number, date, amount, the bound figure as the claim shows it, and status. */
+  protected async exportStatement(person: Person): Promise<void> {
+    if (!(await this.readDone())) return;
+    const last = this.lastStatementOf(person.id);
+    const lines = [['number', 'date', 'amount', 'figure', 'status']];
+    for (const c of [...this.claimsOf(person.id)].reverse()) {
+      if (last === null || !c.stated || c.statedBy !== last.id) continue;
+      const figure = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
+      lines.push([c.number ?? '', c.date, c.amount, figure === null ? 'n/a' : money(figure), c.status]);
+    }
+    this.downloadCsv('statement.csv', lines);
   }
 
   /** Wait for the sheet's last read, as of the date set when one is, to be shown, so an export taken

@@ -36,6 +36,8 @@ export interface Claim {
   /** What was due on it as it showed when bound, late charge and floor included, with two decimals;
    *  null while unbound, when it had no figure then, and when bound before this was kept. */
   statedShown: string | null;
+  /** The id of the statement that bound it; null while unbound. */
+  statedBy: number | null;
   /** On a correction (a claim with a negative amount), the number of the SETTLED claim of the same
    *  person it corrects; null on any other claim. */
   corrects: string | null;

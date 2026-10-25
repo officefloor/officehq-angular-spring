@@ -150,17 +150,19 @@ public class PersonService {
         if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
-        // The terms are recorded when the save moves the terms shown, those in force today, or changes
-        // the undated terms to other than those shown before it.
+        // The terms are recorded when the save moves the terms shown, those in force today, changes
+        // the undated terms to other than those shown before it, or gives other terms from a date.
         Integer termsBefore = person.termsOn(today);
         boolean undatedChanged = termsFrom == null && !Objects.equals(person.getTerms(), terms)
                 && !Objects.equals(termsBefore, terms);
+        boolean datedChanged = termsFrom != null && person.getDatedTerms().stream()
+                .noneMatch(t -> termsFrom.equals(t.getFrom()) && Objects.equals(t.getTerms(), terms));
         if (termsFrom == null) {
             person.setTerms(terms);
         } else {
             person.setTerms(terms, termsFrom);
         }
-        boolean termsChanged = undatedChanged || !Objects.equals(termsBefore, person.termsOn(today));
+        boolean termsChanged = undatedChanged || datedChanged || !Objects.equals(termsBefore, person.termsOn(today));
         boolean contactChanged = !Objects.equals(person.getContact(), Person.contactOf(contact));
         person.setContact(contact);
         person.setTags(tags);
