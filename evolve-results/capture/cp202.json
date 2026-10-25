@@ -1,0 +1,64 @@
+{
+  "checkpoint": 202,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Two snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTwo snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e70897ff5efdce01b060ef217c08a7eae5e944c5",
+  "reset_sha": "",
+  "preagent_sha": "4fb721008d0815bb51fc4e9942c0f6010cc1218a",
+  "prev_sha": "4fb721008d0815bb51fc4e9942c0f6010cc1218a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7732112,
+    "input_tokens": 42,
+    "output_tokens": 7938,
+    "cache_read_tokens": 911856,
+    "cache_creation_tokens": 53989,
+    "num_turns": 22,
+    "duration_ms": 485871,
+    "duration_api_ms": 84880,
+    "model": "claude-opus-5-5",
+    "session_id": "6eff0700-ad13-45c3-b4c6-41311f881621",
+    "stop_reason": "success",
+    "result_text": "The snapshot comparison is in and `bin/e2e` passes all 4 tests.\n\n**What it does:** There's a new \"Compare snapshots\" section on the screen with a from-date field, a to-date field and a Compare button. Pressing Compare shows one line per person, in the order they're listed: `<name> <then> <now>`.\n- **then** is the due-total in the snapshot written when the sheet's today was moved off the from-date. It's empty if no such snapshot exists.\n- **now** is the same for the to-date. If the to-date is blank, it's the person's due-total today (or `n/a`, as their row shows it).\n- If the same day has more than one snapshot, the last one written is used.\n- Lines are trimmed, so a missing figure leaves no trailing space.\n\n**How it's built:** All the changes are in `src/main/frontend/src/app/features/people/people.ts`. The server already stored snapshots and had an endpoint for them, so I didn't change the server or the database.\n\n**One fix along the way:** Changing the sheet's today only re-read the periods, not the snapshots. So the screen didn't have the snapshots that had just been written, and the comparison came back blank. Compare now fetches the snapshots fresh each time it's pressed, which also picks up changes made by other users.\n\n**Choices you may want to change:**\n- If the from-date has no snapshot but the to-date does, the line has two spaces after the name (e.g. `Ada  2.00`), following the `<name> <then> <now>` format literally. The request only rules out a trailing space and the test doesn't cover this case.\n- \"List order\" means the people the table currently shows: retired people are left out unless \"show retired\" is on, and the chosen sort applies.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7732112,
+        "num_turns": 22,
+        "duration_ms": 485871,
+        "duration_api_ms": 84880,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp202.agent.jsonl",
+  "agent_diff_file": "cp202.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
