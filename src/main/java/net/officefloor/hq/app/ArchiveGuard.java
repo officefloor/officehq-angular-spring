@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Refuses every change asked for on an archived sheet: any request on a sheet other than reading it
  * (a GET, or loading the sheet) is refused before it reaches its controller, so it writes nothing.
  * As for a viewer, the bulk changes are let through and answered with every selected claim refused
- * (see {@code BulkChangeService}).
+ * (see {@code BulkChangeService}), and the bulk grade with no one changed (see {@code BulkGradeService}).
  */
 @Component
 public class ArchiveGuard implements HandlerInterceptor {

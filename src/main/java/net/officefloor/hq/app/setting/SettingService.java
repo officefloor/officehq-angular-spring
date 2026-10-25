@@ -73,6 +73,10 @@ public class SettingService implements ActingFor {
      *  these days, the period is closed; no value means off. Not dated. */
     public static final String GRACE_DAYS = "grace-days";
 
+    /** The key of the entry date: while it is set, a new claim given no date is dated it instead of the
+     *  sheet's today; no value means off. Not dated. */
+    public static final String ENTRY_DATE = "entry-date";
+
     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 
@@ -283,6 +287,39 @@ public class SettingService implements ActingFor {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PERIOD_NUMBERING_FROM
+                + " value=" + (date == null ? "" : date.toString()));
+        return date;
+    }
+
+    /** The sheet's entry date, or null when it is blank (off: a new claim is dated the sheet's today). */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, ENTRY_DATE).map((s) -> LocalDate.parse(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's entry date; null clears it, so a new claim given no date is dated the sheet's today.
+     *  Claims already added keep their dates. */
+    @Transactional
+    public LocalDate setEntryDate(String sheetId, String user, LocalDate date) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, ENTRY_DATE).orElse(null);
+        try {
+            if (date == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, ENTRY_DATE, date.toString()));
+            } else {
+                setting.setValue(date.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + ENTRY_DATE
                 + " value=" + (date == null ? "" : date.toString()));
         return date;
     }

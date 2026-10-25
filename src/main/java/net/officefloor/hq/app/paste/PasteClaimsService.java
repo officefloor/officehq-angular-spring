@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PasteClaimsService {
 
-    /** A pasted line, read: the person it names and the claim's fields (no date: the sheet's today). */
+    /** A pasted line, read: the person it names and the claim's fields (no date: the sheet's entry date, else its today). */
     private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
     }
 

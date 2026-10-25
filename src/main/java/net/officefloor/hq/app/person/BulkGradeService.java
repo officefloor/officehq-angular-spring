@@ -6,6 +6,9 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,16 +20,22 @@ public class BulkGradeService {
 
     private final PersonService service;
     private final PersonRepository people;
+    private final SettingService settings;
+    private final SheetRepository sheets;
 
-    public BulkGradeService(PersonService service, PersonRepository people) {
+    public BulkGradeService(PersonService service, PersonRepository people, SettingService settings,
+            SheetRepository sheets) {
         this.service = service;
         this.people = people;
+        this.settings = settings;
+        this.sheets = sheets;
     }
 
     /** Give the people of these ids the grade from the from-date (none: the sheet's today), in list
      *  order: the order they were added. An id not of the sheet is left out. The people changed, in
-     *  the order they were changed. */
+     *  the order they were changed. A viewer changes no one, nor does anyone on an archived sheet. */
     public List<Person> grade(String sheetId, String user, Collection<Long> ids, Grade grade, LocalDate from) {
+        if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) return List.of();
         Set<Long> selected = new LinkedHashSet<>(ids);
         List<Person> changed = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {

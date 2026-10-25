@@ -67,13 +67,14 @@ public class ClaimService {
         return person.getTerms() != null ? person.getTerms() : settings.terms(sheetId, person.gradeOn(date), date);
     }
 
-    /** Add a claim to a person; a claim with no date is dated the sheet's today. A claim dated inside a
+    /** Add a claim to a person; a claim with no date is dated the sheet's entry date while it is set,
+     *  else the sheet's today. A claim dated inside a
      *  soft-closed period is a late entry, audited after its adding. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         Person person = person(sheetId, personId);
-        LocalDate dated = dateOr(sheetId, date);
+        LocalDate dated = date != null ? date : entryDateOr(sheetId);
         refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
@@ -643,6 +644,12 @@ public class ClaimService {
 
     private LocalDate dateOr(String sheetId, LocalDate date) {
         return date != null ? date : sheets.today(sheetId);
+    }
+
+    /** The date a new claim given none takes: the sheet's entry date while it is set, else its today. */
+    private LocalDate entryDateOr(String sheetId) {
+        LocalDate entry = settings.entryDate(sheetId);
+        return entry != null ? entry : sheets.today(sheetId);
     }
 
     private static String noteOf(String note) {

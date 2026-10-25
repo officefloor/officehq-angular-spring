@@ -255,8 +255,8 @@ export class PersonClaims {
 
   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
    *  sheet's today changes. A claim that cannot be edited (not a draft, or dated inside a closed period)
-   *  is refused and takes no lock, as is a viewer's edit. A claim another user's editor locks is refused
-   *  too, the editor showing its values without the lock; its save is refused while the lock holds. */
+   *  is refused and takes no lock. A viewer's edit, and a claim another user's editor locks, are refused
+   *  too, the editor showing its values without the lock; its save is refused. */
   protected async edit(claim: ClaimView): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -298,13 +298,18 @@ export class PersonClaims {
         this.claimError.set({ id: claim.id, message: 'Someone else is editing this claim, so it cannot be edited until they save or cancel.' });
         return;
       }
+      if (status === 403) {
+        // A role that may not edit sees the claim's values in the editor; its save is refused too.
+        if (was !== null && was !== claim.id) this.release(sheetId, was);
+        this.fillUntyped(claim);
+        this.claimError.set({ id: claim.id, message: 'Your role may not edit a claim on this sheet.' });
+        return;
+      }
       // Refused: the editor is back as it was.
       this.setEditing(was);
       this.filledFor = filled;
       this.form.setValue(typed, { emitEvent: false });
-      const message = status === 403
-        ? 'Your role may not edit a claim on this sheet.'
-        : periodOf(this.periods(), claim.date)?.closed
+      const message = periodOf(this.periods(), claim.date)?.closed
         ? 'This claim is dated inside a closed period, so it cannot be edited.'
         : 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
       this.claimError.set({ id: claim.id, message });

@@ -49,7 +49,8 @@ function settled(control: AbstractControl): void {
 // the sheet's today.
 // The permission matrix names, for each of open, settle, void, reassign, close and reopen, the roles that
 // may take it, comma separated (blank: the standing rule); it is not dated. Nor are the grace days (once the
-// sheet's today is changed to after an open period's to-date plus them, the period is closed; blank: off).
+// sheet's today is changed to after an open period's to-date plus them, the period is closed; blank: off),
+// nor the entry date (while set, the date a new claim given none takes instead of the sheet's today).
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -110,6 +111,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-grace-days">Grace days (days after an open period's to-date before a change of today closes it; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
         <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+        <label for="setting-entry-date">Entry date (yyyy-mm-dd; the date a new claim given none takes; blank: the sheet's today)</label>
+        <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" />
+        <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
         <fieldset>
           <legend>Permissions (the roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of permissionActions; track a) {
@@ -205,6 +209,7 @@ export class Settings {
   protected readonly proofThreshold = computed(() => this.now('proof-threshold'));
   protected readonly noteThreshold = computed(() => this.now('note-threshold'));
   protected readonly graceDays = signal<number | null>(null);
+  protected readonly entryDate = signal<string | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
   protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
   protected readonly delegations = signal<DelegationView[]>([]);
@@ -227,6 +232,7 @@ export class Settings {
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    entryDate: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's own terms, a field per grade; part of the settings form. */
   protected readonly gradeTermsForm = new FormGroup({
@@ -278,7 +284,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [] });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -308,7 +314,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, graceDays } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, graceDays, entryDate } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -336,6 +342,7 @@ export class Settings {
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const entryDateValue = entryDate.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -382,6 +389,10 @@ export class Settings {
     }
     if (changed(graceDays) && graceDaysValue !== '' && (!DAYS.test(graceDaysValue) || Number(graceDaysValue) > 36500)) {
       this.settingsError.set('Type grace days as a whole number of days, from 0 to 36500, or leave them blank for off.');
+      return;
+    }
+    if (changed(entryDate) && entryDateValue !== '' && !isDate(entryDateValue)) {
+      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
     const permissionValues = PERMISSION_ACTIONS.map((a) => ({ action: a, control: this.permissionsForm.controls[a],
@@ -460,6 +471,11 @@ export class Settings {
         settled(graceDays);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(entryDate)) {
+        const settings = await this.api.setEntryDate(sheet.id, entryDateValue === '' ? null : entryDateValue);
+        settled(entryDate);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       for (const { action, control, value } of permissionValues) {
         if (!changed(control)) continue;
         const settings = await this.api.setPermission(sheet.id, action, value);
@@ -492,6 +508,7 @@ export class Settings {
     this.assigned.set(settings.roles);
     this.permissions.set(settings.permissions);
     this.graceDays.set(settings.graceDays);
+    this.entryDate.set(settings.entryDate);
     this.delegations.set(settings.delegations);
   }
 

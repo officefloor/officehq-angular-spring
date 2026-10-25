@@ -41,13 +41,14 @@ public class SettingController {
      *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none,
      *  and the note threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
-     *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off). Each of these figures is the one in force on the
+     *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off);
+     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
      *  delegations are the stewards' delegations of their role, in the order they were made. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
-            Integer graceDays, List<DelegationView> delegations, String noteThreshold) {
+            Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate) {
     }
 
     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
@@ -114,6 +115,10 @@ public class SettingController {
 
     /** The date to number claims within their periods from, as entered; none means off. */
     public record PeriodNumberingFromForm(LocalDate value) {
+    }
+
+    /** The entry date as entered; none means off (the sheet's today). */
+    public record EntryDateForm(LocalDate value) {
     }
 
     /** The grace days as entered: whole days; none means off. */
@@ -241,6 +246,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's entry date, or clear it: the date a new claim given none takes. */
+    @PutMapping("/settings/entry-date")
+    public SettingsView setEntryDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid EntryDateForm form) {
+        String id = sheetId.trim();
+        service.setEntryDate(id, SignedInUser.name(user), form.value());
+        return view(id);
+    }
+
     /** Set the roles that may take an action, or clear them to keep the standing rule. */
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -287,7 +301,7 @@ public class SettingController {
                 gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
                 service.permissions(sheetId), service.graceDays(sheetId),
                 service.delegations(sheetId).stream().map(DelegationView::of).toList(),
-                text(dated.noteThresholdOn(today)));
+                text(dated.noteThresholdOn(today)), service.entryDate(sheetId));
     }
 
     private static String text(BigDecimal value) {

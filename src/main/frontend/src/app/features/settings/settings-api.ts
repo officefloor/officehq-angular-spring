@@ -65,6 +65,9 @@ export interface SettingsView {
   graceDays: number | null;
   /** The stewards' delegations of their role, in the order they were made. */
   delegations: DelegationView[];
+  /** The date (yyyy-mm-dd) a new claim given no date takes instead of the sheet's today, or null when
+   *  blank (off). */
+  entryDate: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -128,6 +131,11 @@ export class SettingsApi {
   /** Set the date claims are numbered within their periods from; null clears it, leaving sheet-wide numbering. */
   setPeriodNumberingFrom(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the entry date; null clears it, so a new claim given no date takes the sheet's today. */
+  setEntryDate(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/entry-date`, { value }));
   }
 
   /** Set the grace days; null clears them, turning the closing of periods off. */

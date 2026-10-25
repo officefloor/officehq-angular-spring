@@ -17,7 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
  * Refuses every change a viewer of a sheet asks for: any request on a sheet other than reading it
  * (a GET, or loading the sheet) is refused before it reaches its controller, so it writes nothing.
  * The bulk changes are let through: a viewer's bulk change is answered with every selected claim
- * refused (see {@code BulkChangeService}).
+ * refused (see {@code BulkChangeService}), and a viewer's bulk grade with no one changed (see
+ * {@code BulkGradeService}).
  */
 @Component
 public class ViewerGuard implements HandlerInterceptor {
@@ -25,7 +26,7 @@ public class ViewerGuard implements HandlerInterceptor {
     /** The path of a sheet's requests; the sheet id is the segment after it. */
     public static final String SHEETS = "/api/sheets/";
 
-    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
+    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle", "people/grade");
 
     private final SettingService settings;
 
