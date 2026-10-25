@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -131,25 +132,39 @@ public class PersonService {
     /** Add a person to the sheet. */
     @Transactional
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    /** Add a person to the sheet with a contact (blank or null: none); refused when another person on
+     *  the sheet has the same contact. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
+        String contactKey = Person.contactOf(contact);
+        if (contactKey != null && people.existsBySheetIdAndContact(sheetId, contactKey)) {
+            throw contactInUse();
+        }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Person fresh = new Person(sheetId, name, grade, sheets.today(sheetId));
         fresh.setTerms(terms);
+        fresh.setContact(contactKey);
         Person person = save(fresh);
-        recordChange("PERSON_ADDED", user, person, terms == null ? "" : " terms=" + terms);
+        recordChange("PERSON_ADDED", user, person, (terms == null ? "" : " terms=" + terms)
+                + (contactKey == null ? "" : " contact=" + contactKey));
         rollup.recordChanges(user, before);
         return person;
     }
 
     /** Change a person's name and give them a grade from a from-date (none: the sheet's today), keeping
      *  the grades they were given from other dates; refused when someone has saved the person since
-     *  the editor loaded this version of them. */
+     *  the editor loaded this version of them, or when another person on the sheet has the contact
+     *  given (blank or null: none). */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -158,13 +173,20 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)) {
             throw nameInUse();
         }
+        String contactKey = Person.contactOf(contact);
+        if (contactKey != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contactKey, id)) {
+            throw contactInUse();
+        }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
+        boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId));
         person.setTerms(terms);
+        person.setContact(contactKey);
         Person saved = save(person);
-        recordChange("PERSON_EDITED", user, saved, termsChanged ? " terms=" + (terms == null ? "" : terms) : "");
+        recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
+                + (contactChanged ? " contact=" + (contactKey == null ? "" : contactKey) : ""));
         rollup.recordChanges(user, before);
         return saved;
     }
@@ -220,14 +242,19 @@ public class PersonService {
             // Another user saved the same person at the same moment.
             throw changedMeanwhile();
         } catch (DataIntegrityViolationException raced) {
-            // Another user took the same name at the same moment.
-            throw nameInUse();
+            // Another user took the same name, or the same contact, at the same moment.
+            String cause = String.valueOf(raced.getMostSpecificCause().getMessage()).toUpperCase(Locale.ROOT);
+            throw cause.contains("PERSON_SHEET_CONTACT") ? contactInUse() : nameInUse();
         }
     }
 
     private static ResponseStatusException changedMeanwhile() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                 "Someone else has saved this person since it was opened.");
+    }
+
+    private static ResponseStatusException contactInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on the sheet.");
     }
 
     private static ResponseStatusException nameInUse() {

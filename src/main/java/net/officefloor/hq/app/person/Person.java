@@ -65,6 +65,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, trimmed and lower-cased; null when they have none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -215,6 +219,20 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    /** Stores the contact trimmed and lower-cased; a blank contact is none. */
+    public void setContact(String contact) {
+        this.contact = contactOf(contact);
+    }
+
+    /** A contact as stored: without surrounding spaces, lower-cased; null when blank or none. */
+    public static String contactOf(String contact) {
+        return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
     }
 
     public long getVersion() {

@@ -60,14 +60,17 @@ export interface PersonView {
   watched: boolean;
   /** The person's own terms, in days, or null when they use their grade's, else the sheet's. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased, or null when they have none. */
+  contact: string | null;
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
- *  blank for none. */
+ *  blank for none; a blank contact is none. */
 export interface PersonForm {
   name: string;
   grade: Grade;
   terms: string;
+  contact: string;
 }
 
 /** An edited person's fields: the grade is given from `gradeFrom`, null meaning the sheet's today. */
