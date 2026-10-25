@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -37,12 +38,13 @@ public class ClaimService {
     private final SheetRepository sheetRows;
     private final PeriodRepository periods;
     private final SettingService settings;
+    private final HolidayService holidays;
     private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonWatchRepository watches,
             RateService rates, SheetService sheets, SheetRepository sheetRows, PeriodRepository periods,
-            SettingService settings, Rollup rollup, Audit audit) {
+            SettingService settings, HolidayService holidays, Rollup rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.watches = watches;
@@ -51,6 +53,7 @@ public class ClaimService {
         this.sheetRows = sheetRows;
         this.periods = periods;
         this.settings = settings;
+        this.holidays = holidays;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -76,14 +79,14 @@ public class ClaimService {
             String corrects) {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : entryDateOr(sheetId);
-        // The due-by is fixed now, from the terms in force on the claim's date.
+        // The due-by is fixed now, from the terms in force on the claim's date, past the sheet's holidays now.
         int terms = termsOf(sheetId, person, dated);
-        LocalDate dueBy = dated.plusDays(terms);
+        LocalDate dueBy = holidays.dueBy(sheetId, dated.plusDays(terms));
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects, terms);
+        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects, dueBy);
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         boolean late = periods.isSoftClosedOn(sheetId, dueBy);
@@ -270,12 +273,12 @@ public class ClaimService {
                     "The amount split off must be more than 0.00 and less than the claim's amount.");
         }
         Person person = person(sheetId, claim.getPersonId());
-        // The due-by is fixed now, from the terms in force on the claim's date.
+        // The due-by is fixed now, from the terms in force on the claim's date, past the sheet's holidays now.
         int terms = termsOf(sheetId, person, claim.getDate());
-        LocalDate dueBy = claim.getDate().plusDays(terms);
+        LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate().plusDays(terms));
         refuseIfClosed(sheetId, dueBy);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim split = claim.splitOff(part, null, user, terms, sheets.today(sheetId));
+        Claim split = claim.splitOff(part, null, user, dueBy, sheets.today(sheetId));
         String number = nextNumber(sheetId, split);
         split.setNumber(number);
         // Split off into a soft-closed period, the new claim is a late entry of it.

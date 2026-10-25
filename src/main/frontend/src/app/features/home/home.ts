@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { Session } from '../../core/session';
+import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
 import { SheetAsOf } from '../session/sheet-as-of';
@@ -10,7 +11,7 @@ import { SignIn } from '../session/sign-in';
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [SignIn, SheetPicker, SheetToday, SheetAsOf, Settings, People],
+  imports: [SignIn, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -21,6 +22,7 @@ import { SignIn } from '../session/sign-in';
       <app-sheet-as-of />
       @if (session.sheet()) {
         <app-settings />
+        <app-holidays />
       }
       <app-people />
       @if (!session.sheet()) {

@@ -122,11 +122,11 @@ public class Claim {
     }
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
-            int terms) {
+            LocalDate dueBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         set(amount, date, note, corrects);
-        this.dueBy = date.plusDays(terms);
+        this.dueBy = dueBy;
     }
 
     public Long getId() {
@@ -325,11 +325,11 @@ public class Claim {
     }
 
     /** Split the amount given off the claim into a new OPEN claim of the same person, date and note,
-     *  with the number given, opened by the user and due by the terms given from its date, split from
+     *  with the number given, opened by the user and due by the date given, split from
      *  this claim's number. This claim keeps the rest of its amount and loses any figure a statement
      *  bound it to. */
-    public Claim splitOff(BigDecimal part, String number, String user, int terms, LocalDate today) {
-        Claim split = new Claim(sheetId, personId, part, date, note, null, terms);
+    public Claim splitOff(BigDecimal part, String number, String user, LocalDate dueBy, LocalDate today) {
+        Claim split = new Claim(sheetId, personId, part, date, note, null, dueBy);
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = user;
