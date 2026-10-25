@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isCorrection, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -492,10 +492,10 @@ export class People {
   });
   private readonly centsByPerson = computed(() => {
     const by = new Map<number, number>();
-    for (const c of this.claims()) if (this.countsLive(c)) by.set(c.personId, (by.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.claims()) if (this.countsClaimed(c)) by.set(c.personId, (by.get(c.personId) ?? 0) + cents(c.amount));
     return by;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => (this.countsLive(c) ? t + cents(c.amount) : t), 0)));
+  protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => (this.countsClaimed(c) ? t + cents(c.amount) : t), 0)));
   /** The sheet's rates, then its parents' (by level); a grade with no rate is left out. */
   protected readonly rates = signal<RateView[]>([]);
   private readonly ratesByGrade = computed(() => {
@@ -1246,7 +1246,12 @@ export class People {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
   }
 
-  /** The sum of the person's open and settled claims, with two decimals. */
+  /** Whether the claim counts toward what is claimed: it counts, and is not a correction. */
+  private countsClaimed(claim: ClaimView): boolean {
+    return this.countsLive(claim) && !isCorrection(claim);
+  }
+
+  /** The sum of the person's open and settled claims, leaving out corrections, with two decimals. */
   protected claimed(personId: number): string {
     return money(this.centsByPerson().get(personId) ?? 0);
   }

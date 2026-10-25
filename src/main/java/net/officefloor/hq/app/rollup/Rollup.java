@@ -117,7 +117,8 @@ public class Rollup {
             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
             for (Claim claim : theirs) {
                 if (!counts(person, claim, today)) continue;
-                claimed = claimed.add(claim.getAmount());
+                // A correction counts toward what is due, but not toward what is claimed.
+                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
