@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.period;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -49,6 +51,10 @@ public class PeriodController {
     public record GenerateForm(LocalDate from, LocalDate to) {
     }
 
+    /** The calendar year a fiscal year starts in, as entered. */
+    public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -76,6 +82,14 @@ public class PeriodController {
     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody GenerateForm form) {
         return service.generate(sheetId.trim(), SignedInUser.name(user), form.from(), form.to()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Generate the twelve monthly periods of a fiscal year, as the monthly generator does; the periods made. */
+    @PostMapping("/generate-fy")
+    public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GenerateFiscalYearForm form) {
+        return service.generateFiscalYear(sheetId.trim(), SignedInUser.name(user), form.year()).stream()
                 .map(PeriodView::of).toList();
     }
 

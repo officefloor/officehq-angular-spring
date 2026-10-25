@@ -100,9 +100,26 @@ public class PeriodService {
         if (end.isBefore(start)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
         }
+        return generateMonths(sheetId, user, YearMonth.from(start), YearMonth.from(end));
+    }
+
+    /** Generate the twelve monthly periods of a fiscal year, as {@link #generate} does from the first day of
+     *  the year to its last: the year named FY&lt;year&gt; starts on the first day of the sheet's fiscal start
+     *  month in that calendar year. The periods made, in date order. */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        YearMonth first = YearMonth.of(year, settings.fiscalStartMonth(sheetId));
+        return generateMonths(sheetId, user, first, first.plusMonths(11));
+    }
+
+    /** Make one period per month from the first month to the last, leaving out those whose name is in use
+     *  or whose days overlap a period; the periods made, in date order. */
+    private List<Period> generateMonths(String sheetId, String user, YearMonth firstMonth, YearMonth lastMonth) {
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
         List<Period> made = new ArrayList<>();
-        for (YearMonth month = YearMonth.from(start); !month.isAfter(YearMonth.from(end)); month = month.plusMonths(1)) {
+        for (YearMonth month = firstMonth; !month.isAfter(lastMonth); month = month.plusMonths(1)) {
             String name = month.toString();
             LocalDate first = month.atDay(1);
             LocalDate last = month.atEndOfMonth();

@@ -2,12 +2,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { SheetFiscal, fiscalYearOf } from '../settings/sheet-fiscal';
 import { PeriodView, PeriodsApi } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR = /^\d{4}$/;
 
 // The sheet's periods in date order, each with the due-total of the counting claims dated in it
-// (fixed once the period is closed or soft-closed) and whether it is closed (or soft-closed), with one form to add a period.
+// (fixed once the period is closed or soft-closed), whether it is closed (or soft-closed) and the fiscal year its
+// from-date falls in, with one form to add a period, one to generate monthly periods between two dates, and one to
+// generate a fiscal year's twelve monthly periods.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -39,9 +43,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="period-generate-error">{{ generateError() }}</p>
         }
       </form>
+      <form [formGroup]="fyForm" (ngSubmit)="generateFiscalYear()" aria-label="Generate a fiscal year's monthly periods">
+        <label for="period-generate-fy-year">Fiscal year (yyyy, the calendar year it starts in)</label>
+        <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
+        <button type="submit" data-testid="period-generate-fy" [disabled]="generating()">Generate fiscal year</button>
+      </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -51,6 +60,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -72,6 +82,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export class Periods {
   private readonly session = inject(Session);
   private readonly api = inject(PeriodsApi);
+  private readonly sheetFiscal = inject(SheetFiscal);
 
   /** The sheet's periods in date order. */
   readonly periods = input.required<PeriodView[]>();
@@ -88,6 +99,8 @@ export class Periods {
   protected readonly generateFrom = new FormControl('', { nonNullable: true });
   protected readonly generateTo = new FormControl('', { nonNullable: true });
   protected readonly generateForm = new FormGroup({ from: this.generateFrom, to: this.generateTo });
+  protected readonly fyYear = new FormControl('', { nonNullable: true });
+  protected readonly fyForm = new FormGroup({ year: this.fyYear });
   protected readonly generating = signal(false);
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
@@ -102,6 +115,7 @@ export class Periods {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
+    this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
     // Each load of a sheet starts the form afresh.
     effect(() => {
       this.session.loaded();
@@ -111,6 +125,7 @@ export class Periods {
       this.generateError.set('');
       this.generated.set(null);
       this.generateForm.reset({ from: '', to: '' }, { emitEvent: false });
+      this.fyForm.reset({ year: '' }, { emitEvent: false });
     });
   }
 
@@ -141,6 +156,37 @@ export class Periods {
       }
     } catch {
       if (this.session.sheet()?.id === sheet.id) this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
+  /** The fiscal year the period's from-date falls in. */
+  protected fiscalYear(period: PeriodView): string {
+    return fiscalYearOf(period.from, this.sheetFiscal.startMonth());
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year starting in the typed calendar year. */
+  protected async generateFiscalYear(): Promise<void> {
+    if (this.generating()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const year = this.fyYear.value.trim();
+    if (!YEAR.test(year) || Number(year) < 1 || Number(year) > 9998) {
+      this.generateError.set('Type the fiscal year as the four-digit calendar year it starts in.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      const made = await this.api.generateFiscalYear(sheet.id, Number(year));
+      if (this.session.sheet()?.id === sheet.id) {
+        for (const period of made) this.added.emit(period);
+        this.generated.set(made.length);
+      }
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.generateError.set('The fiscal year\'s periods could not be generated.');
     } finally {
       this.generating.set(false);
     }

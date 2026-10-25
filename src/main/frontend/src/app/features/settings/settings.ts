@@ -5,6 +5,7 @@ import { GRADES, Grade } from '../people/people-api';
 import { DatedValue, valueOn } from './dated';
 import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { SheetCap } from './sheet-cap';
+import { DEFAULT_FISCAL_START_MONTH, SheetFiscal } from './sheet-fiscal';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { SheetGrace } from './sheet-grace';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
@@ -16,6 +17,7 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,10}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^\d{1,2}$/;
 
 /** Whether a yyyy-mm-dd text is a real calendar date. */
 function isDate(text: string): boolean {
@@ -59,7 +61,8 @@ function settled(control: AbstractControl): void {
 // nor the entry date (while set, the date a new claim given none takes instead of the sheet's today), nor the
 // pot (what each balanced pool shares out among its members by their shares; blank: none), nor the parent
 // sheet (a grade with no rate in force on a date on this sheet takes its parent's, then that one's parent's,
-// up to three levels up; blank: none).
+// up to three levels up; blank: none), nor the fiscal year start month (the month, 1 to 12, each fiscal year
+// starts on; 1 unless set).
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -144,6 +147,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
+        <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+        <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth" inputmode="numeric" />
+        <p>Fiscal year start month now: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</span></p>
         <fieldset>
           <legend>Permissions (the roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of permissionActions; track a) {
@@ -217,6 +223,7 @@ export class Settings {
   private readonly sheetGrace = inject(SheetGrace);
   private readonly sheetPot = inject(SheetPot);
   private readonly sheetParent = inject(SheetParent);
+  private readonly sheetFiscal = inject(SheetFiscal);
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
@@ -245,6 +252,7 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly parent = signal<string | null>(null);
+  protected readonly fiscalStartMonth = signal(DEFAULT_FISCAL_START_MONTH);
   protected readonly assigned = signal<RoleView[]>([]);
   protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
   protected readonly delegations = signal<DelegationView[]>([]);
@@ -270,6 +278,7 @@ export class Settings {
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
+    fiscalStartMonth: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's own terms, a field per grade; part of the settings form. */
   protected readonly gradeTermsForm = new FormGroup({
@@ -349,7 +358,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -387,7 +396,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, graceDays, entryDate, pot, parent } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, graceDays, entryDate, pot, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -420,6 +429,7 @@ export class Settings {
     const entryDateValue = entryDate.value.trim();
     const potValue = pot.value.trim();
     const parentValue = parent.value.trim();
+    const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -494,6 +504,11 @@ export class Settings {
     }
     if (changed(parent) && parentValue === sheet.id) {
       this.settingsError.set('A sheet cannot be its own parent.');
+      return;
+    }
+    if (changed(fiscalStartMonth) && (!MONTH.test(fiscalStartMonthValue) || Number(fiscalStartMonthValue) < 1
+      || Number(fiscalStartMonthValue) > 12)) {
+      this.settingsError.set('Type the fiscal year start month as a whole number from 1 to 12.');
       return;
     }
     const permissionValues = PERMISSION_ACTIONS.map((a) => ({ action: a, control: this.permissionsForm.controls[a],
@@ -604,6 +619,11 @@ export class Settings {
           this.sheetParent.changes.update((n) => n + 1);
         }
       }
+      if (changed(fiscalStartMonth)) {
+        const settings = await this.api.setFiscalStartMonth(sheet.id, Number(fiscalStartMonthValue));
+        settled(fiscalStartMonth);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       for (const { action, control, value } of permissionValues) {
         if (!changed(control)) continue;
         const settings = await this.api.setPermission(sheet.id, action, value);
@@ -624,7 +644,7 @@ export class Settings {
   }
 
   /** Show the settings as the store answered them, and share the dated floor, late percent, cap and grades' grace, and
-   *  the policy date and the pot, with the screens showing them. */
+   *  the policy date, the pot and the fiscal start month, with the screens showing them. */
   private show(settings: SettingsView): void {
     this.dated.set(settings.dated);
     this.sheetFloor.history.set(settings.dated['floor'] ?? []);
@@ -643,6 +663,8 @@ export class Settings {
     this.parent.set(settings.parent);
     this.sheetParent.parent.set(settings.parent);
     this.delegations.set(settings.delegations);
+    this.fiscalStartMonth.set(settings.fiscalStartMonth);
+    this.sheetFiscal.startMonth.set(settings.fiscalStartMonth);
   }
 
   protected async saveRole(): Promise<void> {

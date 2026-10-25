@@ -74,6 +74,8 @@ export interface SettingsView {
   /** The sheet whose rates (then its parent's, up to three levels up) are used where this sheet has none
    *  in force, or null when it has none. Not dated. */
   parent: string | null;
+  /** The month, 1 to 12, each fiscal year starts on; 1 unless set. Not dated. */
+  fiscalStartMonth: number;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -152,6 +154,11 @@ export class SettingsApi {
   /** Set the entry date; null clears it, so a new claim given no date takes the sheet's today. */
   setEntryDate(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/entry-date`, { value }));
+  }
+
+  /** Set the month each fiscal year starts on, 1 to 12. */
+  setFiscalStartMonth(sheetId: string, value: number): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }));
   }
 
   /** Set the pot; null clears it, leaving no pot. */

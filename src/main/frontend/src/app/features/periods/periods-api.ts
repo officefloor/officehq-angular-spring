@@ -58,6 +58,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate`, { from, to }));
   }
 
+  /** Generate the twelve monthly periods of the fiscal year starting in a calendar year, as the monthly
+   *  generator does: the periods made. */
+  generateFiscalYear(sheetId: string, year: number): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-fy`, { year }));
+  }
+
   /** Close a period, fixing its due-total: refused when it is already closed. */
   close(sheetId: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/close`, {}));

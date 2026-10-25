@@ -79,6 +79,13 @@ public class SettingService implements ActingFor {
      *  these days, the period is closed; no value means off. Not dated. */
     public static final String GRACE_DAYS = "grace-days";
 
+    /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
+     *  no value means 1 (January). Not dated. */
+    public static final String FISCAL_START_MONTH = "fiscal-start-month";
+
+    /** The fiscal year start month while none is set. */
+    public static final int DEFAULT_FISCAL_START_MONTH = 1;
+
     /** The key of the entry date: while it is set, a new claim given no date is dated it instead of the
      *  sheet's today; no value means off. Not dated. */
     public static final String ENTRY_DATE = "entry-date";
@@ -388,6 +395,36 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + GRACE_DAYS
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
+    }
+
+    /** The sheet's fiscal year start month, 1 to 12; 1 when none is set. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, FISCAL_START_MONTH).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(DEFAULT_FISCAL_START_MONTH);
+    }
+
+    /** Set the sheet's fiscal year start month; refused unless it is 1 to 12. */
+    @Transactional
+    public int setFiscalStartMonth(String sheetId, String user, int month) {
+        if (month < 1 || month > 12) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal year start month is 1 to 12.");
+        }
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, FISCAL_START_MONTH).orElse(null);
+        try {
+            if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, FISCAL_START_MONTH, Integer.toString(month)));
+            } else {
+                setting.setValue(Integer.toString(month));
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + FISCAL_START_MONTH
+                + " value=" + month);
+        return month;
     }
 
     /** The sheet's pot, with two decimals, or null when it is blank (none). */
