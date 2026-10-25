@@ -256,11 +256,14 @@ export class People {
     for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
     return by;
   });
-  /** Everyone's due-total added up, skipping the people whose due-total is n/a. */
+  /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
   protected readonly sheetDueTotal = computed(() => {
-    let total = 0;
-    for (const p of this.people()) total += this.dueCentsOf(p) ?? 0;
-    return money(total);
+    const figures: number[] = [];
+    for (const p of this.people()) {
+      const due = this.dueCentsOf(p);
+      if (due !== null) figures.push(due);
+    }
+    return money(trimmedSum(figures));
   });
   /** Each person's overdue claims that count, by person: how many, and the sum of their figures in
    *  cents, skipping those that are n/a. */
@@ -277,15 +280,12 @@ export class People {
     }
     return by;
   });
-  /** The sheet's overdue claims that count: how many, and the sum of their figures in cents. */
+  /** The sheet's overdue claims that count: how many, and everyone's overdue-total added up, trimmed. */
   protected readonly sheetOverdue = computed(() => {
     let count = 0;
-    let total = 0;
-    for (const o of this.overdueByPerson().values()) {
-      count += o.count;
-      total += o.cents;
-    }
-    return { count, cents: total };
+    for (const o of this.overdueByPerson().values()) count += o.count;
+    const figures = this.people().map((p) => this.overdueByPerson().get(p.id)?.cents ?? 0);
+    return { count, cents: trimmedSum(figures) };
   });
   protected readonly money = money;
   /** The sheet's periods in date order. */
@@ -862,4 +862,10 @@ export class People {
       this.saving.set(false);
     }
   }
+}
+
+/** The sum of the figures, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const total = figures.reduce((t, f) => t + f, 0);
+  return figures.length < 3 ? total : total - Math.max(...figures) - Math.min(...figures);
 }

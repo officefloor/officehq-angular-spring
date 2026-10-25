@@ -31,7 +31,8 @@ import org.springframework.stereotype.Service;
  * The sheet's figures as the screen shows them: each person's claimed, due-total (late charges
  * included, held to the sheet's cap) and overdue-total (what is owed on their counting claims that are
  * open past their due-by, late charges included, skipping n/a), and the sheet's
- * claimed-total, due-total and overdue-total. A change takes a snapshot before it alters anything, then
+ * claimed-total, due-total and overdue-total (the last two leaving out the single highest and lowest
+ * person's figure when three or more people have one). A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
  * order they were added) and then the sheet's totals when they moved.
  */
@@ -89,8 +90,8 @@ public class Rollup {
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
-        BigDecimal dueTotal = ZERO;
-        BigDecimal overdueTotal = ZERO;
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal claimed = ZERO;
@@ -124,10 +125,10 @@ public class Rollup {
                             ? null : due, cap);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
             claimedTotal = claimedTotal.add(claimed);
-            if (personDue != null) dueTotal = dueTotal.add(personDue);
-            overdueTotal = overdueTotal.add(overdue);
+            if (personDue != null) dues.add(personDue);
+            overdues.add(overdue);
         }
-        return new Snapshot(sheetId, figures, claimedTotal, dueTotal, overdueTotal);
+        return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
     }
 
     /** Audit, once the transaction commits, the figures that moved since the snapshot was taken. */
@@ -180,6 +181,14 @@ public class Rollup {
             if (claim.getCorrects().equals(other.getNumber())) return other;
         }
         return null;
+    }
+
+    /** The sum of the figures, leaving out the single highest and the single lowest when there are three or more. */
+    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal total = figures.stream().reduce(ZERO, BigDecimal::add);
+        if (figures.size() < 3) return total;
+        return total.subtract(figures.stream().max(BigDecimal::compareTo).get())
+                .subtract(figures.stream().min(BigDecimal::compareTo).get());
     }
 
     private static boolean same(BigDecimal a, BigDecimal b) {
