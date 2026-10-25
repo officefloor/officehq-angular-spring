@@ -9,7 +9,7 @@ import { Claim } from './claims.service';
  *  before the start left out) up to the end, how many claims it has made so far, and its next dates (the
  *  first five plan dates after the sheet's today and on or before the end and not skipped by a pause,
  *  comma and space separated), whether it is paused now, and the changes of its amount, oldest first,
- *  each as `<date> amount=<amount>`. */
+ *  each as `<date> amount=<amount>`, and the descendant sheet its claims are made on (null for its own). */
 export interface Plan {
   id: number;
   personId: number;
@@ -22,16 +22,19 @@ export interface Plan {
   nextDates: string;
   paused: boolean;
   changes: string[];
+  sheet: string | null;
 }
 
 /** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of
- *  the month (the other blank). */
+ *  the month (the other blank), and the id of a descendant sheet to make its claims on (blank for the
+ *  plan's own). */
 export interface PlanFields {
   amount: string;
   start: string;
   every: string;
   day: string;
   end: string;
+  sheet: string;
 }
 
 /** How a generate went: how many claims it made, the claims, and every plan as it stands after. */
@@ -52,8 +55,8 @@ export class PlansService {
   }
 
   /** Add a plan for the person. Refused (400, 422) when the amount, interval or day is bad,
-   *  both or neither of interval and day are given, or the end is
-   *  before the start. */
+   *  both or neither of interval and day are given, the end is
+   *  before the start, or the sheet is not one of the sheet's descendants. */
   add(sheet: string, personId: number, fields: PlanFields): Promise<Plan> {
     return firstValueFrom(
       this.http.post<Plan>(this.url(sheet), { personId, ...fields }, { headers: this.session.headers() }),

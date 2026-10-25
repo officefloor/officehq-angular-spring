@@ -12,7 +12,8 @@ const DAY = /^\d{1,2}$/;
 // far, its next dates and whether it is paused, with buttons that pause and resume it (a plan date on or
 // after a pause and before its resume is skipped), an entry that changes its amount for the claims
 // generated from then on, with its changes listed oldest first, and the form on the row that adds one: an amount, a start date, either every N days (a whole
-// number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
+// number, at least 1) or monthly on a day of the month (1 to 31), an end date not before the start, and
+// optionally a descendant sheet whose person of the same name gets the claims.
 @Component({
   selector: 'app-plans',
   imports: [FigurePipe],
@@ -24,7 +25,7 @@ const DAY = /^\d{1,2}$/;
             {{ (pl.amount) | figure }}
             from {{ (pl.start) | figure }}
             @if (pl.day !== null) { monthly on day {{ (pl.day) | figure }} } @else { every {{ (pl.every) | figure }} days }
-            to {{ (pl.end) | figure }}, made
+            to {{ (pl.end) | figure }}@if (pl.sheet) { on sheet {{ (pl.sheet) | figure }}}, made
             <span data-testid="plan-generated">{{ (pl.generated) | figure }}</span>, next
             <span data-testid="plan-next-dates">{{ (pl.nextDates) | figure }}</span>, paused
             <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -58,6 +59,8 @@ const DAY = /^\d{1,2}$/;
       <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" inputmode="numeric" [value]="day()" (input)="day.set(value($event)); error.set(null)" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" data-testid="plan-form-end" placeholder="YYYY-MM-DD" [value]="end()" (input)="end.set(value($event)); error.set(null)" />
+      <label [for]="'plan-form-sheet-' + personId()">On sheet (optional)</label>
+      <input [id]="'plan-form-sheet-' + personId()" data-testid="plan-form-sheet" [value]="targetSheet()" (input)="targetSheet.set(value($event)); error.set(null)" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
       @if (error(); as message) {
         <p role="alert" class="error" data-testid="plan-error">{{ (message) | figure }}</p>
@@ -100,6 +103,7 @@ export class Plans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly targetSheet = signal('');
   protected readonly error = signal<string | null>(null);
   /** The refused pause or resume, on the plan it was asked of. */
   protected readonly planError = signal<{ id: number; message: string } | null>(null);
@@ -171,7 +175,7 @@ export class Plans {
     this.planError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const fields = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), day: this.day().trim(), end: this.end().trim() };
+    const fields = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), day: this.day().trim(), end: this.end().trim(), sheet: this.targetSheet().trim() };
     if (!AMOUNT.test(fields.amount) || Number(fields.amount) <= 0) {
       this.error.set('Type an amount above zero with up to two decimals.');
       return;
@@ -205,6 +209,7 @@ export class Plans {
       this.every.set('');
       this.day.set('');
       this.end.set('');
+      this.targetSheet.set('');
       this.added.emit(plan);
     } catch {
       if (this.session.sheetId() !== sheet) return;

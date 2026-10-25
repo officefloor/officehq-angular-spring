@@ -25,7 +25,8 @@ import java.util.stream.Collectors;
  * month's last day when it is shorter), those before the start left out; with the plan dates it has made
  * its claim for, and the times it was paused: a plan date on or after a pause and before its resume is
  * skipped, not postponed; and the changes of its amount, oldest first: a change applies to the claims
- * generated after it, those already made keep theirs. */
+ * generated after it, those already made keep theirs. A plan may name one of its sheet's descendants, the
+ * target sheet: its claims are then made for the person of the same name on that sheet. */
 @Entity
 @Table(name = "person_plan")
 public class Plan {
@@ -55,6 +56,9 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
     private List<PlanClaim> claims = new ArrayList<>();
@@ -73,7 +77,7 @@ public class Plan {
 
     /** A plan every {@code every} days (day null) or monthly on {@code day} (every null). */
     public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String targetSheetId) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -81,6 +85,7 @@ public class Plan {
         this.every = every;
         this.day = day;
         this.end = end;
+        this.targetSheetId = targetSheetId;
     }
 
     public Long getId() {
@@ -115,6 +120,11 @@ public class Plan {
 
     public LocalDate getEnd() {
         return end;
+    }
+
+    /** The descendant sheet the plan's claims are made on; null for the plan's own sheet. */
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 
     /** How many claims the plan has made so far. */

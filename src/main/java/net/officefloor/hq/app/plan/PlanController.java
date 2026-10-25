@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.http.HttpStatus;
@@ -35,9 +36,10 @@ public class PlanController {
      * for a monthly plan), day of the month (null for one every N days), end, and how many claims it has
      * made so far, and its next dates: the first five plan dates after the sheet's today and on or before
      * the end and not skipped by a pause, comma and space separated (empty when there are none), and
-     * whether it is paused now, and the changes of its amount, oldest first, each as {@code <date> amount=<amount>}. */
+     * whether it is paused now, and the changes of its amount, oldest first, each as {@code <date> amount=<amount>},
+     * and the descendant sheet its claims are made on (null for its own). */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes) {
+            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes, String sheet) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(),
                     p.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), p.getStart(), p.getEvery(),
@@ -45,19 +47,26 @@ public class PlanController {
                     p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")),
                     p.isPaused(),
                     p.getChanges().stream().map(c -> c.getChangedOn() + " amount="
-                            + c.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()).toList());
+                            + c.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()).toList(),
+                    p.getTargetSheetId());
         }
     }
 
     /** A plan asked: its person, an amount (up to two decimals), a start and end (YYYY-MM-DD) and either an
-     * interval in whole days or a day of the month (the other blank or absent). */
+     * interval in whole days or a day of the month (the other blank or absent), and optionally the id of a
+     * descendant sheet to make its claims on (blank or absent for the plan's own). */
     public record PlanRequest(
             long personId,
             @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String start,
             @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String every,
             @Pattern(regexp = "\\s*(\\d{1,2})?\\s*") String day,
-            @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String end) {
+            @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String end,
+            @Size(max = 100) String sheet) {
+
+        String sheetValue() {
+            return sheet == null || sheet.isBlank() ? null : sheet.trim();
+        }
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
@@ -84,7 +93,8 @@ public class PlanController {
         }
     }
 
-    /** How many claims a generate made, the claims, and every plan on the sheet as it stands after. */
+    /** How many claims a generate made (on the sheet and its plans' descendant sheets), the claims made on
+     * the sheet itself, and every plan on the sheet as it stands after. */
     public record GeneratedView(int made, List<ClaimView> claims, List<PlanView> plans) {
     }
 
@@ -112,7 +122,8 @@ public class PlanController {
             @RequestBody @Valid PlanRequest request) {
         String sheet = sheetId.trim();
         return PlanView.of(service.add(sheet, user.trim(), request.personId(), request.amountValue(),
-                date(request.start()), request.everyValue(), request.dayValue(), date(request.end())),
+                date(request.start()), request.everyValue(), request.dayValue(), date(request.end()),
+                request.sheetValue()),
                 service.today(sheet));
     }
 
@@ -143,8 +154,10 @@ public class PlanController {
     public GeneratedView generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         String sheet = sheetId.trim();
-        List<ClaimView> made = ClaimView.allOf(service.generate(sheet, user.trim()), claims);
-        return new GeneratedView(made.size(), made, list(sheet));
+        List<Claim> made = service.generate(sheet, user.trim());
+        List<ClaimView> here = ClaimView.allOf(made.stream().filter(c -> c.getSheetId().equals(sheet)).toList(),
+                claims);
+        return new GeneratedView(made.size(), here, list(sheet));
     }
 
     private static LocalDate date(String text) {
