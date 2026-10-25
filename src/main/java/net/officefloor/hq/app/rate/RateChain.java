@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
 
 /** The rates a sheet's figures are worked out from: a grade with no rate in force on a date on the sheet
  * uses its parent's rate for that grade and date, then its parent's parent's, up to {@link #LEVELS_UP}
- * levels up. */
+ * levels up; then, for a sheet that was cloned, the rates of the sheet it was cloned from, worked out
+ * alike (its own, its parents', then its source's). */
 @Component
 public class RateChain {
 
@@ -27,12 +28,19 @@ public class RateChain {
         this.sheets = sheets;
     }
 
-    /** The sheet's id, then its parent's, and so on up to {@link #LEVELS_UP} levels up. */
+    /** The sheet's id, then its parent's, and so on up to {@link #LEVELS_UP} levels up; then, when the
+     * sheet was cloned, its source's chain alike. A sheet comes at most once. */
     public List<String> chain(String sheetId) {
         Set<String> chain = new LinkedHashSet<>();
-        String id = sheetId;
-        while (id != null && chain.size() <= LEVELS_UP && chain.add(id)) {
-            id = sheets.findById(id).map(Sheet::getParentId).orElse(null);
+        String from = sheetId;
+        while (from != null && !chain.contains(from)) {
+            Sheet start = sheets.findById(from).orElse(null);
+            chain.add(from);
+            String id = start == null ? null : start.getParentId();
+            for (int up = 0; id != null && up < LEVELS_UP && chain.add(id); up++) {
+                id = sheets.findById(id).map(Sheet::getParentId).orElse(null);
+            }
+            from = start == null ? null : start.getSourceId();
         }
         return List.copyOf(chain);
     }

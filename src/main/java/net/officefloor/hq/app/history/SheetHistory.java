@@ -31,15 +31,16 @@ public class SheetHistory {
     /** The sheet as it stood at the end of {@code date}, that date standing in for its today. */
     @Transactional(propagation = Propagation.MANDATORY)
     public SheetAsOf asOf(String sheetId, LocalDate date) {
-        return asOf(sheetId, date, new LinkedHashSet<>(List.of(sheetId)));
+        return asOf(sheetId, date, new LinkedHashSet<>(List.of(sheetId)), true);
     }
 
-    /** The sheet as it stood at the end of {@code date}, with its parents' rates as they stood then;
-     * {@code chain} holds the sheet and the sheets below it whose parents are being read. */
-    private SheetAsOf asOf(String sheetId, LocalDate date, Set<String> chain) {
+    /** The sheet as it stood at the end of {@code date}, with (when {@code inherit}) its parents' and its
+     * source's rates as they stood then (see {@link RateChain}); {@code chain} holds the sheets whose rates
+     * are already being read. */
+    private SheetAsOf asOf(String sheetId, LocalDate date, Set<String> chain, boolean inherit) {
         Map<String, String> latest = new LinkedHashMap<>();
         LocalDate upTo = date;
-        if (chain.size() > 1) {
+        if (!chain.iterator().next().equals(sheetId)) {
             // A parent started on a later date than the day read stood then as at the end of its first day.
             LocalDate first = jdbc.query("SELECT MIN(made_on) FROM sheet_history WHERE sheet_id = ?",
                     rs -> rs.next() && rs.getDate(1) != null ? rs.getDate(1).toLocalDate() : null, sheetId);
@@ -68,11 +69,18 @@ public class SheetHistory {
                     rs -> rs.next() ? read(rs.getString(1), Sheet.class) : null, sheetId);
         }
         List<List<Rate>> inherited = new ArrayList<>();
-        String parentId = sheet == null ? null : sheet.getParentId();
-        if (parentId != null && chain.size() <= RateChain.LEVELS_UP && !chain.contains(parentId)) {
-            Set<String> up = new LinkedHashSet<>(chain);
-            up.add(parentId);
-            inherited.addAll(asOf(parentId, date, up).rateLevels());
+        if (inherit) {
+            // Its parents' own rates, up to RateChain.LEVELS_UP levels up, then its source's rates in full.
+            String parentId = sheet == null ? null : sheet.getParentId();
+            for (int up = 0; parentId != null && up < RateChain.LEVELS_UP && chain.add(parentId); up++) {
+                SheetAsOf parent = asOf(parentId, date, chain, false);
+                inherited.add(parent.rates());
+                parentId = parent.parentId();
+            }
+            String sourceId = sheet == null ? null : sheet.getSourceId();
+            if (sourceId != null && chain.add(sourceId)) {
+                inherited.addAll(asOf(sourceId, date, chain, true).rateLevels());
+            }
         }
         return new SheetAsOf(date, sheet, rows, inherited);
     }

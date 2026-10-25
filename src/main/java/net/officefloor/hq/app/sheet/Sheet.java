@@ -74,6 +74,11 @@ public class Sheet {
     private String parentId;
 
     /** Whether the sheet is archived: everything on it stays visible and every change is refused. */
+    /** The id of the sheet this one was cloned from, whose rates are used where neither this sheet nor its
+     * parents have one in force; null when it was not cloned. */
+    @Column(name = "source_id")
+    private String sourceId;
+
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
@@ -94,7 +99,7 @@ public class Sheet {
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
      * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, fiscal start month, entry date, pot, alert threshold and parent) come
-     * with it; it is not archived and has had no settle batch. */
+     * with it, and this sheet is its source; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
         copy.policyDate = policyDate;
@@ -108,6 +113,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parentId = parentId;
+        copy.sourceId = this.id;
         return copy;
     }
 
@@ -228,6 +234,10 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    public String getSourceId() {
+        return sourceId;
     }
 
     /** The date a claim left without a date is dated: the entry date when it is set, else the sheet's today. */

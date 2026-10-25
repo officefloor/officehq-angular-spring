@@ -725,6 +725,8 @@ export class Settings {
   /** A settings submit came while one was waiting; it is made once that one is answered. */
   private settingsResubmit = false;
   private savingRole = false;
+  /** How many roles have been set here: a read asked for before one was set does not put back the old roles. */
+  private rolesSet = 0;
 
   constructor() {
     effect(() => {
@@ -1325,6 +1327,7 @@ export class Settings {
     try {
       const saved = await this.service.setRole(sheet, user, role as Role);
       if (this.session.sheetId() !== sheet) return;
+      this.rolesSet++;
       this.given.update((list) =>
         [...list.filter((r) => r.user !== saved.user), saved].sort((a, b) => a.user.localeCompare(b.user)),
       );
@@ -1339,9 +1342,12 @@ export class Settings {
 
   private async read(sheet: string): Promise<void> {
     try {
+      const rolesSet = this.rolesSet;
       const settings = await this.service.get(sheet);
       if (this.session.sheetId() === sheet) {
+        const given = this.given();
         this.show(settings);
+        if (this.rolesSet !== rolesSet) this.given.set(given);
         if (!this.limitChanged) this.limit.set(settings.clerkLimit ?? '');
         if (!this.floorChanged) this.floorInput.set(settings.floor);
         if (!this.capChanged) this.capInput.set(settings.cap ?? '');

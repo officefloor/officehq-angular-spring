@@ -54,8 +54,8 @@ export interface RatePreview {
   diff: string;
 }
 
-/** The grade's rate in force on a date on the sheet (see `levelRateOn`), or else on the nearest
- *  parent sheet that has one in force then; null when none has. */
+/** The grade's rate in force on a date on the sheet (see `levelRateOn`), or else on the first
+ *  sheet it inherits from (its parents, then its source's) that has one in force then; null when none has. */
 export function rateOn(rates: Rate[], grade: Grade, date: string): string | null {
   const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
   for (const level of levels) {
