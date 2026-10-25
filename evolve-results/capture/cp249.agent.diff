@@ -1,0 +1,247 @@
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 6c314019..e58af2dd 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -141,6 +141,16 @@ export interface SheetSettings {
+   policyVersions?: (string | null)[];
+ }
+ 
++/** A policy version: its number, the date it is in force from (null when it counts on every date), the
++ *  setting changed and its value, and how many of the sheet's claims have it as their policy version. */
++export interface PolicyVersionLine {
++  number: number;
++  from: string | null;
++  key: string;
++  value: string | null;
++  claims: number;
++}
++
+ /** The policy version in force on a date: how many of the versions (their from-dates, see
+  *  SheetSettings.policyVersions) are from it or before, one with no from-date counting always. */
+ export function policyVersionOn(versions: readonly (string | null)[], date: string): number {
+@@ -171,6 +181,13 @@ export class SettingsService {
+     );
+   }
+ 
++  /** The sheet's policy versions, oldest first. */
++  policyVersions(sheet: string): Promise<PolicyVersionLine[]> {
++    return firstValueFrom(
++      this.http.get<PolicyVersionLine[]>(`${this.url(sheet)}/settings/policy-versions`, { headers: this.session.headers() }),
++    );
++  }
++
+   /** A null value records no limit; a null from records it from the sheet's today. */
+   setClerkLimit(sheet: string, value: string | null, from: string | null): Promise<SheetSettings> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index a3fd9d65..d450aa5a 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -3,7 +3,7 @@ import { GRADES, Grade } from './people.service';
+ import { GradesService } from './grades.service';
+ import { Session } from '../../core/session';
+ import { Graces } from './rates.service';
+-import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
++import { Dated, PERM_ACTIONS, PermAction, PolicyVersionLine, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
+ import { FigurePipe } from '../../core/figure.pipe';
+ 
+ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+@@ -46,6 +46,9 @@ const STANDING: Record<PermAction, string> = {
+ // place of by the policy date; blank for none).
+ // The rounding mode, floor, cap, terms, late percent and clerk limit are the policy settings, versioned
+ // together: every change to one of them is a new policy version, and the current version's number shows.
++// Showing the policy versions lists them, one line per version, oldest first: its number, its from-date
++// (start for one that counts on every date), the setting changed and its value, and how many claims
++// have it as their policy version; read from the store each time it is shown.
+ // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
+ // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
+ // today. Read from the
+@@ -58,6 +61,14 @@ const STANDING: Record<PermAction, string> = {
+     <section aria-labelledby="settings-heading">
+       <h2 id="settings-heading">Settings</h2>
+       <p>Policy version <span data-testid="policy-version">{{ (policyVersion()) | figure }}</span></p>
++      <button type="button" data-testid="policy-show" (click)="showPolicy()">Show policy versions</button>
++      @if (policyLines(); as lines) {
++        <ul aria-label="Policy versions">
++          @for (v of lines; track v.number) {
++            <li data-testid="policy-line">{{ v.number }} {{ v.from ?? 'start' }} {{ v.key }}={{ v.value ?? '' }} {{ v.claims }}</li>
++          }
++        </ul>
++      }
+       <form (submit)="saveSettings($event)" aria-label="Settings" data-testid="settings-form">
+         <label for="setting-clerk-limit">Clerk limit</label>
+         <input
+@@ -718,6 +729,10 @@ export class Settings {
+   protected readonly policyVersion = signal(0);
+   /** The from-date of each policy version, oldest first, whenever the settings are read or saved. */
+   readonly policyVersionsSaved = output<(string | null)[]>();
++  /** The policy versions as last shown, oldest first; null until shown. */
++  protected readonly policyLines = signal<PolicyVersionLine[] | null>(null);
++  /** How many times the policy versions have been asked for: an older answer is not shown over a newer one. */
++  private policyAsked = 0;
+   protected readonly given = signal<RoleGiven[]>([]);
+   /** The proof threshold in force, with two decimals; null when there is none. */
+   protected readonly proofThreshold = signal<string | null>(null);
+@@ -887,6 +902,8 @@ export class Settings {
+     effect(() => {
+       const sheet = this.session.sheetId();
+       this.session.loads();
++      this.policyAsked++;
++      this.policyLines.set(null);
+       this.clerkLimit.set(null);
+       this.floor.set('');
+       this.given.set([]);
+@@ -1010,6 +1027,15 @@ export class Settings {
+     });
+   }
+ 
++  /** Read the sheet's policy versions from the store and show them. */
++  protected async showPolicy(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const asked = ++this.policyAsked;
++    const lines = await this.service.policyVersions(sheet);
++    if (asked === this.policyAsked) this.policyLines.set(lines);
++  }
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 36203a8e..6c05377a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.claim;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ import jakarta.persistence.LockModeType;
+@@ -15,6 +16,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
++    /** The date of each of the sheet's claims. */
++    @Query("SELECT c.date FROM Claim c WHERE c.sheetId = :sheetId")
++    List<LocalDate> datesBySheetId(String sheetId);
++
+     /** The highest claim id given so far, on any sheet; 0 when there is none. */
+     @Query("SELECT COALESCE(MAX(c.id), 0) FROM Claim c")
+     long highestId();
+diff --git a/src/main/java/net/officefloor/hq/app/settings/PolicyVersion.java b/src/main/java/net/officefloor/hq/app/settings/PolicyVersion.java
+index 8174a786..64535582 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/PolicyVersion.java
++++ b/src/main/java/net/officefloor/hq/app/settings/PolicyVersion.java
+@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
++import java.util.Collection;
++import java.util.List;
+ 
+ /** A version of a sheet's policy settings (see {@link DatedSettings#POLICY_KEYS}): made by a change to one
+  * of them, numbered from 1 on the sheet in the order made, with the setting changed, its value and the
+@@ -73,4 +75,16 @@ public class PolicyVersion {
+     public boolean countsOn(LocalDate date) {
+         return from == null || !from.isAfter(date);
+     }
++
++    /** How many of the claims dated {@code claimDates} have each of {@code versions} (oldest first) as
++     * their policy version: the number of versions that count on the claim's date. A claim with none in
++     * force on its date counts for none. */
++    public static int[] claimsOf(List<PolicyVersion> versions, Collection<LocalDate> claimDates) {
++        int[] counts = new int[versions.size()];
++        for (LocalDate date : claimDates) {
++            int number = (int) versions.stream().filter(v -> v.countsOn(date)).count();
++            if (number > 0) counts[number - 1]++;
++        }
++        return counts;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 8aa2940f..6bab030e 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.EnumMap;
+ import java.util.LinkedHashMap;
+@@ -312,6 +313,34 @@ public class SettingsController {
+                 fromsOf(service.policyVersions(sheet)));
+     }
+ 
++    /** A policy version: its number, the date it is in force from (null when it counts on every date), the
++     * setting changed and its value, and how many of the sheet's claims have it as their policy version. */
++    public record PolicyVersionView(int number, LocalDate from, String key, String value, int claims) {
++    }
++
++    /** The sheet's policy versions, oldest first. */
++    @GetMapping("/settings/policy-versions")
++    public List<PolicyVersionView> policyVersions(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        String sheet = sheetId.trim();
++        if (asOf != null) {
++            SheetAsOf then = history.read(sheet, asOf);
++            return versionsOf(then.policyVersions(), then.claims().stream().map(c -> c.getDate()).toList());
++        }
++        return versionsOf(service.policyVersions(sheet), service.claimDates(sheet));
++    }
++
++    private static List<PolicyVersionView> versionsOf(List<PolicyVersion> versions, List<LocalDate> claimDates) {
++        int[] claims = PolicyVersion.claimsOf(versions, claimDates);
++        List<PolicyVersionView> views = new ArrayList<>();
++        for (int i = 0; i < versions.size(); i++) {
++            PolicyVersion v = versions.get(i);
++            views.add(new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(), v.getValue(), claims[i]));
++        }
++        return views;
++    }
++
+     /** Every grace recorded for each grade, oldest first, by grade. */
+     private static Map<String, List<DatedView>> gracesOf(List<String> grades, Function<String, List<SheetSetting>> history) {
+         Map<String, List<DatedView>> graces = new LinkedHashMap<>();
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 6215f938..01b7ba61 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -12,6 +12,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.grade.GradeService;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.PreviewDate;
+@@ -51,10 +52,12 @@ public class SettingsService {
+     private final DelegationService delegations;
+     private final GradeService grades;
+     private final Audit audit;
++    private final ClaimRepository claims;
+ 
+     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
+             PolicyVersionRepository versions, SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
+-            DelegationService delegations, GradeService grades, Audit audit) {
++            DelegationService delegations, GradeService grades, Audit audit, ClaimRepository claims) {
++        this.claims = claims;
+         this.grades = grades;
+         this.delegations = delegations;
+         this.permissions = permissions;
+@@ -395,6 +398,12 @@ public class SettingsService {
+         return versions.findBySheetIdOrderByNumberAsc(sheetId);
+     }
+ 
++    /** The date of each of the sheet's claims. */
++    @Transactional(readOnly = true)
++    public List<LocalDate> claimDates(String sheetId) {
++        return claims.datesBySheetId(sheetId);
++    }
++
+     /** Record {@code value} for the dated setting {@code key} from {@code from} (the sheet's today when
+      * null), keeping the values already recorded; one already recorded from that date is replaced. A
+      * change to a policy setting (see {@link DatedSettings#POLICY_KEYS}) is the sheet's next policy
