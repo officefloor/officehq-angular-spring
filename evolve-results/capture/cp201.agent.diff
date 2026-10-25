@@ -1,0 +1,269 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index ad9c7367..865f7c15 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -147,13 +147,19 @@ export function withGrade(name: string, grade: string | null): string {
+ }
+ 
+ /** A sheet's descendants' figures added up: their people (retired ones included), and each one's
+- *  due-total and overdue-total as that sheet shows it, with two decimals. */
++ *  due-total and overdue-total as that sheet shows it, with two decimals; per grade, the due-totals of
++ *  the people on it (retired ones left out); and per status, how many claims have it. */
+ export interface DescendantFigures {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
++  gradeDueTotals: Partial<Record<string, string>>;
++  statusCounts: Partial<Record<string, number>>;
+ }
+ 
++/** The figures of a sheet without descendants. */
++export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
++
+ // The people kept on a sheet, read from and written to the server.
+ @Injectable({ providedIn: 'root' })
+ export class PeopleService {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fc1ca3a8..9724bae7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,7 +7,7 @@ import { Holidays } from './holidays';
+ import { Notes } from './notes';
+ import { Header } from './header';
+ import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
+-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
++import { DescendantFigures, GRADES, NO_DESCENDANTS, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+@@ -15,7 +15,7 @@ import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdu
+ import { Settings } from './settings';
+ import { Dated, SettingsService, inForce } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+-import { Summary, SummaryPerson } from './summary';
++import { STATUSES, Summary, SummaryPerson } from './summary';
+ import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
+ import { Templates } from './templates';
+ import { TreeSearch } from './tree-search';
+@@ -85,6 +85,12 @@ import { FigurePipe } from '../../core/figure.pipe';
+       <span>People <strong data-testid="consolidated-people-count">{{ (consolidated().peopleCount) | figure }}</strong></span>
+       <span>Due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong></span>
+       <span>Overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></span>
++      @for (g of consolidated().grades; track g.grade) {
++        <span>Grade {{ (g.grade) | figure }} due <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</strong></span>
++      }
++      @for (s of consolidated().statuses; track s.status) {
++        <span>{{ (s.status) | figure }} <strong [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ (s.count) | figure }}</strong></span>
++      }
+     </section>
+     <app-settings
+       (floorSaved)="floors.set($event)"
+@@ -1316,16 +1322,29 @@ export class People {
+     return people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key)) ?? null;
+   });
+   /** The figures of the sheet's descendants, added up, as read when the sheet was loaded. */
+-  protected readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
++  protected readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** The consolidated figures: the sheet's own (as its header shows them) and its descendants', added up.
+    *  While the sheet is read as of an earlier date they are the tree's as it stood then: the server adds the sheet's own in. */
+   protected readonly consolidated = computed(() => {
+     const d = this.descendants();
+-    if (this.session.asOf()) return d;
++    const own = !this.session.asOf();
++    const people = own ? this.summaryPeople().filter((p) => !p.retired) : [];
++    const claims = own ? this.claims() : [];
+     return {
+-      peopleCount: this.people().length + d.peopleCount,
+-      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
+-      overdueTotal: money(this.overdueTotal().cents + cents(d.overdueTotal)),
++      peopleCount: (own ? this.people().length : 0) + d.peopleCount,
++      dueTotal: own ? money(cents(this.dueTotal()) + cents(d.dueTotal)) : d.dueTotal,
++      overdueTotal: own ? money(this.overdueTotal().cents + cents(d.overdueTotal)) : d.overdueTotal,
++      grades: GRADES.map((grade) => ({
++        grade,
++        dueTotal: money(
++          people.filter((p) => p.grade === grade).reduce((sum, p) => sum + (p.dueCents ?? 0), 0) +
++            cents(d.gradeDueTotals[grade] ?? '0.00'),
++        ),
++      })),
++      statuses: STATUSES.map((status) => ({
++        status,
++        count: claims.filter((c) => c.status === status).length + (d.statusCounts[status] ?? 0),
++      })),
+     };
+   });
+   protected readonly name = signal('');
+@@ -1447,7 +1466,7 @@ export class People {
+       this.fiscalStartMonth.set(1);
+       this.statements.set([]);
+       this.periods.set([]);
+-      this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
++      this.descendants.set(NO_DESCENDANTS);
+       this.rowErrors.set({});
+       this.selectedClaims.set(new Set());
+       this.bulkOpened.set(null);
+@@ -2735,7 +2754,7 @@ export class People {
+         this.service.watched(sheet),
+         this.claimsService.tags(sheet),
+         // Without its descendants' figures the sheet shows only its own as consolidated.
+-        this.service.descendants(sheet).catch(() => ({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' })),
++        this.service.descendants(sheet).catch(() => NO_DESCENDANTS),
+         this.plansService.list(sheet),
+         this.service.snapshots(sheet),
+         this.service.dashboard(sheet).catch(() => NO_DASHBOARD),
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 6ef5ada9..31e4acda 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -5,11 +5,16 @@ import java.util.ArrayDeque;
+ import java.util.Deque;
+ import java.util.ArrayList;
+ import java.util.HashSet;
++import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Locale;
+ import java.util.Set;
+ import java.util.TreeSet;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.history.SheetAsOf;
+ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.person.Person;
+@@ -23,14 +28,59 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * A sheet's descendants (its children — the sheets naming it as their parent — their children, and so
+  * on) and their figures added up: the number of people on them (retired ones included) and each one's
+- * due-total and overdue-total as that sheet shows it. The screen adds the sheet's own figures to give
+- * the consolidated figures.
++ * due-total and overdue-total as that sheet shows it; per grade, the due-totals of the people on it on
++ * their sheet's today (retired people left out, a due-total of n/a skipped); and per status, the number of
++ * claims in it. The screen adds the sheet's own figures to give the consolidated figures.
+  */
+ @Service
+ public class ConsolidatedService {
+ 
+-    /** The descendants' figures added up, with two decimals; all zero when the sheet has no children. */
+-    public record Figures(int peopleCount, String dueTotal, String overdueTotal) {
++    /** The grades a due-total is added up for. */
++    private static final List<String> GRADES = List.of("A", "B", "C");
++
++    /** The statuses claims are counted by. */
++    private static final List<ClaimStatus> STATUSES = List.of(ClaimStatus.DRAFT, ClaimStatus.OPEN,
++            ClaimStatus.PENDING, ClaimStatus.SETTLED, ClaimStatus.VOID, ClaimStatus.REVIEW);
++
++    /** The descendants' figures added up, with two decimals; all zero when the sheet has no children.
++     * {@code gradeDueTotals} by grade, {@code statusCounts} by status. */
++    public record Figures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
++            Map<String, Integer> statusCounts) {
++    }
++
++    /** Figures being added up over sheets. */
++    private static final class Sum {
++        private int count;
++        private BigDecimal due = BigDecimal.ZERO.setScale(2);
++        private BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        private final Map<String, BigDecimal> grades = new LinkedHashMap<>();
++        private final Map<String, Integer> statuses = new LinkedHashMap<>();
++
++        Sum() {
++            GRADES.forEach(g -> grades.put(g, BigDecimal.ZERO.setScale(2)));
++            STATUSES.forEach(s -> statuses.put(s.name(), 0));
++        }
++
++        void add(RollupService.Snapshot snapshot, List<Person> everyone, List<Claim> claims, LocalDate today) {
++            count += snapshot.people().size();
++            due = due.add(new BigDecimal(snapshot.dueTotal()));
++            overdue = overdue.add(new BigDecimal(snapshot.overdueTotal()));
++            for (Person person : everyone) {
++                if (person.isRetired()) continue;
++                RollupService.Figures figures = snapshot.people().get(person.getId());
++                if (figures == null || RollupService.NONE.equals(figures.dueTotal())) continue;
++                grades.computeIfPresent(person.gradeOn(today), (g, sum) -> sum.add(new BigDecimal(figures.dueTotal())));
++            }
++            for (Claim claim : claims) {
++                statuses.computeIfPresent(claim.getStatus().name(), (s, n) -> n + 1);
++            }
++        }
++
++        Figures figures() {
++            Map<String, String> gradeTotals = new LinkedHashMap<>();
++            grades.forEach((g, sum) -> gradeTotals.put(g, sum.toPlainString()));
++            return new Figures(count, due.toPlainString(), overdue.toPlainString(), gradeTotals, Map.copyOf(statuses));
++        }
+     }
+ 
+     private final SheetRepository sheets;
+@@ -38,10 +88,12 @@ public class ConsolidatedService {
+     private final PersonTree tree;
+     private final PersonRepository people;
+     private final SheetHistory history;
++    private final ClaimRepository claims;
+ 
+     public ConsolidatedService(SheetRepository sheets, RollupService rollup, PersonTree tree,
+-            PersonRepository people, SheetHistory history) {
++            PersonRepository people, SheetHistory history, ClaimRepository claims) {
+         this.history = history;
++        this.claims = claims;
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.tree = tree;
+@@ -91,26 +143,21 @@ public class ConsolidatedService {
+         seen.add(sheetId);
+         Deque<String> parents = new ArrayDeque<>();
+         parents.add(sheetId);
+-        RollupService.Snapshot own = snapshotAsOf(sheetId, date);
+-        int count = own.people().size();
+-        BigDecimal due = new BigDecimal(own.dueTotal());
+-        BigDecimal overdue = new BigDecimal(own.overdueTotal());
++        Sum sum = new Sum();
++        addAsOf(sum, sheetId, date);
+         while (!parents.isEmpty()) {
+             for (String child : history.childrenAsOf(parents.poll(), date)) {
+                 if (!seen.add(child)) continue;
+                 parents.add(child);
+-                RollupService.Snapshot snapshot = snapshotAsOf(child, date);
+-                count += snapshot.people().size();
+-                due = due.add(new BigDecimal(snapshot.dueTotal()));
+-                overdue = overdue.add(new BigDecimal(snapshot.overdueTotal()));
++                addAsOf(sum, child, date);
+             }
+         }
+-        return new Figures(count, due.toPlainString(), overdue.toPlainString());
++        return sum.figures();
+     }
+ 
+-    private RollupService.Snapshot snapshotAsOf(String sheetId, LocalDate date) {
++    private void addAsOf(Sum sum, String sheetId, LocalDate date) {
+         SheetAsOf sheet = history.asOf(sheetId, date);
+-        return rollup.snapshot(sheet.people(), sheet.claims(), sheet);
++        sum.add(rollup.snapshot(sheet.people(), sheet.claims(), sheet), sheet.people(), sheet.claims(), sheet.today());
+     }
+ 
+     /** The figures of the sheet's descendants as they stand, added up. */
+@@ -120,19 +167,15 @@ public class ConsolidatedService {
+         seen.add(sheetId);
+         Deque<String> parents = new ArrayDeque<>();
+         parents.add(sheetId);
+-        int count = 0;
+-        BigDecimal due = BigDecimal.ZERO.setScale(2);
+-        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        Sum sum = new Sum();
+         while (!parents.isEmpty()) {
+             for (Sheet child : sheets.findByParentIdOrderByIdAsc(parents.poll())) {
+                 if (!seen.add(child.getId())) continue;
+                 parents.add(child.getId());
+-                RollupService.Snapshot snapshot = rollup.snapshot(child.getId());
+-                count += snapshot.people().size();
+-                due = due.add(new BigDecimal(snapshot.dueTotal()));
+-                overdue = overdue.add(new BigDecimal(snapshot.overdueTotal()));
++                sum.add(rollup.snapshot(child.getId()), people.findBySheetIdOrderByPositionAscIdAsc(child.getId()),
++                        claims.findBySheetIdOrderByListedDescIdDesc(child.getId()), child.getToday());
+             }
+         }
+-        return new Figures(count, due.toPlainString(), overdue.toPlainString());
++        return sum.figures();
+     }
+ }

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "397f89b61beaecafdd49121d5b13c92f7d6ce0fb",
+  "reset_sha": "",
+  "preagent_sha": "d842fbefe01b1d10cd58c6245e6b20e180c102cb",
+  "prev_sha": "d842fbefe01b1d10cd58c6245e6b20e180c102cb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8238671999999999,
+    "input_tokens": 42,
+    "output_tokens": 9707,
+    "cache_read_tokens": 927476,
+    "cache_creation_tokens": 55508,
+    "num_turns": 21,
+    "duration_ms": 875720,
+    "duration_api_ms": 117486,
+    "model": "claude-opus-5-5",
+    "session_id": "7ff4d5a4-c024-4488-b8e9-3286d466a7cc",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now include a due-total for each grade (A, B, C) and a claim count for each status, added up over the whole sheet tree. `bin/e2e` passes all 4 tests in the spec.\n\n**Server** (`ConsolidatedService.java`):\n- The descendants endpoint now also returns `gradeDueTotals` and `statusCounts`.\n- **Grades:** each person counts toward the grade they hold on their own sheet's today. Retired people are left out, and a due-total of `n/a` adds nothing.\n- **Statuses:** the counts cover DRAFT, OPEN, PENDING, SETTLED, VOID and REVIEW. Deleted claims aren't counted, the same as in the existing sheet summary.\n- When a sheet is viewed as of an earlier date, these figures are worked out as the tree stood then, with the sheet's own people and claims included. This matches how the existing consolidated figures behave.\n\n**Front end** (`people.ts`, `people.service.ts`):\n- The consolidated section shows `consolidated-grade-<G>-due-total` and `consolidated-status-<S>-count`.\n- For the live view, the screen adds the sheet's own figures to the descendants' figures, as it already does for the people count and due totals. The own figures come from the data the sheet summary uses, so the two always agree.\n- I put the \"no descendants\" default in one shared constant (`NO_DESCENDANTS`) instead of repeating it in three places.\n\nNo database or audit changes were needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8238671999999999,
+        "num_turns": 21,
+        "duration_ms": 875720,
+        "duration_api_ms": 117486,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
