@@ -76,6 +76,15 @@ export class PeriodsService {
     );
   }
 
+  /** Roll the fiscal year FYyyyy over: make the next fiscal year's periods, as {@link generateFiscalYear}
+   *  does, and add each person's open figure at the old year's end to their opening balance for the new
+   *  year's first period: the periods made. */
+  rollover(sheet: string, year: string): Promise<Period[]> {
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheet)}/rollover`, { year }, { headers: this.session.headers() }),
+    );
+  }
+
   /** Make the four calendar quarters of the year, named yyyy-Q1 to yyyy-Q4, leaving out a quarter whose
    *  name is taken or whose days overlap a period: those made. */
   generateQuarters(sheet: string, year: string): Promise<Period[]> {

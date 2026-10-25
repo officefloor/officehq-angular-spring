@@ -141,6 +141,15 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** Roll the fiscal year over: the next fiscal year's periods made, in order. */
+    @PostMapping("/rollover")
+    public List<PeriodView> rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateFiscalYearRequest request) {
+        return service.rollover(sheetId.trim(), user.trim(), request.yearValue()).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** Generate the calendar year's four quarterly periods: the periods made, in order. */
     @PostMapping("/generate-quarters")
     public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
