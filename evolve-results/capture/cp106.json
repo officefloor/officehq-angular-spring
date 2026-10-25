@@ -1,0 +1,64 @@
+{
+  "checkpoint": 106,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp106_pool-cuts",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a pot (two decimals, settings, blank means none, not dated; SETTING_CHANGED key=pot\nvalue=<pot>). Each member of a balanced pool shows a cut: the pot times their share divided by\n100, rounded half to even to two decimals; a retired member cuts 0.00. The remainder, the pot minus\nthe cuts added up, goes to the member with the largest share, the earliest added on a tie, so the\ncuts total exactly the pot. An unbalanced pool, or no pot, shows no cut (an empty cell).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a pot (two decimals, settings, blank means none, not dated; SETTING_CHANGED key=pot\nvalue=<pot>). Each member of a balanced pool shows a cut: the pot times their share divided by\n100, rounded half to even to two decimals; a retired member cuts 0.00. The remainder, the pot minus\nthe cuts added up, goes to the member with the largest share, the earliest added on a tie, so the\ncuts total exactly the pot. An unbalanced pool, or no pot, shows no cut (an empty cell).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cd1177c91ac2028378169c3aa8934f6c14d1c371",
+  "reset_sha": "",
+  "preagent_sha": "c8611a6ef031e0f7135210a4465d453904ed9d53",
+  "prev_sha": "c8611a6ef031e0f7135210a4465d453904ed9d53",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0622137999999999,
+    "input_tokens": 32,
+    "output_tokens": 9278,
+    "cache_read_tokens": 921789,
+    "cache_creation_tokens": 86521,
+    "num_turns": 20,
+    "duration_ms": 253100,
+    "duration_api_ms": 100756,
+    "model": "claude-opus-5-5",
+    "session_id": "a8c77f8d-5113-4dbf-bce5-d03706a25b41",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a pot, and each member of a balanced pool shows their cut of it. All 4 acceptance tests pass on `bin/e2e`.\n\n**The pot setting**\n- It is a new undated setting on the settings form (`setting-pot`, showing `setting-pot-current`). It takes two decimals, and leaving it blank means no pot.\n- A typed value that isn't a valid amount is refused with the usual settings error and isn't saved.\n- On the server it is stored as an ordinary sheet setting under the key `pot`, so no database migration was needed. Saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=pot value=<pot>` to the audit file (`value=` is empty when it is cleared).\n- It is set through a new endpoint, `PUT /api/sheets/{id}/settings/pot`. The settings response gains a `pot` field, added as the last field.\n\n**The cuts**\n- Each member's row in a pool now has a `pool-cut` cell. If the pool is unbalanced or there is no pot, the cell is empty.\n- The cuts are worked out in the browser, the same place the pool's total and balanced flag are already worked out. The arithmetic uses exact whole cents, so there are no floating-point rounding slips.\n- Each cut is the pot times the share divided by 100, rounded half to even to two decimals. A retired member gets 0.00.\n- Whatever is left over after adding up the cuts goes to the member with the largest share, the earliest added on a tie. Retired members' shares count as 0 when picking that member.\n\nThe changes are in `SettingService.java` and `SettingController.java` on the server, and in `settings-api.ts`, `settings.ts`, `pools.ts` and a new `sheet-pot.ts` (which shares the pot with the pools screen) on the front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0622137999999999,
+        "num_turns": 20,
+        "duration_ms": 253100,
+        "duration_api_ms": 100756,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp106.agent.jsonl",
+  "agent_diff_file": "cp106.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
