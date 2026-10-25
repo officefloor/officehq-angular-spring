@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.time.LocalDate;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -40,8 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ConsolidatedService {
 
-    /** The grades a due-total is added up for. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
+    /** The grades a due-total is always added up for; a grade added to a sheet is added up once someone has it. */
+    private static final List<String> GRADES = GradeService.BUILT_IN;
 
     /** The statuses claims are counted by. */
     private static final List<ClaimStatus> STATUSES = List.of(ClaimStatus.DRAFT, ClaimStatus.OPEN,
@@ -87,7 +88,8 @@ public class ConsolidatedService {
                 if (person.isRetired()) continue;
                 RollupService.Figures figures = snapshot.people().get(person.getId());
                 if (figures == null || RollupService.NONE.equals(figures.dueTotal())) continue;
-                grades.computeIfPresent(person.gradeOn(today), (g, sum) -> sum.add(new BigDecimal(figures.dueTotal())));
+                String grade = person.gradeOn(today);
+                if (grade != null) grades.merge(grade, new BigDecimal(figures.dueTotal()), BigDecimal::add);
             }
             for (Claim claim : claims) {
                 statuses.computeIfPresent(claim.getStatus().name(), (s, n) -> n + 1);

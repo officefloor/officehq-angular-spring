@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -40,8 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SettingsService {
 
-    private static final List<String> GRADES = List.of("A", "B", "C");
-
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
     private final SheetSettingRepository settings;
@@ -49,11 +48,13 @@ public class SettingsService {
     private final DatedSettings dated;
     private final RollupService rollup;
     private final DelegationService delegations;
+    private final GradeService grades;
     private final Audit audit;
 
     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
             SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
-            DelegationService delegations, Audit audit) {
+            DelegationService delegations, GradeService grades, Audit audit) {
+        this.grades = grades;
         this.delegations = delegations;
         this.permissions = permissions;
         this.sheets = sheets;
@@ -152,7 +153,7 @@ public class SettingsService {
     public Map<String, BigDecimal> gradeClerkLimits(String sheetId) {
         LocalDate today = today(sheetId);
         Map<String, BigDecimal> limits = new LinkedHashMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades.grades(sheetId)) {
             BigDecimal own = dated.gradeClerkLimitOn(sheetId, grade, today);
             if (own != null) limits.put(grade, own);
         }
@@ -169,6 +170,7 @@ public class SettingsService {
      * that the grade uses the sheet's clerk limit from then. */
     @Transactional
     public void setGradeClerkLimit(String sheetId, String by, String grade, BigDecimal limit, LocalDate from) {
+        grades.requireGrade(sheetId, grade);
         record(sheetId, by, DatedSettings.gradeClerkLimitKey(grade), limit == null ? null : limit.toPlainString(), from, false);
     }
 
@@ -234,7 +236,7 @@ public class SettingsService {
     public Map<String, Integer> gradeTerms(String sheetId) {
         LocalDate today = today(sheetId);
         Map<String, Integer> terms = new LinkedHashMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades.grades(sheetId)) {
             Integer own = dated.gradeTermsOn(sheetId, grade, today);
             if (own != null) terms.put(grade, own);
         }
@@ -251,6 +253,7 @@ public class SettingsService {
      * the grade uses the sheet's terms from then. Only the claims added from then on are due by them. */
     @Transactional
     public void setGradeTerms(String sheetId, String by, String grade, Integer terms, LocalDate from) {
+        grades.requireGrade(sheetId, grade);
         record(sheetId, by, DatedSettings.gradeTermsKey(grade), terms == null ? null : String.valueOf(terms), from,
                 false);
     }
@@ -260,7 +263,7 @@ public class SettingsService {
     public Map<String, Integer> gradeGraces(String sheetId) {
         LocalDate today = today(sheetId);
         Map<String, Integer> graces = new LinkedHashMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades.grades(sheetId)) {
             Integer grace = dated.gradeGraceOn(sheetId, grade, today);
             if (grace != null) graces.put(grade, grace);
         }
@@ -272,6 +275,7 @@ public class SettingsService {
      * due-by plus them is past, and its late charge counts from there; the figures follow. */
     @Transactional
     public void setGradeGrace(String sheetId, String by, String grade, Integer days, LocalDate from) {
+        grades.requireGrade(sheetId, grade);
         record(sheetId, by, DatedSettings.gradeGraceKey(grade), days == null ? null : String.valueOf(days), from,
                 true);
     }
@@ -314,7 +318,7 @@ public class SettingsService {
     public Map<String, BigDecimal> gradeProofThresholds(String sheetId) {
         LocalDate today = today(sheetId);
         Map<String, BigDecimal> thresholds = new LinkedHashMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades.grades(sheetId)) {
             BigDecimal own = dated.gradeProofThresholdOn(sheetId, grade, today);
             if (own != null) thresholds.put(grade, own);
         }
@@ -332,6 +336,7 @@ public class SettingsService {
      * records that the grade uses the sheet's proof threshold from then. */
     @Transactional
     public void setGradeProofThreshold(String sheetId, String by, String grade, BigDecimal threshold, LocalDate from) {
+        grades.requireGrade(sheetId, grade);
         record(sheetId, by, DatedSettings.gradeProofThresholdKey(grade), threshold == null ? null : threshold.toPlainString(),
                 from, false);
     }
@@ -542,6 +547,7 @@ public class SettingsService {
     @Transactional
     public Sheet setDefaultGrade(String sheetId, String by, String grade) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (grade != null) grades.requireGrade(sheetId, grade);
         sheet.setDefaultGrade(grade);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=default-grade", "value=" + (grade == null ? "" : grade));

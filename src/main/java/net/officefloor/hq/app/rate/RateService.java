@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
@@ -36,9 +37,11 @@ public class RateService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateVersionRepository versions;
+    private final GradeService grades;
 
     public RateService(RateRepository rates, RateVersionRepository versions, RateChain chain, SheetRepository sheets, Audit audit, RollupService rollup,
-            ClaimRepository claims, PersonRepository people) {
+            ClaimRepository claims, PersonRepository people, GradeService grades) {
+        this.grades = grades;
         this.versions = versions;
         this.chain = chain;
         this.claims = claims;
@@ -70,6 +73,7 @@ public class RateService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
+        grades.requireGrade(sheetId, grade);
         if (from != null && to != null && to.isBefore(from)) {
             throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
         }
@@ -111,6 +115,7 @@ public class RateService {
      * people on the grade on each claim's date; a claim a statement binds does not change. Saves nothing. */
     @Transactional(readOnly = true)
     public Preview preview(String sheetId, String grade, BigDecimal pct) {
+        grades.requireGrade(sheetId, grade);
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         RollupService.Basis live = rollup.live(sheetId);

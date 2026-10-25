@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetAsOf;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -238,7 +239,7 @@ public class SettingsController {
     }
 
     /** A default grade: one of the grades; blank or null makes it A. */
-    public record DefaultGradeRequest(@Pattern(regexp = "\\s*[ABC]?\\s*") String value) {
+    public record DefaultGradeRequest(@Pattern(regexp = "\\s*(?:[A-Z]{1,3})?\\s*") String value) {
         String gradeValue() {
             return value == null || value.isBlank() ? null : value.trim();
         }
@@ -276,9 +277,12 @@ public class SettingsController {
 
     private final SheetHistory history;
 
-    public SettingsController(SettingsService service, SheetHistory history) {
+    private final GradeService grades;
+
+    public SettingsController(SettingsService service, SheetHistory history, GradeService grades) {
         this.service = service;
         this.history = history;
+        this.grades = grades;
     }
 
     @GetMapping("/settings")
@@ -286,7 +290,7 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         String sheet = sheetId.trim();
-        if (asOf != null) return viewOf(history.read(sheet, asOf));
+        if (asOf != null) return viewOf(history.read(sheet, asOf), grades.grades(sheet));
         return new SettingsView(text(service.clerkLimit(sheet)), text(service.floor(sheet)),
                 text(service.cap(sheet)), service.terms(sheet),
                 service.gradeTerms(sheet),
@@ -297,7 +301,7 @@ public class SettingsController {
                 service.history(sheet, DatedSettings.CAP).stream().map(DatedView::of).toList(),
                 text(service.proofThreshold(sheet)), permissionsOf(service.permissions(sheet)), service.graceDays(sheet),
                 text(service.noteThreshold(sheet)), service.entryDate(sheet), service.gradeGraces(sheet),
-                gracesOf(grade -> service.history(sheet, DatedSettings.gradeGraceKey(grade))),
+                gracesOf(grades.grades(sheet), grade -> service.history(sheet, DatedSettings.gradeGraceKey(grade))),
                 textOf(service.gradeProofThresholds(sheet)), text(service.pot(sheet)), service.parent(sheet),
                 service.fiscalStartMonth(sheet), text(service.alertThreshold(sheet)), service.rounding(sheet),
                 service.history(sheet, DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
@@ -307,34 +311,34 @@ public class SettingsController {
     }
 
     /** Every grace recorded for each grade, oldest first, by grade. */
-    private static Map<String, List<DatedView>> gracesOf(Function<String, List<SheetSetting>> history) {
+    private static Map<String, List<DatedView>> gracesOf(List<String> grades, Function<String, List<SheetSetting>> history) {
         Map<String, List<DatedView>> graces = new LinkedHashMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : grades) {
             graces.put(grade, history.apply(grade).stream().map(DatedView::of).toList());
         }
         return graces;
     }
 
     /** The settings as they stood on the sheet as of a date, that date standing in for its today. */
-    private static SettingsView viewOf(SheetAsOf then) {
+    private static SettingsView viewOf(SheetAsOf then, List<String> grades) {
         LocalDate today = then.today();
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : grades) {
             then.valueOn(DatedSettings.gradeTermsKey(grade), today).map(Integer::valueOf)
                     .ifPresent(own -> gradeTerms.put(grade, own));
         }
         Map<String, Integer> gradeGraces = new LinkedHashMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : grades) {
             Integer grace = then.graceOn(grade, today);
             if (grace != null) gradeGraces.put(grade, grace);
         }
         Map<String, BigDecimal> gradeProofThresholds = new LinkedHashMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : grades) {
             then.valueOn(DatedSettings.gradeProofThresholdKey(grade), today).map(BigDecimal::new)
                     .ifPresent(own -> gradeProofThresholds.put(grade, own));
         }
         Map<String, BigDecimal> gradeClerkLimits = new LinkedHashMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : grades) {
             then.valueOn(DatedSettings.gradeClerkLimitKey(grade), today).map(BigDecimal::new)
                     .ifPresent(own -> gradeClerkLimits.put(grade, own));
         }
@@ -354,7 +358,7 @@ public class SettingsController {
                 permissionsOf(matrix), then.graceDays(),
                 text(then.valueOn(DatedSettings.NOTE_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
                 then.entryDate(), gradeGraces,
-                gracesOf(grade -> then.history(DatedSettings.gradeGraceKey(grade))),
+                gracesOf(grades, grade -> then.history(DatedSettings.gradeGraceKey(grade))),
                 textOf(gradeProofThresholds), text(then.pot()), then.parentId(), then.fiscalStartMonth(),
                 text(then.alertThreshold()), then.valueOn(DatedSettings.ROUNDING, today).orElse(null),
                 then.history(DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
@@ -397,7 +401,7 @@ public class SettingsController {
 
     @PutMapping("/settings/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClerkLimitRequest request) {
         String sheet = sheetId.trim();
@@ -425,7 +429,7 @@ public class SettingsController {
 
     @PutMapping("/settings/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         String sheet = sheetId.trim();
@@ -480,7 +484,7 @@ public class SettingsController {
 
     @PutMapping("/settings/terms/{grade}")
     public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GradeTermsRequest request) {
         String sheet = sheetId.trim();
@@ -490,7 +494,7 @@ public class SettingsController {
 
     @PutMapping("/settings/grace/{grade}")
     public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GradeGraceRequest request) {
         String sheet = sheetId.trim();

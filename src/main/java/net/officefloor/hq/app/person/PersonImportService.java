@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PersonImportService {
 
     /** A grade as the person form takes it. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
 
     /** Terms as the person form takes them. */
     private static final Pattern TERMS = Pattern.compile("\\s*(\\d{1,4})?\\s*");
@@ -72,7 +72,7 @@ public class PersonImportService {
                     || !TERMS.matcher(terms).matches() || (contact != null && contact.length() > MAX)) {
                 throw new PersonImportException();
             }
-            if (grades.isRetired(sheetId, grade)) throw new PersonImportException();
+            if (!grades.isGrade(sheetId, grade) || grades.isRetired(sheetId, grade)) throw new PersonImportException();
             if (!names.add(Person.keyOf(name))) throw new PersonImportException();
             Person match = people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
             if (match == null) {

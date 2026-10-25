@@ -47,7 +47,8 @@ public class GradeMergeService {
     @Transactional
     public List<Person> merge(String sheetId, String user, String from, String into) {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
-        if (settings.roleOf(sheetId, user) != Role.STEWARD || from.equals(into) || grades.isRetired(sheetId, into)) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || from.equals(into) || grades.isRetired(sheetId, into)
+                || !grades.isGrade(sheetId, from) || !grades.isGrade(sheetId, into)) {
             throw new GradeMergeException();
         }
         LocalDate today = sheetService.today(sheetId);

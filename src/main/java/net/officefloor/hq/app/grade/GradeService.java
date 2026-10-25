@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.grade;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -14,14 +16,55 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GradeService {
 
+    /** The grades every sheet has. */
+    public static final List<String> BUILT_IN = List.of("A", "B", "C");
+
+    /** A grade's code: one to three capital letters. */
+    public static final Pattern CODE = Pattern.compile("[A-Z]{1,3}");
+
     private final SheetRepository sheets;
     private final SheetGradeRetiredRepository retired;
+    private final SheetGradeRepository added;
     private final Audit audit;
 
-    public GradeService(SheetRepository sheets, SheetGradeRetiredRepository retired, Audit audit) {
+    public GradeService(SheetRepository sheets, SheetGradeRetiredRepository retired, SheetGradeRepository added,
+            Audit audit) {
         this.sheets = sheets;
         this.retired = retired;
+        this.added = added;
         this.audit = audit;
+    }
+
+    /** The sheet's grades: A, B and C, then those added to it in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String sheetId) {
+        List<String> all = new ArrayList<>(BUILT_IN);
+        added.findBySheetIdOrderByIdAsc(sheetId).forEach(g -> all.add(g.getGrade()));
+        return all;
+    }
+
+    /** Whether {@code grade} is one of the sheet's grades. */
+    @Transactional(readOnly = true)
+    public boolean isGrade(String sheetId, String grade) {
+        return grade != null && (BUILT_IN.contains(grade) || added.existsBySheetIdAndGrade(sheetId, grade));
+    }
+
+    /** Refuses a grade that is not one of the sheet's. */
+    @Transactional(readOnly = true)
+    public void requireGrade(String sheetId, String grade) {
+        if (!isGrade(sheetId, grade)) throw new GradeUnknownException();
+    }
+
+    /** Adds {@code grade} to the sheet; refused unless it is a code of one to three capital letters not
+     * yet one of its grades. */
+    @Transactional
+    public void add(String sheetId, String by, String grade) {
+        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (grade == null || !CODE.matcher(grade).matches() || isGrade(sheetId, grade)) {
+            throw new GradeUnknownException();
+        }
+        added.saveAndFlush(new SheetGrade(sheetId, grade));
+        audit.change("GRADE_ADDED", sheetId, by, "grade=" + grade);
     }
 
     /** The sheet's retired grades, in grade order. */
@@ -35,9 +78,10 @@ public class GradeService {
         return grade != null && retired.existsBySheetIdAndGrade(sheetId, grade);
     }
 
-    /** Refuses a retired grade. */
+    /** Refuses a grade that is not one of the sheet's, or is retired. */
     @Transactional(readOnly = true)
     public void requireOpen(String sheetId, String grade) {
+        requireGrade(sheetId, grade);
         if (isRetired(sheetId, grade)) throw new GradeRetiredException();
     }
 

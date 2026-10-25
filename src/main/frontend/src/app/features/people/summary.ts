@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, cents, money } from './claims.service';
-import { GRADES, Grade, PeopleService } from './people.service';
+import { GradesService } from './grades.service';
+import { Grade, PeopleService } from './people.service';
 import { Period } from './periods.service';
 import { VoidReasonsService } from './void-reasons.service';
 import { FigurePipe } from '../../core/figure.pipe';
@@ -214,6 +215,7 @@ export interface SummaryPerson {
 export class Summary {
   private readonly voidReasons = inject(VoidReasonsService);
   private readonly peopleService = inject(PeopleService);
+  private readonly grades = inject(GradesService).all;
   private readonly session = inject(Session);
 
   /** The other sheet's id, as typed. */
@@ -272,7 +274,7 @@ export class Summary {
   }
 
   protected readonly byGrade = computed(() =>
-    GRADES.map((grade) => {
+    this.grades().map((grade) => {
       const on = this.people().filter((p) => !p.retired && p.grade === grade);
       return {
         grade,

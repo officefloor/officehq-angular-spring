@@ -6,6 +6,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -18,17 +19,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class RateImportService {
 
     /** A grade as the rate form takes it. */
-    private static final Pattern GRADE = Pattern.compile("\\s*[ABC]\\s*");
+    private static final Pattern GRADE = Pattern.compile("\\s*[A-Z]{1,3}\\s*");
 
     /** A percent as the rate form takes it. */
     private static final Pattern PCT = Pattern.compile("\\s*\\d{1,5}(\\.\\d{1,2})?\\s*");
 
     private final RateService rates;
     private final SheetRepository sheets;
+    private final GradeService grades;
 
-    public RateImportService(RateService rates, SheetRepository sheets) {
+    public RateImportService(RateService rates, SheetRepository sheets, GradeService grades) {
         this.rates = rates;
         this.sheets = sheets;
+        this.grades = grades;
     }
 
     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -45,7 +48,7 @@ public class RateImportService {
             if (line.isBlank()) continue;
             String[] fields = line.split(",", -1);
             if (fields.length < 2 || fields.length > 4 || !GRADE.matcher(fields[0]).matches()
-                    || !PCT.matcher(fields[1]).matches()) {
+                    || !PCT.matcher(fields[1]).matches() || !grades.isGrade(sheetId, fields[0].trim())) {
                 throw new RateImportException();
             }
             LocalDate from = dateOf(fields, 2);

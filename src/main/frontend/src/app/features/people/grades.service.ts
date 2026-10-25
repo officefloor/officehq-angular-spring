@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Grade, Person } from './people.service';
+import { GRADES, Grade, Person } from './people.service';
 
 /** How a grade merge went: how many people it gave the other grade, and those people. */
 export interface GradeMerged {
@@ -10,12 +10,31 @@ export interface GradeMerged {
   people: Person[];
 }
 
-// The grades retired on the active sheet, read from and written to the server. The people on a retired
-// grade keep it, but it is given to no one from then on: not to a new person, nor in an edit.
+// The active sheet's grades, and those retired on it, read from and written to the server. A sheet has A,
+// B and C, then the grades added to it. The people on a retired grade keep it, but it is given to no one
+// from then on: not to a new person, nor in an edit.
 @Injectable({ providedIn: 'root' })
 export class GradesService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+
+  /** The active sheet's grades, as last read or written: A, B and C, then those added, in the order added. */
+  readonly all = signal<readonly Grade[]>(GRADES);
+
+  /** Read the sheet's grades. */
+  async readAll(sheet: string): Promise<void> {
+    this.all.set(GRADES);
+    const all = await firstValueFrom(this.http.get<Grade[]>(this.gradesUrl(sheet), { headers: this.session.headers() }));
+    if (this.session.sheetId() === sheet) this.all.set(all);
+  }
+
+  /** Add a grade. Refused (409) unless it is one to three capital letters, not yet a grade. */
+  async add(sheet: string, grade: Grade): Promise<void> {
+    const all = await firstValueFrom(
+      this.http.post<Grade[]>(this.gradesUrl(sheet), { grade }, { headers: this.session.headers() }),
+    );
+    if (this.session.sheetId() === sheet) this.all.set(all);
+  }
 
   /** The active sheet's retired grades, as last read or written. */
   readonly retired = signal<readonly Grade[]>([]);
@@ -55,6 +74,10 @@ export class GradesService {
   }
 
   private url(sheet: string): string {
-    return `/api/sheets/${encodeURIComponent(sheet)}/grades/retired`;
+    return `${this.gradesUrl(sheet)}/retired`;
+  }
+
+  private gradesUrl(sheet: string): string {
+    return `/api/sheets/${encodeURIComponent(sheet)}/grades`;
   }
 }

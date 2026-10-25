@@ -5,9 +5,14 @@ import { Session } from '../../core/session';
 import { Claim } from './claims.service';
 import { DashboardCounts } from './dashboard';
 
-export type Grade = 'A' | 'B' | 'C';
+/** A grade's code: A, B or C, or one of one to three capital letters added to the sheet. */
+export type Grade = string;
 
+/** The grades every sheet has; a sheet's own grades (these, then those added to it) are in GradesService. */
 export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
+
+/** A grade's code as one is added: one to three capital letters. */
+export const GRADE_CODE = /^[A-Z]{1,3}$/;
 
 /** A grade a person was given and the date it is in force from (YYYY-MM-DD); null when it applies
  *  from the beginning of time (the first grade they were given). */

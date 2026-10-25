@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Session } from '../../core/session';
-import { GRADES, Grade } from './people.service';
+import { GradesService } from './grades.service';
+import { Grade } from './people.service';
 import { Rate, RatePreview, RatesService, rateOn } from './rates.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
@@ -22,7 +23,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           [value]="grade()"
           (change)="grade.set(gradeOf($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
           }
         </select>
@@ -80,7 +81,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           [value]="previewGrade()"
           (change)="previewGrade.set(gradeOf($event)); clearPreview()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ (g) | figure }}</option>
           }
         </select>
@@ -112,7 +113,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <td>{{ (g) | figure }}</td>
               <td [attr.data-testid]="'rate-current-' + g">
@@ -134,7 +135,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
             </tr>
           </thead>
           <tbody>
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <tr>
                 <th scope="row">{{ (g) | figure }}</th>
                 @for (m of months(); track m) {
@@ -219,7 +220,7 @@ export class Rates {
   /** A grade's rate was set. */
   readonly saved = output<Rate>();
 
-  protected readonly grades = GRADES;
+  protected readonly grades = inject(GradesService).all;
   protected readonly grade = signal<Grade>('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');

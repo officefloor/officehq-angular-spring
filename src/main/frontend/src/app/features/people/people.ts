@@ -9,7 +9,7 @@ import { Holidays } from './holidays';
 import { Notes } from './notes';
 import { Header } from './header';
 import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
-import { DescendantFigures, GRADES, NO_DESCENDANTS, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
+import { DescendantFigures, NO_DESCENDANTS, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, withGrade } from './people.service';
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
@@ -151,7 +151,7 @@ import { FigurePipe } from '../../core/figure.pipe';
           [value]="grade()"
           (change)="grade.set(gradeOf($event)); gradeChosen = true; error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
           }
         </select>
@@ -412,7 +412,7 @@ import { FigurePipe } from '../../core/figure.pipe';
           [value]="bulkGradeChoice()"
           (change)="bulkGradeChoice.set(gradeOf($event)); bulkGradeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="bulkGradeChoice() === g">{{ (g) | figure }}</option>
           }
         </select>
@@ -564,7 +564,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 @if (shows('due-total')) {
                   <td data-testid="person-due-total">{{ (dueTotalOf(p) ?? 'n/a') | figure }}</td>
                 }
-                @let split = splitOf(p);
+                @let split = claimedSplitOf(p);
                 <td data-testid="person-settled-total">{{ (money(split.settled)) | figure }}</td>
                 <td data-testid="person-open-total">{{ (money(split.open)) | figure }}</td>
                 @for (pd of periods(); track pd.id) {
@@ -710,7 +710,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                     [value]="inlineGrades()[p.id] ?? gradeNow(p)"
                     (change)="setInlineGrade(p.id, value($event))"
                   >
-                    @for (g of grades; track g) {
+                    @for (g of grades(); track g) {
                       <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeNow(p))">{{ (g) | figure }}</option>
                     }
                   </select>
@@ -990,7 +990,8 @@ export class People {
   private readonly plansService = inject(PlansService);
   private readonly document = inject(DOCUMENT);
 
-  protected readonly grades = GRADES;
+  /** The active sheet's grades: A, B and C, then those added to it. */
+  protected readonly grades = inject(GradesService).all;
   private readonly gradesService = inject(GradesService);
   /** The person form's grade was chosen since the form was opened: a retired grade so chosen is refused. */
   protected gradeChosen = false;
@@ -1326,7 +1327,7 @@ export class People {
   );
   /** Everyone's settled-totals and open-totals, in cents, each simply added up (not trimmed). */
   protected readonly splitTotal = computed(() => {
-    const each = this.people().map((p) => this.splitOf(p));
+    const each = this.people().map((p) => this.claimedSplitOf(p));
     return {
       settled: each.reduce((sum, s) => sum + s.settled, 0),
       open: each.reduce((sum, s) => sum + s.open, 0),
@@ -1424,7 +1425,7 @@ export class People {
         : d.peopleCount,
       dueTotal: own ? money(trimmedSum(due)) : d.dueTotal,
       overdueTotal: own ? money(trimmedSum(overdue)) : d.overdueTotal,
-      grades: GRADES.map((grade) => ({
+      grades: [...this.grades(), ...Object.keys(d.gradeDueTotals).filter((g) => !this.grades().includes(g))].map((grade) => ({
         grade,
         dueTotal: money(
           people.filter((p) => p.grade === grade).reduce((sum, p) => sum + (p.dueCents ?? 0), 0) +
@@ -1776,8 +1777,8 @@ export class People {
 
   protected setInlineGrade(id: number, grade: string): void {
     this.clearRowError(id);
-    if ((this.grades as readonly string[]).includes(grade)) {
-      this.inlineGrades.update((grades) => ({ ...grades, [id]: grade as Grade }));
+    if (this.grades().includes(grade)) {
+      this.inlineGrades.update((grades) => ({ ...grades, [id]: grade }));
     }
   }
 
@@ -2297,6 +2298,22 @@ export class People {
   private sumCentsOf(person: Person): number | null {
     const split = this.splitOf(person);
     return split.any || this.rateOf(this.gradeNow(person)) !== null ? split.settled + split.open : null;
+  }
+
+  /** What is due on the person's own counting SETTLED claims (at their frozen figures) and on their
+   *  counting OPEN and PENDING ones, in cents, each claim whole as it shows it: shares of a claim are
+   *  not taken from it, nor are the parts the person holds of others' claims added. */
+  protected claimedSplitOf(person: Person): { settled: number; open: number } {
+    let settled = 0;
+    let open = 0;
+    for (const c of this.claimsOf(person.id)) {
+      if (!this.countsLive(c, person)) continue;
+      const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
+      if (due === null) continue;
+      if (isOpen(c)) open += due;
+      else settled += due;
+    }
+    return { settled, open };
   }
 
   /** The person's figures before the cap, in cents, split in two: what is due on their counting SETTLED

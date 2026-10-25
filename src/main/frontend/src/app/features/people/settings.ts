@@ -1,5 +1,6 @@
 import { Component, effect, inject, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from './people.service';
+import { GradesService } from './grades.service';
 import { Session } from '../../core/session';
 import { Graces } from './rates.service';
 import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
@@ -704,6 +705,8 @@ export class Settings {
   /** The terms in force, in days, as text; empty until read. */
   protected readonly terms = signal('');
   protected readonly grades = GRADES;
+  /** The active sheet's grades, any of which may be its default grade. */
+  private readonly sheetGrades = inject(GradesService).all;
   /** The grades' own terms in force, in days, by grade; a grade not in it uses the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   /** The grades' own clerk limits in force on the sheet's today, with two decimals, by grade; a grade
@@ -1242,8 +1245,8 @@ export class Settings {
       this.settingsError.set('Type the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
-    if (saveDefaultGrade && defaultGrade !== '' && !GRADES.includes(defaultGrade as Grade)) {
-      this.settingsError.set('Type the default grade as one of A, B or C, or leave it blank for A.');
+    if (saveDefaultGrade && defaultGrade !== '' && !this.sheetGrades().includes(defaultGrade)) {
+      this.settingsError.set('Type the default grade as one of the sheet\'s grades, or leave it blank for A.');
       return;
     }
     if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
