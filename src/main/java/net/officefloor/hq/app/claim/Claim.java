@@ -200,10 +200,17 @@ public class Claim {
         unbind(today);
     }
 
+    /** Move the claim to another person as a merge does, as their newest claim at the place given: it keeps
+     *  its number, date and any figure a statement bound it to. */
+    public void followTo(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
+    }
+
     /** A copy of the claim for a person on another sheet, at the place in its list given: its status,
      *  dates, terms, note, tags, frozen figure, proofs, log and comments, with the number given (null:
-     *  none) and the numbers it corrects and was split from as given; no reference, no binding to a
-     *  statement's figure, no lock and no settle batch. */
+     *  none) and the numbers it corrects and was split from as given, and any figure a statement bound it
+     *  to (with its binding history); no reference, no lock and no settle batch. */
     public Claim copyTo(String otherSheetId, Long otherPersonId, long otherListed, String otherNumber,
             String otherCorrects, String otherSplitFrom) {
         Claim copy = new Claim();
@@ -229,6 +236,11 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.tags = tags;
         copy.voidReason = voidReason;
+        copy.stated = stated;
+        copy.statedDue = statedDue;
+        for (ClaimBinding line : bindings) {
+            copy.bindings.add(new ClaimBinding(line.getOn(), line.isStated(), line.getStatedDue()));
+        }
         for (ClaimLogLine line : log) {
             copy.log.add(new ClaimLogLine(line.getStatus(), line.getBy(), line.getOn(), line.getDue()));
         }

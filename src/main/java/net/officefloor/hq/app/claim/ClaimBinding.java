@@ -33,6 +33,10 @@ public class ClaimBinding {
         return on == null || !on.isAfter(date);
     }
 
+    public LocalDate getOn() {
+        return on;
+    }
+
     public boolean isStated() {
         return stated;
     }

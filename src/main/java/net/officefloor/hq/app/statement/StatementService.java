@@ -69,9 +69,23 @@ public class StatementService {
         Map<Long, Summary> by = new LinkedHashMap<>();
         for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
             Summary was = by.get(s.getPersonId());
-            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
+            by.put(s.getPersonId(), was == null ? new Summary(s.getPersonId(), 1, s)
+                    : new Summary(s.getPersonId(), was.count() + 1, later(was.last(), s)));
         }
         return List.copyOf(by.values());
+    }
+
+    /** A person's summary from their statements in the order they were taken; none when they have none. */
+    private static Summary summarise(long personId, List<Statement> all) {
+        Statement last = null;
+        for (Statement s : all) last = last == null ? s : later(last, s);
+        return last == null ? null : new Summary(personId, all.size(), last);
+    }
+
+    /** Of a person's last statement so far and one taken after it, which is now their last: their own
+     *  rather than one carried to them from another. */
+    private static Statement later(Statement last, Statement next) {
+        return next.isCarried() && !last.isCarried() ? last : next;
     }
 
     /** Take the person's statement: record their due-total now, bind each of their counting claims to
@@ -122,8 +136,8 @@ public class StatementService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counting
                 + (asOf == null ? "" : " asof=" + asOf));
         rollup.recordChanges(user, before);
-        List<Statement> all = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
-        return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
+        return new Taken(summarise(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)),
+                theirs);
     }
 
     /** How a counting claim stood for a statement: the figure it binds (before late charge and floor; null:
@@ -192,7 +206,8 @@ public class StatementService {
     }
 
     /** Cancel the person's last statement: the claims it bound are live again (a figure an earlier
-     *  statement bound is not restored) and the statement before it is their last. Refused unless the
+     *  statement bound is not restored) and the statement before it is their last (one carried to them
+     *  only when none of their own is left). Refused unless the
      *  user is a steward of the sheet, or when the person has no statement. */
     @Transactional
     public Cancelled cancel(String sheetId, String user, long personId) {
@@ -205,7 +220,7 @@ public class StatementService {
         if (all.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel.");
         }
-        Statement last = all.get(all.size() - 1);
+        Statement last = summarise(personId, all).last();
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findForStatement(sheetId, personId);
         // Only the last statement binds claims, so every claim it bound is unbound.
@@ -217,9 +232,8 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
         rollup.recordChanges(user, before);
-        List<Statement> left = all.subList(0, all.size() - 1);
-        return new Cancelled(left.isEmpty() ? null : new Summary(personId, left.size(), left.get(left.size() - 1)),
-                theirs);
+        List<Statement> left = all.stream().filter((s) -> s != last).toList();
+        return new Cancelled(summarise(personId, left), theirs);
     }
 
     /** Only open and settled claims count toward what is claimed and due; a person's open claims dated

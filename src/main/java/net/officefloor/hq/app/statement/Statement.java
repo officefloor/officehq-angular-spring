@@ -43,6 +43,11 @@ public class Statement {
     @Column(name = "taken_by", nullable = false)
     private String takenBy;
 
+    /** Whether a merge or a transfer carried the statement to the person from another: it counts among
+     *  their statements, but is their last only when they have none of their own. */
+    @Column(name = "carried", nullable = false)
+    private boolean carried;
+
     protected Statement() {
     }
 
@@ -55,6 +60,24 @@ public class Statement {
         this.takenOn = takenOn;
         this.statedOn = statedOn;
         this.takenBy = takenBy;
+    }
+
+    /** Carry the statement to the person a merge folds its person into; carried unless that person has
+     *  no statement of their own, when it stays as it was. */
+    public void carryTo(Long otherPersonId, boolean asCarried) {
+        this.personId = otherPersonId;
+        this.carried = carried || asCarried;
+    }
+
+    /** A copy of the statement for a person on another sheet, as a transfer takes it. */
+    public Statement copyTo(String otherSheetId, Long otherPersonId) {
+        Statement copy = new Statement(otherSheetId, otherPersonId, dueTotal, claims, takenOn, statedOn, takenBy);
+        copy.carried = carried;
+        return copy;
+    }
+
+    public boolean isCarried() {
+        return carried;
     }
 
     public Long getId() {

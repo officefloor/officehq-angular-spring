@@ -1,6 +1,5 @@
 package net.officefloor.hq.app.person;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
@@ -11,7 +10,7 @@ import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
-import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,13 +28,12 @@ public class MergeService {
     private final StatementRepository statements;
     private final PoolRepository pools;
     private final SettingService settings;
-    private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
     public MergeService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
             ClaimRepository claims, StatementRepository statements, PoolRepository pools, SettingService settings,
-            SheetService sheets, Rollup rollup, Audit audit) {
+            Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -43,18 +41,18 @@ public class MergeService {
         this.statements = statements;
         this.pools = pools;
         this.settings = settings;
-        this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
     }
 
     /**
      * Merge a person into another: the merged person's claims move to the other (numbers and dates kept),
-     * listed after the other's claims in the order they were added, each losing any figure a statement bound
-     * it to; the merged name and aliases become aliases of the other; the merged person's patrons are added
+     * listed after the other's claims in the order they were added, each keeping any figure a statement bound
+     * it to; the merged person's statements count among the other's, whose last statement stays their own
+     * (or, having none, becomes the merged person's); the merged name and aliases become aliases of the other; the merged person's patrons are added
      * to the other's (never the other themselves, nor twice), anyone naming the merged person as patron names
      * the other instead (not twice), and the merged person's pool memberships move to the other (their shares
-     * added when the other is already a member). Their statements, holds, watchers and contact are dropped,
+     * added when the other is already a member). Their holds, watchers and contact are dropped,
      * and they leave the sheet. Refused unless the user is a steward of the sheet, for a merge into the
      * person themselves, and when either of them is retired. The person merged into.
      */
@@ -87,13 +85,17 @@ public class MergeService {
      */
     @Transactional
     public Person absorb(String sheetId, Person from, Person into) {
-        LocalDate today = sheets.today(sheetId);
-
         long listed = claims.lastListed(sheetId);
         for (Claim claim : claims.findForMove(sheetId, from.getId())) {
-            claim.moveTo(into.getId(), ++listed, today);
+            claim.followTo(into.getId(), ++listed);
         }
         claims.flush();
+
+        boolean intoStated = !statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, into.getId()).isEmpty();
+        for (Statement statement : statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())) {
+            statement.carryTo(into.getId(), intoStated);
+        }
+        statements.flush();
 
         for (PersonPatron patron : patrons.findByPersonIdOrderByIdAsc(from.getId())) {
             patrons.delete(patron);
@@ -116,7 +118,6 @@ public class MergeService {
         }
         pools.flush();
 
-        statements.deleteBySheetIdAndPersonId(sheetId, from.getId());
         watches.deleteByPersonId(from.getId());
 
         // The merged person, and with them their aliases, goes first so their names are free to become aliases.

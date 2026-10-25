@@ -18,6 +18,7 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -41,13 +42,12 @@ public class TransferService {
     private final SheetHistory history;
     private final NameTree tree;
     private final Rollup rollup;
-    private final MergeService merges;
     private final Audit audit;
 
     public TransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimService claimService,
             StatementRepository statements, PoolRepository pools, SettingService settings, SheetService sheets,
-            SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, MergeService merges, Audit audit) {
+            SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -61,7 +61,6 @@ public class TransferService {
         this.history = history;
         this.tree = tree;
         this.rollup = rollup;
-        this.merges = merges;
         this.audit = audit;
     }
 
@@ -71,7 +70,7 @@ public class TransferService {
      * with their status, dates, notes, tags, frozen figures, logs and comments, listed as they were; each
      * claim that had a number takes the other sheet's next one, in the order the claims were opened (by the
      * sheet's today when each was opened, then by the order they were added); figures a statement bound are
-     * lost, statements are not carried and nor are references. The person then leaves this sheet entirely:
+     * kept and their statements are carried, but references are not. The person then leaves this sheet entirely:
      * their patron links (both ways), pool memberships, watches, holds and statements are dropped. Refused
      * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
      * sheet, and when their name or an alias is on another sheet of the other sheet's tree. When the person's
@@ -128,11 +127,17 @@ public class TransferService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Rollup.Snapshot otherBefore = rollup.snapshot(toSheetId);
 
-        Person copy = from.copyTo(toSheetId);
-        // A merge drops the arriving person's contact.
-        if (match != null) copy.setContact(null);
-        Person arrived = people.saveAndFlush(copy);
-        claimService.useTags(toSheetId, arrived.getTags());
+        // Merged into someone there, the arriving person goes straight to them, as a merge would fold them in:
+        // their claims and statements follow, and their names become that person's aliases.
+        Person arrived;
+        if (match == null) {
+            arrived = people.saveAndFlush(from.copyTo(toSheetId));
+            claimService.useTags(toSheetId, arrived.getTags());
+        } else {
+            arrived = match;
+        }
+        boolean carried = match != null
+                && !statements.findBySheetIdAndPersonIdOrderByIdAsc(toSheetId, match.getId()).isEmpty();
 
         // The claims that had a number take the other sheet's next, in the order they were opened.
         List<Claim> theirs = claims.findForMove(sheetId, from.getId());
@@ -150,6 +155,11 @@ public class TransferService {
         }
         claims.deleteAll(theirs);
         claims.flush();
+        for (Statement statement : statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())) {
+            Statement copy = statement.copyTo(toSheetId, arrived.getId());
+            copy.carryTo(arrived.getId(), carried);
+            statements.save(copy);
+        }
 
         patrons.deleteAll(patrons.findByPersonIdOrderByIdAsc(from.getId()));
         patrons.deleteAll(patrons.findByPatronIdOrderByIdAsc(from.getId()));
@@ -166,11 +176,12 @@ public class TransferService {
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
                 + " to=" + toSheetId);
         rollup.recordChanges(user, before);
-        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + arrived.getName()
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + from.getName()
                 + " from=" + sheetId);
         if (match != null) {
-            Person into = merges.absorb(toSheetId, arrived, match);
-            audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from=" + arrived.getName()
+            names.forEach(match::addAlias);
+            Person into = people.saveAndFlush(match);
+            audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from=" + from.getName()
                     + " into=" + into.getName());
         }
         rollup.recordChanges(user, otherBefore);
