@@ -1,0 +1,86 @@
+{
+  "checkpoint": 20,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp20_open-claims-immutable",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    8,
+    9,
+    11,
+    14,
+    15,
+    16,
+    18,
+    19
+  ],
+  "replaced_tests": [
+    "cp08_workflow.spec.ts::workflow",
+    "cp09_numbering.spec.ts::numbering",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+    "cp15_statements.spec.ts::statements",
+    "cp15_statements.spec.ts::statements scenario 2",
+    "cp16_rollup-audit.spec.ts::rollup audit",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+    "cp18_close-period.spec.ts::close period scenario 1",
+    "cp19_quick-add.spec.ts::quick add scenario 1"
+  ],
+  "request": {
+    "spec": "An OPEN claim can no longer be edited; only a DRAFT can, and the edit of an open claim is refused\nwith an error on the claim. To change an open claim, void it and add a new one. A voided claim now\nkeeps its number (it is still never reused), and CLAIM_VOIDED carries it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can no longer be edited; only a DRAFT can, and the edit of an open claim is refused\nwith an error on the claim. To change an open claim, void it and add a new one. A voided claim now\nkeeps its number (it is still never reused), and CLAIM_VOIDED carries it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "79a0deab6555568c8657ae87722e922816728669",
+  "reset_sha": "",
+  "preagent_sha": "687a6fac3c2e7fb521fd95c2aca630a810809631",
+  "prev_sha": "687a6fac3c2e7fb521fd95c2aca630a810809631",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5081972,
+    "input_tokens": 20,
+    "output_tokens": 4805,
+    "cache_read_tokens": 348326,
+    "cache_creation_tokens": 42794,
+    "num_turns": 10,
+    "duration_ms": 176547,
+    "duration_api_ms": 57445,
+    "model": "claude-opus-5-5",
+    "session_id": "380ee693-873b-4a55-b9a1-26f3d0963fed",
+    "stop_reason": "success",
+    "result_text": "Open claims can no longer be edited, and voided claims keep their number. All 4 acceptance tests in `bin/e2e` pass.\n\n**Server** (`ClaimService.java`)\n- Saving an edit to a claim that isn't a DRAFT is refused with a 409. Nothing is written to the store and no `CLAIM_EDITED` line goes to the audit file. This also refuses SETTLED and VOID claims, since the request says only a DRAFT can be edited.\n- An edit now locks the claim row first, the same way opening or voiding does. So if another user opens a draft while you're editing it, your save is refused rather than slipping through.\n- Voiding a claim no longer clears its number. The number is still never given to another claim. Voiding an open claim now writes `CLAIM_VOIDED \u2026 number=N`. Voiding a draft has no number to carry, so its line stays as before.\n\n**Front end** (`person-claims.ts`)\n- A refused edit shows `claim-error` on that claim's row: \"Only a draft claim can be edited. To change an open claim, void it and add a new one.\" The editor stays open so it can be cancelled.\n- The error clears when the form is changed or submitted again.\n- A refusal because the claim falls in a closed period still shows the existing message on the form.\n\n**Stored data**\n- No schema change was needed. I added `V16__void_keeps_number.sql`, which contains only comments recording the new rules, because the V8 migration's comment still says voiding clears the number.\n- Claims voided before this change already lost their number and stay without one.\n\nThe comments on the claim's number field in `Claim.java` and `claims-api.ts` are updated to say a void claim keeps its number.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5081972,
+        "num_turns": 10,
+        "duration_ms": 176547,
+        "duration_api_ms": 57445,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp20.agent.jsonl",
+  "agent_diff_file": "cp20.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
