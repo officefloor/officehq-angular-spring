@@ -1,0 +1,64 @@
+{
+  "checkpoint": 38,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp38_terms-per-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Terms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTerms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4935b01507ef7b2115241f68e9a2c1f7fe7e8145",
+  "reset_sha": "",
+  "preagent_sha": "76b6c14399492db1bd47bea2aeef943a6fbdabff",
+  "prev_sha": "76b6c14399492db1bd47bea2aeef943a6fbdabff",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.279587,
+    "input_tokens": 42,
+    "output_tokens": 14274,
+    "cache_read_tokens": 1340655,
+    "cache_creation_tokens": 90726,
+    "num_turns": 23,
+    "duration_ms": 222903,
+    "duration_api_ms": 143285,
+    "model": "claude-opus-5-5",
+    "session_id": "6534822c-72df-4994-a1a2-bc8731f232b3",
+    "stop_reason": "success",
+    "result_text": "Each grade can now have its own terms, and a claim's due-by is fixed when the claim is created. `bin/e2e` passes all 4 tests in the spec.\n\n**Stored data**\n- New migration `V26__claim_due_by.sql` adds a `due_by` date to each claim. Claims already in the store get their date plus the sheet's terms (14 days if the sheet never set any), so the due-by they showed before stays the same.\n\n**Server**\n- **Setting the terms:** a grade's terms are stored under the setting key `terms-<grade>` through a new `PUT /settings/terms/{grade}`. Each change writes `SETTING_CHANGED \u2026 key=terms-<grade> value=<days>` to the audit file. A blank value clears the grade's terms, so the grade falls back to the sheet's terms.\n- **Fixing the due-by:** when a claim is added, its due-by is set to its date plus the terms of the person's grade on that date. Those are the grade's own terms if it has them, otherwise the sheet's.\n- **Late charges and overdue:** both now count from the stored due-by, both on the screen and in the rollup totals. Changing the terms or editing a claim's date later leaves the due-by alone.\n- Saving the sheet's terms no longer re-checks the rollup totals, since it can't change any claim.\n\n**Front end**\n- The settings form has a terms field for each grade (`setting-terms-A/B/C`). Next to each is the value in force (`setting-terms-<grade>-current`), which shows the sheet's terms when the grade has none of its own.\n- Claim rows show the due-by the server sends. I removed `sheet-terms.ts`, the shared front-end store of the sheet's terms, because nothing uses it any more.\n\n**Behaviour to know about:** a claim keeps its due-by even if it's later moved to someone in a different grade, or its person's grade changes. That's what the spec expects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.279587,
+        "num_turns": 23,
+        "duration_ms": 222903,
+        "duration_api_ms": 143285,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp38.agent.jsonl",
+  "agent_diff_file": "cp38.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
