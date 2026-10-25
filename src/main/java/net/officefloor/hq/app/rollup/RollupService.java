@@ -36,7 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
  * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
  * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
  * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
- * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today less their cut total
+ * their grade is in force on the sheet's today, and at most the sheet's cap in force on the date of their latest claim that
+ * counts (see {@link #capDateOf}) less their cut total
  * (their cuts across every pool, see {@link PoolService}), not below 0.00, when it has one; of a
  * shared claim each holder counts their part (see {@link #partOf}) and its own person the claim's due less those parts) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
@@ -96,7 +97,6 @@ public class RollupService {
      * claims {@code all}: as {@link #snapshot(String)} works them out for the sheet as it stands. */
     public Snapshot snapshot(List<Person> everyone, List<Claim> all, Basis basis) {
         LocalDate today = basis.today();
-        BigDecimal cap = basis.cap();
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
@@ -144,7 +144,7 @@ public class RollupService {
                 any = true;
             }
             BigDecimal cut = basis.cutOf(person.getId());
-            due = cappedOf(due, cap, cut);
+            due = cappedOf(due, capOf(all, person, basis), cut);
             boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);
@@ -316,8 +316,8 @@ public class RollupService {
         /** The late percent in force on the date. */
         BigDecimal latePctOn(LocalDate date);
 
-        /** The cap in force on the sheet's today; null when there is none. */
-        BigDecimal cap();
+        /** The cap in force on the date; null when there is none then. */
+        BigDecimal capOn(LocalDate date);
 
         /** The person's cut total: their cuts across every pool they are a member of, added up; 0.00 by default. */
         default BigDecimal cutOf(Long personId) {
@@ -394,8 +394,8 @@ public class RollupService {
             }
 
             @Override
-            public BigDecimal cap() {
-                return sheet() == null ? null : dated.cap(sheetId);
+            public BigDecimal capOn(LocalDate date) {
+                return sheet() == null ? null : dated.capOn(sheetId, date);
             }
 
             @Override
@@ -466,8 +466,8 @@ public class RollupService {
             }
 
             @Override
-            public BigDecimal cap() {
-                return base.cap();
+            public BigDecimal capOn(LocalDate date) {
+                return base.capOn(date);
             }
 
             @Override
@@ -517,7 +517,27 @@ public class RollupService {
             any = true;
         }
         boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
-        return any || rated ? cappedOf(due, basis.cap(), basis.cutOf(person.getId())) : null;
+        return any || rated ? cappedOf(due, capOf(theirs, person, basis), basis.cutOf(person.getId())) : null;
+    }
+
+    /** The cap of the person on {@code basis}: the one in force on the date their cap is taken on (see
+     * {@link #capDateOf}) from {@code all}; null when there is none then. */
+    public static BigDecimal capOf(List<Claim> all, Person person, Basis basis) {
+        LocalDate on = capDateOf(all, person, basis.today());
+        return on == null ? null : basis.capOn(on);
+    }
+
+    /** The date a person's cap is taken on: the latest date of their own claims among {@code all} that count
+     * on the sheet's {@code today} (see {@link #countsLive}); its today when none does; null when there is no
+     * sheet. */
+    public static LocalDate capDateOf(List<Claim> all, Person person, LocalDate today) {
+        if (today == null) return null;
+        LocalDate latest = null;
+        for (Claim claim : all) {
+            if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
+            if (latest == null || claim.getDate().isAfter(latest)) latest = claim.getDate();
+        }
+        return latest == null ? today : latest;
     }
 
     /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was

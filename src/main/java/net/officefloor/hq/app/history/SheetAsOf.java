@@ -24,6 +24,7 @@ import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.DatedSettings;
+import net.officefloor.hq.app.settings.PolicyVersion;
 import net.officefloor.hq.app.settings.SheetDelegation;
 import net.officefloor.hq.app.settings.SheetPermission;
 import net.officefloor.hq.app.settings.SheetRole;
@@ -44,6 +45,7 @@ public class SheetAsOf implements RollupService.Basis {
     private final List<Rate> rates;
     private final List<List<Rate>> inherited;
     private final List<SheetSetting> settings;
+    private final List<PolicyVersion> policyVersions;
     private final List<Period> periods;
     private final List<Statement> statements;
     private final List<PersonPatron> patrons;
@@ -75,6 +77,8 @@ public class SheetAsOf implements RollupService.Basis {
                 .toList();
         this.settings = rowsOf(rows, SheetSetting.class).stream()
                 .sorted(Comparator.comparing(SheetSetting::getFrom)).toList();
+        this.policyVersions = rowsOf(rows, PolicyVersion.class).stream()
+                .sorted(Comparator.comparingInt(PolicyVersion::getNumber)).toList();
         this.periods = rowsOf(rows, Period.class).stream().sorted(Comparator.comparing(Period::getFrom)).toList();
         this.statements = rowsOf(rows, Statement.class).stream().sorted(Statement.ORDER)
                 .toList();
@@ -336,9 +340,19 @@ public class SheetAsOf implements RollupService.Basis {
         return valueOn(DatedSettings.LATE_PCT, on).map(BigDecimal::new).orElse(DatedSettings.LATE_PCT_START);
     }
 
-    @Override
+    /** The cap in force on the sheet's today then; null when there was none. */
     public BigDecimal cap() {
-        return valueOn(DatedSettings.CAP, date).map(BigDecimal::new).orElse(null);
+        return capOn(date);
+    }
+
+    @Override
+    public BigDecimal capOn(LocalDate on) {
+        return valueOn(DatedSettings.CAP, on).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The sheet's policy versions then, numbered from 1 in the order made. */
+    public List<PolicyVersion> policyVersions() {
+        return policyVersions;
     }
 
     @Override

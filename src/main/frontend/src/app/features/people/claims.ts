@@ -5,7 +5,7 @@ import { Claim, ClaimAction, ClaimsService, LineFields, PROOF_KINDS, ProofKind, 
 import { PersonGrade } from './people.service';
 import { Period, periodOn } from './periods.service';
 import { Graces, Rate, claimShownCents, overdueFrom } from './rates.service';
-import { Dated } from './settings.service';
+import { Dated, policyVersionOn } from './settings.service';
 import { AuditService } from './audit.service';
 import { TemplatesService } from './templates.service';
 import { VoidReasonsService } from './void-reasons.service';
@@ -116,6 +116,7 @@ const PAST: Record<ClaimAction, string> = {
             <span data-testid="claim-note">{{ (c.note) | figure }}</span>
             <span>Ref <span data-testid="claim-ref">{{ (c.ref ?? '') | figure }}</span></span>
             <span>Tags <span data-testid="claim-tags">{{ (c.tags.join(', ')) | figure }}</span></span>
+            <span>Policy <span data-testid="claim-policy">{{ (policyVersionOn(policyVersions(), c.date)) | figure }}</span></span>
             <span>Due <span data-testid="claim-due">{{ (dueOf(c)) | figure }}</span></span>
             <span>Due by <span data-testid="claim-due-by">{{ (dueBy(c)) | figure }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ (isOverdue(c) ? 'yes' : 'no') | figure }}</span></span>
@@ -540,6 +541,8 @@ export class Claims {
   readonly policyDate = input.required<string | null>();
   /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
   readonly roundings = input.required<Dated<string | null>[]>();
+  /** The from-date of each of the sheet's policy versions, oldest first; null counts on every date. */
+  readonly policyVersions = input.required<(string | null)[]>();
   /** The other people on the sheet, whom a claim can be moved to. */
   readonly others = input.required<{ id: number; name: string }[]>();
   /** Everyone on the sheet, in list order: a claim can be shared with any of them but its own person. */
@@ -567,6 +570,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The kinds a proof may be, as offered on each row. */
   protected readonly proofKinds = PROOF_KINDS;
+  /** The policy version in force on a date. */
+  protected readonly policyVersionOn = policyVersionOn;
   /** The proof kind chosen on each claim's row, by claim id; a row not in it has none chosen. */
   protected readonly chosenProofKinds = signal<Record<number, ProofKind>>({});
   /** The timeline shown for each claim, by claim id: its audit lines, newest first. */

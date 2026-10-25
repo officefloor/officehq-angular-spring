@@ -44,6 +44,7 @@ public class SettingsService {
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
     private final SheetSettingRepository settings;
+    private final PolicyVersionRepository versions;
     private final SheetPermissionRepository permissions;
     private final DatedSettings dated;
     private final RollupService rollup;
@@ -52,7 +53,7 @@ public class SettingsService {
     private final Audit audit;
 
     public SettingsService(SheetRepository sheets, SheetRoleRepository roles, SheetSettingRepository settings,
-            SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
+            PolicyVersionRepository versions, SheetPermissionRepository permissions, DatedSettings dated, RollupService rollup,
             DelegationService delegations, GradeService grades, Audit audit) {
         this.grades = grades;
         this.delegations = delegations;
@@ -60,6 +61,7 @@ public class SettingsService {
         this.sheets = sheets;
         this.roles = roles;
         this.settings = settings;
+        this.versions = versions;
         this.dated = dated;
         this.rollup = rollup;
         this.audit = audit;
@@ -160,10 +162,10 @@ public class SettingsService {
         return limits;
     }
 
-    /** The clerk limit of a claim of a person of {@code grade} (see {@link DatedSettings#clerkLimitFor}). */
+    /** The clerk limit of a claim dated {@code date} of a person of {@code grade} (see {@link DatedSettings#clerkLimitFor}). */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimitFor(String sheetId, String grade) {
-        return dated.clerkLimitFor(sheetId, grade);
+    public BigDecimal clerkLimitFor(String sheetId, String grade, LocalDate date) {
+        return dated.clerkLimitFor(sheetId, grade, date);
     }
 
     /** Record the grade's own clerk limit from {@code from} (the sheet's today when null); null records
@@ -210,8 +212,8 @@ public class SettingsService {
         return dated.cap(sheetId);
     }
 
-    /** Record the sheet's cap from {@code from} (the sheet's today when null); null records no cap. The
-     * due-totals, and so the figures, follow the cap in force on the sheet's today. */
+    /** Record the sheet's cap from {@code from} (the sheet's today when null); null records no cap. Each
+     * person's due-total, and so the figures, follow the cap in force on the date of their latest claim that counts. */
     @Transactional
     public void setCap(String sheetId, String by, BigDecimal cap, LocalDate from) {
         record(sheetId, by, DatedSettings.CAP, cap == null ? null : cap.toPlainString(), from, true);
@@ -387,8 +389,16 @@ public class SettingsService {
         return dated.history(sheetId, key);
     }
 
+    /** The sheet's policy versions, numbered from 1 in the order made. */
+    @Transactional(readOnly = true)
+    public List<PolicyVersion> policyVersions(String sheetId) {
+        return versions.findBySheetIdOrderByNumberAsc(sheetId);
+    }
+
     /** Record {@code value} for the dated setting {@code key} from {@code from} (the sheet's today when
-     * null), keeping the values already recorded; one already recorded from that date is replaced. The
+     * null), keeping the values already recorded; one already recorded from that date is replaced. A
+     * change to a policy setting (see {@link DatedSettings#POLICY_KEYS}) is the sheet's next policy
+     * version, in force from that date. The
      * SETTING_CHANGED line ends with the from-date when one was given; when {@code figures} the ROLLUP
      * and TOTALS lines follow it. */
     private void record(String sheetId, String by, String key, String value, LocalDate from, boolean figures) {
@@ -401,7 +411,11 @@ public class SettingsService {
         } else {
             recorded.setValue(value);
         }
+        if (DatedSettings.POLICY_KEYS.contains(key)) {
+            versions.save(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, on, key, value));
+        }
         settings.flush();
+        versions.flush();
         List<String> fields = new ArrayList<>(List.of("key=" + key, "value=" + (value == null ? "" : value)));
         if (from != null) fields.add("from=" + from);
         audit.change("SETTING_CHANGED", sheetId, by, fields.toArray(String[]::new));

@@ -109,6 +109,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       (scoreThresholdsSaved)="scoreThresholds.set($event)"
       (policyDateSaved)="policyDate.set($event)"
       (roundingSaved)="roundings.set($event)"
+      (policyVersionsSaved)="policyVersions.set($event)"
       (fiscalStartMonthSaved)="fiscalStartMonth.set($event)"
     />
     <app-delegations />
@@ -671,6 +672,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                     [graces]="graces()"
                     [policyDate]="policyDateInForce()"
                     [roundings]="roundings()"
+                    [policyVersions]="policyVersions()"
                     [others]="othersOf(p.id)"
                     [everyone]="everyone()"
                     [selected]="selectedClaims()"
@@ -1218,13 +1220,8 @@ export class People {
   protected readonly floors = signal<Dated[]>([]);
   /** Every cap recorded on the sheet, each from its date, oldest first; null records no cap. */
   protected readonly caps = signal<Dated<string | null>[]>([]);
-  /** The sheet's cap in force on its today, in cents: the most a person's due-total can be; null when
-   *  there is none. */
-  protected readonly cap = computed(() => {
-    const today = this.session.today();
-    const cap = today === null ? null : inForce(this.caps(), today, null);
-    return cap === null ? null : cents(cap);
-  });
+  /** The from-date of each of the sheet's policy versions, oldest first; null counts on every date. */
+  protected readonly policyVersions = signal<(string | null)[]>([]);
   /** Every late percent recorded on the sheet, each from its date, oldest first, with two decimals. */
   protected readonly latePcts = signal<Dated[]>([]);
   /** Every grace recorded on the sheet for each grade, each from its date, oldest first. */
@@ -1650,6 +1647,7 @@ export class People {
       this.scoreThresholds.set({ mid: null, high: null });
       this.policyDate.set(null);
       this.roundings.set([]);
+      this.policyVersions.set([]);
       this.fiscalStartMonth.set(1);
       this.statements.set([]);
       this.periods.set([]);
@@ -2472,10 +2470,23 @@ export class People {
     return sum === null || left === null ? sum : Math.min(sum, left);
   }
 
-  /** The most the person's due-total can be, in cents: the sheet's cap less their cut total, not below 0;
-   *  null when there is no cap. */
+  /** The person's cap in cents: the sheet's cap in force on the date of their latest claim that counts
+   *  (on its today when none does); null when there is none then. */
+  private capOf(person: Person): number | null {
+    const today = this.session.today();
+    if (today === null) return null;
+    let on: string | null = null;
+    for (const c of this.claimsOf(person.id)) {
+      if (this.countsLive(c, person) && (on === null || c.date > on)) on = c.date;
+    }
+    const cap = inForce(this.caps(), on ?? today, null);
+    return cap === null ? null : cents(cap);
+  }
+
+  /** The most the person's due-total can be, in cents: their cap (see capOf) less their cut total, not
+   *  below 0; null when there is no cap. */
   private capLeftOf(person: Person): number | null {
-    const cap = this.cap();
+    const cap = this.capOf(person);
     return cap === null ? null : Math.max(0, cap - (this.cutCents().get(person.id) ?? 0));
   }
 
@@ -3247,6 +3258,7 @@ export class People {
         this.scoreThresholds.set({ mid: settings.scoreMid ?? null, high: settings.scoreHigh ?? null });
         this.policyDate.set(settings.policyDate);
         this.roundings.set(settings.roundings ?? []);
+        this.policyVersions.set(settings.policyVersions ?? []);
         this.fiscalStartMonth.set(settings.fiscalStartMonth ?? 1);
         this.rates.set(rates);
         this.periods.set(periods);

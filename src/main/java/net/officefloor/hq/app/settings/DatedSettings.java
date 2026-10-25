@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -14,8 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
  * percent 0.00, terms 14 days; no clerk limit, no grade's own clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no review threshold, no grade's own terms and no grade's grace days). A claim's floor, late
- * percent, terms, proof threshold, note threshold and review threshold are those in force on its date; the clerk limit and the cap those on the sheet's
- * today. */
+ * percent, terms, proof threshold, note threshold, review threshold and clerk limit are those in force on its date; a
+ * person's cap the one in force on the date of their latest claim that counts. The rounding mode, the floor, the cap, the
+ * terms, the late percent and the clerk limit are the policy settings, versioned together (see {@link PolicyVersion}). */
 @Service
 public class DatedSettings {
 
@@ -31,6 +33,9 @@ public class DatedSettings {
     public static final String ROUNDING = "rounding";
     public static final String HALF_UP = "half-up";
     public static final String HALF_EVEN = "half-even";
+
+    /** The policy settings: every change to one of them is a new policy version. */
+    public static final Set<String> POLICY_KEYS = Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
 
     public static final BigDecimal FLOOR_START = new BigDecimal("1.00");
     public static final BigDecimal LATE_PCT_START = new BigDecimal("0.00");
@@ -110,7 +115,13 @@ public class DatedSettings {
     /** The clerk limit in force on the sheet's today; null when there is none. */
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String sheetId) {
-        return valueOn(sheetId, CLERK_LIMIT, today(sheetId)).map(BigDecimal::new).orElse(null);
+        return clerkLimitOn(sheetId, today(sheetId));
+    }
+
+    /** The clerk limit in force on the date; null when there is none then. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimitOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, CLERK_LIMIT, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The grade's own clerk limit in force on the date; null when it has none then. */
@@ -119,18 +130,24 @@ public class DatedSettings {
         return grade == null ? null : valueOn(sheetId, gradeClerkLimitKey(grade), date).map(BigDecimal::new).orElse(null);
     }
 
-    /** The clerk limit of a claim of a person of {@code grade}: the grade's own in force on the sheet's
-     * today, or else the sheet's in force then; null when there is none. */
+    /** The clerk limit of a claim dated {@code date} of a person of {@code grade}: the grade's own in force
+     * on that date, or else the sheet's in force then; null when there is none. */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimitFor(String sheetId, String grade) {
-        BigDecimal own = gradeClerkLimitOn(sheetId, grade, today(sheetId));
-        return own != null ? own : clerkLimit(sheetId);
+    public BigDecimal clerkLimitFor(String sheetId, String grade, LocalDate date) {
+        BigDecimal own = gradeClerkLimitOn(sheetId, grade, date);
+        return own != null ? own : clerkLimitOn(sheetId, date);
     }
 
     /** The cap in force on the sheet's today; null when there is none. */
     @Transactional(readOnly = true)
     public BigDecimal cap(String sheetId) {
-        return valueOn(sheetId, CAP, today(sheetId)).map(BigDecimal::new).orElse(null);
+        return capOn(sheetId, today(sheetId));
+    }
+
+    /** The cap in force on the date; null when there is none then. */
+    @Transactional(readOnly = true)
+    public BigDecimal capOn(String sheetId, LocalDate date) {
+        return valueOn(sheetId, CAP, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The proof threshold in force on the date; null when there is none. */

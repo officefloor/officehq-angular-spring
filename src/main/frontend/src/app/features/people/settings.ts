@@ -44,6 +44,8 @@ const STANDING: Record<PermAction, string> = {
 // of a person of that grade on its date; blank for the sheet's) are dated too, and so is its rounding
 // mode (half-up or half-even: a claim dated on or after its from-date rounds every live figure by it in
 // place of by the policy date; blank for none).
+// The rounding mode, floor, cap, terms, late percent and clerk limit are the policy settings, versioned
+// together: every change to one of them is a new policy version, and the current version's number shows.
 // The clerk limit, floor, cap, proof threshold, terms, grades' terms and late percent are dated: each is saved from the
 // date typed beside it (blank for the sheet's today), and each shows the value in force on the sheet's
 // today. Read from the
@@ -55,6 +57,7 @@ const STANDING: Record<PermAction, string> = {
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
+      <p>Policy version <span data-testid="policy-version">{{ (policyVersion()) | figure }}</span></p>
       <form (submit)="saveSettings($event)" aria-label="Settings" data-testid="settings-form">
         <label for="setting-clerk-limit">Clerk limit</label>
         <input
@@ -711,6 +714,10 @@ export class Settings {
   readonly roundingSaved = output<Dated<string | null>[]>();
   /** Every cap recorded, each from its date, oldest first, once one is saved. */
   readonly capSaved = output<Dated<string | null>[]>();
+  /** The current policy version's number: how many versions the sheet has. */
+  protected readonly policyVersion = signal(0);
+  /** The from-date of each policy version, oldest first, whenever the settings are read or saved. */
+  readonly policyVersionsSaved = output<(string | null)[]>();
   protected readonly given = signal<RoleGiven[]>([]);
   /** The proof threshold in force, with two decimals; null when there is none. */
   protected readonly proofThreshold = signal<string | null>(null);
@@ -1753,6 +1760,8 @@ export class Settings {
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth ?? 1));
     this.parent.set(settings.parent ?? null);
     this.given.set(settings.roles);
+    this.policyVersion.set(settings.policyVersions?.length ?? 0);
+    this.policyVersionsSaved.emit(settings.policyVersions ?? []);
   }
 }
 

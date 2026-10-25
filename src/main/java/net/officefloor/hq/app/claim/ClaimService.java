@@ -475,7 +475,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = on == null ? rollup.shownOf(claim, person) : dueThen;
             if (!judged) refuseUnproved(claim, person, due);
-            if (overLimit(sheetId, user, person, due)) next = ClaimStatus.PENDING;
+            if (overLimit(sheetId, user, claim, person, due)) next = ClaimStatus.PENDING;
             else {
                 claim.setSettledDue(due);
                 if (number == null) number = nextNumber(sheetId, claim.getDueBy());
@@ -987,12 +987,12 @@ public class ClaimService {
                 .orElseGet(() -> "X-" + sheets.nextInSequence(sheetId, "none"));
     }
 
-    /** Whether a settle by {@code user} of a claim whose due is {@code due} needs a steward's approval:
-     * the user is a clerk and the due is above the clerk limit in force on the sheet's today (the person's
+    /** Whether a settle by {@code user} of the claim, whose due is {@code due}, needs a steward's approval:
+     * the user is a clerk and the due is above the clerk limit in force on the claim's date (the person's
      * grade's own then, else the sheet's). */
-    private boolean overLimit(String sheetId, String user, Person person, BigDecimal due) {
+    private boolean overLimit(String sheetId, String user, Claim claim, Person person, BigDecimal due) {
         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
-        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)));
+        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
         return limit != null && due.compareTo(limit) > 0;
     }
 

@@ -136,6 +136,15 @@ export interface SheetSettings {
   rounding: string | null;
   /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
   roundings: Dated<string | null>[];
+  /** The from-date (YYYY-MM-DD) of each of the sheet's policy versions, numbered from 1 in the order
+   *  made; null for one that counts on every date. */
+  policyVersions?: (string | null)[];
+}
+
+/** The policy version in force on a date: how many of the versions (their from-dates, see
+ *  SheetSettings.policyVersions) are from it or before, one with no from-date counting always. */
+export function policyVersionOn(versions: readonly (string | null)[], date: string): number {
+  return versions.filter((from) => from === null || from <= date).length;
 }
 
 /** The fiscal year (FYyyyy, by the calendar year its first day falls in) the date (YYYY-MM-DD) falls

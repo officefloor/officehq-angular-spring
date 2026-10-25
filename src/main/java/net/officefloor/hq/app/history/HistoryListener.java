@@ -19,6 +19,7 @@ import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.pool.SheetPool;
 import net.officefloor.hq.app.pool.SheetPoolMember;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.settings.PolicyVersion;
 import net.officefloor.hq.app.settings.SheetDelegation;
 import net.officefloor.hq.app.settings.SheetPermission;
 import net.officefloor.hq.app.settings.SheetRole;
@@ -44,7 +45,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Writes a line to the sheet's history (see {@code V51__sheet_history.sql}) for every row of what a
- * sheet's screen is made of — the sheet, its people, claims and their shares, rates, dated settings, periods, statements,
+ * sheet's screen is made of — the sheet, its people, claims and their shares, rates, dated settings, policy versions, periods, statements,
  * patrons, watches, roles, permissions, delegations, pools and their members, and crews and their members — as it stands
  * after each change, with the sheet's today then. The line is written on the change's own connection,
  * so it commits or rolls back with it.
@@ -57,7 +58,8 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
     static final Map<Class<?>, String> KEPT = Map.ofEntries(Map.entry(Sheet.class, "sheet"),
             Map.entry(Person.class, "person"), Map.entry(Claim.class, "claim"), Map.entry(ClaimShare.class, "claim-share"),
             Map.entry(Rate.class, "rate"),
-            Map.entry(SheetSetting.class, "setting"), Map.entry(Period.class, "period"),
+            Map.entry(SheetSetting.class, "setting"), Map.entry(PolicyVersion.class, "policy-version"),
+            Map.entry(Period.class, "period"),
             Map.entry(Statement.class, "statement"), Map.entry(PersonPatron.class, "patron"),
             Map.entry(PersonWatch.class, "watch"), Map.entry(SheetRole.class, "role"),
             Map.entry(SheetPermission.class, "permission"), Map.entry(SheetDelegation.class, "delegation"),
@@ -131,6 +133,7 @@ public class HistoryListener implements PostInsertEventListener, PostUpdateEvent
                 : entity instanceof ClaimShare share ? share.getSheetId()
                 : entity instanceof Rate rate ? rate.getSheetId()
                 : entity instanceof SheetSetting setting ? setting.getSheetId()
+                : entity instanceof PolicyVersion version ? version.getSheetId()
                 : entity instanceof Period period ? period.getSheetId()
                 : entity instanceof Statement statement ? statement.getSheetId()
                 : entity instanceof PersonPatron patron ? patron.getSheetId()
