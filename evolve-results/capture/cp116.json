@@ -1,0 +1,72 @@
+{
+  "checkpoint": 116,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp116_import-upserts",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    113,
+    115
+  ],
+  "replaced_tests": [
+    "cp113_import-people.spec.ts::import people",
+    "cp113_import-people.spec.ts::import people scenario 1",
+    "cp113_import-people.spec.ts::import people scenario 3",
+    "cp115_nested-pools.spec.ts::nested pools scenario 1"
+  ],
+  "request": {
+    "spec": "An import line whose name matches a person on the sheet (by name or alias, as names are compared)\nnow updates that person instead of being refused: their grade is recorded from the sheet's today\nas the form would, and their terms and contact are set when the line gives them, writing\nPERSON_EDITED exactly as the form does. Other lines still add. An error on any line still means\nnothing is imported. Show how many were added and how many updated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn import line whose name matches a person on the sheet (by name or alias, as names are compared)\nnow updates that person instead of being refused: their grade is recorded from the sheet's today\nas the form would, and their terms and contact are set when the line gives them, writing\nPERSON_EDITED exactly as the form does. Other lines still add. An error on any line still means\nnothing is imported. Show how many were added and how many updated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d9fcf3cba0fb168c3ac363611824bd1eb5926230",
+  "reset_sha": "",
+  "preagent_sha": "cde596d54d3dd49c687a85f5a3427a5823267a8e",
+  "prev_sha": "cde596d54d3dd49c687a85f5a3427a5823267a8e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5970814000000001,
+    "input_tokens": 28,
+    "output_tokens": 6249,
+    "cache_read_tokens": 520347,
+    "cache_creation_tokens": 45990,
+    "num_turns": 14,
+    "duration_ms": 255696,
+    "duration_api_ms": 71016,
+    "model": "claude-opus-5-5",
+    "session_id": "e7024a0a-87f1-437f-a601-54c5ad4828e6",
+    "stop_reason": "success",
+    "result_text": "Importing a line whose name matches someone already on the sheet now updates that person instead of being refused, and the screen shows how many people were added and how many updated. `bin/e2e` passes all 4 tests in the spec.\n\n**Server** (`ImportPeopleService.java`)\n- Each line's name is looked up against the sheet's people by name or alias, compared the way the form compares names.\n- **When it matches**, the update goes through the same `PersonService.update` the edit form uses:\n  - The grade is recorded from the sheet's today.\n  - Terms and contact change only when the line gives them; a blank field keeps the current value.\n  - The person keeps their existing name, so an \"ada\" line still shows \"Ada\".\n  - The form's checks and the `PERSON_EDITED` audit line are exactly the form's.\n- **When it doesn't match**, the line adds a person as before.\n- It all still runs in one transaction, so if any line is refused nothing is imported or written, and the error names the line.\n- **One rule I added:** two lines that point to the same person (say \"Ben\" and \"Benny\") are refused. The request didn't cover this case.\n- The import response now includes `updated` alongside `added` (`PersonController.java`).\n\n**Front end**\n- `import-people.ts` shows `import-added` and the new `import-updated` count.\n- In `people.ts`, updated people replace their existing rows and new people are added to the end of the list.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5970814000000001,
+        "num_turns": 14,
+        "duration_ms": 255696,
+        "duration_api_ms": 71016,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp116.agent.jsonl",
+  "agent_diff_file": "cp116.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
