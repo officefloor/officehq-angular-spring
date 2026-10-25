@@ -1,7 +1,7 @@
 import { Component, input } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
 
-/** A steward's dashboard over the sheet: its PENDING claims, its REVIEW claims and its overdue claims
+/** A steward's dashboard over the sheet and all its descendants: their PENDING claims, their REVIEW claims and their overdue claims
  *  that count; each null for a user who is not a steward. */
 export interface DashboardCounts {
   pending: number | null;
