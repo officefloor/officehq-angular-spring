@@ -150,6 +150,14 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** Undo the sheet's last rollover: its generated periods removed and its opening balances taken back. */
+    @PostMapping("/rollover/undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoRollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        service.undoRollover(sheetId.trim(), user.trim());
+    }
+
     /** Generate the calendar year's four quarterly periods: the periods made, in order. */
     @PostMapping("/generate-quarters")
     public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,

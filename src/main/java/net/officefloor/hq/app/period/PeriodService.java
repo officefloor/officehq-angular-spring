@@ -43,12 +43,14 @@ public class PeriodService {
     private final RollupService rollup;
     private final SettingsService settings;
     private final PoolService pools;
+    private final RolloverRepository rollovers;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
             ClaimLogRepository logs, PersonRepository people, RollupService rollup, SettingsService settings, PoolService pools,
-            Audit audit) {
+            RolloverRepository rollovers, Audit audit) {
         this.periods = periods;
+        this.rollovers = rollovers;
         this.sheets = sheets;
         this.claims = claims;
         this.logs = logs;
@@ -100,10 +102,13 @@ public class PeriodService {
     /** Make one period per calendar month from the from-date's month to the to-date's month, each from
      * the first to the last day of its month and named yyyy-mm, in order; a month whose name is
      * already a period's or whose days overlap a period on the sheet is left out. A missing date is
-     * the sheet's today; a to-date before the from-date is refused. */
+     * the sheet's today; a to-date before the from-date is refused. A viewer's generate makes nothing. */
     @Transactional
     public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) {
+            return List.of();
+        }
         LocalDate start = from == null ? sheet.getToday() : from;
         LocalDate end = to == null ? sheet.getToday() : to;
         if (end.isBefore(start)) {
@@ -141,7 +146,8 @@ public class PeriodService {
      * {@link #generateFiscalYear} would, then add each person's open figure at the end of the old year's last
      * period (see {@link #personOpenOf}) to their opening balance for the new year's first period, and
      * record it; the periods made. Refused when the user is not a steward or no period's from-date falls
-     * in the old year. */
+     * in the old year. A year whose earlier rollover still stands (is not undone) has its opening balances
+     * carried already, so they are not added again. The rollover is kept so it can be undone (see {@link #undoRollover}). */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -156,8 +162,11 @@ public class PeriodService {
         if (old.isEmpty()) {
             throw new PeriodRefusedException("no periods");
         }
-        Map<Long, BigDecimal> open = personOpenOf(sheetId, old);
+        boolean carried = rollovers.existsBySheetIdAndFiscalYearAndUndoneFalse(sheetId, year);
+        Map<Long, BigDecimal> open = carried ? Map.of() : personOpenOf(sheetId, old);
         List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        Rollover rollover = new Rollover(sheetId, user, sheet.getToday(), year);
+        made.forEach(period -> rollover.addPeriod(period.getId()));
         LocalDate newFirst = start.plusMonths(12).atDay(1);
         periods.findBySheetIdOrderByFromAsc(sheetId).stream()
                 .filter(p -> p.overlaps(newFirst, newFirst)).findFirst()
@@ -168,13 +177,54 @@ public class PeriodService {
                         BigDecimal amount = open.get(person.getId());
                         if (amount == null || amount.signum() == 0) continue;
                         locked.addOpening(person.getId(), amount);
+                        rollover.addOpening(locked.getId(), person.getId(), amount);
                         audit.change("OPENING_SET", sheetId, user, "name=" + person.getName(),
                                 "period=" + locked.getName(), "amount=" + amount.toPlainString());
                     }
                     periods.flush();
                 });
+        rollovers.saveAndFlush(rollover);
         audit.change("ROLLOVER", sheetId, user, "fy=FY" + year, "periods=" + made.size());
         return made;
+    }
+
+    /** Undo the sheet's last rollover: take back the opening balances it added and remove the periods it
+     * generated, and record it. Refused when there is no rollover or the last one is already undone, when
+     * the sheet's today is no longer the day it was made, when the user is not the steward who made it,
+     * or when a claim now belongs to a period it generated. */
+    @Transactional
+    public void undoRollover(String sheetId, String user) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodNotStewardException();
+        }
+        Rollover rollover = rollovers.findFirstBySheetIdOrderByIdDesc(sheetId)
+                .filter(last -> !last.isUndone())
+                .orElseThrow(() -> new RolloverUndoException("none to undo"));
+        if (!rollover.getMadeBy().equals(user)) {
+            throw new PeriodNotStewardException();
+        }
+        if (!rollover.getMadeOn().equals(sheet.getToday())) {
+            throw new RolloverUndoException("another day");
+        }
+        List<Period> made = periods.findAllById(rollover.getPeriodIds());
+        boolean claimed = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+                .map(Claim::getDueBy)
+                .anyMatch(dueBy -> dueBy != null && made.stream().anyMatch(p -> p.overlaps(dueBy, dueBy)));
+        if (claimed) {
+            throw new RolloverUndoException("claims in its periods");
+        }
+        if (rollover.getOpeningPeriodId() != null) {
+            periods.lockByIdAndSheetId(rollover.getOpeningPeriodId(), sheetId).ifPresent(first -> {
+                rollover.getOpenings().forEach(first::takeOpening);
+                periods.flush();
+            });
+        }
+        periods.deleteAll(made);
+        periods.flush();
+        rollover.undo();
+        rollovers.saveAndFlush(rollover);
+        audit.change("ROLLOVER_UNDONE", sheetId, user, "fy=FY" + rollover.getFiscalYear());
     }
 
     /** Each person's open figure at the end of the last of {@code old}, by person id: the sum of what is

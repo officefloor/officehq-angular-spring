@@ -85,6 +85,14 @@ export class PeriodsService {
     );
   }
 
+  /** Undo the sheet's last rollover: remove the periods it generated and take back the opening balances
+   *  it set. */
+  undoRollover(sheet: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheet)}/rollover/undo`, {}, { headers: this.session.headers() }),
+    );
+  }
+
   /** Make the four calendar quarters of the year, named yyyy-Q1 to yyyy-Q4, leaving out a quarter whose
    *  name is taken or whose days overlap a period: those made. */
   generateQuarters(sheet: string, year: string): Promise<Period[]> {

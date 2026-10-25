@@ -115,6 +115,7 @@ const YEAR = /^\d{4}$/;
           (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover">Roll the year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo the last rollover</button>
         <span aria-live="polite">Made: <span data-testid="rollover-made">{{ (rolloverMade() ?? '') | figure }}</span></span>
         @if (rolloverError(); as message) {
           <p role="alert" class="error" data-testid="rollover-error">{{ (message) | figure }}</p>
@@ -469,6 +470,32 @@ export class Periods {
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward may roll the year over.'
           : 'That fiscal year could not be rolled over: it has no periods.',
+      );
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /** Undo the last rollover: remove the periods it generated and take back the opening balances it set;
+   *  a rollover made on an earlier sheet-today or by someone else, one already undone, or one with a claim
+   *  in a period it generated is refused with an error. */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.rollingOver = true;
+    try {
+      await this.service.undoRollover(sheet);
+      const periods = await this.service.list(sheet);
+      if (this.session.sheetId() !== sheet) return;
+      this.reloaded.emit(periods);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who made the last rollover may undo it.'
+          : 'The last rollover could not be undone: it was made on another day, is already undone, or a claim now belongs to a period it made.',
       );
     } finally {
       this.rollingOver = false;
