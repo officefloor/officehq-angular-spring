@@ -135,7 +135,9 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) {
         const message = e instanceof HttpErrorResponse && e.status === 403
           ? 'You opened this claim, so someone else must settle it.'
-          : `This claim cannot be ${PAST[action]} from its status.`;
+          : periodOf(this.periods(), claim.date)?.closed
+            ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
+            : `This claim cannot be ${PAST[action]} from its status.`;
         this.claimError.set({ id: claim.id, message });
       }
     }
@@ -174,8 +176,10 @@ export class PersonClaims {
         if (this.session.sheet()?.id === sheet.id) this.saved.emit(claim);
       }
       if (this.session.sheet()?.id === sheet.id) this.reset();
-    } catch {
-      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } catch (e) {
+      this.error.set(e instanceof HttpErrorResponse && e.status === 409
+        ? 'A claim dated inside a closed period cannot be added or changed.'
+        : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.saving.set(false);
     }

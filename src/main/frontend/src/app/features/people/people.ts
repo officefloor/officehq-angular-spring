@@ -21,7 +21,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
   template: `
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" />
+      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
       <section aria-labelledby="people-heading">
         <h2 id="people-heading">People</h2>
         <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
@@ -126,7 +126,7 @@ export class People {
   /** The sheet's periods in date order. */
   protected readonly periods = signal<PeriodView[]>([]);
   /** Each period's due-total, by period id: the figures of the counting claims dated in it, skipping
-   *  those that are n/a. */
+   *  those that are n/a; a closed period's is the total fixed when it was closed. */
   protected readonly periodDueTotals = computed(() => {
     const cents = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
     const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
@@ -138,7 +138,8 @@ export class People {
       const due = claimDueCents(c, this.ratesOf(grade));
       if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
     }
-    return new Map([...cents].map(([id, total]) => [id, money(total)]));
+    const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
+    return new Map([...cents].map(([id, total]) => [id, fixed.get(id) ?? money(total)]));
   });
   /** The statements of each person who has had one taken, by person. */
   protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
@@ -261,6 +262,10 @@ export class People {
   protected periodAdded(period: PeriodView): void {
     // Kept as the store lists them: in date order.
     this.periods.update((list) => [...list, period].sort((a, b) => a.from.localeCompare(b.from)));
+  }
+
+  protected periodChanged(period: PeriodView): void {
+    this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }
 
   protected claimAdded(claim: ClaimView): void {

@@ -6,8 +6,8 @@ import { PeriodView, PeriodsApi } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's periods in date order, each with the due-total of the counting claims dated in it,
-// with one form to add a period.
+// The sheet's periods in date order, each with the due-total of the counting claims dated in it
+// (fixed once the period is closed) and whether it is closed, with one form to add a period.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -28,7 +28,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -37,6 +37,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" (click)="close(p)"
+                  [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
+                @if (periodError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -53,6 +61,8 @@ export class Periods {
   /** Each period's due-total with two decimals, by period id. */
   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
   readonly added = output<PeriodView>();
+  /** A period that was closed. */
+  readonly changed = output<PeriodView>();
 
   protected readonly name = new FormControl('', { nonNullable: true });
   protected readonly from = new FormControl('', { nonNullable: true });
@@ -60,6 +70,10 @@ export class Periods {
   protected readonly form = new FormGroup({ name: this.name, from: this.from, to: this.to });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  /** The period being closed. */
+  protected readonly closing = signal<number | null>(null);
+  /** The refusal of the last action taken on a period's row, shown on that row. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -67,8 +81,28 @@ export class Periods {
     effect(() => {
       this.session.loaded();
       this.error.set('');
+      this.periodError.set(null);
       this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
     });
+  }
+
+  /** Close a period, fixing its due-total; the store refuses one already closed. */
+  protected async close(period: PeriodView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.closing() !== null) return;
+    this.periodError.set(null);
+    this.closing.set(period.id);
+    try {
+      const closed = await this.api.close(sheet.id, period.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(closed);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.periodError.set({ id: period.id, message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'This period is already closed.' : 'The period could not be closed.' });
+      }
+    } finally {
+      this.closing.set(null);
+    }
   }
 
   protected async submit(): Promise<void> {

@@ -9,6 +9,10 @@ export interface PeriodView {
   from: string;
   /** The last day of the period (yyyy-mm-dd), inclusive. */
   to: string;
+  /** Whether the period is closed: no claim dated in it can then change. */
+  closed: boolean;
+  /** The due-total fixed when the period was closed, with two decimals; null while it is open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodForm {
@@ -40,5 +44,10 @@ export class PeriodsApi {
    *  overlaps another period. */
   add(sheetId: string, form: PeriodForm): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(this.url(sheetId), form));
+  }
+
+  /** Close a period, fixing its due-total: refused when it is already closed. */
+  close(sheetId: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/close`, {}));
   }
 }

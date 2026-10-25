@@ -7,10 +7,12 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,15 +26,19 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateService rates;
     private final SheetService sheets;
+    private final SheetRepository sheetRows;
+    private final PeriodRepository periods;
     private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Rollup rollup, Audit audit) {
+            SheetRepository sheetRows, PeriodRepository periods, Rollup rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.sheetRows = sheetRows;
+        this.periods = periods;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -47,8 +53,10 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = person(sheetId, personId);
+        LocalDate dated = dateOr(sheetId, date);
+        refuseIfClosed(sheetId, dated);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOr(sheetId, date), noteOf(note)));
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         recordChange("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -59,8 +67,11 @@ public class ClaimService {
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        LocalDate dated = dateOr(sheetId, date);
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, dated);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        claim.set(amount, dateOr(sheetId, date), noteOf(note));
+        claim.set(amount, dated, noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
         rollup.recordChanges(user, before);
@@ -73,6 +84,7 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
@@ -103,6 +115,15 @@ public class ClaimService {
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
+
+    /** Refuse a change to a claim dated inside a closed period. The sheet is locked first, as closing
+     *  a period locks it, so a claim cannot change in a period while it is being closed. */
+    private void refuseIfClosed(String sheetId, LocalDate date) {
+        sheetRows.findForUpdate(sheetId);
+        if (periods.isClosedOn(sheetId, date)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is dated inside a closed period.");
+        }
+    }
 
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)

@@ -23,10 +23,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    /** What the screen shows of a period: its name and its from and to dates, both inclusive. */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+    /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
+     *  it is closed and, once closed, the due-total fixed then (null while open). */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+            String closedTotal) {
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo());
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+                    period.isClosed(),
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
         }
     }
 
@@ -54,5 +58,12 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PeriodForm form) {
         return PeriodView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.from(),
                 form.to()));
+    }
+
+    /** Close a period, fixing its due-total. */
+    @PostMapping("/{id}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.close(sheetId.trim(), SignedInUser.name(user), id));
     }
 }
