@@ -1,0 +1,49 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 75398246..efd3df01 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
++import { DOCUMENT } from '@angular/common';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+@@ -65,6 +66,7 @@ import { QuickAdd } from './quick-add';
+             (change)="showRetired.set($any($event.target).checked)" />
+           Show retired
+         </label>
++        <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
+         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
+@@ -157,6 +159,7 @@ export class People {
+   private readonly terms = inject(SheetTerms);
+   private readonly latePct = inject(SheetLatePct);
+   private readonly policyDate = inject(SheetPolicyDate);
++  private readonly document = inject(DOCUMENT);
+   /** What the late charges depend on now. */
+   private readonly lateness = computed<Lateness>(() =>
+     ({ terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct(),
+@@ -508,6 +511,22 @@ export class People {
+     return due === null ? 'n/a' : money(due);
+   }
+ 
++  /** Downloads everyone on the sheet, retired or not, in list order: their name, grade in force today,
++   *  retired-from date and due-total as shown, one line each after the header, each ending in a line feed. */
++  protected exportCsv(): void {
++    const field = (v: string) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
++    const lines = [['name', 'grade', 'retired-from', 'due-total'],
++      ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.personDueTotal(p)])];
++    const csv = lines.map((l) => l.map(field).join(',') + '\n').join('');
++    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
++    const link = this.document.createElement('a');
++    link.href = url;
++    link.download = 'people.csv';
++    link.click();
++    // Released once the browser has taken the file.
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   protected rateSaved(rate: RateView): void {
+     // Kept as the store lists them: in grade order, then the rate from the start, then by from-date.
+     this.rates.update((list) => [...list.filter((r) => !sameRate(r, rate)), rate]
