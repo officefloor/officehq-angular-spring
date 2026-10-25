@@ -125,7 +125,11 @@ export class Rates {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
-    this.previewForm.valueChanges.subscribe(() => this.previewError.set(''));
+    // A preview shown is of the grade and rate it was asked for: changing either clears it.
+    this.previewForm.valueChanges.subscribe(() => {
+      this.previewError.set('');
+      this.previewed.set(null);
+    });
     this.importForm.valueChanges.subscribe(() => this.importError.set(''));
     // Each load of a sheet starts the forms without the error or preview from the last one.
     effect(() => {

@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.http.HttpStatus;
@@ -23,10 +24,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class PoolController {
 
     /** A member of a pool as the screen shows it: a person or a pool (the other id null); the share always
-     *  has two decimals. */
-    public record MemberView(Long personId, Long poolId, String share) {
+     *  has two decimals; the from-date and to-date of the membership, each null when unbounded. */
+    public record MemberView(Long personId, Long poolId, String share, LocalDate from, LocalDate to) {
         static MemberView of(PoolMember member) {
-            return new MemberView(member.getPersonId(), member.getMemberPoolId(), member.getShare().toPlainString());
+            return new MemberView(member.getPersonId(), member.getMemberPoolId(), member.getShare().toPlainString(),
+                    member.getFrom(), member.getTo());
         }
     }
 
@@ -40,8 +42,9 @@ public class PoolController {
     public record PoolForm(@Size(max = 200) String name) {
     }
 
-    /** A member to add: a person of the sheet or another pool of it (exactly one), and its share as typed. */
-    public record MemberForm(Long personId, Long poolId, @Size(max = 30) String share) {
+    /** A member to add: a person of the sheet or another pool of it (exactly one), its share as typed, and
+     *  the from-date and to-date of the membership (each optional). */
+    public record MemberForm(Long personId, Long poolId, @Size(max = 30) String share, LocalDate from, LocalDate to) {
     }
 
     private final PoolService service;
@@ -73,7 +76,7 @@ public class PoolController {
         }
         String by = SignedInUser.name(user);
         return PoolView.of(form.personId() != null
-                ? service.addMember(sheetId.trim(), by, poolId, form.personId(), form.share())
-                : service.addMemberPool(sheetId.trim(), by, poolId, form.poolId(), form.share()));
+                ? service.addMember(sheetId.trim(), by, poolId, form.personId(), form.share(), form.from(), form.to())
+                : service.addMemberPool(sheetId.trim(), by, poolId, form.poolId(), form.share(), form.from(), form.to()));
     }
 }

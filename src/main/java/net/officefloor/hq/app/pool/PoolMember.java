@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /** A member of a pool, a person or another pool of the sheet, with its share percent of it. */
 @Entity
@@ -30,13 +31,23 @@ public class PoolMember {
     @Column(name = "share", nullable = false, precision = 5, scale = 2)
     private BigDecimal share;
 
+    /** The first day of the membership, or null from the beginning of time. */
+    @Column(name = "from_date")
+    private LocalDate from;
+
+    /** The last day of the membership, or null without end. */
+    @Column(name = "to_date")
+    private LocalDate to;
+
     protected PoolMember() {
     }
 
-    PoolMember(Long personId, Long memberPoolId, BigDecimal share) {
+    PoolMember(Long personId, Long memberPoolId, BigDecimal share, LocalDate from, LocalDate to) {
         this.personId = personId;
         this.memberPoolId = memberPoolId;
         this.share = share.setScale(2);
+        this.from = from;
+        this.to = to;
     }
 
     void setPersonId(long personId) {
@@ -69,5 +80,15 @@ public class PoolMember {
 
     public BigDecimal getShare() {
         return share;
+    }
+
+    /** The first day of the membership, or null from the beginning of time. */
+    public LocalDate getFrom() {
+        return from;
+    }
+
+    /** The last day of the membership, or null without end. */
+    public LocalDate getTo() {
+        return to;
     }
 }

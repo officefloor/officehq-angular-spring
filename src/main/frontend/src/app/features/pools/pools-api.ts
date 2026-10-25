@@ -4,11 +4,19 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 /** A member of a pool, a person or another pool of the sheet (the other id null), with its share percent
- *  (two decimals). */
+ *  (two decimals) and the from-date and to-date of the membership (yyyy-mm-dd, each null when unbounded). */
 export interface PoolMemberView {
   personId: number | null;
   poolId: number | null;
   share: string;
+  from: string | null;
+  to: string | null;
+}
+
+/** The dates a membership may carry, each null when unbounded. */
+export interface MemberDates {
+  from: string | null;
+  to: string | null;
 }
 
 export interface PoolView {
@@ -40,9 +48,10 @@ export class PoolsApi {
   /** Add a person, or another pool, to a pool with a share: refused when the person is in it already,
    *  when the pool is itself, a member of a pool already, contains it through any chain or would make a
    *  chain of pools more than three deep, or for a share that is not more than 0.00 and at most 100.00
-   *  with up to two decimals. The pool as it is then. */
-  addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<PoolView> {
-    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share }));
+   *  with up to two decimals, or a to-date before the from-date. The pool as it is then. */
+  addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string,
+      dates: MemberDates): Promise<PoolView> {
+    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share, ...dates }));
   }
 }
 
@@ -88,8 +97,9 @@ export class Pools {
   }
 
   /** Add a member to a pool of the active sheet; the store's answer replaces the pool. */
-  async addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
-    const pool = await this.api.addMember(sheetId, poolId, member, share);
+  async addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string,
+      dates: MemberDates): Promise<void> {
+    const pool = await this.api.addMember(sheetId, poolId, member, share, dates);
     if (this.session.sheet()?.id !== sheetId) return;
     this.state.update((list) => list.map((p) => (p.id === pool.id ? pool : p)));
   }

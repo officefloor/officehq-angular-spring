@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,10 +68,13 @@ public class PoolService {
     }
 
     /** Add a person of the sheet to a pool with a share percent of up to two decimals, more than 0.00
-     *  and at most 100.00; refused when the person is already in the pool. */
+     *  and at most 100.00, from a from-date through a to-date (either optional); refused when the person is
+     *  already in the pool or the to-date is before the from-date. */
     @Transactional
-    public Pool addMember(String sheetId, String user, long poolId, long personId, String share) {
+    public Pool addMember(String sheetId, String user, long poolId, long personId, String share, LocalDate from,
+            LocalDate to) {
         BigDecimal value = shareOf(share);
+        checkDates(from, to);
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         Pool pool = poolOf(sheetId, poolId);
@@ -81,19 +85,21 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " is already in the pool " + pool.getName() + ".");
         }
-        pool.addMember(personId, value);
+        pool.addMember(personId, value, from, to);
         pool = pools.saveAndFlush(pool);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + value.toPlainString());
+                + " name=" + person.getName() + " share=" + value.toPlainString() + datesOf(from, to));
         return pool;
     }
 
-    /** Add another pool of the sheet to a pool with a share as for a person; refused when it is the pool
+    /** Add another pool of the sheet to a pool with a share and dates as for a person; refused when it is the pool
      *  itself, is already a member of a pool, contains the pool through any chain, or would make a chain of
      *  pools more than {@value #MAX_DEPTH} deep. */
     @Transactional
-    public Pool addMemberPool(String sheetId, String user, long poolId, long memberPoolId, String share) {
+    public Pool addMemberPool(String sheetId, String user, long poolId, long memberPoolId, String share,
+            LocalDate from, LocalDate to) {
         BigDecimal value = shareOf(share);
+        checkDates(from, to);
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         Pool pool = poolOf(sheetId, poolId);
@@ -129,7 +135,7 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A chain of pools may be at most " + MAX_DEPTH + " deep.");
         }
-        pool.addMemberPool(member.getId(), value);
+        pool.addMemberPool(member.getId(), value, from, to);
         try {
             pool = pools.saveAndFlush(pool);
         } catch (DataIntegrityViolationException raced) {
@@ -137,7 +143,7 @@ public class PoolService {
                     "The pool " + member.getName() + " is already a member of a pool.");
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + value.toPlainString());
+                + " name=" + member.getName() + " share=" + value.toPlainString() + datesOf(from, to));
         return pool;
     }
 
@@ -166,6 +172,18 @@ public class PoolService {
                     "Type a share of more than 0.00 and at most 100.00, with up to two decimals.");
         }
         return new BigDecimal(typed).setScale(2);
+    }
+
+    /** Refuse a to-date before the from-date. */
+    private static void checkDates(LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The to-date is before the from-date.");
+        }
+    }
+
+    /** The membership's dates as the audit records them: from=<date> and to=<date>, each when given. */
+    private static String datesOf(LocalDate from, LocalDate to) {
+        return (from == null ? "" : " from=" + from) + (to == null ? "" : " to=" + to);
     }
 
     private static ResponseStatusException alreadyPool(String name) {

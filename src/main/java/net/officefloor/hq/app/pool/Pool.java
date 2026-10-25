@@ -12,6 +12,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -93,13 +94,14 @@ public class Pool {
         return members.stream().anyMatch((m) -> m.getMemberPoolId() != null && m.getMemberPoolId() == poolId);
     }
 
-    /** Add the person with a share (kept to two decimals). */
-    public void addMember(long personId, BigDecimal share) {
-        members.add(new PoolMember(personId, null, share));
+    /** Add the person with a share (kept to two decimals) from a from-date through a to-date (either
+     *  null: unbounded). */
+    public void addMember(long personId, BigDecimal share, LocalDate from, LocalDate to) {
+        members.add(new PoolMember(personId, null, share, from, to));
     }
 
-    /** Add another pool as a member with a share (kept to two decimals). */
-    public void addMemberPool(long poolId, BigDecimal share) {
-        members.add(new PoolMember(null, poolId, share));
+    /** Add another pool as a member with a share (kept to two decimals) and dates as for a person. */
+    public void addMemberPool(long poolId, BigDecimal share, LocalDate from, LocalDate to) {
+        members.add(new PoolMember(null, poolId, share, from, to));
     }
 }
