@@ -1,0 +1,156 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 2a9572b4..4aba6172 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -13,7 +13,7 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+ export const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+ 
+ /** A claim number as a form takes it: a sheet-wide whole number of 1 or more, or a number within a
+- *  period, <period name>-<n> (X-<n> for a claim in no period). */
++ *  period, <period name>-<n> (X-<n> for a claim in no period), or within a fiscal year, FY<year>-<n>. */
+ export const CLAIM_NUMBER = /^([1-9]\d{0,8}|.{1,200}-[1-9]\d{0,8})$/;
+ 
+ /** Whether the claim is a correction: its amount is negative. */
+@@ -61,8 +61,9 @@ export interface ClaimView {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The claim's number, given when it is opened and kept once void; null while a draft. The sheet-wide
+-   *  1, 2, ..., or while period numbering is in force <period name>-<n>, or X-<n> in no period. */
++  /** The claim's number, given when it is opened and kept once void; null while a draft. FY<year>-<n>
++   *  within its fiscal year (or the sheet-wide 1, 2, ... given before), or while period numbering is in
++   *  force <period name>-<n>, or X-<n> in no period. */
+   number: string | null;
+   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
+   settledDue: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 68025dfc..d6cfa63a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -64,7 +64,7 @@ public class Claim {
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+     /** The claim's number, given when it is opened and kept once void; none while a draft. It is the
+-     *  sheet-wide 1, 2, ..., or while period numbering is in force <period name>-<n> or X-<n>. */
++     *  FY<year>-<n> within its fiscal year (or the sheet-wide 1, 2, ... given before), or while period numbering is in force <period name>-<n> or X-<n>. */
+     @Column(name = "claim_number")
+     private String number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e2d5f2b4..525590c5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -726,16 +726,25 @@ public class ClaimService {
+ 
+     /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
+      *  today on or after the setting's date), the next of the claim's period (the one its due-by falls in), <period name>-<n>, or of
+-     *  claims in no period, X-<n> (each per sheet); otherwise the next number of the sequence the sheets of its tree share. */
++     *  claims in no period, X-<n> (each per sheet); otherwise FY<year>-<n>, the next number within the
++     *  fiscal year its due-by falls in (named by the calendar year it starts in), of the sequence of that
++     *  year the sheets of its tree share. */
+     public String nextNumber(String sheetId, Claim claim) {
+         if (!isPeriodNumbering(sheetId)) {
+-            return Integer.toString(sheets.nextClaimNumber(sheetId));
++            int year = fiscalYearOf(sheetId, claim.getDueBy() != null ? claim.getDueBy() : claim.getDate());
++            return "FY" + year + "-" + sheets.nextFiscalYearNumber(sheetId, year);
+         }
+         Period period = periodOf(sheetId, claim.getDueBy());
+         if (period == null) return "X-" + sheets.nextSequenceNumber(sheetId, "none");
+         return period.getName() + "-" + sheets.nextSequenceNumber(sheetId, "period:" + period.getId());
+     }
+ 
++    /** The fiscal year of the sheet the date falls in: the calendar year it starts in. */
++    private int fiscalYearOf(String sheetId, LocalDate date) {
++        int startMonth = settings.fiscalStartMonth(sheetId);
++        return date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
++    }
++
+     /** Whether the sheet's period numbering is in force: its today on or after the setting's date. */
+     private boolean isPeriodNumbering(String sheetId) {
+         LocalDate from = settings.periodNumberingFrom(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index c2fb022f..89be58f6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -34,11 +34,22 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+             nativeQuery = true)
+     Integer sequenceNumbersUsed(@Param("id") String id, @Param("key") String key);
+ 
+-    /** Start one of the sheet's per-period sequences, its first number given out. */
++    /** Start one of the sheet's sequences, with how many numbers it has given out. */
+     @Modifying(flushAutomatically = true)
+-    @Query(value = "insert into claim_number_sequence (sheet_id, sequence_key, used) values (:id, :key, 1)",
++    @Query(value = "insert into claim_number_sequence (sheet_id, sequence_key, used) values (:id, :key, :used)",
+             nativeQuery = true)
+-    int startSequence(@Param("id") String id, @Param("key") String key);
++    int startSequence(@Param("id") String id, @Param("key") String key, @Param("used") int used);
++
++    /** Set how many numbers one of the sheet's sequences has given out: its last number given. */
++    @Modifying(flushAutomatically = true)
++    @Query(value = "update claim_number_sequence set used = :used where sheet_id = :id and sequence_key = :key",
++            nativeQuery = true)
++    int setSequenceNumbersUsed(@Param("id") String id, @Param("key") String key, @Param("used") int used);
++
++    /** The last number one sequence (by key) has given on any of the sheets; 0 when none has given one. */
++    @Query(value = "select coalesce(max(used), 0) from claim_number_sequence where sheet_id in (:ids)"
++            + " and sequence_key = :key", nativeQuery = true)
++    int lastSequenceNumber(@Param("ids") Collection<String> ids, @Param("key") String key);
+ 
+     /** Count one more number given out by one of the sheet's per-period sequences. */
+     @Modifying(flushAutomatically = true)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index c00c338d..fab14689 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -98,13 +98,26 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The sheet's next claim number, from the one sequence shared by the sheets of its tree (the sheet at
+-     * its top, reached through the parents, and all that sheet's descendants): the next after the last
+-     * number given on any sheet of the tree. The tree's top sheet stays locked until the transaction
+-     * ends, so two claims opened at once anywhere in the tree never share a number.
++     * The sheet's next claim number within a fiscal year (the calendar year it starts in), from the one
++     * sequence of that year shared by the sheets of its tree: 1 for the tree's first claim numbered in
++     * the year, then the next after the last given on any sheet of the tree. The tree's top sheet stays
++     * locked until the transaction ends, so two claims opened at once anywhere in the tree never share a number.
+      */
+     @Transactional
+-    public int nextClaimNumber(String id) {
++    public int nextFiscalYearNumber(String id, int fiscalYear) {
++        Set<String> tree = lockTree(id);
++        String key = "fy:" + fiscalYear;
++        int number = sheets.lastSequenceNumber(tree, key) + 1;
++        if (sheets.sequenceNumbersUsed(id, key) == null) {
++            sheets.startSequence(id, key, number);
++        } else {
++            sheets.setSequenceNumbersUsed(id, key, number);
++        }
++        return number;
++    }
++
++    /** Load the sheet and lock the top sheet of its tree until the transaction ends; the tree's sheets. */
++    private Set<String> lockTree(String id) {
+         load(id);
+         String top = id;
+         Set<String> up = new HashSet<>(List.of(id));
+@@ -119,9 +132,7 @@ public class SheetService {
+                 if (tree.add(child.getSheetId())) next.add(child.getSheetId());
+             }
+         }
+-        int number = sheets.lastClaimNumber(tree) + 1;
+-        sheets.setClaimNumbersUsed(id, number);
+-        return number;
++        return tree;
+     }
+ 
+     /** The sheet's parent; null when it names none. */
+@@ -151,7 +162,7 @@ public class SheetService {
+         sheets.findForUpdate(id);
+         Integer used = sheets.sequenceNumbersUsed(id, key);
+         if (used == null) {
+-            sheets.startSequence(id, key);
++            sheets.startSequence(id, key, 1);
+             return 1;
+         }
+         sheets.takeSequenceNumber(id, key);
