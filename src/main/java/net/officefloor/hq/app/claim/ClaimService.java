@@ -144,9 +144,9 @@ public class ClaimService {
         return claims.saveAndFlush(claim);
     }
 
-    /** Once the sheet's holidays are changed, every due-by on the sheet but a draft's is worked out again:
-     *  the terms-th business day after the date it counts from, with the terms the claim was fixed with. A
-     *  draft keeps the due-by it was added with. */
+    /** Once a holiday is added to the sheet, the due-by of every claim neither SETTLED nor VOID whose
+     *  due-by is on or after the holiday is worked out again: the terms-th business day after the claim's
+     *  date, with the terms the claim was fixed with, past the holidays now. */
     @EventListener
     @Transactional
     public void moveDueBys(HolidaysChanged change) {
@@ -154,8 +154,9 @@ public class ClaimService {
         Set<LocalDate> days = holidays.dates(sheetId);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            if (claim.getStatus() == ClaimStatus.DRAFT) continue;
-            if (claim.moveDueBy(BusinessDays.after(claim.getDueFrom(), claim.getTerms(), days))) {
+            if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
+            if (claim.getDueBy().isBefore(change.date())) continue;
+            if (claim.moveDueBy(BusinessDays.after(claim.getDate(), claim.getTerms(), days))) {
                 claims.save(claim);
             }
         }

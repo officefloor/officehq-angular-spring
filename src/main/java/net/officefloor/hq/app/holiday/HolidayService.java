@@ -38,8 +38,8 @@ public class HolidayService {
         return holidays.findBySheetIdOrderByDateAsc(sheetId);
     }
 
-    /** Add a holiday to the sheet, refused when the date is already one. Every due-by on the sheet is
-     *  then worked out again, past the holidays now. */
+    /** Add a holiday to the sheet, refused when the date is already one. Every due-by on or after it of
+     *  a claim neither SETTLED nor VOID is then worked out again, past the holidays now. */
     @Transactional
     public Holiday add(String sheetId, String user, LocalDate date) {
         sheets.load(sheetId);
@@ -52,7 +52,7 @@ public class HolidayService {
             throw alreadyHoliday(date);
         }
         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + saved.getDate());
-        events.publishEvent(new HolidaysChanged(sheetId, user));
+        events.publishEvent(new HolidaysChanged(sheetId, user, saved.getDate()));
         return saved;
     }
 

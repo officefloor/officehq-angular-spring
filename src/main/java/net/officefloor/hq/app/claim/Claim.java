@@ -40,7 +40,8 @@ public class Claim {
     private LocalDate date;
 
     /** The date the claim is due by: the {@link #terms}-th business day after {@link #dueFrom}, past
-     *  the sheet's holidays now, worked out again whenever they change unless it is a draft. */
+     *  the sheet's holidays; a holiday added on or before it works it out again from the claim's date,
+     *  unless the claim is SETTLED or VOID. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
