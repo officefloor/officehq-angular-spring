@@ -142,6 +142,8 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) {
         const message = e instanceof HttpErrorResponse && e.status === 403
           ? 'You opened this claim, so someone else must settle it.'
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'This claim\'s due is above the clerk limit, so only a steward can settle it.'
           : periodOf(this.periods(), claim.date)?.closed
             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
             : `This claim cannot be ${PAST[action]} from its status.`;

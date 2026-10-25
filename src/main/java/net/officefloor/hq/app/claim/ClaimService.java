@@ -12,6 +12,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -28,17 +30,20 @@ public class ClaimService {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final PeriodRepository periods;
+    private final SettingService settings;
     private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            SheetRepository sheetRows, PeriodRepository periods, Rollup rollup, Audit audit) {
+            SheetRepository sheetRows, PeriodRepository periods, SettingService settings, Rollup rollup,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.periods = periods;
+        this.settings = settings;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -86,7 +91,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
-     *  by the user who opened the claim. */
+     *  by the user who opened the claim, and settling by a clerk a claim whose due is above the
+     *  sheet's clerk limit (a due of n/a is within any limit; a steward settles anything). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -101,6 +107,7 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.SETTLED) refuseIfAboveClerkLimit(sheetId, user, figure(sheetId, person, claim));
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
@@ -122,6 +129,16 @@ public class ClaimService {
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
+
+    /** Refuse a clerk's settling of a claim whose due is above the sheet's clerk limit. */
+    private void refuseIfAboveClerkLimit(String sheetId, String user, BigDecimal due) {
+        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
+        BigDecimal limit = settings.clerkLimit(sheetId);
+        if (limit != null && due.compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString() + ".");
+        }
+    }
 
     /** Refuse a change to a claim dated inside a closed period. The sheet is locked first, as closing
      *  a period locks it, so a claim cannot change in a period while it is being closed. */
