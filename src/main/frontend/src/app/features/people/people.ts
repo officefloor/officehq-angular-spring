@@ -99,7 +99,7 @@ import { QuickAdd } from './quick-add';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -108,6 +108,9 @@ import { QuickAdd } from './quick-add';
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+                @for (q of periods(); track q.id) {
+                  <td [attr.data-testid]="'person-period-' + q.name + '-due-total'">{{ personPeriodDue(p.id, q.id) }}</td>
+                }
                 <td data-testid="person-excess">{{ excess(p) }}</td>
                 <td>
                   <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
@@ -280,21 +283,34 @@ export class People {
   protected readonly money = money;
   /** The sheet's periods in date order. */
   protected readonly periods = signal<PeriodView[]>([]);
-  /** Each period's due-total, by period id: the figures of the counting claims dated in it, skipping
-   *  those that are n/a; a closed period's is the total fixed when it was closed. */
-  protected readonly periodDueTotals = computed(() => {
-    const cents = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+  /** Each person's due-total for each period, in cents, by person id then period id: the figures of
+   *  their counting claims dated in it, skipping those that are n/a; for a closed period, the figure
+   *  fixed when it was closed (0 for a person added since). */
+  private readonly personPeriodCents = computed(() => {
+    const by = new Map<number, Map<number, number>>(
+      this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
     const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
       if (!this.countsLive(c)) continue;
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (period === null || person === undefined) continue;
+      if (period === null || period.closed || person === undefined) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness(), this.claims());
-      if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
+      const of = by.get(person.id)!;
+      if (due !== null) of.set(period.id, (of.get(period.id) ?? 0) + due);
     }
-    const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
-    return new Map([...cents].map(([id, total]) => [id, fixed.get(id) ?? money(total)]));
+    for (const period of this.periods().filter((q) => q.closed)) {
+      for (const [id, of] of by) of.set(period.id, cents(period.closedPersonTotals[id] ?? '0.00'));
+    }
+    return by;
+  });
+  /** Each period's due-total, by period id: the sum of the people's figures for it. */
+  protected readonly periodDueTotals = computed(() => {
+    const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+    for (const of of this.personPeriodCents().values()) {
+      for (const [id, due] of of) totals.set(id, (totals.get(id) ?? 0) + due);
+    }
+    return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
   /** Per grade, the people on it today who are not retired, and their due-totals added up, skipping
    *  those that are n/a. */
@@ -425,6 +441,11 @@ export class People {
     } finally {
       this.retiring.set(null);
     }
+  }
+
+  /** The person's due-total for the period, with two decimals. */
+  protected personPeriodDue(personId: number, periodId: number): string {
+    return money(this.personPeriodCents().get(personId)?.get(periodId) ?? 0);
   }
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,

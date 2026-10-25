@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -81,7 +82,7 @@ public class PeriodService {
         return saved;
     }
 
-    /** Close a period, fixing its due-total at this moment: the figures of the open and settled claims
+    /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures of the open and settled claims
      *  dated in it, skipping those that are n/a and the unbound open claims dated within a hold of their person. Refused when the period is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
@@ -95,6 +96,8 @@ public class PeriodService {
         Map<Long, Person> peopleById = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> personTotals = new HashMap<>();
+        for (Long personId : peopleById.keySet()) personTotals.put(personId, BigDecimal.ZERO.setScale(2));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
@@ -102,9 +105,12 @@ public class PeriodService {
                     || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
-            if (due != null) total = total.add(due);
+            if (due != null) {
+                total = total.add(due);
+                personTotals.merge(person.getId(), due, BigDecimal::add);
+            }
         }
-        period.close(total);
+        period.close(total, personTotals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + total.toPlainString());

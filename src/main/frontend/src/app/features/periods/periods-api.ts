@@ -13,6 +13,9 @@ export interface PeriodView {
   closed: boolean;
   /** The due-total fixed when the period was closed, with two decimals; null while it is open. */
   closedTotal: string | null;
+  /** Each person's due-total fixed when the period was closed, with two decimals, by person id; empty
+   *  while it is open. A person missing from it (added after the close) has 0.00. */
+  closedPersonTotals: Record<string, string>;
 }
 
 export interface PeriodForm {
