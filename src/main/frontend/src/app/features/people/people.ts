@@ -59,7 +59,7 @@ import { QuickAdd } from './quick-add';
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -95,6 +95,25 @@ import { QuickAdd } from './quick-add';
                     [disabled]="stating() === p.id" [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
                   @if (personError()?.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                  }
+                </td>
+                <td>
+                  <span data-testid="person-patrons">{{ patronNames(p) }}</span>
+                  backing <span data-testid="person-backing">{{ backing(p) }}</span>
+                  <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
+                  <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
+                    (change)="clearPatronError(p.id)">
+                    <option value="">Choose a patron</option>
+                    @for (o of people(); track o.id) {
+                      @if (o.id !== p.id) {
+                        <option [value]="o.id">{{ o.name }}</option>
+                      }
+                    }
+                  </select>
+                  <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect)"
+                    [disabled]="addingPatron() === p.id" [attr.aria-label]="'Add a patron for ' + p.name">Add patron</button>
+                  @if (patronError()?.id === p.id) {
+                    <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                   }
                 </td>
                 <td>
@@ -141,6 +160,10 @@ export class People {
   protected readonly shownPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
   /** The person being retired. */
   protected readonly retiring = signal<number | null>(null);
+  /** The person a patron is being added to. */
+  protected readonly addingPatron = signal<number | null>(null);
+  /** The refusal of the last patron added on a person's row, shown on that row. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The person being put on hold or taken off it. */
   protected readonly holding = signal<number | null>(null);
   /** The ids of the people on hold. */
@@ -239,6 +262,7 @@ export class People {
       this.periods.set([]);
       this.statements.set(new Map());
       this.personError.set(null);
+      this.patronError.set(null);
       if (sheet) void this.reload(sheet.id);
     });
   }
@@ -273,6 +297,7 @@ export class People {
     const sheet = this.session.sheet();
     if (!sheet || this.stating() !== null) return;
     this.personError.set(null);
+    this.patronError.set(null);
     this.stating.set(person.id);
     try {
       const taken = await this.statementsApi.take(sheet.id, person.id);
@@ -298,6 +323,7 @@ export class People {
     const sheet = this.session.sheet();
     if (!sheet || this.retiring() !== null) return;
     this.personError.set(null);
+    this.patronError.set(null);
     this.retiring.set(person.id);
     try {
       const retired = await this.api.retire(sheet.id, person.id, from.trim() === '' ? null : from.trim());
@@ -318,11 +344,69 @@ export class People {
     return counts(claim) && !(claim.status === 'OPEN' && this.heldIds().has(claim.personId));
   }
 
+  /** The names of the person's patrons, sorted, comma and space separated. */
+  protected patronNames(person: PersonView): string {
+    const nameOf = new Map(this.people().map((p) => [p.id, p.name]));
+    return person.patronIds.map((id) => nameOf.get(id) ?? '').filter((n) => n !== '')
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+  }
+
+  /** The person's backing: their patrons' due-totals added up, skipping those that are n/a. */
+  protected backing(person: PersonView): string {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    let total = 0;
+    for (const id of person.patronIds) {
+      const patron = byId.get(id);
+      if (patron) total += this.dueCentsOf(patron) ?? 0;
+    }
+    return money(total);
+  }
+
+  protected clearPatronError(personId: number): void {
+    if (this.patronError()?.id === personId) this.patronError.set(null);
+  }
+
+  /** Name the person chosen in the row's select as the person's patron. */
+  protected async addPatron(person: PersonView, select: HTMLSelectElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.addingPatron() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const patronId = Number(select.value);
+    if (select.value === '' || !Number.isInteger(patronId)) {
+      this.patronError.set({ id: person.id, message: 'Choose a patron.' });
+      return;
+    }
+    if (patronId === person.id) {
+      this.patronError.set({ id: person.id, message: 'A person cannot be their own patron.' });
+      return;
+    }
+    if (person.patronIds.includes(patronId)) {
+      this.patronError.set({ id: person.id, message: 'That person is already a patron.' });
+      return;
+    }
+    this.addingPatron.set(person.id);
+    try {
+      const changed = await this.api.addPatron(sheet.id, person.id, patronId);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+      select.value = '';
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.patronError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'That person cannot be added as a patron again.' : 'The patron could not be added.' });
+      }
+    } finally {
+      this.addingPatron.set(null);
+    }
+  }
+
   /** Put the person on hold, or take them off it when they are held. */
   protected async toggleHold(person: PersonView): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.holding() !== null) return;
     this.personError.set(null);
+    this.patronError.set(null);
     this.holding.set(person.id);
     try {
       const changed = await this.api.hold(sheet.id, person.id, !person.held);
@@ -417,6 +501,7 @@ export class People {
 
   protected edit(person: PersonView): void {
     this.personError.set(null);
+    this.patronError.set(null);
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.error.set('');

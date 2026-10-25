@@ -18,6 +18,8 @@ export interface PersonView {
   retiredFrom: string | null;
   /** Whether the person is on hold: while held, their open claims count in no live total. */
   held: boolean;
+  /** The ids of the other people on the sheet the person has named as patrons, in the order named. */
+  patronIds: number[];
 }
 
 export interface PersonForm {
@@ -67,6 +69,12 @@ export class PeopleApi {
   /** Put the person on hold (true) or take them off it (false); refused when they already are. */
   hold(sheetId: string, id: number, held: boolean): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/${held ? 'hold' : 'release'}`, {}));
+  }
+
+  /** Name another person on the sheet as the person's patron; refused for the person themselves and
+   *  for someone already their patron. */
+  addPatron(sheetId: string, id: number, patronId: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/patrons`, { patronId }));
   }
 
   /** Add a draft claim to the named person, adding them with grade A first when the name is new;
