@@ -18,6 +18,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.Role;
@@ -29,7 +30,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The periods of each sheet: uniquely named, none overlapping another. A period can be closed, which
- * fixes its due-total then, and a steward (or the roles the permission matrix allows) can reopen it, which makes its due-total live again. */
+ * fixes its due-total then, and a steward (or the roles the permission matrix allows) can reopen it, which makes its due-total live again. Closing or soft-closing also fixes every pool member's cut as it
+ * stands then (see {@link PoolService#cutsNow}); reopening makes them live again. */
 @Service
 public class PeriodService {
 
@@ -40,10 +42,12 @@ public class PeriodService {
     private final PersonRepository people;
     private final RollupService rollup;
     private final SettingsService settings;
+    private final PoolService pools;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
-            ClaimLogRepository logs, PersonRepository people, RollupService rollup, SettingsService settings, Audit audit) {
+            ClaimLogRepository logs, PersonRepository people, RollupService rollup, SettingsService settings, PoolService pools,
+            Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
@@ -51,6 +55,7 @@ public class PeriodService {
         this.people = people;
         this.rollup = rollup;
         this.settings = settings;
+        this.pools = pools;
         this.audit = audit;
     }
 
@@ -253,7 +258,7 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefusedException("already closed");
         }
-        period.close(personTotalsOf(period), personCarriedOf(period), true);
+        period.close(personTotalsOf(period), personCarriedOf(period), pools.cutsNow(sheetId), true);
         periods.flush();
         audit.change("PERIOD_SOFT_CLOSED", sheetId, user, "period=" + period.getName(),
                 "total=" + period.getClosedTotal().toPlainString());
@@ -278,7 +283,7 @@ public class PeriodService {
     }
 
     private Period close(Period period, String user, String... extra) {
-        period.close(personTotalsOf(period), personCarriedOf(period));
+        period.close(personTotalsOf(period), personCarriedOf(period), pools.cutsNow(period.getSheetId()), false);
         periods.flush();
         List<String> fields = new ArrayList<>(List.of("period=" + period.getName(),
                 "total=" + period.getClosedTotal().toPlainString()));

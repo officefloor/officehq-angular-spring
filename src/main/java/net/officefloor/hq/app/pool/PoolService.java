@@ -44,7 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
  * whose dates do not include the sheet's today is left out entirely: not in the total share, not in the balance,
  * and no cut. Worked out as of an earlier date, the pools, their members, the pot and the people are as they
  * stood then. Each member also shows, for every period whose to-date is on or before the sheet's today, its cut as
- * it stood at the end of that period: worked out as of the period's to-date, none when it had none then.
+ * it stood at the end of that period: worked out as of the period's to-date, none when it had none then. A period
+ * closed or soft-closed (whatever its to-date) shows instead the cut fixed when it was closed, until it is reopened.
  * <p>A crew is also a pool, listed after the pools in the order the crews were added, under the crew's name: its
  * lead and then its members, in the order they were added, are its members at equal shares, 100.00 split equally,
  * each rounded half to even to two decimals, the remainder on the lead; it has the sheet's pot and its cuts are
@@ -62,7 +63,7 @@ public class PoolService {
     private static final int DEPTH = 3;
 
     /** A member of a pool as shown: the person (or, for a pool, null), the pool (or, for a person, null), the
-     * name now, the share, the cut (null when none) and, by period name, for each period whose to-date is on or
+     * name now, the share, the cut (null when none) and, by period name, for each period closed or whose to-date is on or
      * before the day worked out on, in the order of their from-dates, the member's cut as it stood at the end of
      * that period (null when there was none). */
     public record Member(Long personId, Long poolId, String name, BigDecimal share, BigDecimal cut,
@@ -129,13 +130,7 @@ public class PoolService {
             basis = Basis.of(then, on);
             listedPeriods = then.periods();
         } else {
-            Sheet sheet = sheets.findById(sheetId).orElse(null);
-            List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
-            List<SheetCrew> crewed = crews.findBySheetIdOrderByIdAsc(sheetId);
-            basis = new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : sheet.getToday(),
-                    people.findBySheetIdOrderByPositionAscIdAsc(sheetId), all,
-                    members.findByPoolIdInOrderByIdAsc(all.stream().map(SheetPool::getId).toList()), crewed,
-                    crewMembers.findByCrewIdInOrderByIdAsc(crewed.stream().map(SheetCrew::getId).toList()));
+            basis = basisNow(sheetId);
             listedPeriods = periods.findBySheetIdOrderByFromAsc(sheetId);
         }
         List<Pooled> found = pools(basis);
@@ -143,6 +138,10 @@ public class PoolService {
         // By period name, the cuts at the end of the period: by pool, then by member.
         Map<String, Map<String, Map<String, BigDecimal>>> ended = new LinkedHashMap<>();
         for (Period period : listedPeriods) {
+            if (period.isClosed()) {
+                ended.put(period.getName(), fixedOf(period));
+                continue;
+            }
             if (period.getTo().isAfter(basis.today())) continue;
             Map<String, Map<String, BigDecimal>> byPool = new HashMap<>();
             for (Pooled pool : pools(Basis.of(history.asOf(sheetId, period.getTo()), period.getTo()))) {
@@ -165,6 +164,40 @@ public class PoolService {
                     pool.balanced()));
         }
         return shown;
+    }
+
+    /** Every pool member's cut now, as the sheet shows it, by the pool's and the member's keys joined by '/';
+     * a member with no cut is left out. What a period's close fixes. */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> cutsNow(String sheetId) {
+        Map<String, BigDecimal> cuts = new HashMap<>();
+        for (Pooled pool : pools(basisNow(sheetId))) {
+            for (Member m : pool.members()) {
+                if (m.cut() != null) cuts.put(poolKey(pool) + "/" + memberKey(m), m.cut());
+            }
+        }
+        return cuts;
+    }
+
+    /** What the pools are worked out from now: the sheet's pot, today, people, pools and crews as they stand. */
+    private Basis basisNow(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<SheetCrew> crewed = crews.findBySheetIdOrderByIdAsc(sheetId);
+        return new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : sheet.getToday(),
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId), all,
+                members.findByPoolIdInOrderByIdAsc(all.stream().map(SheetPool::getId).toList()), crewed,
+                crewMembers.findByCrewIdInOrderByIdAsc(crewed.stream().map(SheetCrew::getId).toList()));
+    }
+
+    /** The cuts fixed when the period was closed: by pool, then by member. */
+    private static Map<String, Map<String, BigDecimal>> fixedOf(Period period) {
+        Map<String, Map<String, BigDecimal>> byPool = new HashMap<>();
+        period.getClosedPoolCuts().forEach((key, cut) -> {
+            int at = key.indexOf('/');
+            byPool.computeIfAbsent(key.substring(0, at), k -> new HashMap<>()).put(key.substring(at + 1), cut);
+        });
+        return byPool;
     }
 
     private static String poolKey(Pooled pool) {

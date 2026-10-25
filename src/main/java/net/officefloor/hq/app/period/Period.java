@@ -21,7 +21,8 @@ import java.util.Map;
  * and to, both inclusive. A claim belongs to the period whose dates contain its due-by. Once closed, its
  * due-total, and each person's due-total for it and carried figure into it, are the ones fixed when it was closed, until it is
  * reopened. A soft-closed period is closed and its figures fixed the same way, but claims due by a date in it can
- * still change. */
+ * still change. Each pool member's cut as it stood when the period was closed or soft-closed is fixed with it, until
+ * it is reopened. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -79,6 +80,14 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "carried", precision = 12, scale = 2, nullable = false)
     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
+
+    /** Each pool member's cut fixed when the period was closed, by the pool's and the member's keys joined by
+     * '/' (see {@code PoolService}); a member with none then is left out. Empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "cut_key")
+    @Column(name = "cut", precision = 12, scale = 2, nullable = false)
+    private Map<String, BigDecimal> closedPoolCuts = new HashMap<>();
 
     /** Each person's opening balance for the period, pasted in, by person id: added to their carried
      * figure into it. Kept whether it is open or closed. */
@@ -161,6 +170,10 @@ public class Period {
         return Map.copyOf(closedPersonCarried);
     }
 
+    public Map<String, BigDecimal> getClosedPoolCuts() {
+        return Map.copyOf(closedPoolCuts);
+    }
+
     public Map<Long, BigDecimal> getPersonOpenings() {
         return Map.copyOf(personOpenings);
     }
@@ -178,6 +191,15 @@ public class Period {
 
     /** Close the period as {@link #close(Map, Map)} does, soft-closed when {@code soft}. */
     public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried, boolean soft) {
+        close(personTotals, personCarried, Map.of(), soft);
+    }
+
+    /** Close the period as {@link #close(Map, Map, boolean)} does, fixing the pool members' cuts at
+     * {@code poolCuts}. */
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> poolCuts, boolean soft) {
+        this.closedPoolCuts.clear();
+        this.closedPoolCuts.putAll(poolCuts);
         this.closed = true;
         this.soft = soft;
         this.closedPersonTotals.clear();
@@ -207,13 +229,14 @@ public class Period {
         if (opening != null) personOpenings.merge(into, opening, BigDecimal::add);
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** Reopen the period: its due-total and its pool members' cuts are live again. */
     public void reopen() {
         this.closed = false;
         this.soft = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
         this.closedPersonCarried.clear();
+        this.closedPoolCuts.clear();
     }
 
     /** Whether this period shares a day with the dates {@code from} to {@code to}, both inclusive. */
