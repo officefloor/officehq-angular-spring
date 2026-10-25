@@ -1,0 +1,204 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index f7bdcb77..8dc11223 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -8,7 +8,7 @@ import { DatedValue } from './dated';
+ export const DEFAULT_TERMS = 14;
+ 
+ /** The roles a sheet can assign a user name; any name not assigned one is a clerk. */
+-export const ROLES = ['clerk', 'steward'] as const;
++export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+ export type Role = (typeof ROLES)[number];
+ 
+ /** The actions the sheet's permission matrix names, each set under perm-<action>. */
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 3a7f85dd..bde8f033 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -116,7 +116,7 @@ function settled(control: AbstractControl): void {
+       <form [formGroup]="roleForm" (ngSubmit)="saveRole()" aria-label="Assign a role">
+         <label for="role-form-user">User</label>
+         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
+-        <label for="role-form-role">Role (clerk or steward)</label>
++        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+         <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
+         <datalist id="role-options">
+           @for (r of roles; track r) {
+@@ -332,7 +332,7 @@ export class Settings {
+       value: this.permissionsForm.controls[a].value.split(',').map((r) => r.trim()).join(',') }));
+     for (const { action, control, value } of permissionValues) {
+       if (changed(control) && value !== '' && !value.split(',').every((r) => ROLES.includes(r as Role))) {
+-        this.settingsError.set(`Name who may ${action} as a comma separated list of clerk and steward, or leave it blank for the standing rule.`);
++        this.settingsError.set(`Name who may ${action} as a comma separated list of clerk, steward and viewer, or leave it blank for the standing rule.`);
+         return;
+       }
+     }
+@@ -437,7 +437,7 @@ export class Settings {
+       return;
+     }
+     if (!ROLES.includes(role as Role)) {
+-      this.roleError.set('Choose a role of clerk or steward.');
++      this.roleError.set('Choose a role of clerk, steward or viewer.');
+       return;
+     }
+     this.savingRole.set(true);
+diff --git a/src/main/java/net/officefloor/hq/app/SpaConfig.java b/src/main/java/net/officefloor/hq/app/SpaConfig.java
+index 588d4333..0e8e9a0a 100644
+--- a/src/main/java/net/officefloor/hq/app/SpaConfig.java
++++ b/src/main/java/net/officefloor/hq/app/SpaConfig.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app;
+ import java.io.IOException;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.core.io.Resource;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ import org.springframework.web.servlet.resource.PathResourceResolver;
+@@ -16,6 +17,17 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
+ @Configuration
+ public class SpaConfig implements WebMvcConfigurer {
+ 
++    private final ViewerGuard viewerGuard;
++
++    public SpaConfig(ViewerGuard viewerGuard) {
++        this.viewerGuard = viewerGuard;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(viewerGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
++    }
++
+     @Override
+     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+         registry.addResourceHandler("/**")
+diff --git a/src/main/java/net/officefloor/hq/app/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+new file mode 100644
+index 00000000..76487f13
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
++import java.util.Set;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Refuses every change a viewer of a sheet asks for: any request on a sheet other than reading it
++ * (a GET, or loading the sheet) is refused before it reaches its controller, so it writes nothing.
++ * The bulk changes are let through: a viewer's bulk change is answered with every selected claim
++ * refused (see {@code BulkChangeService}).
++ */
++@Component
++public class ViewerGuard implements HandlerInterceptor {
++
++    /** The path of a sheet's requests; the sheet id is the segment after it. */
++    public static final String SHEETS = "/api/sheets/";
++
++    private static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
++
++    private final SettingService settings;
++
++    public ViewerGuard(SettingService settings) {
++        this.settings = settings;
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (HttpMethod.GET.matches(request.getMethod())) return true;
++        String path = request.getRequestURI().substring(request.getContextPath().length());
++        String header = request.getHeader(SignedInUser.HEADER);
++        if (!path.startsWith(SHEETS) || header == null || header.isBlank()) return true;
++        String rest = path.substring(SHEETS.length());
++        int slash = rest.indexOf('/');
++        if (slash < 0 || LET_THROUGH.contains(rest.substring(slash + 1))) return true;
++        String sheetId = URLDecoder.decode(rest.substring(0, slash), StandardCharsets.UTF_8).trim();
++        if (settings.roleOf(sheetId, SignedInUser.name(header)) == Role.VIEWER) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer cannot change anything.");
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+index 2ac6d8c0..2c98251c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+@@ -10,6 +10,8 @@ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+@@ -25,11 +27,14 @@ public class BulkChangeService {
+     private final ClaimService service;
+     private final ClaimRepository claims;
+     private final PersonRepository people;
++    private final SettingService settings;
+ 
+-    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people) {
++    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people,
++            SettingService settings) {
+         this.service = service;
+         this.claims = claims;
+         this.people = people;
++        this.settings = settings;
+     }
+ 
+     /** Open the claims of these ids in list order: people in the order they were added, each person's
+@@ -46,6 +51,9 @@ public class BulkChangeService {
+ 
+     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
+         Set<Long> selected = new LinkedHashSet<>(ids);
++        if (settings.roleOf(sheetId, user) == Role.VIEWER) {
++            return new Result(List.of(), selected.size()); // a viewer changes nothing: each is refused
++        }
+         List<Long> ordered = inListOrder(sheetId, selected);
+         List<Claim> changed = new ArrayList<>();
+         int refused = selected.size() - ordered.size();
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Role.java b/src/main/java/net/officefloor/hq/app/setting/Role.java
+index 5485885f..76a6ad87 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/Role.java
++++ b/src/main/java/net/officefloor/hq/app/setting/Role.java
+@@ -3,9 +3,10 @@ package net.officefloor.hq.app.setting;
+ import java.util.Arrays;
+ import java.util.Optional;
+ 
+-/** The role a sheet gives a user name: a clerk (the default for any name) or a steward. */
++/** The role a sheet gives a user name: a clerk (the default for any name), a steward, or a viewer,
++ *  who sees the sheet and changes nothing. */
+ public enum Role {
+-    CLERK, STEWARD;
++    CLERK, STEWARD, VIEWER;
+ 
+     /** The role's name as it is typed, shown and stored. */
+     public String label() {
+diff --git a/src/main/resources/db/migration/V34__role_viewer.sql b/src/main/resources/db/migration/V34__role_viewer.sql
+new file mode 100644
+index 00000000..d99f5deb
+--- /dev/null
++++ b/src/main/resources/db/migration/V34__role_viewer.sql
+@@ -0,0 +1,11 @@
++-- A viewer is a third role: it sees the sheet and changes nothing. The role check is widened by
++-- rebuilding the table, as its check constraint has no name to drop.
++CREATE TABLE sheet_role_v (
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(200) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer')),
++    PRIMARY KEY (sheet_id, user_name)
++);
++INSERT INTO sheet_role_v (sheet_id, user_name, role) SELECT sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_v RENAME TO sheet_role;
