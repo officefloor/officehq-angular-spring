@@ -1,0 +1,64 @@
+{
+  "checkpoint": 117,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp117_list-positions",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ceb7f8aeee96f5e88ea77e43a253391c7627ed55",
+  "reset_sha": "",
+  "preagent_sha": "177f63eb8361ada1b73f209ae56a4fdb1b545e15",
+  "prev_sha": "177f63eb8361ada1b73f209ae56a4fdb1b545e15",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8862008,
+    "input_tokens": 36,
+    "output_tokens": 8978,
+    "cache_read_tokens": 930964,
+    "cache_creation_tokens": 65038,
+    "num_turns": 19,
+    "duration_ms": 308510,
+    "duration_api_ms": 106719,
+    "model": "claude-opus-5-5",
+    "session_id": "a06d6da0-a710-4096-a28a-16fc8f35fad1",
+    "stop_reason": "success",
+    "result_text": "People can now be moved up and down the list, and the order is stored. `bin/e2e` passes all 4 tests in the spec, including the three longer scenarios.\n\n**How the order is stored**\n- A new migration, `V60__person_position.sql`, adds a `position` column to `person`. Existing people get their id as their position, so their current order doesn't change.\n- A new person has no position until they are moved, and their id stands in for it. That always puts them after everyone already on the list, so new people go to the end. Transferred people go to the end the same way.\n- Every place that used to list people in the order they were added now uses the new list order. That covers the people list, the rollup lines, bulk open/settle (including claim numbering), bulk grade and the period figures.\n\n**Moving a person**\n- The new endpoint is `POST /{id}/move/up` or `/move/down`. It swaps the two people's positions and writes `PERSON_MOVED \u2026 name=<name> position=<new position, counting from 1>`.\n- The top person moving up, or the bottom person moving down, is refused with a 409 error and nothing is written.\n- Moves on the same sheet are handled one at a time, so two users moving at once can't mix up the order.\n- A move doesn't change a person's version number, so it won't cause the \"someone else has saved this person\" refusal for anyone with that person's editor open.\n\n**Screen**\n- Each row has Up and Down buttons (`person-move-up` / `person-move-down`) next to the name. The name is now in its own `person-name` element.\n- After a move the list is reloaded from the server. A refused move shows its message in the row's existing `person-error`.\n\nOne thing to know: top and bottom are worked out over all people on the sheet, retired ones included. While retired people are hidden from the list, the top visible row could still move up past a hidden retired person.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8862008,
+        "num_turns": 19,
+        "duration_ms": 308510,
+        "duration_api_ms": 106719,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp117.agent.jsonl",
+  "agent_diff_file": "cp117.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
