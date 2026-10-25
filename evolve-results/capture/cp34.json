@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b32a02d403d52ba13412878e3f559038bc5f9a29",
+  "reset_sha": "",
+  "preagent_sha": "4298444ba7f72ad9d851a6bc6d59695f86000f98",
+  "prev_sha": "4298444ba7f72ad9d851a6bc6d59695f86000f98",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8858188000000001,
+    "input_tokens": 26,
+    "output_tokens": 7991,
+    "cache_read_tokens": 705394,
+    "cache_creation_tokens": 73102,
+    "num_turns": 14,
+    "duration_ms": 169137,
+    "duration_api_ms": 74689,
+    "model": "claude-opus-5-5",
+    "session_id": "f9e09ca7-3685-4873-ab4c-9c99adf9f604",
+    "stop_reason": "success",
+    "result_text": "Bulk open is in place, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- Each claim row now has a checkbox (`claim-select`).\n- An \"Open selected claims\" button (`bulk-open`) opens the ticked claims together. When it finishes it shows how many were opened (`bulk-opened`) and how many were refused (`bulk-refused`). The old counts disappear as soon as the button is pressed again.\n- Claims are opened in list order: people in the order they were added, and each person's claims newest first. So their numbers follow that order.\n- A claim that can't be opened (already open, or dated in a closed period, for example) is left alone and counted as refused, and the rest still go through.\n\n**How it's built**\n- **Server:** a new `BulkOpenService` and a `POST /api/sheets/{id}/claims/open` endpoint in `ClaimController`. It opens each claim through the existing single-claim open, one at a time, each saved separately. Because of that, a refused claim writes nothing, and each claim that opens writes the same audit lines as opening it by hand (`CLAIM_OPENED`, `ROLLUP`, `TOTALS`). The claims in the request that don't belong to the sheet are counted as refused.\n- **Front end:** the list of ticked claims is kept in `people.ts` and passed to `person-claims.ts`, which draws the checkboxes. The open call is added to `claims-api.ts`. No database change was needed.\n\n**Two choices of mine the spec didn't call for:**\n- After a bulk open the ticks are cleared. Ticks and counts are also reset when a sheet is loaded.\n- If the whole request fails, for example the server can't be reached, an error appears under the button (`bulk-open-error`).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8858188000000001,
+        "num_turns": 14,
+        "duration_ms": 169137,
+        "duration_api_ms": 74689,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

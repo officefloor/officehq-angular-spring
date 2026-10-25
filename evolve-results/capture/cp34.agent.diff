@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index e201c8ba..ff8acd59 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -48,6 +48,13 @@ export interface ClaimView {
+   corrects: number | null;
+ }
+ 
++/** What opening selected claims together did: how many were opened and refused, and the claims opened. */
++export interface BulkOpenView {
++  opened: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ export interface ClaimForm {
+   amount: string;
+   /** null takes the sheet's today. */
+@@ -189,4 +196,9 @@ export class ClaimsApi {
+   act(sheetId: string, id: number, action: ClaimAction): Promise<ClaimView> {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, {}));
+   }
++
++  /** Open the claims of these ids together in list order; each that cannot be opened is left as it is. */
++  openSelected(sheetId: string, ids: readonly number[]): Promise<BulkOpenView> {
++    return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheetId)}/claims/open`, { ids }));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index e26f022f..d7b01937 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -39,6 +39,9 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
+     <ul [attr.aria-label]="'Claims of ' + personName()">
+       @for (c of claims(); track c.id) {
+         <li [attr.data-testid]="'claim-row-' + c.id">
++          <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
++            (change)="selectedChange.emit({ id: c.id, on: $any($event.target).checked })"
++            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+@@ -88,6 +91,10 @@ export class PersonClaims {
+   readonly grades = input.required<GradeView[]>();
+   /** The sheet's periods in date order. */
+   readonly periods = input.required<PeriodView[]>();
++  /** The ids of the claims selected on the sheet. */
++  readonly selected = input.required<ReadonlySet<number>>();
++  /** A claim's checkbox ticked or cleared. */
++  readonly selectedChange = output<{ id: number; on: boolean }>();
+   readonly added = output<ClaimView>();
+   readonly saved = output<ClaimView>();
+   /** A claim whose status changed. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index efd3df01..fd2dc9ce 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -71,6 +71,17 @@ import { QuickAdd } from './quick-add';
+         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
+         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
+           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
++        <p>
++          <button type="button" data-testid="bulk-open" (click)="openSelected()" [disabled]="bulkOpening()">
++            Open selected claims</button>
++          @if (bulkResult(); as r) {
++            Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
++            refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
++          }
++        </p>
++        @if (bulkError()) {
++          <p role="alert" data-testid="bulk-open-error">{{ bulkError() }}</p>
++        }
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+         <table data-testid="people-list">
+           <thead>
+@@ -134,6 +145,7 @@ import { QuickAdd } from './quick-add';
+                 <td>
+                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
+                     [rates]="rates()" [grades]="p.grades" [periods]="periods()"
++                    [selected]="selectedClaims()" (selectedChange)="selectClaim($event.id, $event.on)"
+                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
+                 </td>
+                 <td>
+@@ -276,6 +288,13 @@ export class People {
+   protected readonly stating = signal<number | null>(null);
+   /** The refusal of the last action taken on a person's row, shown on that row. */
+   protected readonly personError = signal<{ id: number; message: string } | null>(null);
++  /** The ids of the claims selected to open together. */
++  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
++  /** Whether the selected claims are being opened. */
++  protected readonly bulkOpening = signal(false);
++  /** How many the last bulk open opened and refused; cleared while the next one runs. */
++  protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
++  protected readonly bulkError = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private readonly editingVersion = signal(0);
+@@ -295,6 +314,9 @@ export class People {
+       this.statements.set(new Map());
+       this.personError.set(null);
+       this.patronError.set(null);
++      this.selectedClaims.set(new Set());
++      this.bulkResult.set(null);
++      this.bulkError.set('');
+       if (sheet) void this.reload(sheet.id);
+     });
+   }
+@@ -552,6 +574,35 @@ export class People {
+     this.claimAdded(added.claim);
+   }
+ 
++  protected selectClaim(id: number, on: boolean): void {
++    this.selectedClaims.update((ids) => {
++      const next = new Set(ids);
++      if (on) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++  }
++
++  /** Open the selected claims together, in list order; each that cannot be opened is left as it is. */
++  protected async openSelected(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet || this.bulkOpening()) return;
++    this.bulkResult.set(null);
++    this.bulkError.set('');
++    this.bulkOpening.set(true);
++    try {
++      const result = await this.claimsApi.openSelected(sheet.id, [...this.selectedClaims()]);
++      if (this.session.sheet()?.id !== sheet.id) return;
++      for (const claim of result.claims) this.claimSaved(claim);
++      this.selectedClaims.set(new Set());
++      this.bulkResult.set({ opened: result.opened, refused: result.refused });
++    } catch {
++      if (this.session.sheet()?.id === sheet.id) this.bulkError.set('The selected claims could not be opened.');
++    } finally {
++      this.bulkOpening.set(false);
++    }
++  }
++
+   protected claimSaved(claim: ClaimView): void {
+     this.claims.update((list) => list.map((c) => (c.id === claim.id ? claim : c)));
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+new file mode 100644
+index 00000000..9b39c059
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/** Opens selected claims together. Each is opened on its own, as its open button would, so one that
++ *  cannot be opened is left as it is and the others still open. */
++@Service
++public class BulkOpenService {
++
++    /** What a bulk open did: the claims it opened, in the order it opened them, and how many it refused. */
++    public record Result(List<Claim> opened, int refused) {
++    }
++
++    private final ClaimService service;
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++
++    public BulkOpenService(ClaimService service, ClaimRepository claims, PersonRepository people) {
++        this.service = service;
++        this.claims = claims;
++        this.people = people;
++    }
++
++    /** Open the claims of these ids in list order: people in the order they were added, each person's
++     *  claims newest first. So their numbers follow that order. An id not of the sheet is refused. */
++    public Result open(String sheetId, String user, Collection<Long> ids) {
++        Set<Long> selected = new LinkedHashSet<>(ids);
++        List<Long> ordered = inListOrder(sheetId, selected);
++        List<Claim> opened = new ArrayList<>();
++        int refused = selected.size() - ordered.size();
++        for (long id : ordered) {
++            try {
++                opened.add(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
++            } catch (ResponseStatusException notOpened) {
++                refused++;
++            }
++        }
++        return new Result(opened, refused);
++    }
++
++    private List<Long> inListOrder(String sheetId, Set<Long> ids) {
++        Map<Long, Integer> personOrder = new HashMap<>();
++        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
++        for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
++        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++                .filter(c -> ids.contains(c.getId()))
++                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
++                .map(Claim::getId)
++                .toList();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 009da1fb..edd25e2b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -54,10 +54,20 @@ public class ClaimController {
+             @Positive Integer corrects) {
+     }
+ 
++    /** The claims selected to open together. */
++    public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
++    }
++
++    /** What a bulk open did: the claims it opened, and how many were opened and refused. */
++    public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService service;
++    private final BulkOpenService bulkOpen;
+ 
+-    public ClaimController(ClaimService service) {
++    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
+         this.service = service;
++        this.bulkOpen = bulkOpen;
+     }
+ 
+     /** The sheet's claims, newest first. */
+@@ -90,6 +100,15 @@ public class ClaimController {
+         return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.name(user), id, ClaimStatus.OPEN));
+     }
+ 
++    /** Open the selected claims together in list order; each that cannot be opened is left as it is. */
++    @PostMapping("/claims/open")
++    public BulkOpenView openSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
++        BulkOpenService.Result result = bulkOpen.open(sheetId.trim(), SignedInUser.name(user), form.ids());
++        return new BulkOpenView(result.opened().size(), result.refused(),
++                result.opened().stream().map(ClaimView::of).toList());
++    }
++
+     /** Settle an open claim. */
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
