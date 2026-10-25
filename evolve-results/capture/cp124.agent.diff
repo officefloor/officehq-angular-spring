@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 52aa6a21..4aa1f226 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -61,13 +61,14 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen
+ }
+ 
+ // One pool: its members (people and other pools) with their shares, its total share and whether it is
+-// balanced, and a form to add a member. A retired member's share counts as 0.00 toward the total.
++// balanced, and a form to add a member.
+ // With a pot, each member of a balanced pool shows a cut: the pot times their share divided by 100,
+-// rounded half to even to two decimals (a retired member cuts 0.00). A person with a hold in force on the
+-// sheet's today cuts 0.00, and their share is spread over the members with a cut in proportion to their
++// rounded half to even to two decimals. A retired person, or one with a hold in force on the sheet's
++// today, cuts 0.00, and their share is spread over the members with a cut in proportion to their
+ // shares: each cuts the pot times their share over the shares of the members with a cut added up. The pot
+ // less the cuts added up goes to the member with a cut with the largest share, the earliest added on a
+-// tie, so the cuts total exactly the pot. A hold changes neither the total share nor the balance.
++// tie, so the cuts total exactly the pot. Neither a hold nor a retirement changes the total share or the
++// balance. A pool whose every member is retired shows no cuts.
+ // A membership may have a from-date and a to-date: a member whose dates do not include the sheet's today
+ // is left out entirely, counting toward neither the total share nor the balance, and shows no cut.
+ // A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
+@@ -238,10 +239,9 @@ function membersOf(pool: PoolView, people: readonly PersonView[], poolsById: Rea
+   });
+ }
+ 
+-/** The members' shares added up, in cents; a retired member's, or one whose dates leave out the sheet's
+- *  today, counts as 0. */
++/** The members' shares added up, in cents; one whose dates leave out the sheet's today counts as 0. */
+ function totalCents(members: readonly MemberRow[]): number {
+-  return members.reduce((t, m) => (m.retired || !m.inForce ? t : t + cents(m.share)), 0);
++  return members.reduce((t, m) => (!m.inForce ? t : t + cents(m.share)), 0);
+ }
+ 
+ /** Each pool's cuts by member key, by pool id: null for an unbalanced pool or one with no pot. A pool that
+@@ -259,8 +259,9 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
+     if (!parent) potCents = pot === null ? null : BigInt(cents(pot));
+     else if (depth <= pools.length) potCents = cutsFor(parent, depth + 1)?.get(`pool-${pool.name}`) ?? null;
+     const members = membersOf(pool, people, poolsById, today);
+-    const result = potCents === null || totalCents(members) !== 10000 ? null
+-      : new Map(cutsOf(potCents, members.filter((m) => m.inForce)));
++    const inForce = members.filter((m) => m.inForce);
++    const result = potCents === null || totalCents(members) !== 10000 || inForce.every((m) => m.retired) ? null
++      : new Map(cutsOf(potCents, inForce));
+     out.set(pool.id, result);
+     return result;
+   };

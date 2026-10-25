@@ -1,0 +1,83 @@
+{
+  "checkpoint": 124,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp124_retired-share-reallocates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    105,
+    106,
+    113,
+    116,
+    119,
+    120,
+    121,
+    122
+  ],
+  "replaced_tests": [
+    "cp105_pools.spec.ts::pools",
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp113_import-people.spec.ts::import people scenario 2",
+    "cp116_import-upserts.spec.ts::import upserts scenario 1",
+    "cp119_cut-totals.spec.ts::cut totals scenario 2",
+    "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+    "cp121_history-follows.spec.ts::history follows scenario 2",
+    "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1"
+  ],
+  "request": {
+    "spec": "A retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0d51fb3873d48391b74c6acdf15af963cd2ae3ad",
+  "reset_sha": "",
+  "preagent_sha": "4df00d941eeab09a3b1e8cb848a620b2d6f63476",
+  "prev_sha": "4df00d941eeab09a3b1e8cb848a620b2d6f63476",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.44915499999999997,
+    "input_tokens": 8,
+    "output_tokens": 734,
+    "cache_read_tokens": 135482,
+    "cache_creation_tokens": 3002,
+    "num_turns": 3,
+    "duration_ms": 10681,
+    "duration_api_ms": 55050,
+    "model": "claude-opus-5-5",
+    "session_id": "bdb889a8-1add-43f0-99e1-b37e94f51ab4",
+    "stop_reason": "success",
+    "result_text": "A retired member's share now counts toward their pool's total and balance, and it's spread over the other members by their shares, the same way a held member's is. A pool where every member is retired shows no cuts. All 4 tests in `bin/e2e` pass.\n\nPool totals and cuts are only worked out in the front end, so the change is in one file, `src/main/frontend/src/app/features/pools/pools.ts`:\n\n- **Total share and balance:** a retired member's share now counts at its full value, not 0.00. Members whose dates don't cover the sheet's today are still left out.\n- **Cuts:** a retired member shows 0.00, and the rest of the pot is split among the members who still get a cut. That part of the logic already worked this way, so it needed no change. Before, a retired member was also left out of the total, which made the pool unbalanced.\n- **All retired:** if every member whose dates cover today is retired, the pool shows blank cuts and adds nothing to anyone's cut total.\n\nI also updated the comment above the pool row that describes how cuts work. The server, the stored data and the audit records needed no changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.44915499999999997,
+        "num_turns": 3,
+        "duration_ms": 10681,
+        "duration_api_ms": 55050,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp124.agent.jsonl",
+  "agent_diff_file": "cp124.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
