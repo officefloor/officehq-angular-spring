@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4f229028464eb9216788b2f33e1e92a09abdb7cd",
+  "reset_sha": "",
+  "preagent_sha": "8fd2c10e2a8b4dfa1be2b308b828087d1f4fd547",
+  "prev_sha": "8fd2c10e2a8b4dfa1be2b308b828087d1f4fd547",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0289156000000002,
+    "input_tokens": 46,
+    "output_tokens": 13304,
+    "cache_read_tokens": 1096818,
+    "cache_creation_tokens": 67911,
+    "num_turns": 23,
+    "duration_ms": 493331,
+    "duration_api_ms": 160467,
+    "model": "claude-opus-5-5",
+    "session_id": "f4aa1c51-8c6e-4a0e-9446-750aef1c43b3",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date. All 4 tests in `bin/e2e` pass: the main pool-membership test and its three scenarios.\n\n**How it works now**\n- **Stored data:** migration `V62__pool_member_dated.sql` adds the two date columns to `pool_member`. The database also refuses a to-date before the from-date.\n- **Server:** adding a member, whether a person or another pool, accepts `from` and `to`. A to-date before the from-date is refused with a 422 error, and nothing is written to the store or the audit file. When dates are given, `POOL_MEMBER_ADDED` gets ` from=<date>` and/or ` to=<date>` at the end of the line.\n- **Screen:** the add-member form in `features/pools/pools.ts` has from and to date fields. It also refuses a to-date before the from-date before sending, and shows the error in `pool-error`.\n- **Who counts on a given day:** a member whose dates don't include the sheet's today is left out entirely. Their share doesn't count toward the pool's total or its balance, and they get no cut (blank `pool-cut`, 0.00 on their person total). Their share is still shown in the list.\n- **Blank dates:** a blank from-date means no start limit and a blank to-date means no end. Neither is filled in with the sheet's today, because the expected audit line for Cam carries no `from=`.\n\n**Additions you didn't ask for**\n- Dated members show their dates in a new `pool-member-dates` element. No test uses it.\n- I changed the rate preview in `features/rates/rates.ts`: editing its grade or rate now clears the result shown. Scenario 1 runs two previews with the same result in a row, and with the old result still on screen the test couldn't tell the second one had happened, so it failed. That's how this app already handles errors, which clear when their form is edited.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0289156000000002,
+        "num_turns": 23,
+        "duration_ms": 493331,
+        "duration_api_ms": 160467,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
