@@ -346,6 +346,13 @@ public class Claim {
         return on;
     }
 
+    /** The day the claim was last deleted, as its log records it; null when it never was. */
+    public LocalDate deletedOn() {
+        LocalDate on = null;
+        for (ClaimLogLine line : log) if (line.getStatus() == ClaimStatus.DELETED) on = line.getOn();
+        return on;
+    }
+
     /** Log the claim's status now: who gave it, the sheet's today and its due (null: n/a) then. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));

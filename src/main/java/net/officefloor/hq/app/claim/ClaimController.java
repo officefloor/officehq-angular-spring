@@ -170,6 +170,20 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.name(user), id, ClaimStatus.OPEN));
     }
 
+    /** Delete a draft claim. */
+    @PostMapping("/claims/{id}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.delete(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** Restore a deleted claim, on the sheet's today it was deleted, as a draft again. */
+    @PostMapping("/claims/{id}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.restore(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
     /** Open the selected claims together in list order; each that cannot be opened is left as it is. */
     @PostMapping("/claims/open")
     public BulkOpenView openSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,

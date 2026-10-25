@@ -22,7 +22,8 @@ function refUsed(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
     && e.error.message.startsWith('The reference ');
 }
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled' };
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled',
+  delete: 'deleted', restore: 'restored' };
 
 // One person's claims, newest first, with one form to add a claim or edit one.
 @Component({
@@ -101,6 +102,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input #commentText [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text"
             (input)="clearClaimError(c)" />
+          <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')"
+            [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
+          <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')"
+            [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
           <button type="button" data-testid="claim-comment-add" (click)="comment(c, commentText)"
             [attr.aria-label]="'Comment claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
@@ -408,7 +413,7 @@ export class PersonClaims {
     return this.voidReasons.reasons().some((r) => r.reason === reason) ? reason : '';
   }
 
-  /** Open, settle, void, approve, reject (for a reason) or re-settle a claim; the store refuses a change its
+  /** Open, settle, void, approve, reject (for a reason), re-settle, delete or restore a claim; the store refuses a change its
    *  status does not allow. A clerk's settling above the clerk limit leaves the claim PENDING. */
   protected async act(claim: ClaimView, action: ClaimAction, reason = ''): Promise<void> {
     const sheet = this.session.sheet();
@@ -450,6 +455,8 @@ export class PersonClaims {
             ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
           : action === 'open' && claim.status === 'DRAFT' && claim.note.trim() === ''
             ? 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.'
+          : action === 'restore' && claim.status === 'DELETED'
+            ? 'A deleted claim can only be restored on the day it was deleted.'
           : action === 'void' && claim.status === 'SETTLED'
             ? 'A settled claim can only be voided within 7 days of its settlement.'
             : `This claim cannot be ${PAST[action]} from its status.`;

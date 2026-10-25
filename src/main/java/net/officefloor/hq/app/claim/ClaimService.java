@@ -320,6 +320,53 @@ public class ClaimService {
         return saved;
     }
 
+    /** Delete a DRAFT claim: it is DELETED, counting in no total and no status count, and can no longer be
+     *  edited, opened or voided, only restored. Refused for a claim in any other status, a claim whose due-by
+     *  is inside a closed period, and a claim another user's editor locks. */
+    @Transactional
+    public Claim delete(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canBecome(ClaimStatus.DELETED)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deleted; only a DRAFT can.");
+        }
+        refuseIfLocked(claim, user);
+        return moveTo(sheetId, user, claim, ClaimStatus.DELETED, "CLAIM_DELETED");
+    }
+
+    /** Restore a DELETED claim, making it a DRAFT again; refused for a claim that is not DELETED, on a
+     *  sheet's today other than the one it was deleted on, and for a claim whose due-by is inside a closed
+     *  period. */
+    @Transactional
+    public Claim restore(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canBecome(ClaimStatus.DRAFT)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be restored; only a DELETED one can.");
+        }
+        if (!sheets.today(sheetId).equals(claim.deletedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be restored on the day it was deleted.");
+        }
+        return moveTo(sheetId, user, claim, ClaimStatus.DRAFT, "CLAIM_RESTORED");
+    }
+
+    /** Give the claim the status, logging it and writing the event. */
+    private Claim moveTo(String sheetId, String user, Claim claim, ClaimStatus next, String event) {
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(next);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange(event, user, person, saved);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the
      *  claim counts in no total, is not overdue, cannot be settled and no statement binds it. Refused for
      *  a claim that is not OPEN, a date not after today, and a claim dated inside a closed period. */
