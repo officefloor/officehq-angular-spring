@@ -619,9 +619,14 @@ export class People {
     return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)),
       active: on.filter((p) => this.activeIds().has(p.id)).length };
   }));
-  /** Each period's due-total, as its row shows it. */
-  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
-    this.periods().map((p) => ({ name: p.name, dueTotal: this.periodDueTotals().get(p.id) ?? '0.00' })));
+  /** Each period's due-total, as its row shows it, and its change from the period before it by start
+   *  date (empty for the earliest). */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+    const dueOf = (id: number) => cents(this.periodDueTotals().get(id) ?? '0.00');
+    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from));
+    const change = new Map(byStart.map((p, i) => [p.id, i === 0 ? '' : money(dueOf(p.id) - dueOf(byStart[i - 1].id))]));
+    return this.periods().map((p) => ({ name: p.name, dueTotal: money(dueOf(p.id)), change: change.get(p.id) ?? '' }));
+  });
   /** How many of the sheet's claims have each status. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
