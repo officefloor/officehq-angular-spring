@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7cf34923..e079c83f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2778,8 +2778,18 @@ export class People {
+     this.plans.update((list) => [...list.filter((pl) => pl.id !== plan.id), plan]);
+   }
+ 
+-  protected planChanged(plan: Plan): void {
++  /** Put a changed plan in its place and re-read the sheet's claims: a new amount reaches the DRAFT
++   *  claims the plan generated. */
++  protected async planChanged(plan: Plan): Promise<void> {
+     this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
++    const sheet = this.sheet();
++    if (!sheet) return;
++    try {
++      const claims = await this.claimsService.list(sheet);
++      if (this.sheet() === sheet) this.claims.set(claims);
++    } catch {
++      // The claims could not be re-read; they show as they were until the sheet is loaded again.
++    }
+   }
+ 
+   /** Make the DRAFT claims every plan on the sheet is due. Shows how many were made; the old count is
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bea389a2..7fa1ce07 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -320,6 +320,17 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** Edit the claim's amount to {@code amount} as the claim form would, keeping its date, note,
++     * correction, reference and tags, when it is a DRAFT; one in any other status is left as it is.
++     * Refused as {@link #update} refuses. Records CLAIM_EDITED. */
++    @Transactional
++    public Claim editDraftAmount(String sheetId, String user, long claimId, BigDecimal amount) {
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (claim.getStatus() != ClaimStatus.DRAFT) return claim;
++        return update(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
++                claim.getRef(), claim.getTags().isEmpty() ? null : String.join(",", claim.getTags()));
++    }
++
+     /** Open the claim's editor for {@code user}, locking the claim for everyone else until it is saved
+      * (see {@link #update}) or cancelled (see {@link #unlock}), or the sheet's today changes. Refused,
+      * taking no lock, when the claim cannot be edited (not a DRAFT, or dated in a closed period) or
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 5dc191a9..7897ee12 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -198,6 +198,11 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** The ids of the claims the plan has made, in the order it made them. */
++    public List<Long> getClaimIds() {
++        return claims.stream().map(PlanClaim::getClaimId).toList();
++    }
++
+     /** Keep that the plan made its claim {@code claimId} for {@code date}. */
+     public void made(LocalDate date, Long claimId) {
+         claims.add(new PlanClaim(date, claimId));
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 13cdbf66..0accb12e 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -118,13 +118,26 @@ public class PlanService {
+     }
+ 
+     /** Change the plan's amount, from the sheet's today, for the claims generated from then on; refused
+-     * when it is not above zero. Records PLAN_CHANGED. */
+-    @Transactional
++     * when it is not above zero. Records PLAN_CHANGED. Then each claim the plan generated that is still a
++     * DRAFT, in the order they were made, is edited to the new amount as the claim form would edit it,
++     * in a change of its own: one the form refuses keeps its amount and writes nothing. Claims in any
++     * other status keep theirs. */
+     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+-        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
+-        plan.changeAmount(sheets.today(sheetId), amount);
+-        return changed(sheetId, user, plan, "PLAN_CHANGED",
+-                "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        Plan plan = eachClaim.execute(status -> {
++            Plan changing = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
++            changing.changeAmount(sheets.today(sheetId), amount);
++            return changed(sheetId, user, changing, "PLAN_CHANGED",
++                    "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        });
++        String claimSheet = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
++        for (long claimId : plan.getClaimIds()) {
++            try {
++                eachClaim.execute(status -> claims.editDraftAmount(claimSheet, user, claimId, amount));
++            } catch (RuntimeException refused) {
++                // The claim form refused the edit: the claim keeps its amount.
++            }
++        }
++        return plan;
+     }
+ 
+     private Plan changed(String sheetId, String user, Plan plan, String event, String... fields) {
