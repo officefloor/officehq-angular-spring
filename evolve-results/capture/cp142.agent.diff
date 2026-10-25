@@ -1,0 +1,134 @@
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+index 2936cc98..c8c5a007 100644
+--- a/src/main/frontend/src/app/features/plans/person-plans.ts
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -8,7 +8,7 @@ const EVERY = /^\d{1,6}$/;
+ const DAY = /^\d{1,2}$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+-// A person's plans, each with how many claims it has made so far, and a form to add one.
++// A person's plans, each with how many claims it has made so far and its next dates, and a form to add one.
+ @Component({
+   selector: 'app-person-plans',
+   imports: [ReactiveFormsModule],
+@@ -18,7 +18,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <li [attr.data-testid]="'plan-row-' + pl.id">
+           <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
+-          from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>
++          from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
++          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+         </li>
+       }
+     </ul>
+diff --git a/src/main/frontend/src/app/features/plans/plans-api.ts b/src/main/frontend/src/app/features/plans/plans-api.ts
+index 9038f3da..916301e2 100644
+--- a/src/main/frontend/src/app/features/plans/plans-api.ts
++++ b/src/main/frontend/src/app/features/plans/plans-api.ts
+@@ -7,7 +7,8 @@ import { ClaimView } from '../claims/claims-api';
+ /** A person's plan: a claim of the amount (two decimals) on the start date and every `every` days after
+  *  it, or, for a monthly plan, on its `day` of every month from the start's month (a day beyond the
+  *  month's length falling on its last day, those before the start left out), up to the end date
+- *  (yyyy-mm-dd). Generated is how many claims it has made so far. */
++ *  (yyyy-mm-dd). Generated is how many claims it has made so far; next dates are its first five plan
++ *  dates after the sheet's today and on or before the end, oldest first. */
+ export interface PlanView {
+   id: number;
+   personId: number;
+@@ -17,6 +18,7 @@ export interface PlanView {
+   day: number | null;
+   end: string;
+   generated: number;
++  nextDates: string[];
+ }
+ 
+ /** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index c091e17c..a56533d7 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -87,6 +87,11 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** Up to the first count plan dates, oldest first, after the date and on or before its end. */
++    public List<LocalDate> datesAfter(LocalDate after, int count) {
++        return datesUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
++    }
++
+     boolean hasGenerated(LocalDate date) {
+         return generated.contains(date);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 2df57619..ce4ed9d9 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -27,12 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
+ public class PlanController {
+ 
+     /** What the screen shows of a plan; the amount always has two decimals. Generated is how many claims
+-     *  it has made so far. */
++     *  it has made so far; next dates are its first five plan dates after the sheet's today, on or before
++     *  its end, oldest first. */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every,
+-            Integer day, LocalDate end, int generated) {
+-        static PlanView of(Plan plan) {
++            Integer day, LocalDate end, int generated, List<LocalDate> nextDates) {
++        static PlanView of(Plan plan, LocalDate today) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount());
++                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount(),
++                    plan.datesAfter(today, 5));
+         }
+     }
+ 
+@@ -55,7 +57,9 @@ public class PlanController {
+     /** The sheet's plans in the order they were added. */
+     @GetMapping
+     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return service.list(sheetId.trim()).stream().map(PlanView::of).toList();
++        String id = sheetId.trim();
++        LocalDate today = service.today(id);
++        return service.list(id).stream().map((plan) -> PlanView.of(plan, today)).toList();
+     }
+ 
+     /** Add a plan to a person. */
+@@ -63,8 +67,9 @@ public class PlanController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public PlanView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PlanForm form) {
+-        return PlanView.of(service.add(sheetId.trim(), SignedInUser.name(user), form.personId(), form.amount(),
+-                form.start(), form.every(), form.day(), form.end()));
++        String id = sheetId.trim();
++        return PlanView.of(service.add(id, SignedInUser.name(user), form.personId(), form.amount(),
++                form.start(), form.every(), form.day(), form.end()), service.today(id));
+     }
+ 
+     /** Make the plans' claims due by the sheet's today. */
+@@ -73,6 +78,8 @@ public class PlanController {
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+         String id = sheetId.trim();
+         List<ClaimView> claims = service.generate(id, SignedInUser.name(user)).stream().map(ClaimView::of).toList();
+-        return new GenerateView(claims.size(), claims, service.list(id).stream().map(PlanView::of).toList());
++        LocalDate today = service.today(id);
++        return new GenerateView(claims.size(), claims,
++                service.list(id).stream().map((plan) -> PlanView.of(plan, today)).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 4f1bdbad..eee84894 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -46,6 +46,12 @@ public class PlanService {
+         return plans.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /** The sheet's today. */
++    @Transactional(readOnly = true)
++    public LocalDate today(String sheetId) {
++        return sheets.today(sheetId);
++    }
++
+     /** Add a plan to a person: refused for an amount not above 0.00, neither or both of an interval and a
+      *  day of the month, an interval below 1 day, a day of the month outside 1 to 31, or an end before the
+      *  start. No start means the sheet's today. */
