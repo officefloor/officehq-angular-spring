@@ -1,0 +1,49 @@
+diff --git a/src/main/frontend/src/app/features/people/header.ts b/src/main/frontend/src/app/features/people/header.ts
+index 899417d2..fd0b68f9 100644
+--- a/src/main/frontend/src/app/features/people/header.ts
++++ b/src/main/frontend/src/app/features/people/header.ts
+@@ -50,6 +50,10 @@ import { Session } from '../../core/session';
+           <dt>My reviews</dt>
+           <dd data-testid="my-reviews-count">{{ (myReviewsCount()) | figure }}</dd>
+         </div>
++        <div>
++          <dt>Watched due</dt>
++          <dd data-testid="watched-due-total">{{ (watchedDueTotal()) | figure }}</dd>
++        </div>
+       </dl>
+     </header>
+   `,
+@@ -84,6 +88,8 @@ export class Header {
+   readonly myOverdueTotal = input.required<string>();
+   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+   readonly myCrewDueTotal = input.required<string>();
++  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
++  readonly watchedDueTotal = input.required<string>();
+ 
+   /** How many REVIEW claims are assigned to the signed-in user to review. */
+   protected readonly myReviewsCount = computed(() => {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e079c83f..485221e4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -81,6 +81,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+       [myDueTotal]="myFigures()?.dueTotal ?? ''"
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+       [myCrewDueTotal]="myCrewDueTotal()"
++      [watchedDueTotal]="watchedDueTotal()"
+     />
+     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
+       <span>Over this sheet and the sheets below it:</span>
+@@ -1359,6 +1360,12 @@ export class People {
+     const due = this.dueCentsById();
+     return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));
+   });
++  /** The due-totals of the people the signed-in user watches, added up (n/a ones skipped); 0.00 when
++   *  they watch no one. */
++  protected readonly watchedDueTotal = computed(() => {
++    const due = this.dueCentsById();
++    return money([...this.watched()].reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
++  });
+   /** The ids of the people a restricted user may see listed: the person with their name and the leads
+    *  and members of every crew that person leads or belongs to; none when there is no such person.
+    *  A person they quick-added since the sheet was loaded is listed too, until it is re-loaded.
