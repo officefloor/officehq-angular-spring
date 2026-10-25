@@ -30,17 +30,27 @@ public class ClaimController {
      *  due fixed when the claim was settled, or null when its due is live. Opened by is who opened
      *  the claim, or null when it was never opened. Stated is whether the person's last statement bound
      *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. Corrects is
-     *  the number of the claim a correction corrects, or null when the claim is not a correction. */
+     *  the number of the claim a correction corrects, or null when the claim is not a correction. The log is
+     *  its status log, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
-            String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy) {
+            String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
+            List<LogLineView> log) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getDueBy());
+                    claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log; the due has two decimals, or is null when it was n/a. */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+        public static LogLineView of(ClaimLogLine line) {
+            return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
+                    line.getDue() == null ? null : line.getDue().toPlainString());
         }
     }
 

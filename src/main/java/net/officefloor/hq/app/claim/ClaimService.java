@@ -71,6 +71,7 @@ public class ClaimService {
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         claim = claims.saveAndFlush(claim);
+        logStatus(sheetId, user, person, claim);
         recordChange("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -128,6 +129,7 @@ public class ClaimService {
         // A voided claim keeps its number, which is never given to another claim.
         claim.setNumber(number);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
         if (next == ClaimStatus.SETTLED) {
@@ -185,6 +187,7 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(dueNow);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_APPROVED", user, person, saved, saved.getNumber(), " due=" + text(saved.getSettledDue()));
         rollup.recordChanges(user, before);
@@ -199,6 +202,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_REJECTED", user, person, saved, saved.getNumber(), " reason=" + reason);
         rollup.recordChanges(user, before);
@@ -319,6 +323,11 @@ public class ClaimService {
                 : null;
         return Rounding.of(Rounding.dateOf(claim, corrected),
                 Rounding.policyDate(settings.policyDate(sheetId), sheets.today(sheetId)));
+    }
+
+    /** Log the status the claim has just taken, with its due as worked out now. */
+    private void logStatus(String sheetId, String user, Person person, Claim claim) {
+        claim.logStatus(user, sheets.today(sheetId), due(sheetId, person, claim));
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {

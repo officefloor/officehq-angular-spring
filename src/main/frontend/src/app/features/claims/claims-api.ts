@@ -63,6 +63,17 @@ export interface ClaimView {
   /** yyyy-mm-dd: the date the claim is due by, fixed when it was added from the terms of its person's
    *  grade in force on its date. */
   dueBy: string;
+  /** The claim's status log, oldest first: a line for each status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who gave it, the sheet's today then (yyyy-mm-dd), and
+ *  the claim's due as worked out at that moment, with two decimals; null when it was n/a. */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 /** What opening selected claims together did: how many were opened and refused, and the claims opened. */

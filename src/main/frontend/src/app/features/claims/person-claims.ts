@@ -53,6 +53,11 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
