@@ -563,6 +563,22 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
+    @Transactional(readOnly = true)
+    public Integer maxOpen(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getMaxOpen();
+    }
+
+    /** Set the sheet's maximum of open claims per person; null means none. */
+    @Transactional
+    public Sheet setMaxOpen(String sheetId, String by, Integer max) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setMaxOpen(max);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=max-open", "value=" + (max == null ? "" : max));
+        return sheet;
+    }
+
     /** The sheet's grace days; null when they are off. */
     @Transactional(readOnly = true)
     public Integer graceDays(String sheetId) {

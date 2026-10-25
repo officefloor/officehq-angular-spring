@@ -492,6 +492,21 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-max-open">Max open claims per person</label>
+        <input
+          id="setting-max-open"
+          data-testid="setting-max-open"
+          inputmode="numeric"
+          [value]="maxOpenInput()"
+          (input)="maxOpenInput.set(value($event)); maxOpenChanged = true; settingsError.set(null)"
+          (keydown)="maxOpenChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-max-open-current">{{ (maxOpen() ?? '') | figure }}</span>
+          @if (maxOpen() === null) {
+            (none)
+          }
+        </span>
         <label for="setting-entry-date">Entry date</label>
         <input
           id="setting-entry-date"
@@ -737,6 +752,8 @@ export class Settings {
   protected readonly defaultGrade = signal<string | null>(null);
   /** The review SLA as set, as text; null when there is none. */
   protected readonly reviewSla = signal<string | null>(null);
+  /** The most OPEN or PENDING claims a person may have, as text; null when there is no maximum. */
+  protected readonly maxOpen = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when it is off. */
   protected readonly alertThreshold = signal<string | null>(null);
@@ -772,6 +789,7 @@ export class Settings {
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
+  protected readonly maxOpenInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThresholdInput = signal('');
   protected readonly fiscalStartMonthInput = signal('');
@@ -817,6 +835,7 @@ export class Settings {
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected reviewSlaChanged = false;
+  protected maxOpenChanged = false;
   protected potChanged = false;
   protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
@@ -900,6 +919,9 @@ export class Settings {
       this.reviewSlaInput.set('');
       this.escalateAfterChanged = false;
       this.reviewSlaChanged = false;
+      this.maxOpen.set(null);
+      this.maxOpenInput.set('');
+      this.maxOpenChanged = false;
       this.scoreMid.set(null);
       this.scoreHigh.set(null);
       this.scoreMidInput.set('');
@@ -1067,6 +1089,8 @@ export class Settings {
     const reviewSla = this.reviewSlaInput().trim();
     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
+    const maxOpen = this.maxOpenInput().trim();
+    const saveMaxOpen = this.maxOpenChanged || maxOpen !== (this.maxOpen() ?? '');
     const scoreMid = this.scoreMidInput().trim();
     const saveScoreMid = this.scoreMidChanged || scoreMid !== (this.scoreMid() ?? '');
     const scoreHigh = this.scoreHighInput().trim();
@@ -1224,6 +1248,10 @@ export class Settings {
     }
     if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
       this.settingsError.set('Type the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
+    if (saveMaxOpen && maxOpen !== '' && !TERMS.test(maxOpen)) {
+      this.settingsError.set('Type the maximum of open claims per person as a whole number, 0 or more, or leave it blank for none.');
       return;
     }
     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
@@ -1440,6 +1468,12 @@ export class Settings {
         if (this.reviewSlaInput().trim() === reviewSla) this.reviewSlaChanged = false;
         this.show(settings);
       }
+      if (saveMaxOpen) {
+        const settings = await this.service.setMaxOpen(sheet, maxOpen || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.maxOpenInput().trim() === maxOpen) this.maxOpenChanged = false;
+        this.show(settings);
+      }
       if (saveFiscalStartMonth) {
         const settings = await this.service.setFiscalStartMonth(sheet, fiscalStartMonth);
         if (this.session.sheetId() !== sheet) return;
@@ -1503,6 +1537,7 @@ export class Settings {
       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
       if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
+      if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
       if (!this.alertThresholdChanged) this.alertThresholdInput.set(this.alertThreshold() ?? '');
@@ -1584,6 +1619,7 @@ export class Settings {
         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
         if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
+        if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
         if (!this.alertThresholdChanged) this.alertThresholdInput.set(settings.alertThreshold ?? '');
@@ -1667,6 +1703,7 @@ export class Settings {
     this.scoreHigh.set(settings.scoreHigh == null ? null : String(settings.scoreHigh));
     this.scoreLog.set(settings.scoreLog ?? false);
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
+    this.maxOpen.set(settings.maxOpen == null ? null : String(settings.maxOpen));
     this.proofKinds.set(settings.proofKinds ?? null);
     this.defaultGrade.set(settings.defaultGrade ?? null);
     this.entryDate.set(settings.entryDate ?? null);

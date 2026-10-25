@@ -173,7 +173,7 @@ public class ClaimBulkService {
             try {
                 changed.add(service.changeStatus(sheetId, user, claim.getId(), next));
             } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNoteRequiredException | ClaimNotFoundException | ClaimNotStewardException
-                    | ClaimCapException | PersonNotFoundException e) {
+                    | ClaimCapException | ClaimMaxOpenException | PersonNotFoundException e) {
                 refused++;
             }
         }

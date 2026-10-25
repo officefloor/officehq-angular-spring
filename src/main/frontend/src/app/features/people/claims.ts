@@ -776,7 +776,7 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 423
           ? 'That claim is dated in a closed period.'
           : e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && claim.status === 'DRAFT'
-          ? 'Its person already has as many open claims in that claim\'s period as the period allows.'
+          ? 'Its person already has as many open claims as the sheet, or that claim\'s period, allows.'
           : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
           ? 'Choose a reason from the sheet\'s list to void that claim.'
           : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'

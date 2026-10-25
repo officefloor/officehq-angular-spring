@@ -57,6 +57,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     @Column(name = "score_mid")
     private Integer scoreMid;
 
@@ -113,7 +117,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, score thresholds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
+     * today and its settings (policy date, period numbering, grace days, escalation gap, review SLA, maximum open claims, proof kinds, score thresholds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it, and this sheet is its source; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
@@ -124,6 +128,7 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.reviewSla = reviewSla;
+        copy.maxOpen = maxOpen;
         copy.scoreMid = scoreMid;
         copy.scoreHigh = scoreHigh;
         copy.scoreLog = scoreLog;
@@ -221,6 +226,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     public Integer getScoreMid() {

@@ -185,6 +185,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getReviewSla();
     }
 
+    /** The most OPEN or PENDING claims a person could have at once; null when there was no maximum. */
+    public Integer maxOpen() {
+        return sheet == null ? null : sheet.getMaxOpen();
+    }
+
     /** The grace days then; null when they were off. */
     public Integer graceDays() {
         return sheet == null ? null : sheet.getGraceDays();

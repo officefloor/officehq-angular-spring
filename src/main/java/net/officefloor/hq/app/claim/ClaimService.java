@@ -400,6 +400,7 @@ public class ClaimService {
         }
         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
         if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
+        if (next == ClaimStatus.OPEN) refuseOverMaxOpen(sheetId, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String number = claim.getNumber();
         if (next == ClaimStatus.OPEN && overReview(claim, person)) {
@@ -969,6 +970,17 @@ public class ClaimService {
     /** Refuse opening the claim when the period its due-by falls in caps its person's OPEN or PENDING
      * claims in it, and they already have that many. The period is locked until the transaction ends,
      * so two claims are never opened past its cap at once. */
+    /** Refuse opening the claim when its person already has the sheet's maximum of OPEN or PENDING claims. */
+    private void refuseOverMaxOpen(String sheetId, Claim claim) {
+        Integer max = settings.maxOpen(sheetId);
+        if (max == null) return;
+        long open = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+                .filter(c -> !c.getId().equals(claim.getId()) && c.getPersonId().equals(claim.getPersonId())
+                        && c.getStatus().isOpen())
+                .count();
+        if (open >= max) throw new ClaimMaxOpenException();
+    }
+
     private void refuseOverCap(String sheetId, Claim claim) {
         LocalDate dueBy = claim.getDueBy();
         Period capped = periods.findBySheetIdOrderByFromAsc(sheetId).stream()

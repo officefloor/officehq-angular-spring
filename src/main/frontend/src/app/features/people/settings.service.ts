@@ -101,6 +101,8 @@ export interface SheetSettings {
   scoreLog?: boolean;
   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
   reviewSla: number | null;
+  /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
+  maxOpen?: number | null;
   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
    *  or approved, comma separated; null when none are listed. */
   proofKinds: string | null;
@@ -348,6 +350,13 @@ export class SettingsService {
   setDefaultGrade(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/default-grade`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value means no maximum of open claims per person. */
+  setMaxOpen(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/max-open`, { value }, { headers: this.session.headers() }),
     );
   }
 
