@@ -1,0 +1,377 @@
+diff --git a/src/main/frontend/src/app/core/session-bar.ts b/src/main/frontend/src/app/core/session-bar.ts
+index 31a9df5b..28032655 100644
+--- a/src/main/frontend/src/app/core/session-bar.ts
++++ b/src/main/frontend/src/app/core/session-bar.ts
+@@ -25,7 +25,7 @@ import { LOCALES, Session } from './session';
+             >Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></span
+           >
+           <span
+-            >Today <strong data-testid="sheet-today">{{ session.today() }}</strong></span
++            >Today <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></span
+           >
+           <form (submit)="saveToday($event)">
+             <label for="sheet-today-input">Change today</label>
+@@ -96,6 +96,24 @@ import { LOCALES, Session } from './session';
+           <span
+             >As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></span
+           >
++          <form (submit)="setPreview($event)">
++            <label for="preview-date">Preview figures on</label>
++            <input
++              id="preview-date"
++              type="date"
++              data-testid="preview-date"
++              [value]="previewInput()"
++              (input)="previewInput.set(value($event)); previewError.set(false)"
++            />
++            <button type="submit" data-testid="preview-set">Set preview</button>
++            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
++          </form>
++          <span
++            >Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></span
++          >
++          @if (previewError()) {
++            <p role="alert" class="error" data-testid="preview-error">Type a date to preview the figures on.</p>
++          }
+           @if (asOfError()) {
+             <p role="alert" class="error" data-testid="asof-error">Type a date to show the sheet as of.</p>
+           }
+@@ -170,6 +188,8 @@ export class SessionBar {
+   protected readonly cloneError = signal(false);
+   protected readonly asOfInput = signal('');
+   protected readonly asOfError = signal(false);
++  protected readonly previewInput = signal('');
++  protected readonly previewError = signal(false);
+   protected readonly locales = LOCALES;
+   /** The locale chosen in the select and not yet saved; null while it shows the saved one. */
+   protected readonly localeInput = signal<string | null>(null);
+@@ -228,6 +248,17 @@ export class SessionBar {
+     await this.session.clearAsOf();
+   }
+ 
++  protected async setPreview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.previewError.set(false);
++    this.previewError.set(!(await this.session.setPreview(this.previewInput())));
++  }
++
++  protected async clearPreview(): Promise<void> {
++    this.previewError.set(false);
++    await this.session.clearPreview();
++  }
++
+   protected async archive(): Promise<void> {
+     this.todayError.set(false);
+     this.archiveError.set(false);
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index dbd9cda9..24ee1bda 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -24,16 +24,24 @@ interface SheetView {
+ // name in the X-User header (see `headers()`); everything else in the app is kept per sheet. While an
+ // as-of date is set, every request also carries it in the X-As-Of header: the server then shows each
+ // sheet as it stood at the end of that date (that date standing in for its today) and refuses every
+-// change. The as-of date belongs to this screen alone.
++// change. The as-of date belongs to this screen alone. While a preview date is set, every request also
++// carries it in the X-Preview header: the server then works every figure out as if the sheet's today were
++// that date, over the sheet's current records, while every change still uses its real today. The preview
++// date belongs to this screen alone too.
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+   private readonly http = inject(HttpClient);
+ 
+   readonly user = signal<string | null>(null);
+   readonly sheetId = signal<string | null>(null);
+-  /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. While an as-of date is
+-   *  set, it is that date. */
+-  readonly today = signal<string | null>(null);
++  /** The active sheet's today (YYYY-MM-DD) as the server gives it. While an as-of date is set, it is
++   *  that date. */
++  readonly sheetToday = signal<string | null>(null);
++  /** The date (YYYY-MM-DD) the figures are previewed on; null when they are shown on the sheet's today. */
++  readonly preview = signal<string | null>(null);
++  /** The today every figure is worked out on (YYYY-MM-DD); use it, never the browser's clock. While an
++   *  as-of date is set, it is that date; otherwise while a preview date is set, it is that date. */
++  readonly today = computed(() => (this.asOf() ? null : this.preview()) ?? this.sheetToday());
+   /** Whether the active sheet is archived. */
+   readonly archived = signal(false);
+   /** The number of the active sheet's last settle batch; null while it has had none. */
+@@ -55,7 +63,8 @@ export class Session {
+     if (!user) return false;
+     this.user.set(user);
+     this.sheetId.set(null);
+-    this.today.set(null);
++    this.sheetToday.set(null);
++    this.preview.set(null);
+     this.archived.set(false);
+     this.lastSettleBatch.set(null);
+     this.parent.set(null);
+@@ -66,8 +75,29 @@ export class Session {
+   }
+ 
+   headers(): HttpHeaders {
++    const headers: Record<string, string> = { 'X-User': this.user() ?? '' };
+     const asOf = this.asOf();
+-    return new HttpHeaders(asOf ? { 'X-User': this.user() ?? '', 'X-As-Of': asOf } : { 'X-User': this.user() ?? '' });
++    if (asOf) headers['X-As-Of'] = asOf;
++    const preview = this.preview();
++    if (preview) headers['X-Preview'] = preview;
++    return new HttpHeaders(headers);
++  }
++
++  /** Preview the figures on a date (YYYY-MM-DD), re-reading the active sheet; resolves false when the
++   *  date is not one. */
++  async setPreview(date: string): Promise<boolean> {
++    const preview = date.trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(preview)) return false;
++    this.preview.set(preview);
++    const sheet = this.sheetId();
++    return sheet ? this.loadSheet(sheet) : true;
++  }
++
++  /** Show the figures on the sheet's today again, re-reading the active sheet. */
++  async clearPreview(): Promise<boolean> {
++    this.preview.set(null);
++    const sheet = this.sheetId();
++    return sheet ? this.loadSheet(sheet) : true;
+   }
+ 
+   /** Show the sheets as of a date (YYYY-MM-DD), re-reading the active one; resolves false when the
+@@ -217,7 +247,7 @@ export class Session {
+ 
+   private show(view: SheetView): void {
+     this.sheetId.set(view.id);
+-    this.today.set(view.today);
++    this.sheetToday.set(view.today);
+     this.archived.set(view.archived);
+     this.lastSettleBatch.set(view.lastSettleBatch);
+     this.parent.set(view.parent ?? null);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 6efb3b51..fa7ee63c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -23,6 +23,7 @@ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.settings.Action;
+ import net.officefloor.hq.app.settings.Role;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -235,7 +236,7 @@ public class PeriodService {
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         Map<Long, BigDecimal> open = new HashMap<>();
+         LocalDate end = old.stream().map(Period::getTo).max(Comparator.naturalOrder()).orElseThrow();
+-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).map(PreviewDate::shown).orElse(null);
+         List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
+         List<Claim> in = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
+                 .filter(claim -> claim.getDueBy() != null)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 00a86aad..5a2c980e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.grade.GradeService;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.settings.Role;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -108,7 +109,7 @@ public class PersonService {
+     /** The sheet's today; null when the sheet has never been loaded. */
+     @Transactional(readOnly = true)
+     public LocalDate today(String sheetId) {
+-        return sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        return sheets.findById(sheetId).map(Sheet::getToday).map(PreviewDate::shown).orElse(null);
+     }
+ 
+     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index fca1988b..c69199f8 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -25,6 +25,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -202,7 +203,7 @@ public class PoolService {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+         List<SheetCrew> crewed = crews.findBySheetIdOrderByIdAsc(sheetId);
+-        return new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : sheet.getToday(),
++        return new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : PreviewDate.shown(sheet.getToday()),
+                 people.findBySheetIdOrderByPositionAscIdAsc(sheetId), all,
+                 members.findByPoolIdInOrderByIdAsc(all.stream().map(SheetPool::getId).toList()), crewed,
+                 crewMembers.findByCrewIdInOrderByIdAsc(crewed.stream().map(SheetCrew::getId).toList()));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 8b7b82ba..b2ee2d33 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -21,6 +21,7 @@ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonTree;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -219,7 +220,7 @@ public class ConsolidatedService {
+         return sheets.findById(sheetId).map(sheet -> {
+             Sum sum = new Sum();
+             sum.add(rollup.snapshot(sheet.getId()), people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId()),
+-                    List.of(), sheet.getToday());
++                    List.of(), PreviewDate.shown(sheet.getToday()));
+             return new GradeDueTotals(true, sum.figures().gradeDueTotals());
+         }).orElseGet(() -> new GradeDueTotals(false, Map.of()));
+     }
+@@ -237,7 +238,7 @@ public class ConsolidatedService {
+                 if (!seen.add(child.getId())) continue;
+                 parents.add(child.getId());
+                 sum.add(rollup.snapshot(child.getId()), people.findBySheetIdOrderByPositionAscIdAsc(child.getId()),
+-                        claims.findBySheetIdOrderByListedDescIdDesc(child.getId()), child.getToday());
++                        claims.findBySheetIdOrderByListedDescIdDesc(child.getId()), PreviewDate.shown(child.getToday()));
+             }
+         }
+         return sum.figures();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 22b6a6c2..ad721443 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -24,6 +24,7 @@ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateChain;
+ import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.settings.DatedSettings;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -332,7 +333,7 @@ public class RollupService {
+             @Override
+             public LocalDate today() {
+                 Sheet sheet = sheet();
+-                return sheet == null ? null : sheet.getToday();
++                return sheet == null ? null : PreviewDate.shown(sheet.getToday());
+             }
+ 
+             @Override
+diff --git a/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java b/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
+index c1307603..91b6883d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/DatedSettings.java
+@@ -5,6 +5,7 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -193,6 +194,6 @@ public class DatedSettings {
+     }
+ 
+     private LocalDate today(String sheetId) {
+-        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
++        return PreviewDate.shown(sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index a31a1772..e0f9fb08 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -13,6 +13,7 @@ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.sheet.PreviewDate;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -403,7 +404,7 @@ public class SettingsService {
+     }
+ 
+     private LocalDate today(String sheetId) {
+-        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
++        return PreviewDate.shown(sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday());
+     }
+ 
+     /** The sheet's policy date as set; null when it is the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/PreviewDate.java b/src/main/java/net/officefloor/hq/app/sheet/PreviewDate.java
+new file mode 100644
+index 00000000..ee221488
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/PreviewDate.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** The preview date of a screen that shows its sheet as if its today were that date (one whose requests
++ * carry the {@value #HEADER} header), over the sheet's current records. Only a read takes it: every figure
++ * it works out uses that date as the sheet's today. A change ignores it and uses the sheet's real today, so
++ * nothing a change of today does (snapshots, scores, automatic closes) happens. */
++@Configuration
++public class PreviewDate implements WebMvcConfigurer, HandlerInterceptor {
++
++    /** The header a screen with a preview date sends that date in (YYYY-MM-DD). */
++    public static final String HEADER = "X-Preview";
++
++    /** The preview date of the read being served on this thread; null when there is none. */
++    private static final ThreadLocal<LocalDate> PREVIEW = new ThreadLocal<>();
++
++    /** The date a read's figures take as the sheet's today: the preview date when one is set, else {@code today}. */
++    public static LocalDate shown(LocalDate today) {
++        LocalDate preview = PREVIEW.get();
++        return preview == null || today == null ? today : preview;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this).addPathPatterns("/api/sheets/**");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        PREVIEW.remove();
++        if (!HttpMethod.GET.matches(request.getMethod()) && !HttpMethod.HEAD.matches(request.getMethod())) return true;
++        String preview = request.getHeader(HEADER);
++        if (preview == null || preview.isBlank()) return true;
++        try {
++            PREVIEW.set(LocalDate.parse(preview.trim()));
++        } catch (DateTimeParseException e) {
++            // Not a date: the read shows the sheet's today.
++        }
++        return true;
++    }
++
++    @Override
++    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
++        PREVIEW.remove();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 5de4a059..1dc430b4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -65,7 +65,7 @@ public class SheetService {
+     /** The sheet's today: the date every date-dependent decision and default on it uses. */
+     @Transactional(readOnly = true)
+     public LocalDate today(String id) {
+-        return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
++        return sheets.findById(id).map(Sheet::getToday).map(PreviewDate::shown).orElseThrow(SheetNotFoundException::new);
+     }
+ 
+     /** Start the sheet's next settle batch, one at a time, returning its number. */
