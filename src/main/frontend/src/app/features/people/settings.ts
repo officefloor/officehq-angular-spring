@@ -2,11 +2,12 @@ import { Component, effect, inject, output, signal, untracked } from '@angular/c
 import { GRADES, Grade } from './people.service';
 import { Session } from '../../core/session';
 import { Graces } from './rates.service';
-import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, SettingsService, SheetSettings } from './settings.service';
+import { Dated, PERM_ACTIONS, PermAction, ROLES, Role, RoleGiven, ScoreThresholds, SettingsService, SheetSettings } from './settings.service';
 import { FigurePipe } from '../../core/figure.pipe';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const TERMS = /^\d{1,4}$/;
+const SCORE = /^-?\d{1,6}$/;
 /** Proof kinds: a comma separated list of receipt and photo. */
 const PROOF_KINDS_LIST = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -404,6 +405,36 @@ const STANDING: Record<PermAction, string> = {
             (off)
           }
         </span>
+        <label for="setting-score-mid">Score MID from</label>
+        <input
+          id="setting-score-mid"
+          data-testid="setting-score-mid"
+          inputmode="numeric"
+          [value]="scoreMidInput()"
+          (input)="scoreMidInput.set(value($event)); scoreMidChanged = true; settingsError.set(null)"
+          (keydown)="scoreMidChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-score-mid-current">{{ (scoreMid() ?? '') | figure }}</span>
+          @if (scoreMid() === null) {
+            (not set)
+          }
+        </span>
+        <label for="setting-score-high">Score HIGH from</label>
+        <input
+          id="setting-score-high"
+          data-testid="setting-score-high"
+          inputmode="numeric"
+          [value]="scoreHighInput()"
+          (input)="scoreHighInput.set(value($event)); scoreHighChanged = true; settingsError.set(null)"
+          (keydown)="scoreHighChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-score-high-current">{{ (scoreHigh() ?? '') | figure }}</span>
+          @if (scoreHigh() === null) {
+            (not set)
+          }
+        </span>
         <label for="setting-proof-kinds">Proof kinds (comma separated: receipt, photo)</label>
         <input
           id="setting-proof-kinds"
@@ -656,6 +687,8 @@ export class Settings {
   protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
   /** Every grace recorded for each grade, each from its date, oldest first, once one is saved. */
   readonly graceSaved = output<Graces>();
+  /** The score thresholds once either is saved: the mid and the high, each null when not set. */
+  readonly scoreThresholdsSaved = output<ScoreThresholds>();
   /** The late percent in force, with two decimals; empty until read. */
   protected readonly latePct = signal('');
   /** Every floor recorded, each from its date, oldest first, once one is saved. */
@@ -680,6 +713,8 @@ export class Settings {
   protected readonly graceDays = signal<string | null>(null);
   /** The escalation gap as set, as text; null when it is off. */
   protected readonly escalateAfter = signal<string | null>(null);
+  protected readonly scoreMid = signal<string | null>(null);
+  protected readonly scoreHigh = signal<string | null>(null);
   /** The proof kinds as set, comma separated; null when none are listed. */
   protected readonly proofKinds = signal<string | null>(null);
   /** The default grade as set; null when it is A. */
@@ -715,6 +750,8 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfterInput = signal('');
+  protected readonly scoreMidInput = signal('');
+  protected readonly scoreHighInput = signal('');
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
@@ -757,6 +794,8 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
   protected escalateAfterChanged = false;
+  protected scoreMidChanged = false;
+  protected scoreHighChanged = false;
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected reviewSlaChanged = false;
@@ -843,6 +882,12 @@ export class Settings {
       this.reviewSlaInput.set('');
       this.escalateAfterChanged = false;
       this.reviewSlaChanged = false;
+      this.scoreMid.set(null);
+      this.scoreHigh.set(null);
+      this.scoreMidInput.set('');
+      this.scoreHighInput.set('');
+      this.scoreMidChanged = false;
+      this.scoreHighChanged = false;
       this.proofKinds.set(null);
       this.proofKindsInput.set('');
       this.proofKindsChanged = false;
@@ -1001,6 +1046,10 @@ export class Settings {
     const reviewSla = this.reviewSlaInput().trim();
     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
+    const scoreMid = this.scoreMidInput().trim();
+    const saveScoreMid = this.scoreMidChanged || scoreMid !== (this.scoreMid() ?? '');
+    const scoreHigh = this.scoreHighInput().trim();
+    const saveScoreHigh = this.scoreHighChanged || scoreHigh !== (this.scoreHigh() ?? '');
     const proofKinds = this.proofKindsInput().trim();
     const saveProofKinds = this.proofKindsChanged || proofKinds !== (this.proofKinds() ?? '');
     const defaultGrade = this.defaultGradeInput().trim();
@@ -1128,6 +1177,14 @@ export class Settings {
     }
     if (saveEscalateAfter && escalateAfter !== '' && !TERMS.test(escalateAfter)) {
       this.settingsError.set('Type the escalation gap as a whole number of days, 0 or more, or leave it blank to turn it off.');
+      return;
+    }
+    if (saveScoreMid && scoreMid !== '' && !SCORE.test(scoreMid)) {
+      this.settingsError.set('Type the MID score threshold as a whole number, or leave it blank to clear it.');
+      return;
+    }
+    if (saveScoreHigh && scoreHigh !== '' && !SCORE.test(scoreHigh)) {
+      this.settingsError.set('Type the HIGH score threshold as a whole number, or leave it blank to clear it.');
       return;
     }
     if (saveProofKinds && proofKinds !== '' && !PROOF_KINDS_LIST.test(proofKinds)) {
@@ -1318,6 +1375,20 @@ export class Settings {
         if (this.escalateAfterInput().trim() === escalateAfter) this.escalateAfterChanged = false;
         this.show(settings);
       }
+      if (saveScoreMid) {
+        const settings = await this.service.setScoreMid(sheet, scoreMid || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.scoreMidInput().trim() === scoreMid) this.scoreMidChanged = false;
+        this.show(settings);
+        this.scoreThresholdsSaved.emit({ mid: settings.scoreMid ?? null, high: settings.scoreHigh ?? null });
+      }
+      if (saveScoreHigh) {
+        const settings = await this.service.setScoreHigh(sheet, scoreHigh || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.scoreHighInput().trim() === scoreHigh) this.scoreHighChanged = false;
+        this.show(settings);
+        this.scoreThresholdsSaved.emit({ mid: settings.scoreMid ?? null, high: settings.scoreHigh ?? null });
+      }
       if (saveProofKinds) {
         const settings = await this.service.setProofKinds(sheet, proofKinds || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1393,6 +1464,8 @@ export class Settings {
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
       if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+      if (!this.scoreMidChanged) this.scoreMidInput.set(this.scoreMid() ?? '');
+      if (!this.scoreHighChanged) this.scoreHighInput.set(this.scoreHigh() ?? '');
       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
       if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
@@ -1471,6 +1544,8 @@ export class Settings {
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
         if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
+        if (!this.scoreMidChanged) this.scoreMidInput.set(this.scoreMid() ?? '');
+        if (!this.scoreHighChanged) this.scoreHighInput.set(this.scoreHigh() ?? '');
         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
         if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
@@ -1553,6 +1628,8 @@ export class Settings {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.graceDays.set(settings.graceDays === null ? null : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter == null ? null : String(settings.escalateAfter));
+    this.scoreMid.set(settings.scoreMid == null ? null : String(settings.scoreMid));
+    this.scoreHigh.set(settings.scoreHigh == null ? null : String(settings.scoreHigh));
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
     this.proofKinds.set(settings.proofKinds ?? null);
     this.defaultGrade.set(settings.defaultGrade ?? null);

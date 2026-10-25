@@ -150,6 +150,16 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? 1 : sheet.getFiscalStartMonth();
     }
 
+    /** The mid score threshold then; null when it was not set. */
+    public Integer scoreMid() {
+        return sheet == null ? null : sheet.getScoreMid();
+    }
+
+    /** The high score threshold then; null when it was not set. */
+    public Integer scoreHigh() {
+        return sheet == null ? null : sheet.getScoreHigh();
+    }
+
     /** The escalation gap then; null when it was off. */
     public Integer escalateAfter() {
         return sheet == null ? null : sheet.getEscalateAfter();

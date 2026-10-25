@@ -57,6 +57,12 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The month (1 to 12) the sheet's fiscal year starts in. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -103,7 +109,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
+     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, score thresholds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it, and this sheet is its source; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
@@ -114,6 +120,8 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.reviewSla = reviewSla;
+        copy.scoreMid = scoreMid;
+        copy.scoreHigh = scoreHigh;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
         copy.pot = pot;
@@ -208,6 +216,22 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public int getFiscalStartMonth() {

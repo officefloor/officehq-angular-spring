@@ -13,7 +13,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { Dated, RoleGiven, SettingsService, inForce } from './settings.service';
+import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { STATUSES, Summary, SummaryPerson } from './summary';
 import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
@@ -99,6 +99,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       (capSaved)="caps.set($event)"
       (latePctSaved)="latePcts.set($event)"
       (graceSaved)="graces.set($event)"
+      (scoreThresholdsSaved)="scoreThresholds.set($event)"
       (policyDateSaved)="policyDate.set($event)"
       (roundingSaved)="roundings.set($event)"
       (fiscalStartMonthSaved)="fiscalStartMonth.set($event)"
@@ -485,6 +486,8 @@ import { FigurePipe } from '../../core/figure.pipe';
               @if (shows('overdue-count')) {
                 <th scope="col">Overdue</th>
               }
+              <th scope="col">Score</th>
+              <th scope="col">Band</th>
               @if (shows('overdue-total')) {
                 <th scope="col">Overdue due</th>
               }
@@ -571,6 +574,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                   <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
                 }
                 <td data-testid="person-score">{{ (scoreOf(p)) | figure }}</td>
+                <td data-testid="person-band">{{ (bandOf(p)) | figure }}</td>
                 @if (shows('overdue-total')) {
                   <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
                 }
@@ -1154,6 +1158,8 @@ export class People {
   protected readonly latePcts = signal<Dated[]>([]);
   /** Every grace recorded on the sheet for each grade, each from its date, oldest first. */
   protected readonly graces = signal<Graces>({});
+  /** The sheet's score thresholds, each null when not set. */
+  protected readonly scoreThresholds = signal<ScoreThresholds>({ mid: null, high: null });
   /** The sheet's policy date as set; null when it is the sheet's today. */
   protected readonly policyDate = signal<string | null>(null);
   /** Every rounding mode recorded, each from its date, oldest first; null records none from then. */
@@ -1533,6 +1539,7 @@ export class People {
       this.caps.set([]);
       this.latePcts.set([]);
       this.graces.set({});
+      this.scoreThresholds.set({ mid: null, high: null });
       this.policyDate.set(null);
       this.roundings.set([]);
       this.fiscalStartMonth.set(1);
@@ -2304,6 +2311,15 @@ export class People {
     return String(whole === 0 ? 0 : whole);
   }
 
+  /** The person's band while both score thresholds are set: HIGH at or above the high one, MID at or
+   *  above the mid one, else LOW; blank while either is not set. */
+  protected bandOf(person: Person): string {
+    const { mid, high } = this.scoreThresholds();
+    if (mid === null || high === null) return '';
+    const score = Number(this.scoreOf(person));
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
+  }
+
   /** What is due on the person's counting OPEN and PENDING claims, in cents, as each claim shows it,
    *  split by the claim's age on the sheet's today (the days from its date): 0 to 30 days (a claim
    *  dated after today included), 31 to 60, and 61 or more. */
@@ -2882,6 +2898,7 @@ export class People {
         this.caps.set(settings.caps);
         this.latePcts.set(settings.latePcts);
         this.graces.set(settings.graces ?? {});
+        this.scoreThresholds.set({ mid: settings.scoreMid ?? null, high: settings.scoreHigh ?? null });
         this.policyDate.set(settings.policyDate);
         this.roundings.set(settings.roundings ?? []);
         this.fiscalStartMonth.set(settings.fiscalStartMonth ?? 1);

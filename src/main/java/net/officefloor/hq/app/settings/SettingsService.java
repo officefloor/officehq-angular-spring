@@ -458,6 +458,38 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The sheet's mid score threshold; null when it is not set. */
+    @Transactional(readOnly = true)
+    public Integer scoreMid(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreMid();
+    }
+
+    /** The sheet's high score threshold; null when it is not set. */
+    @Transactional(readOnly = true)
+    public Integer scoreHigh(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreHigh();
+    }
+
+    /** Set the sheet's mid score threshold; null clears it. */
+    @Transactional
+    public Sheet setScoreMid(String sheetId, String by, Integer score) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreMid(score);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=score-mid", "value=" + (score == null ? "" : score));
+        return sheet;
+    }
+
+    /** Set the sheet's high score threshold; null clears it. */
+    @Transactional
+    public Sheet setScoreHigh(String sheetId, String by, Integer score) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreHigh(score);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=score-high", "value=" + (score == null ? "" : score));
+        return sheet;
+    }
+
     /** The sheet's proof kinds, comma separated; null when none are listed. */
     @Transactional(readOnly = true)
     public String proofKinds(String sheetId) {

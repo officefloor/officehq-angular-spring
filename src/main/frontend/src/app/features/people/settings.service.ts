@@ -38,6 +38,12 @@ export function inForce<T>(history: readonly Dated<T>[], date: string, start: T)
   return value;
 }
 
+/** A sheet's score thresholds, each null when not set. */
+export interface ScoreThresholds {
+  mid: number | null;
+  high: number | null;
+}
+
 export interface SheetSettings {
   /** The most a clerk may settle a claim for, with two decimals; null when there is no limit. */
   clerkLimit: string | null;
@@ -87,6 +93,10 @@ export interface SheetSettings {
   graceDays: number | null;
   /** How many days after a claim's previous reminder reminding it escalates it; null when off. */
   escalateAfter: number | null;
+  /** The score at or above which a person is MID; null when not set. */
+  scoreMid?: number | null;
+  /** The score at or above which a person is HIGH; null when not set. */
+  scoreHigh?: number | null;
   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
   reviewSla: number | null;
   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
@@ -293,6 +303,20 @@ export class SettingsService {
         { value },
         { headers: this.session.headers() },
       ),
+    );
+  }
+
+  /** A null value clears the mid score threshold. */
+  setScoreMid(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/score-mid`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** A null value clears the high score threshold. */
+  setScoreHigh(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/score-high`, { value }, { headers: this.session.headers() }),
     );
   }
 
