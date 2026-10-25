@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index c3aef8b1..bf0986fa 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -147,7 +147,7 @@ export function fiscalYearOf(date: string, startMonth: number): string {
+ }
+ 
+ /** The actions the permission matrix decides who may take. */
+-export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
++export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
+ export type PermAction = (typeof PERM_ACTIONS)[number];
+ 
+ // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its fiscal start month, its entry date, its pot, its alert threshold, its parent and its rounding mode), read from and written to the server.
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 0b6b3ba4..e450d568 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -22,6 +22,7 @@ const STANDING: Record<PermAction, string> = {
+   reassign: 'steward',
+   close: 'clerk and steward',
+   reopen: 'steward',
++  today: 'clerk and steward',
+ };
+ 
+ // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
+@@ -35,7 +36,7 @@ const STANDING: Record<PermAction, string> = {
+ // a claim settled is numbered within its period; blank for off), its grace days (when the sheet's today
+ // is changed, an open period whose to-date plus them is before it is closed; blank for off), its fiscal start month (the month, 1 to 12, its fiscal year starts in), its entry date (a claim
+ // added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
+-// settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
++// settle, void, reassign, close, reopen and changing the sheet's today, the roles that may take it as a comma separated list; blank
+ // for the standing rule) and the role each user name has been given (any other name is a clerk).
+ // Each grade's grace days (a claim of a person of that grade on its date, dated on or after the
+ // grace's from-date, is overdue only once its due-by plus them is past, and its late charge counts from
+@@ -1760,5 +1761,5 @@ function blankGrades(): Record<Grade, string> {
+ }
+ 
+ function blankPerms(): Record<PermAction, string> {
+-  return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
++  return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '', today: '' };
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Action.java b/src/main/java/net/officefloor/hq/app/settings/Action.java
+index a91bb900..579b26a7 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Action.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Action.java
+@@ -12,7 +12,8 @@ public enum Action {
+     VOID(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
+     REASSIGN(EnumSet.of(Role.STEWARD)),
+     CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
+-    REOPEN(EnumSet.of(Role.STEWARD));
++    REOPEN(EnumSet.of(Role.STEWARD)),
++    TODAY(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED));
+ 
+     private final Set<Role> standing;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 8609b8d5..08d73f50 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -43,7 +43,7 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on; then the maximum of OPEN or PENDING claims per person, null when there is none; then the pending SLA in days, null when there is none. */
++    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen, today), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on; then the maximum of OPEN or PENDING claims per person, null when there is none; then the pending SLA in days, null when there is none. */
+     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
+             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
+             String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
+@@ -382,7 +382,7 @@ public class SettingsController {
+ 
+     @PutMapping("/settings/perm/{action}")
+     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PermissionRequest request) {
+         String sheet = sheetId.trim();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 1dc430b4..feed6951 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -16,6 +16,7 @@ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.person.PersonSnapshot;
+ import net.officefloor.hq.app.person.PersonSnapshotRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.Action;
+ import net.officefloor.hq.app.settings.Role;
+ import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -87,7 +88,7 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::numbersByPeriod).orElseThrow(SheetNotFoundException::new);
+     }
+ 
+-    /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
++    /** Change the sheet's today, by a role the permission matrix allows (anyone but a viewer by default), releasing every claim's lock (see {@code ClaimService#lock}) and closing
+      * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
+      * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
+      * A change to another date first records, while the sheet's score log is on, a SCORE line per person, in list
+@@ -96,6 +97,7 @@ public class SheetService {
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
++        if (!settings.allowed(id, user, Action.TODAY)) throw new SheetNotStewardException();
+         RollupService.Snapshot before = rollup.snapshot(id);
+         LocalDate left = sheet.getToday();
+         if (!today.equals(sheet.getToday())) {

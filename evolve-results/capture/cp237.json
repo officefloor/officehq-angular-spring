@@ -1,0 +1,64 @@
+{
+  "checkpoint": 237,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp237_today-permission",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "570393bd3a1d9ae4c084e31f6ce322dd76e4141a",
+  "reset_sha": "",
+  "preagent_sha": "9f9cbef1a583d1daa11356ab1c1843291f1a8728",
+  "prev_sha": "9f9cbef1a583d1daa11356ab1c1843291f1a8728",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5411434,
+    "input_tokens": 36,
+    "output_tokens": 5324,
+    "cache_read_tokens": 595677,
+    "cache_creation_tokens": 39423,
+    "num_turns": 20,
+    "duration_ms": 305377,
+    "duration_api_ms": 65814,
+    "model": "claude-opus-5-5",
+    "session_id": "c76ffdef-5a34-4d60-822e-1f9f94fa013b",
+    "stop_reason": "success",
+    "result_text": "The permission matrix now has a \"today\" entry, and all 4 acceptance tests pass in `bin/e2e`.\n\n**Server**\n- `settings/Action.java`: new `TODAY` action. When its entry is blank, the standing rule applies: clerk, steward and restricted may change today, which is everyone but a viewer.\n- `sheet/SheetService.setToday` checks `settings.allowed(..., Action.TODAY)` before it changes anything. If the role isn't allowed, it throws the existing `SheetNotStewardException` (HTTP 403), so nothing is written to the store or the audit file.\n- `settings/SettingsController.java`: the `/settings/perm/{action}` endpoint now accepts `today`. Saving it goes through the existing `setPermission`, which writes `SETTING_CHANGED key=perm-today value=<roles>`.\n- No database migration was needed, because the existing `sheet_permission` table stores the action as a string.\n\n**Front end**\n- `today` is added to `PERM_ACTIONS`, to its standing-rule text (\"clerk and steward\") and to the blank matrix. The settings form therefore shows `setting-perm-today` and `setting-perm-today-current`.\n- A refused change already showed the `sheet-error` message (\"That date could not be set as today.\"), so nothing new was needed there.\n\nThe settings form builds each field's label from the action name, so the new one reads \"Who may today\", which is a bit awkward. I left it alone because changing it means touching the shared label template.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5411434,
+        "num_turns": 20,
+        "duration_ms": 305377,
+        "duration_api_ms": 65814,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp237.agent.jsonl",
+  "agent_diff_file": "cp237.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
