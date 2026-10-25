@@ -6,10 +6,30 @@ import { ClaimView } from '../claims/claims-api';
 export const GRADES = ['A', 'B', 'C'] as const;
 export type Grade = (typeof GRADES)[number];
 
+/** A grade a person was given, in force from its from-date until their next grade. */
+export interface GradeView {
+  grade: Grade;
+  /** The date the grade is in force from (yyyy-mm-dd), or null when it applies from the beginning of time. */
+  from: string | null;
+}
+
+/** Of a person's grades, the one in force on a date: the one with the latest from-date on or before it. */
+export function gradeOn(grades: readonly GradeView[], date: string): Grade | null {
+  let inForce: GradeView | null = null;
+  for (const g of grades) {
+    if (g.from !== null && g.from > date) continue;
+    if (inForce === null || (inForce.from ?? '') < (g.from ?? '')) inForce = g;
+  }
+  return inForce?.grade ?? null;
+}
+
 export interface PersonView {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the store answered. */
   grade: Grade;
+  /** Every grade the person was given, the one from the beginning of time first, then by from-date. */
+  grades: GradeView[];
   /** Bumped on each save; an edit is sent with the version its editor loaded. */
   version: number;
   /** True as soon as a retirement date is set, whatever the date. */
@@ -22,9 +42,16 @@ export interface PersonView {
   patronIds: number[];
 }
 
+/** A new person's fields: their grade applies from the beginning of time. */
 export interface PersonForm {
   name: string;
   grade: Grade;
+}
+
+/** An edited person's fields: the grade is given from `gradeFrom`, null meaning the sheet's today. */
+export interface PersonEdit extends PersonForm {
+  gradeFrom: string | null;
+  version: number;
 }
 
 /** What the quick-add bar sends: a person's name and a claim's amount. */
@@ -57,7 +84,7 @@ export class PeopleApi {
   }
 
   /** Refused with 412 when someone has saved the person since `form.version` was loaded. */
-  update(sheetId: string, id: number, form: PersonForm & { version: number }): Promise<PersonView> {
+  update(sheetId: string, id: number, form: PersonEdit): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}`, form));
   }
 

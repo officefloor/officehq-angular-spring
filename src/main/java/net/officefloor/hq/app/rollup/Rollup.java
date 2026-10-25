@@ -82,21 +82,28 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         BigDecimal dueTotal = ZERO;
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Rate> gradeRates = ratesByGrade.getOrDefault(person.getGrade(), List.of());
+            Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             boolean keptFigure = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 if (!counts(person, claim)) continue;
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal owed = LateCharge.dueOf(claim, figure(claim, gradeRates, floor), terms, today, latePct);
+                // A claim's live figure is at the grade in force on its date.
+                Grade grade = person.gradeOn(claim.getDate());
+                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), floor);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, terms, today, latePct);
                 if (owed != null) due = due.add(owed);
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }
+                // A live figure at a grade other than today's is not undone by today's grade having no rate.
+                if (figure != null && grade != gradeToday) keptFigure = true;
             }
-            // n/a when no rate of the grade is in force today and no claim keeps a figure.
-            BigDecimal personDue = (today == null || inForce(gradeRates, today) == null) && !keptFigure ? null : due;
+            // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
+            BigDecimal personDue = (today == null
+                    || inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
+                            ? null : due;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) dueTotal = dueTotal.add(personDue);

@@ -12,7 +12,9 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { StatementView, StatementsApi } from '../statements/statements-api';
-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView } from './people-api';
+import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn } from './people-api';
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 import { QuickAdd } from './quick-add';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
@@ -37,6 +39,12 @@ import { QuickAdd } from './quick-add';
               <option [value]="g">{{ g }}</option>
             }
           </select>
+          @if (editingId() !== null) {
+            <label for="person-form-grade-from">Grade from</label>
+            <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom"
+              aria-describedby="person-form-grade-from-hint" />
+            <span id="person-form-grade-from-hint">Blank: the sheet's today</span>
+          }
           <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
             {{ editingId() === null ? 'Add person' : 'Save person' }}
           </button>
@@ -65,7 +73,7 @@ import { QuickAdd } from './quick-add';
             @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
-                <td data-testid="person-grade">{{ p.grade }}</td>
+                <td data-testid="person-grade">{{ gradeToday(p) }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
                 <td>
@@ -118,7 +126,7 @@ import { QuickAdd } from './quick-add';
                 </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
-                    [rates]="ratesOf(p.grade)" [periods]="periods()"
+                    [rates]="rates()" [grades]="p.grades" [periods]="periods()"
                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
                 </td>
                 <td>
@@ -150,7 +158,9 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
-  protected readonly form = new FormGroup({ name: this.name, grade: this.grade });
+  /** The date an edit gives the grade from; blank means the sheet's today. */
+  protected readonly gradeFrom = new FormControl('', { nonNullable: true });
+  protected readonly form = new FormGroup({ name: this.name, grade: this.grade, gradeFrom: this.gradeFrom });
 
   /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
@@ -198,12 +208,12 @@ export class People {
    *  cents, skipping those that are n/a. */
   private readonly overdueByPerson = computed(() => {
     const by = new Map<number, { count: number; cents: number }>();
-    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const today = this.session.sheet()?.today;
     for (const c of this.claims()) {
-      const grade = gradeOf.get(c.personId);
-      if (grade === undefined || !this.countsLive(c) || !isOverdue(c, this.terms.days(), today)) continue;
-      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
+      const person = byId.get(c.personId);
+      if (person === undefined || !this.countsLive(c) || !isOverdue(c, this.terms.days(), today)) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });
     }
@@ -226,13 +236,13 @@ export class People {
    *  those that are n/a; a closed period's is the total fixed when it was closed. */
   protected readonly periodDueTotals = computed(() => {
     const cents = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
-    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
       if (!this.countsLive(c)) continue;
       const period = periodOf(this.periods(), c.date);
-      const grade = gradeOf.get(c.personId);
-      if (period === null || grade === undefined) continue;
-      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
+      const person = byId.get(c.personId);
+      if (period === null || person === undefined) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.cents(), this.lateness());
       if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
     }
     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
@@ -432,8 +442,19 @@ export class People {
   }
 
   /** The grade's rates, whatever their from-dates. */
-  protected ratesOf(grade: Grade): RateView[] {
-    return this.ratesByGrade().get(grade) ?? [];
+  private ratesOf(grade: Grade | null): RateView[] {
+    return grade === null ? [] : (this.ratesByGrade().get(grade) ?? []);
+  }
+
+  /** The rates of the person's grade in force on a date, whatever their from-dates. */
+  private ratesOn(person: PersonView, date: string): RateView[] {
+    return this.ratesOf(gradeOn(person.grades, date));
+  }
+
+  /** The person's grade in force on the sheet's today. */
+  protected gradeToday(person: PersonView): Grade {
+    const today = this.session.sheet()?.today;
+    return (today === undefined ? null : gradeOn(person.grades, today)) ?? person.grade;
   }
 
   /** The grade's rate in force on the sheet's today, or null when none is. */
@@ -442,23 +463,27 @@ export class People {
     return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
   }
 
-  /** The sum of the figures due on the person's open and settled claims, in cents; null (n/a) when no
-   *  rate of their grade is in force today and none of their claims keeps a figure. */
+  /** The sum of the figures due on the person's open and settled claims, each at the grade in force on
+   *  its date, in cents; null (n/a) when no rate of their grade in force today is in force today and
+   *  none of their claims keeps a figure. */
   private dueCentsOf(person: PersonView): number | null {
-    const gradeRates = this.ratesOf(person.grade);
+    const gradeToday = this.gradeToday(person);
     let total = 0;
     let keptFigure = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c)) continue;
-      const due = claimOwedCents(c, gradeRates, this.floor.cents(), this.lateness());
+      const grade = gradeOn(person.grades, c.date);
+      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
       if (due !== null) total += due;
       if (keepsFigure(c)) keptFigure = true;
+      // A live figure at a grade other than today's is not undone by today's grade having no rate.
+      if (due !== null && grade !== gradeToday) keptFigure = true;
     }
-    return this.rateOf(person.grade) === null && !keptFigure ? null : total;
+    return this.rateOf(gradeToday) === null && !keptFigure ? null : total;
   }
 
-  /** The person's due-total with two decimals, or n/a when no rate of their grade is in force today
-   *  and no claim keeps a figure (settled, or bound by a statement). */
+  /** The person's due-total with two decimals, or n/a when no rate of their grade in force today is in
+   *  force today and no claim keeps a figure (settled, bound by a statement, or at another grade). */
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);
@@ -496,7 +521,7 @@ export class People {
   private reset(): void {
     this.editingId.set(null);
     this.error.set('');
-    this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
   }
 
   protected edit(person: PersonView): void {
@@ -505,7 +530,7 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.error.set('');
-    this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });
+    this.form.setValue({ name: person.name, grade: this.gradeToday(person), gradeFrom: '' }, { emitEvent: false });
   }
 
   protected cancel(): void {
@@ -522,7 +547,7 @@ export class People {
       const current = people.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion.set(current.version);
-        this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '' }, { emitEvent: false });
       }
     } finally {
       this.error.set('Someone else has saved this person since you opened it; the form now shows their changes.');
@@ -545,14 +570,20 @@ export class People {
       return;
     }
     const id = this.editingId();
+    const gradeFrom = value.gradeFrom.trim();
+    if (id !== null && gradeFrom !== '' && !DATE.test(gradeFrom)) {
+      this.error.set('Type the grade\'s from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
     this.saving.set(true);
     try {
       if (id === null) {
-        const added = await this.api.add(sheet.id, { ...value, name: value.name.trim() });
+        const added = await this.api.add(sheet.id, { name: value.name.trim(), grade: value.grade });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
         const saved = await this.api.update(sheet.id, id,
-          { ...value, name: value.name.trim(), version: this.editingVersion() });
+          { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom,
+            version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
         }

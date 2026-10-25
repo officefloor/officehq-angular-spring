@@ -86,10 +86,13 @@ public class StatementService {
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) total = total.add(due);
             if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) keptFigure = true;
+            // A live figure at a grade other than today's is not undone by today's grade having no rate.
+            if (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today)) keptFigure = true;
             claim.bind(figure);
         }
-        // As the screen shows it: n/a when no rate of the grade is in force today and no claim keeps a figure.
-        BigDecimal dueTotal = rates.inForce(sheetId, person.getGrade(), today) == null && !keptFigure ? null : total;
+        // As the screen shows it: n/a when no rate of the grade in force today is in force today and no
+        // claim keeps a figure.
+        BigDecimal dueTotal = rates.inForce(sheetId, person.gradeOn(today), today) == null && !keptFigure ? null : total;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

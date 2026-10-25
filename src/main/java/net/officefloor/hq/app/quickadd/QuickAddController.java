@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,9 +36,11 @@ public class QuickAddController {
     }
 
     private final QuickAddService service;
+    private final SheetService sheets;
 
-    public QuickAddController(QuickAddService service) {
+    public QuickAddController(QuickAddService service, SheetService sheets) {
         this.service = service;
+        this.sheets = sheets;
     }
 
     /** Add a draft claim to the named person, adding the person first when the name is new. */
@@ -46,6 +49,6 @@ public class QuickAddController {
     public QuickAddView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid QuickAddForm form) {
         QuickAddService.Added added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.amount());
-        return new QuickAddView(PersonView.of(added.person()), ClaimView.of(added.claim()));
+        return new QuickAddView(PersonView.of(added.person(), sheets.today(added.person().getSheetId())), ClaimView.of(added.claim()));
     }
 }

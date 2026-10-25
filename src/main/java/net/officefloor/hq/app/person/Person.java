@@ -1,15 +1,19 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /** A person on a sheet. */
@@ -31,9 +35,10 @@ public class Person {
     @Column(name = "name_key", nullable = false)
     private String nameKey;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "grade", nullable = false)
-    private Grade grade;
+    /** Every grade the person was given, each from its from-date; the first from the beginning of time. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonGrade> grades = new ArrayList<>();
 
     /** The date the person is retired from; null while they are not retired. */
     @Column(name = "retired_from")
@@ -54,7 +59,7 @@ public class Person {
     public Person(String sheetId, String name, Grade grade) {
         this.sheetId = sheetId;
         setName(name);
-        this.grade = grade;
+        grades.add(new PersonGrade(grade, null));
     }
 
     public Long getId() {
@@ -80,12 +85,32 @@ public class Person {
         return name.trim().toLowerCase(Locale.ROOT);
     }
 
-    public Grade getGrade() {
-        return grade;
+    /** The grades the person was given, the one from the beginning of time first, then by from-date. */
+    public List<PersonGrade> getGrades() {
+        List<PersonGrade> ordered = new ArrayList<>(grades);
+        ordered.sort((a, b) -> a.startsAfter(b) ? 1 : b.startsAfter(a) ? -1 : 0);
+        return ordered;
     }
 
-    public void setGrade(Grade grade) {
-        this.grade = grade;
+    /** The grade in force on a date: the one with the latest from-date on or before it. */
+    public Grade gradeOn(LocalDate date) {
+        PersonGrade inForce = null;
+        for (PersonGrade g : grades) {
+            if (g.appliesBy(date) && (inForce == null || g.startsAfter(inForce))) inForce = g;
+        }
+        return inForce == null ? null : inForce.getGrade();
+    }
+
+    /** Give the person a grade from a date, replacing the grade they had from that same date and
+     *  keeping every other one. */
+    public void setGrade(Grade grade, LocalDate from) {
+        for (PersonGrade g : grades) {
+            if (from.equals(g.getFrom())) {
+                g.setGrade(grade);
+                return;
+            }
+        }
+        grades.add(new PersonGrade(grade, from));
     }
 
     public LocalDate getRetiredFrom() {

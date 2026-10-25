@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { PeriodView, periodOf } from '../periods/periods-api';
+import { GradeView, gradeOn } from '../people/people-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
@@ -76,8 +77,10 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The rates of the person's grade, whatever their from-dates. */
+  /** The sheet's rates, whatever their grades and from-dates. */
   readonly rates = input.required<RateView[]>();
+  /** The person's grades, each from its from-date. */
+  readonly grades = input.required<GradeView[]>();
   /** The sheet's periods in date order. */
   readonly periods = input.required<PeriodView[]>();
   readonly added = output<ClaimView>();
@@ -105,11 +108,12 @@ export class PersonClaims {
   }
 
   /** What is due on the claim: the figure fixed when it was settled, else the figure its person's
-   *  last statement bound it to, else at the person's grade's
-   *  rate in force on the claim's date and at least the sheet's floor, or n/a when the claim is dated before every rate of the grade;
+   *  last statement bound it to, else at the rate in force on the claim's date of the person's grade
+   *  in force on that date, and at least the sheet's floor, or n/a when the claim is dated before every rate of the grade;
    *  an open overdue claim has its late charge on top. */
   protected due(claim: ClaimView): string {
-    const due = claimOwedCents(claim, this.rates(), this.floor.cents(),
+    const grade = gradeOn(this.grades(), claim.date);
+    const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.cents(),
       { terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct() });
     return due === null ? 'n/a' : money(due);
   }
