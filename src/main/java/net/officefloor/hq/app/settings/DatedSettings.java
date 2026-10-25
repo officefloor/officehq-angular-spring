@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -193,6 +194,6 @@ public class DatedSettings {
     }
 
     private LocalDate today(String sheetId) {
-        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        return PreviewDate.shown(sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday());
     }
 }

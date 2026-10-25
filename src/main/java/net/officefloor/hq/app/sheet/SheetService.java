@@ -65,7 +65,7 @@ public class SheetService {
     /** The sheet's today: the date every date-dependent decision and default on it uses. */
     @Transactional(readOnly = true)
     public LocalDate today(String id) {
-        return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
+        return sheets.findById(id).map(Sheet::getToday).map(PreviewDate::shown).orElseThrow(SheetNotFoundException::new);
     }
 
     /** Start the sheet's next settle batch, one at a time, returning its number. */

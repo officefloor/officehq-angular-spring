@@ -24,6 +24,7 @@ import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.settings.DatedSettings;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -332,7 +333,7 @@ public class RollupService {
             @Override
             public LocalDate today() {
                 Sheet sheet = sheet();
-                return sheet == null ? null : sheet.getToday();
+                return sheet == null ? null : PreviewDate.shown(sheet.getToday());
             }
 
             @Override

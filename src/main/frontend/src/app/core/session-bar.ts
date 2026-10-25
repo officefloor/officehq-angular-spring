@@ -25,7 +25,7 @@ import { LOCALES, Session } from './session';
             >Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></span
           >
           <span
-            >Today <strong data-testid="sheet-today">{{ session.today() }}</strong></span
+            >Today <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></span
           >
           <form (submit)="saveToday($event)">
             <label for="sheet-today-input">Change today</label>
@@ -96,6 +96,24 @@ import { LOCALES, Session } from './session';
           <span
             >As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></span
           >
+          <form (submit)="setPreview($event)">
+            <label for="preview-date">Preview figures on</label>
+            <input
+              id="preview-date"
+              type="date"
+              data-testid="preview-date"
+              [value]="previewInput()"
+              (input)="previewInput.set(value($event)); previewError.set(false)"
+            />
+            <button type="submit" data-testid="preview-set">Set preview</button>
+            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+          </form>
+          <span
+            >Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></span
+          >
+          @if (previewError()) {
+            <p role="alert" class="error" data-testid="preview-error">Type a date to preview the figures on.</p>
+          }
           @if (asOfError()) {
             <p role="alert" class="error" data-testid="asof-error">Type a date to show the sheet as of.</p>
           }
@@ -170,6 +188,8 @@ export class SessionBar {
   protected readonly cloneError = signal(false);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal(false);
+  protected readonly previewInput = signal('');
+  protected readonly previewError = signal(false);
   protected readonly locales = LOCALES;
   /** The locale chosen in the select and not yet saved; null while it shows the saved one. */
   protected readonly localeInput = signal<string | null>(null);
@@ -226,6 +246,17 @@ export class SessionBar {
     this.archiveError.set(false);
     this.cloneError.set(false);
     await this.session.clearAsOf();
+  }
+
+  protected async setPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.previewError.set(false);
+    this.previewError.set(!(await this.session.setPreview(this.previewInput())));
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(false);
+    await this.session.clearPreview();
   }
 
   protected async archive(): Promise<void> {

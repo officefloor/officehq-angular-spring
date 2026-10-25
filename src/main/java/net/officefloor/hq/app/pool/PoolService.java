@@ -25,6 +25,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -202,7 +203,7 @@ public class PoolService {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         List<SheetPool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         List<SheetCrew> crewed = crews.findBySheetIdOrderByIdAsc(sheetId);
-        return new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : sheet.getToday(),
+        return new Basis(sheet == null ? null : sheet.getPot(), sheet == null ? null : PreviewDate.shown(sheet.getToday()),
                 people.findBySheetIdOrderByPositionAscIdAsc(sheetId), all,
                 members.findByPoolIdInOrderByIdAsc(all.stream().map(SheetPool::getId).toList()), crewed,
                 crewMembers.findByCrewIdInOrderByIdAsc(crewed.stream().map(SheetCrew::getId).toList()));

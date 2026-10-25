@@ -12,6 +12,7 @@ import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -108,7 +109,7 @@ public class PersonService {
     /** The sheet's today; null when the sheet has never been loaded. */
     @Transactional(readOnly = true)
     public LocalDate today(String sheetId) {
-        return sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        return sheets.findById(sheetId).map(Sheet::getToday).map(PreviewDate::shown).orElse(null);
     }
 
     /** Saves the person as edited from {@code version}, giving them {@code grade} from {@code gradeFrom}

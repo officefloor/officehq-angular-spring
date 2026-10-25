@@ -23,6 +23,7 @@ import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -235,7 +236,7 @@ public class PeriodService {
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, BigDecimal> open = new HashMap<>();
         LocalDate end = old.stream().map(Period::getTo).max(Comparator.naturalOrder()).orElseThrow();
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).map(PreviewDate::shown).orElse(null);
         List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
         List<Claim> in = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(claim -> claim.getDueBy() != null)

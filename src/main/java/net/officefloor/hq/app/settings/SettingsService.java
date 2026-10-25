@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -403,7 +404,7 @@ public class SettingsService {
     }
 
     private LocalDate today(String sheetId) {
-        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        return PreviewDate.shown(sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday());
     }
 
     /** The sheet's policy date as set; null when it is the sheet's today. */

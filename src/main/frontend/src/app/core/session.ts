@@ -24,16 +24,24 @@ interface SheetView {
 // name in the X-User header (see `headers()`); everything else in the app is kept per sheet. While an
 // as-of date is set, every request also carries it in the X-As-Of header: the server then shows each
 // sheet as it stood at the end of that date (that date standing in for its today) and refuses every
-// change. The as-of date belongs to this screen alone.
+// change. The as-of date belongs to this screen alone. While a preview date is set, every request also
+// carries it in the X-Preview header: the server then works every figure out as if the sheet's today were
+// that date, over the sheet's current records, while every change still uses its real today. The preview
+// date belongs to this screen alone too.
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
-  /** The active sheet's today (YYYY-MM-DD); use it, never the browser's clock. While an as-of date is
-   *  set, it is that date. */
-  readonly today = signal<string | null>(null);
+  /** The active sheet's today (YYYY-MM-DD) as the server gives it. While an as-of date is set, it is
+   *  that date. */
+  readonly sheetToday = signal<string | null>(null);
+  /** The date (YYYY-MM-DD) the figures are previewed on; null when they are shown on the sheet's today. */
+  readonly preview = signal<string | null>(null);
+  /** The today every figure is worked out on (YYYY-MM-DD); use it, never the browser's clock. While an
+   *  as-of date is set, it is that date; otherwise while a preview date is set, it is that date. */
+  readonly today = computed(() => (this.asOf() ? null : this.preview()) ?? this.sheetToday());
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null while it has had none. */
@@ -55,7 +63,8 @@ export class Session {
     if (!user) return false;
     this.user.set(user);
     this.sheetId.set(null);
-    this.today.set(null);
+    this.sheetToday.set(null);
+    this.preview.set(null);
     this.archived.set(false);
     this.lastSettleBatch.set(null);
     this.parent.set(null);
@@ -66,8 +75,29 @@ export class Session {
   }
 
   headers(): HttpHeaders {
+    const headers: Record<string, string> = { 'X-User': this.user() ?? '' };
     const asOf = this.asOf();
-    return new HttpHeaders(asOf ? { 'X-User': this.user() ?? '', 'X-As-Of': asOf } : { 'X-User': this.user() ?? '' });
+    if (asOf) headers['X-As-Of'] = asOf;
+    const preview = this.preview();
+    if (preview) headers['X-Preview'] = preview;
+    return new HttpHeaders(headers);
+  }
+
+  /** Preview the figures on a date (YYYY-MM-DD), re-reading the active sheet; resolves false when the
+   *  date is not one. */
+  async setPreview(date: string): Promise<boolean> {
+    const preview = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(preview)) return false;
+    this.preview.set(preview);
+    const sheet = this.sheetId();
+    return sheet ? this.loadSheet(sheet) : true;
+  }
+
+  /** Show the figures on the sheet's today again, re-reading the active sheet. */
+  async clearPreview(): Promise<boolean> {
+    this.preview.set(null);
+    const sheet = this.sheetId();
+    return sheet ? this.loadSheet(sheet) : true;
   }
 
   /** Show the sheets as of a date (YYYY-MM-DD), re-reading the active one; resolves false when the
@@ -217,7 +247,7 @@ export class Session {
 
   private show(view: SheetView): void {
     this.sheetId.set(view.id);
-    this.today.set(view.today);
+    this.sheetToday.set(view.today);
     this.archived.set(view.archived);
     this.lastSettleBatch.set(view.lastSettleBatch);
     this.parent.set(view.parent ?? null);

@@ -21,6 +21,7 @@ import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonTree;
+import net.officefloor.hq.app.sheet.PreviewDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -219,7 +220,7 @@ public class ConsolidatedService {
         return sheets.findById(sheetId).map(sheet -> {
             Sum sum = new Sum();
             sum.add(rollup.snapshot(sheet.getId()), people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId()),
-                    List.of(), sheet.getToday());
+                    List.of(), PreviewDate.shown(sheet.getToday()));
             return new GradeDueTotals(true, sum.figures().gradeDueTotals());
         }).orElseGet(() -> new GradeDueTotals(false, Map.of()));
     }
@@ -237,7 +238,7 @@ public class ConsolidatedService {
                 if (!seen.add(child.getId())) continue;
                 parents.add(child.getId());
                 sum.add(rollup.snapshot(child.getId()), people.findBySheetIdOrderByPositionAscIdAsc(child.getId()),
-                        claims.findBySheetIdOrderByListedDescIdDesc(child.getId()), child.getToday());
+                        claims.findBySheetIdOrderByListedDescIdDesc(child.getId()), PreviewDate.shown(child.getToday()));
             }
         }
         return sum.figures();
