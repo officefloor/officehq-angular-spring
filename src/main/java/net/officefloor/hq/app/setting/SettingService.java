@@ -87,6 +87,13 @@ public class SettingService implements ActingFor {
      *  value means none. Not dated. */
     public static final String POT = "pot";
 
+    /** The key of the parent: the sheet whose rates (then its parent's, up to {@link #PARENT_LEVELS} levels up)
+     *  are used for a grade and date that have none in force on this sheet; no value means none. Not dated. */
+    public static final String PARENT = "parent";
+
+    /** How many levels up the sheet's parents are looked to for a rate. */
+    public static final int PARENT_LEVELS = 3;
+
     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 
@@ -101,18 +108,20 @@ public class SettingService implements ActingFor {
     private final SettingChangeRepository changes;
     private final SheetRoleRepository roles;
     private final DelegationRepository delegations;
+    private final SheetParentRepository parents;
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
     public SettingService(SheetSettingRepository settings, SheetSettingDatedRepository dated,
             SettingChangeRepository changes, SheetRoleRepository roles, DelegationRepository delegations,
-            SheetService sheets, Rollup rollup, Audit audit) {
+            SheetParentRepository parents, SheetService sheets, Rollup rollup, Audit audit) {
         this.settings = settings;
         this.dated = dated;
         this.changes = changes;
         this.roles = roles;
         this.delegations = delegations;
+        this.parents = parents;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -411,6 +420,75 @@ public class SettingService implements ActingFor {
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
                 + " value=" + (value == null ? "" : value.toPlainString()));
+        return value;
+    }
+
+    /** The sheet's parent, or null when it has none. */
+    @Transactional(readOnly = true)
+    public String parent(String sheetId) {
+        return parentOf(parents, sheetId);
+    }
+
+    /** The sheet's parent as the store holds it, within the caller's transaction; null when it has none. */
+    public static String parentOf(SheetParentRepository parents, String sheetId) {
+        return parents.findById(sheetId).map(SheetParentLink::getParentId).orElse(null);
+    }
+
+    /** The sheets a rate is looked for in, nearest first: the sheet itself, then its parent, and so on up to
+     *  {@link #PARENT_LEVELS} levels up; within the caller's transaction. */
+    public static List<String> lineageOf(SheetParentRepository parents, String sheetId) {
+        List<String> lineage = new ArrayList<>(List.of(sheetId));
+        String at = sheetId;
+        for (int level = 0; level < PARENT_LEVELS; level++) {
+            at = parentOf(parents, at);
+            if (at == null || lineage.contains(at)) break;
+            lineage.add(at);
+        }
+        return lineage;
+    }
+
+    /** Set the sheet's parent; blank clears it. Refused when it is the sheet itself, a sheet that has never
+     *  been loaded, or a sheet that has this sheet as an ancestor. The live dues it moves are audited after it. */
+    @Transactional
+    public String setParent(String sheetId, String user, String parent) {
+        String value = parent == null || parent.isBlank() ? null : parent.trim();
+        if (value != null) {
+            if (value.equals(sheetId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A sheet cannot be its own parent.");
+            }
+            if (!sheets.exists(value)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The parent sheet has never been loaded.");
+            }
+            List<String> seen = new ArrayList<>();
+            for (String at = value; at != null && !seen.contains(at); at = parentOf(parents, at)) {
+                if (at.equals(sheetId)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "The parent sheet has this sheet as an ancestor.");
+                }
+                seen.add(at);
+            }
+        }
+        sheets.load(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        SheetParentLink link = parents.findById(sheetId).orElse(null);
+        try {
+            if (value == null) {
+                if (link != null) {
+                    parents.delete(link);
+                    parents.flush();
+                }
+            } else if (link == null) {
+                parents.saveAndFlush(new SheetParentLink(sheetId, value));
+            } else {
+                link.setParentId(value);
+                parents.saveAndFlush(link);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PARENT
+                + " value=" + (value == null ? "" : value));
+        rollup.recordChanges(user, before);
         return value;
     }
 

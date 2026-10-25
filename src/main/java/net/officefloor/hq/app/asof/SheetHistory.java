@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -112,6 +113,23 @@ public class SheetHistory {
     private LocalDate todayOf(String sheet) {
         List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ?", LocalDate.class, sheet);
         return today.isEmpty() ? null : today.get(0);
+    }
+
+    /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
+     *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
+     *  back on. Only for a transaction that is rolled back afterwards. */
+    public void restoreWithParents(String sheet, LocalDate asOf) {
+        List<String> parents = new ArrayList<>();
+        String at = sheet;
+        for (int level = 0; level < SettingService.PARENT_LEVELS; level++) {
+            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ?",
+                    String.class, at);
+            if (parent.isEmpty() || parent.get(0).equals(sheet) || parents.contains(parent.get(0))) break;
+            at = parent.get(0);
+            parents.add(at);
+        }
+        restore(sheet, asOf);
+        for (String parent : parents) restore(parent, asOf);
     }
 
     /**

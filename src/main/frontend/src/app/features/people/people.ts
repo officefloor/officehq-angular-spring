@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
@@ -15,6 +15,7 @@ import { SheetCap } from '../settings/sheet-cap';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
+import { SheetParent } from '../settings/sheet-parent';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { SheetHeader } from '../summary/sheet-header';
@@ -329,6 +330,7 @@ export class People {
   private readonly cap = inject(SheetCap);
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
+  private readonly sheetParent = inject(SheetParent);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
@@ -382,7 +384,7 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((t, c) => (this.countsLive(c) ? t + cents(c.amount) : t), 0)));
-  /** The sheet's rates; a grade with no rate is left out. */
+  /** The sheet's rates, then its parents' (by level); a grade with no rate is left out. */
   protected readonly rates = signal<RateView[]>([]);
   private readonly ratesByGrade = computed(() => {
     const by = new Map<Grade, RateView[]>();
@@ -627,6 +629,21 @@ export class People {
       this.bulkGradeError.set('');
       if (sheet) void this.reload(sheet.id);
     });
+    // A change of the sheet's parent changes the rates its dues fall back on, so they are re-read.
+    effect(() => {
+      if (this.sheetParent.changes() === 0) return;
+      const sheet = untracked(() => this.session.sheet());
+      if (sheet) void this.reloadRates(sheet.id);
+    });
+  }
+
+  private async reloadRates(sheetId: string): Promise<void> {
+    try {
+      const rates = await this.ratesApi.list(sheetId);
+      if (this.session.sheet()?.id === sheetId) this.rates.set(rates);
+    } catch {
+      this.error.set('The rates could not be loaded.');
+    }
   }
 
   private async reload(sheetId: string): Promise<void> {
@@ -1064,9 +1081,9 @@ export class People {
   }
 
   protected rateSaved(rate: RateView): void {
-    // Kept as the store lists them: in grade order, then the rate from the start, then by from-date.
+    // Kept as the store lists them: by level, in grade order, then the rate from the start, then by from-date.
     this.rates.update((list) => [...list.filter((r) => !sameRate(r, rate)), rate]
-      .sort((a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
+      .sort((a, b) => a.level - b.level || a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
   }
 
   protected periodAdded(period: PeriodView): void {

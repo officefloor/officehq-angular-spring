@@ -71,7 +71,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (r of rates(); track r.grade + (r.from ?? 'start')) {
+          @for (r of ownRates(); track r.grade + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
@@ -88,7 +88,7 @@ export class Rates {
   private readonly session = inject(Session);
   private readonly api = inject(RatesApi);
 
-  /** The sheet's rates, in grade order then by from-date; a grade with no rate is left out. */
+  /** The sheet's rates, in grade order then by from-date, then its parents'; a grade with no rate is left out. */
   readonly rates = input.required<RateView[]>();
   readonly saved = output<RateView>();
 
@@ -119,9 +119,12 @@ export class Rates {
     });
   }
 
+  /** The sheet's own rates, leaving out those of its parents. */
+  protected readonly ownRates = computed(() => this.rates().filter((r) => r.level === 0));
+
   private readonly today = computed(() => this.session.sheet()?.today ?? null);
 
-  /** The grade's rate in force on the sheet's today, or n/a when none is. */
+  /** The grade's rate in force on the sheet's today (its own, else its nearest parent's), or n/a when none is. */
   protected currentOf(grade: Grade): string {
     const today = this.today();
     const rate = today === null ? null : rateInForce(this.rates().filter((r) => r.grade === grade), today);

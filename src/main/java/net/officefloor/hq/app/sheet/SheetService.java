@@ -39,6 +39,12 @@ public class SheetService {
         return sheets.findById(id).orElseGet(() -> create(id));
     }
 
+    /** Whether a sheet with this id has been loaded. */
+    @Transactional(readOnly = true)
+    public boolean exists(String id) {
+        return sheets.existsById(id);
+    }
+
     /**
      * The sheet's today. Every decision that depends on the date, and every default date, uses this
      * and never the real clock.

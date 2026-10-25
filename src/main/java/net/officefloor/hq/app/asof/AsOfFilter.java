@@ -61,7 +61,7 @@ public class AsOfFilter extends OncePerRequestFilter {
         try {
             transactions.executeWithoutResult((status) -> {
                 status.setRollbackOnly();
-                history.restore(sheet, asOf);
+                history.restoreWithParents(sheet, asOf);
                 try {
                     chain.doFilter(request, response);
                 } catch (IOException e) {

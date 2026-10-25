@@ -8,6 +8,7 @@ import { SheetCap } from './sheet-cap';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { SheetGrace } from './sheet-grace';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
+import { SheetParent } from './sheet-parent';
 import { SheetPolicyDate } from './sheet-policy-date';
 import { SheetPot } from './sheet-pot';
 
@@ -56,7 +57,9 @@ function settled(control: AbstractControl): void {
 // may take it, comma separated (blank: the standing rule); it is not dated. Nor are the grace days (once the
 // sheet's today is changed to after an open period's to-date plus them, the period is closed; blank: off),
 // nor the entry date (while set, the date a new claim given none takes instead of the sheet's today), nor the
-// pot (what each balanced pool shares out among its members by their shares; blank: none).
+// pot (what each balanced pool shares out among its members by their shares; blank: none), nor the parent
+// sheet (a grade with no rate in force on a date on this sheet takes its parent's, then that one's parent's,
+// up to three levels up; blank: none).
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -65,6 +68,7 @@ function settled(control: AbstractControl): void {
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
+      <p>Parent sheet: <strong data-testid="sheet-parent">{{ parent() ?? '' }}</strong></p>
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
@@ -137,6 +141,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-pot">Pot (shared out among a balanced pool's members by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" />
         <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
+        <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
+        <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
+        <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
         <fieldset>
           <legend>Permissions (the roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of permissionActions; track a) {
@@ -209,6 +216,7 @@ export class Settings {
   private readonly sheetCap = inject(SheetCap);
   private readonly sheetGrace = inject(SheetGrace);
   private readonly sheetPot = inject(SheetPot);
+  private readonly sheetParent = inject(SheetParent);
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
@@ -236,6 +244,7 @@ export class Settings {
   protected readonly graceDays = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
+  protected readonly parent = signal<string | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
   protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
   protected readonly delegations = signal<DelegationView[]>([]);
@@ -260,6 +269,7 @@ export class Settings {
     graceDays: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
+    parent: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's own terms, a field per grade; part of the settings form. */
   protected readonly gradeTermsForm = new FormGroup({
@@ -339,7 +349,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -377,7 +387,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, graceDays, entryDate, pot } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, graceDays, entryDate, pot, parent } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -409,6 +419,7 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const entryDateValue = entryDate.value.trim();
     const potValue = pot.value.trim();
+    const parentValue = parent.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -479,6 +490,10 @@ export class Settings {
     }
     if (changed(pot) && potValue !== '' && !MONEY.test(potValue)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (changed(parent) && parentValue === sheet.id) {
+      this.settingsError.set('A sheet cannot be its own parent.');
       return;
     }
     const permissionValues = PERMISSION_ACTIONS.map((a) => ({ action: a, control: this.permissionsForm.controls[a],
@@ -581,6 +596,14 @@ export class Settings {
         settled(pot);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(parent)) {
+        const settings = await this.api.setParent(sheet.id, parentValue === '' ? null : parentValue);
+        settled(parent);
+        if (this.session.sheet()?.id === sheet.id) {
+          this.show(settings);
+          this.sheetParent.changes.update((n) => n + 1);
+        }
+      }
       for (const { action, control, value } of permissionValues) {
         if (!changed(control)) continue;
         const settings = await this.api.setPermission(sheet.id, action, value);
@@ -617,6 +640,8 @@ export class Settings {
     this.entryDate.set(settings.entryDate);
     this.pot.set(settings.pot);
     this.sheetPot.pot.set(settings.pot);
+    this.parent.set(settings.parent);
+    this.sheetParent.parent.set(settings.parent);
     this.delegations.set(settings.delegations);
   }
 

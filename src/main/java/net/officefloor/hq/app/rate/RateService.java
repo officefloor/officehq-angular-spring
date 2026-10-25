@@ -9,6 +9,8 @@ import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -22,14 +24,16 @@ public class RateService {
     private final RateRepository rates;
     private final RateChangeRepository changes;
     private final SheetService sheets;
+    private final SheetParentRepository parents;
     private final Rollup rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets, Rollup rollup,
-            Audit audit) {
+    public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets,
+            SheetParentRepository parents, Rollup rollup, Audit audit) {
         this.rates = rates;
         this.changes = changes;
         this.sheets = sheets;
+        this.parents = parents;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -40,11 +44,30 @@ public class RateService {
         return rates.findBySheetIdInOrder(sheetId);
     }
 
-    /** The grade's rate in force on a date: the one with the latest from-date on or before it, or
-     *  null when the date is before every rate the grade has or after that rate's to-date. */
+    /** A rate of the sheet or of one of its parents, with how many levels up it is (0: the sheet's own). */
+    public record Inherited(int level, Rate rate) {
+    }
+
+    /** The rates of the sheet and of its parents up to three levels up, nearest first, each in grade order,
+     *  then by from-date. */
+    @Transactional(readOnly = true)
+    public List<Inherited> listInherited(String sheetId) {
+        List<Inherited> all = new ArrayList<>();
+        List<String> lineage = SettingService.lineageOf(parents, sheetId);
+        for (int level = 0; level < lineage.size(); level++) {
+            for (Rate rate : rates.findBySheetIdInOrder(lineage.get(level))) all.add(new Inherited(level, rate));
+        }
+        return all;
+    }
+
+    /** The grade's rate in force on a date: of the sheet's rates, the one with the latest from-date on or
+     *  before it, unless the date is after that rate's to-date; when none is, the parent's in force then, and
+     *  so on up to three levels up; null when none is. */
     @Transactional(readOnly = true)
     public Rate inForce(String sheetId, Grade grade, LocalDate date) {
-        return Rate.inForce(rates.findForGrade(sheetId, grade), date);
+        List<List<Rate>> levels = new ArrayList<>();
+        for (String id : SettingService.lineageOf(parents, sheetId)) levels.add(rates.findForGrade(id, grade));
+        return Rate.inForceInherited(levels, date);
     }
 
     /** The grade's rate in force on a date as the sheet's rates stood at the end of another date (asOf):
@@ -52,6 +75,15 @@ public class RateService {
      *  null when none is in force then. */
     @Transactional(readOnly = true)
     public Rate inForceAsOf(String sheetId, Grade grade, LocalDate date, LocalDate asOf) {
+        // The parents are those the sheet names now, each read as its rates stood at the end of the same date.
+        for (String id : SettingService.lineageOf(parents, sheetId)) {
+            Rate rate = ownInForceAsOf(id, grade, date, asOf);
+            if (rate != null) return rate;
+        }
+        return null;
+    }
+
+    private Rate ownInForceAsOf(String sheetId, Grade grade, LocalDate date, LocalDate asOf) {
         Map<LocalDate, Rate> byFrom = new HashMap<>();
         Rate fromStart = null;
         for (RateChange change : changes.findBySheetIdOrderByIdAsc(sheetId)) {

@@ -21,6 +21,7 @@ import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.setting.DatedSettings;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetParentRepository;
 import net.officefloor.hq.app.setting.SheetSettingDatedRepository;
 import net.officefloor.hq.app.setting.SheetSettingRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -60,16 +61,19 @@ public class Rollup {
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
+    private final SheetParentRepository parents;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            SheetSettingRepository settings, SheetSettingDatedRepository dated, Audit audit) {
+            SheetSettingRepository settings, SheetSettingDatedRepository dated, SheetParentRepository parents,
+            Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
         this.settings = settings;
         this.dated = dated;
+        this.parents = parents;
         this.audit = audit;
     }
 
@@ -80,9 +84,18 @@ public class Rollup {
         DatedSettings values = DatedSettings.of(dated, sheetId);
         BigDecimal cap = values.capOn(today);
         LocalDate policyDate = Rounding.policyDate(SettingService.policyDateOf(settings, sheetId), today);
-        Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
-        for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
-            ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
+        // Each grade's rates on the sheet, then on each of its parents in turn.
+        List<String> lineage = SettingService.lineageOf(parents, sheetId);
+        Map<Grade, List<List<Rate>>> ratesByGrade = new LinkedHashMap<>();
+        for (Grade grade : Grade.values()) {
+            List<List<Rate>> levels = new ArrayList<>();
+            for (int i = 0; i < lineage.size(); i++) levels.add(new ArrayList<>());
+            ratesByGrade.put(grade, levels);
+        }
+        for (int level = 0; level < lineage.size(); level++) {
+            for (Rate rate : rates.findBySheetIdInOrder(lineage.get(level))) {
+                ratesByGrade.get(rate.getGrade()).get(level).add(rate);
+            }
         }
         Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
@@ -122,7 +135,7 @@ public class Rollup {
             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
             // Held to the sheet's cap; n/a is not capped.
             BigDecimal personDue = SettingService.capped((today == null
-                    || Rate.inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
+                    || Rate.inForceInherited(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
                             ? null : due, cap);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
             claimedTotal = claimedTotal.add(claimed);
@@ -175,12 +188,12 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  (unless PENDING), else the rate figure at the grade's rate in force on its date, rounded as the claim rounds,
+     *  (unless PENDING), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's), rounded as the claim rounds,
      *  before any late charge and floor; null when that is n/a. */
-    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, RoundingMode rounding) {
+    private static BigDecimal figure(Claim claim, List<List<Rate>> gradeRates, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
-        Rate rate = Rate.inForce(gradeRates, claim.getDate());
+        Rate rate = Rate.inForceInherited(gradeRates, claim.getDate());
         if (rate == null) return null;
         return claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
     }

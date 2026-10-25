@@ -42,14 +42,14 @@ public class SettingController {
      *  and the note threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off);
-     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated). Each of these figures is the one in force on the
+     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated); the parent is the sheet whose rates are used where this one has none, null when none (not dated). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
      *  delegations are the stewards' delegations of their role, in the order they were made. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
             Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate,
-            String pot) {
+            String pot, String parent) {
     }
 
     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
@@ -137,6 +137,10 @@ public class SettingController {
 
     /** The pot as entered; none means no pot. */
     public record PotForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** The parent sheet's id as entered; blank means none. */
+    public record ParentForm(@Size(max = 100) String value) {
     }
 
     /** The roles that may take an action as entered, comma separated; blank keeps the standing rule. */
@@ -302,6 +306,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's parent, or clear it: the sheet whose rates are used where this one has none. */
+    @PutMapping("/settings/parent")
+    public SettingsView setParent(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ParentForm form) {
+        String id = sheetId.trim();
+        service.setParent(id, SignedInUser.name(user), form.value());
+        return view(id);
+    }
+
     /** Set the roles that may take an action, or clear them to keep the standing rule. */
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -349,7 +362,7 @@ public class SettingController {
                 service.permissions(sheetId), service.graceDays(sheetId),
                 service.delegations(sheetId).stream().map(DelegationView::of).toList(),
                 text(dated.noteThresholdOn(today)), service.entryDate(sheetId),
-                text(service.pot(sheetId)));
+                text(service.pot(sheetId)), service.parent(sheetId));
     }
 
     private static String text(BigDecimal value) {

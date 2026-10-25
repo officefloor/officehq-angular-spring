@@ -11,11 +11,13 @@ export interface RateView {
   from: string | null;
   /** The last date the rate is in force (yyyy-mm-dd), or null when it runs until the grade's next rate. */
   to: string | null;
+  /** How many parents up the rate's sheet is: 0 for the sheet's own rate, 1 for its parent's, and so on. */
+  level: number;
 }
 
-/** Of one grade's rates, the one in force on a date: the one with the latest from-date on or before
- *  it, or null when the date is before every one of them or after that one's to-date. */
-export function rateInForce(rates: readonly RateView[], date: string): RateView | null {
+/** Of one grade's rates on one sheet, the one in force on a date: the one with the latest from-date on
+ *  or before it, or null when the date is before every one of them or after that one's to-date. */
+function ownRateInForce(rates: readonly RateView[], date: string): RateView | null {
   let inForce: RateView | null = null;
   for (const r of rates) {
     if (r.from !== null && r.from > date) continue;
@@ -24,9 +26,20 @@ export function rateInForce(rates: readonly RateView[], date: string): RateView 
   return inForce !== null && inForce.to !== null && inForce.to < date ? null : inForce;
 }
 
-/** Whether two rates are the same grade's rate for the same from-date. */
+/** Of one grade's rates, the one in force on a date: the sheet's own, else the nearest parent's in
+ *  force then; null when none is. */
+export function rateInForce(rates: readonly RateView[], date: string): RateView | null {
+  const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
+  for (const level of levels) {
+    const rate = ownRateInForce(rates.filter((r) => (r.level ?? 0) === level), date);
+    if (rate !== null) return rate;
+  }
+  return null;
+}
+
+/** Whether two rates are the same sheet's rate of the same grade for the same from-date. */
 export function sameRate(a: RateView, b: RateView): boolean {
-  return a.grade === b.grade && a.from === b.from;
+  return a.grade === b.grade && a.from === b.from && a.level === b.level;
 }
 
 /** What is due on an amount of `amountCents` at a rate of `pct` percent, in whole cents: the
@@ -59,7 +72,7 @@ export class RatesApi {
     return `/api/sheets/${encodeURIComponent(sheetId)}/rates`;
   }
 
-  /** The sheet's rates; a grade with no rate is left out. */
+  /** The sheet's rates, then its parents' up to three levels up (by level); a grade with no rate is left out. */
   list(sheetId: string): Promise<RateView[]> {
     return firstValueFrom(this.http.get<RateView[]>(this.url(sheetId)));
   }

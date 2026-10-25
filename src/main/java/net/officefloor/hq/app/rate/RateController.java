@@ -28,10 +28,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
-     *  rate applies from the beginning of time; no to-date, until the grade's next rate. */
-    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to) {
+     *  rate applies from the beginning of time; no to-date, until the grade's next rate. Level is how many
+     *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. */
+    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo());
+            return of(0, rate);
+        }
+
+        static RateView of(int level, Rate rate) {
+            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level);
         }
     }
 
@@ -63,10 +68,11 @@ public class RateController {
         return new PreviewView(preview.count(), preview.diff().toPlainString());
     }
 
-    /** The sheet's rates in grade order, then by from-date; a grade with no rate is left out. */
+    /** The sheet's rates in grade order, then by from-date, followed by its parents' up to three levels up,
+     *  nearest first; a grade with no rate is left out. */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+        return service.listInherited(sheetId.trim()).stream().map((r) -> RateView.of(r.level(), r.rate())).toList();
     }
 
     /** Set the rate for a grade from a from-date through a to-date, replacing the one it had for that from-date. */

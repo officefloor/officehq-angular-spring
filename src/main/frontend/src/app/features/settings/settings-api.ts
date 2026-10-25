@@ -71,6 +71,9 @@ export interface SettingsView {
   /** The amount a balanced pool shares out among its members, with two decimals, or null when there is
    *  none. Not dated. */
   pot: string | null;
+  /** The sheet whose rates (then its parent's, up to three levels up) are used where this sheet has none
+   *  in force, or null when it has none. Not dated. */
+  parent: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -154,6 +157,11 @@ export class SettingsApi {
   /** Set the pot; null clears it, leaving no pot. */
   setPot(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/pot`, { value }));
+  }
+
+  /** Set the parent sheet; null clears it, leaving no parent. */
+  setParent(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/parent`, { value }));
   }
 
   /** Set the grace days; null clears them, turning the closing of periods off. */

@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import net.officefloor.hq.app.person.Grade;
 
 /** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
@@ -103,5 +104,15 @@ public class Rate {
             if (rate.appliesBy(date)) inForce = rate;
         }
         return inForce == null || inForce.endedBy(date) ? null : inForce;
+    }
+
+    /** Of one grade's rates on the sheet and on each of its parents in turn (nearest first), the one in force on
+     *  the date: the sheet's own, else the nearest parent's that has one in force then; null when none has. */
+    public static Rate inForceInherited(List<? extends Iterable<Rate>> levels, LocalDate date) {
+        for (Iterable<Rate> gradeRates : levels) {
+            Rate rate = inForce(gradeRates, date);
+            if (rate != null) return rate;
+        }
+        return null;
     }
 }
