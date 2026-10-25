@@ -1,0 +1,64 @@
+{
+  "checkpoint": 138,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp138_inline-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1d38e0d97d80b926948182acf1f5917c297e320",
+  "reset_sha": "",
+  "preagent_sha": "7803d92230cfcfd65fcaec84eee52d98a58c1e0c",
+  "prev_sha": "7803d92230cfcfd65fcaec84eee52d98a58c1e0c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6887885999999999,
+    "input_tokens": 40,
+    "output_tokens": 6762,
+    "cache_read_tokens": 819223,
+    "cache_creation_tokens": 48693,
+    "num_turns": 21,
+    "duration_ms": 305409,
+    "duration_api_ms": 121577,
+    "model": "claude-opus-5-5",
+    "session_id": "41ec5c9e-71ae-43b9-a3d9-85ac543fdac5",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a grade select and a \"Save grade\" button. Saving gives the person that grade from the sheet's today, the same way the person form does: it writes `PERSON_EDITED` and any rollup lines. All 4 acceptance tests pass under `bin/e2e`.\n\n**Server**\n- `PersonService.grade(...)` passes the person's current name, terms, contact and tags, plus the new grade, to the existing `update`. So it goes through the same version check, name and contact checks, audit record and rollup as the person form.\n- `PersonController` has a new endpoint, `POST /api/sheets/{sheetId}/people/{id}/grade`, which takes `{ version, grade }`.\n- I didn't touch the viewer rule: viewers are already blocked from this endpoint like any other change.\n\n**Front end**\n- `people-api.ts`: a new `gradeOne(...)` call.\n- `people.ts`: a new column after Grade with the `person-inline-grade` select (A/B/C, starting on the person's current grade) and the `person-inline-grade-save` button.\n- A refused save shows the row's `person-error`. Changing the select clears that error, and a save that goes through updates the row.\n\nThe save sends the version of the person currently shown on the row. If someone saved the person since the sheet was loaded, the save is refused, just as a stale person editor is refused. One side effect: if you have the person form open on someone and save their grade from the row, the open form becomes stale and its save will be refused.\n\nThere's no migration because nothing new is stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6887885999999999,
+        "num_turns": 21,
+        "duration_ms": 305409,
+        "duration_api_ms": 121577,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp138.agent.jsonl",
+  "agent_diff_file": "cp138.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

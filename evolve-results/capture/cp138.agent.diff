@@ -1,0 +1,141 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 734ca2bd..7558f3f0 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -155,6 +155,12 @@ export class PeopleApi {
+     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}`, form));
+   }
+ 
++  /** Give the person the grade from the sheet's today, as the person form would; refused with 412 when
++   *  someone has saved the person since `version` was loaded. */
++  gradeOne(sheetId: string, id: number, version: number, grade: Grade): Promise<PersonView> {
++    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/grade`, { version, grade }));
++  }
++
+   /** Give the people of these ids the grade from a date (null: the sheet's today), each in list order
+    *  as the person form would. */
+   grade(sheetId: string, ids: number[], grade: Grade, from: string | null): Promise<BulkGradeView> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 868273b3..e506aa87 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -226,7 +226,7 @@ import { PersonPlans } from '../plans/person-plans';
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+         <table data-testid="people-list">
+           <thead>
+-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Change grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+           </thead>
+           <tbody>
+             @for (p of shownPeople(); track p.id) {
+@@ -251,6 +251,17 @@ import { PersonPlans } from '../plans/person-plans';
+                     [disabled]="addingAlias() === p.id" [attr.aria-label]="'Add an alias for ' + p.name">Add alias</button>
+                 </td>
+                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
++                <td>
++                  <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
++                  <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
++                    (change)="clearPersonError(p.id)">
++                    @for (g of grades; track g) {
++                      <option [value]="g" [selected]="g === gradeToday(p)">{{ g }}</option>
++                    }
++                  </select>
++                  <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade)"
++                    [disabled]="inlineGrading() === p.id" [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
++                </td>
+                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                 <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+@@ -438,6 +449,7 @@ export class People {
+   protected readonly moving = signal<number | null>(null);
+   /** The person being retired. */
+   protected readonly retiring = signal<number | null>(null);
++  protected readonly inlineGrading = signal<number | null>(null);
+   /** The person an alias is being added to. */
+   protected readonly addingAlias = signal<number | null>(null);
+   /** The person a patron is being added to. */
+@@ -959,6 +971,33 @@ export class People {
+     }
+   }
+ 
++  /** Give the person the grade chosen on their row from the sheet's today, as the person form would. */
++  protected async saveGrade(person: PersonView, gradeSelect: HTMLSelectElement): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet || this.inlineGrading() !== null) return;
++    this.personError.set(null);
++    this.patronError.set(null);
++    const grade = gradeSelect.value as Grade;
++    if (!GRADES.includes(grade)) {
++      this.personError.set({ id: person.id, message: 'Choose a grade of A, B or C.' });
++      return;
++    }
++    this.inlineGrading.set(person.id);
++    try {
++      const saved = await this.api.gradeOne(sheet.id, person.id, person.version, grade);
++      if (this.session.sheet()?.id !== sheet.id) return;
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++    } catch (e) {
++      if (this.session.sheet()?.id === sheet.id) {
++        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 412
++          ? 'Someone has saved the person since; re-load the sheet to see them.'
++          : 'The person could not be given the grade.' });
++      }
++    } finally {
++      this.inlineGrading.set(null);
++    }
++  }
++
+   /** Retire the person from the date entered, or the sheet's today when it is left blank. */
+   protected async retire(person: PersonView, from: string): Promise<void> {
+     const sheet = this.session.sheet();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 1ceaf756..04bd6520 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -117,6 +117,10 @@ public class PersonController {
+     public record BulkGradeForm(@NotNull List<@NotNull Long> ids, @NotNull Grade grade, LocalDate from) {
+     }
+ 
++    /** A grade given on a person's row, from the sheet's today, with the version of the person shown. */
++    public record GradeForm(@NotNull Long version, @NotNull Grade grade) {
++    }
++
+     /** What a bulk grade did: the people it changed, and how many. */
+     public record BulkGradeView(List<PersonView> people, int changed) {
+     }
+@@ -201,6 +205,13 @@ public class PersonController {
+                 form.tags()), user);
+     }
+ 
++    /** Give a person a grade from the sheet's today, as the person form would. */
++    @PostMapping("/{id}/grade")
++    public PersonView grade(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GradeForm form) {
++        return view(service.grade(sheetId.trim(), SignedInUser.name(user), id, form.version(), form.grade()), user);
++    }
++
+     /** Give the selected people a grade together, each in list order as the person form would. */
+     @PostMapping("/grade")
+     public BulkGradeView grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 0c05a0e5..53a599a8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -253,6 +253,17 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Give a person a grade from the sheet's today, as the person form would edit them, keeping their
++     *  name, terms, contact and tags; refused when someone has saved the person since this version of
++     *  them was loaded. */
++    @Transactional
++    public Person grade(String sheetId, String user, long id, long version, Grade grade) {
++        Person person = people.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
++        return update(sheetId, user, id, version, person.getName(), grade, null, person.getTerms(),
++                person.getContact(), String.join(",", person.getTags()));
++    }
++
+     /** Give a person another name they are found by; refused when blank, or when it equals, as names
+      *  are compared, any name or alias on the sheet or on another sheet of its tree. */
+     @Transactional
