@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,8 +34,11 @@ public class PersonImportService {
     private final PersonRepository people;
     private final PersonTree tree;
     private final SettingsService settings;
+    private final GradeService grades;
 
-    public PersonImportService(PersonService service, PersonRepository people, PersonTree tree, SettingsService settings) {
+    public PersonImportService(PersonService service, PersonRepository people, PersonTree tree, SettingsService settings,
+            GradeService grades) {
+        this.grades = grades;
         this.service = service;
         this.people = people;
         this.tree = tree;
@@ -55,7 +59,7 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
-        String defaultGrade = settings.defaultGradeInForce(sheetId);
+        String defaultGrade = grades.defaultGradeFor(sheetId, settings.defaultGradeInForce(sheetId));
         for (String raw : text.split("\\r?\\n")) {
             if (raw.isBlank()) continue;
             String[] fields = raw.split(",", -1);
@@ -68,6 +72,7 @@ public class PersonImportService {
                     || !TERMS.matcher(terms).matches() || (contact != null && contact.length() > MAX)) {
                 throw new PersonImportException();
             }
+            if (grades.isRetired(sheetId, grade)) throw new PersonImportException();
             if (!names.add(Person.keyOf(name))) throw new PersonImportException();
             Person match = people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
             if (match == null) {

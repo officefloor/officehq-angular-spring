@@ -6,6 +6,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +24,11 @@ public class QuickAddService {
     private final PersonService personService;
     private final ClaimService claimService;
     private final SettingsService settings;
+    private final GradeService grades;
 
     public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
-            SettingsService settings) {
+            SettingsService settings, GradeService grades) {
+        this.grades = grades;
         this.people = people;
         this.personService = personService;
         this.claimService = claimService;
@@ -35,7 +38,8 @@ public class QuickAddService {
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         Person person = people.findBySheetIdAndNameOrAlias(sheetId, name)
-                .orElseGet(() -> personService.add(sheetId, user, name, settings.defaultGradeInForce(sheetId), null));
+                .orElseGet(() -> personService.add(sheetId, user, name, 
+                        grades.defaultGradeFor(sheetId, settings.defaultGradeInForce(sheetId)), null));
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
         return new Added(person, claim);
     }

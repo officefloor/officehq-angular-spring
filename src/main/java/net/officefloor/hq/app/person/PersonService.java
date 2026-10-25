@@ -8,6 +8,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -33,11 +34,14 @@ public class PersonService {
     private final SheetTagRepository tagRepository;
     private final PersonSnapshotRepository snapshots;
     private final SettingsService settings;
+    private final GradeService grades;
 
     public PersonService(PersonRepository people, SheetRepository sheets, Audit audit, RollupService rollup,
             SheetService sheetService, PersonPatronRepository patrons, PersonWatchRepository watches, PersonTree tree,
-            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots, SettingsService settings) {
+            SheetTagRepository tagRepository, PersonSnapshotRepository snapshots, SettingsService settings,
+            GradeService grades) {
         this.people = people;
+        this.grades = grades;
         this.settings = settings;
         this.snapshots = snapshots;
         this.tagRepository = tagRepository;
@@ -81,6 +85,7 @@ public class PersonService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();
         }
+        grades.requireOpen(sheetId, grade);
         requireFree(sheetId, name, null);
         tree.requireFree(sheetId, name);
         requireContactFree(sheetId, contact, null);
@@ -139,12 +144,14 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw new PersonStaleException(person);
         }
+        LocalDate today = sheetService.today(sheetId);
+        // A retired grade stays with whoever has it today, but no edit gives it anew.
+        if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) grades.requireOpen(sheetId, grade);
         requireFree(sheetId, name, person.getId());
         tree.requireFree(sheetId, name);
         person.getAliases().forEach(alias -> tree.requireFree(sheetId, alias));
         requireContactFree(sheetId, contact, person.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        LocalDate today = sheetService.today(sheetId);
         person.setName(name);
         // A grade left as it is today, with no from-date, adds no dated grade.
         if (gradeFrom != null || !Objects.equals(grade, person.gradeOn(today))) {

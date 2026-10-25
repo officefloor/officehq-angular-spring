@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Stream;
+import net.officefloor.hq.app.grade.GradeRetiredException;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -189,7 +190,7 @@ public class PersonController {
     public record StaleView(String error, PersonView current) {
     }
 
-    /** A save refused for a reason the form tells apart: {@code contact-taken}. */
+    /** A save refused for a reason the form tells apart: {@code contact-taken} or {@code grade-retired}. */
     public record RefusedView(String error) {
     }
 
@@ -443,6 +444,11 @@ public class PersonController {
     @ExceptionHandler(PersonContactTakenException.class)
     public ResponseEntity<RefusedView> contactTaken() {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new RefusedView("contact-taken"));
+    }
+
+    @ExceptionHandler(GradeRetiredException.class)
+    public ResponseEntity<RefusedView> gradeRetired() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new RefusedView("grade-retired"));
     }
 
     @ExceptionHandler(PersonStaleException.class)

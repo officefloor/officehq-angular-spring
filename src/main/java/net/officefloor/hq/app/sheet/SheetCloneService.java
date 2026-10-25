@@ -48,13 +48,15 @@ import net.officefloor.hq.app.template.ClaimTemplate;
 import net.officefloor.hq.app.template.ClaimTemplateRepository;
 import net.officefloor.hq.app.voidreason.SheetVoidReason;
 import net.officefloor.hq.app.voidreason.SheetVoidReasonRepository;
+import net.officefloor.hq.app.grade.SheetGradeRetired;
+import net.officefloor.hq.app.grade.SheetGradeRetiredRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A steward's clone of a sheet to another id, one never used. The clone gets the sheet's today, settings,
- * roles, permissions, rates (with their older versions), holidays, void reasons, templates, tags, people (grades, terms, contacts,
+ * roles, permissions, rates (with their older versions), retired grades, holidays, void reasons, templates, tags, people (grades, terms, contacts,
  * aliases, holds and retirements, patrons), pools, crews and periods (all open), and its claims with their status,
  * frozen figures, dates, notes, lines and logs; each claim that had a number is given the next number of the
  * clone, in the order the claims were opened (by the sheet's today when each was opened, then by the order
@@ -72,6 +74,7 @@ public class SheetCloneService {
     private final RateRepository rates;
     private final RateVersionRepository rateVersions;
     private final SheetHolidayRepository holidays;
+    private final SheetGradeRetiredRepository retiredGrades;
     private final SheetVoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
     private final SheetTagRepository tags;
@@ -97,8 +100,9 @@ public class SheetCloneService {
             SheetTagRepository tags, PersonRepository people, PersonPatronRepository patrons,
             SheetPoolRepository pools, SheetPoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods,
             ClaimRepository claims, ClaimLogRepository logs, ClaimLineRepository lines, ClaimService claimService, SheetService sheetService,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, Audit audit, SheetGradeRetiredRepository retiredGrades) {
         this.sheets = sheets;
+        this.retiredGrades = retiredGrades;
         this.settings = settings;
         this.settingRows = settingRows;
         this.roles = roles;
@@ -157,6 +161,8 @@ public class SheetCloneService {
                     rateVersions.save(new RateVersion(copyId, v.getVersion(), v.getPct(), v.getTo())));
         });
         holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new SheetHoliday(toSheetId, h.getDate())));
+        retiredGrades.findBySheetIdOrderByGradeAsc(sheetId).forEach(g ->
+                retiredGrades.save(new SheetGradeRetired(toSheetId, g.getGrade())));
         voidReasons.findBySheetIdOrderByIdAsc(sheetId).forEach(v ->
                 voidReasons.save(new SheetVoidReason(toSheetId, v.getReason())));
         templates.findBySheetIdOrderByNameAsc(sheetId).forEach(t -> {

@@ -3,6 +3,8 @@ import { Component, DOCUMENT, computed, effect, inject, signal, type WritableSig
 import { Session } from '../../core/session';
 import { Claims } from './claims';
 import { Delegations } from './delegations';
+import { Grades } from './grades';
+import { GradesService } from './grades.service';
 import { Holidays } from './holidays';
 import { Notes } from './notes';
 import { Header } from './header';
@@ -71,7 +73,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Activity, Duplicates, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Activity, Duplicates, Audit, Claims, Crews, Delegations, Grades, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -117,6 +119,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-activity />
     <app-duplicates />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-grades />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-dashboard [counts]="dashboard()" />
     <app-summary
@@ -145,7 +148,7 @@ import { FigurePipe } from '../../core/figure.pipe';
           id="person-form-grade"
           data-testid="person-form-grade"
           [value]="grade()"
-          (change)="grade.set(gradeOf($event)); error.set(null)"
+          (change)="grade.set(gradeOf($event)); gradeChosen = true; error.set(null)"
         >
           @for (g of grades; track g) {
             <option [value]="g" [selected]="g === grade()">{{ (g) | figure }}</option>
@@ -987,6 +990,9 @@ export class People {
   private readonly document = inject(DOCUMENT);
 
   protected readonly grades = GRADES;
+  private readonly gradesService = inject(GradesService);
+  /** The person form's grade was chosen since the form was opened: a retired grade so chosen is refused. */
+  protected gradeChosen = false;
   protected readonly money = money;
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen is first opened, kept across sheet loads. */
@@ -1775,6 +1781,10 @@ export class People {
     const sheet = this.sheet();
     if (!sheet) return;
     const grade = this.inlineGrades()[person.id] ?? this.gradeNow(person);
+    if (grade !== this.gradeNow(person) && this.gradesService.isRetired(grade)) {
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'That grade is retired.' }));
+      return;
+    }
     try {
       const saved = await this.service.grade(sheet, person.id, person.version, grade);
       if (this.sheet() !== sheet) return;
@@ -2637,6 +2647,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.clearRowError(person.id);
+    this.gradeChosen = false;
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.editorOpenings++;
@@ -2652,6 +2663,7 @@ export class People {
 
   protected reset(): void {
     this.editingId.set(null);
+    this.gradeChosen = false;
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
@@ -2680,6 +2692,11 @@ export class People {
       return;
     }
     const id = this.editingId();
+    if ((id === null || this.gradeChosen || this.gradeFrom()) && this.gradesService.isRetired(fields.grade)) {
+      // A retired grade stays with whoever has it, but is chosen for no one: nothing is saved.
+      this.error.set('That grade is retired.');
+      return;
+    }
     const contact = fields.contact.trim().toLowerCase();
     if (contact && this.people().some((p) => p.id !== id && p.contact === contact)) {
       // Refused at once, as the server would: nothing is saved and the editor stays open. The people
@@ -2730,7 +2747,9 @@ export class People {
         const body = e.error as { error?: unknown } | null;
         this.error.set(body?.error === 'contact-taken'
           ? 'Another person on the sheet already has that contact.'
-          : 'Another person on the sheet already has that name.');
+          : body?.error === 'grade-retired'
+            ? 'That grade is retired.'
+            : 'Another person on the sheet already has that name.');
         return;
       }
       this.error.set(id === null ? 'That person could not be added.' : 'That person could not be saved.');
@@ -2739,7 +2758,8 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim for the named person, adding them (grade A) first when the name is new. */
+  /** Add a DRAFT claim for the named person, adding them first (with the sheet's default grade, or A
+   *  while it is retired) when the name is new. */
   protected async quickAdd(event: Event): Promise<void> {
     event.preventDefault();
     if (this.quickAdding) return;
