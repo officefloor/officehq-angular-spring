@@ -1,0 +1,64 @@
+{
+  "checkpoint": 191,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "54b29cd22c91213374859a200d81bff1d0dc895a",
+  "reset_sha": "",
+  "preagent_sha": "0f15d1dccd33a2ca81ecb7f7a34d8c2b21accf6e",
+  "prev_sha": "0f15d1dccd33a2ca81ecb7f7a34d8c2b21accf6e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1127882000000007,
+    "input_tokens": 94,
+    "output_tokens": 28263,
+    "cache_read_tokens": 3370641,
+    "cache_creation_tokens": 109128,
+    "num_turns": 49,
+    "duration_ms": 501243,
+    "duration_api_ms": 304228,
+    "model": "claude-opus-5-5",
+    "session_id": "4f3b3cc6-5ece-4b26-becf-411a77426a6d",
+    "stop_reason": "success",
+    "result_text": "I've built the per-grade clerk limit across the database settings, the server and the settings screen. **Two of the four e2e tests pass, and two still fail.** Both failures happen at steps that have nothing to do with the clerk limit, so I left them alone rather than change other behaviour.\n\n**What I changed** (I copied how the per-grade proof threshold already works):\n- **Server:** each grade's limit is stored as a dated setting under the key `clerk-limit-<grade>`, so no database migration was needed. When a clerk settles a claim, the limit used is the person's grade's limit on the sheet's today if one is set, otherwise the sheet's. Leaving the field blank removes the grade's limit. Saving writes `SETTING_CHANGED key=clerk-limit-<grade> value=<amount>`, with `from=<date>` added when a date is given. There is a new endpoint, `PUT /settings/clerk-limit/{grade}`. The settings data the screen loads (including the as-of view) now also lists each grade's limit, added as the last field.\n- **Settings screen:** each grade gets `setting-clerk-limit-<g>`, `-from` and `-current` fields, with the same checks and save behaviour as the other per-grade settings.\n\n**Test results (`bin/e2e`):**\n- Passing: \"clerk limit per grade\" and \"scenario 2\". These cover dated grade limits, blanking a grade's limit, falling back to the sheet's limit, and the PENDING vs SETTLED outcome with the right audit lines.\n- Failing, **scenario 1** (spec line 175): the test expects a clerk's settle-part of 0.01 on an OPEN claim to be refused. The app accepts it: the audit shows `CLAIM_SPLIT \u2026 into=X-2` and then `CLAIM_SETTLED \u2026 due=1.00`. The clerk limit can't explain it: it only leaves a claim PENDING, never refuses, and the 1.00 due is under both the grade A limit (9.00) and the sheet's (3.00). I couldn't find a rule in the app that would refuse this split.\n- Failing, **scenario 3** (audit check at spec line 1581): after a person's terms are given from a future date, the test expects `PERSON_EDITED \u2026 grade=A terms=`. The app leaves `terms=` off because the terms in force today didn't change. The code comment in `PersonService.update` says that's intended.\n\nI didn't confirm these two fail without my change, since I didn't run the original app. But neither step goes through any code I touched: the split path and the person-edit audit.\n\nDecision for you: making them pass means changing two existing behaviours outside this request \u2014 refusing that settle-part, and always recording `terms=` when dated terms are saved. Other features' tests may rely on how they work now, so I'd rather you confirm first. Do you want me to make those changes?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1127882000000007,
+        "num_turns": 49,
+        "duration_ms": 501243,
+        "duration_api_ms": 304228,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp191.agent.jsonl",
+  "agent_diff_file": "cp191.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
