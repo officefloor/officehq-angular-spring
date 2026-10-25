@@ -5,6 +5,8 @@ export interface GradeSummary {
   grade: string;
   count: number;
   dueTotal: string;
+  /** How many of them are active. */
+  active: number;
 }
 
 /** A period's line of the summary: its due-total. */
@@ -19,8 +21,8 @@ export interface StatusSummary {
   count: number;
 }
 
-// The sheet in figures: per grade, the people on it today who are not retired and their due-totals;
-// per period, its due-total; per status, how many claims have it. Each figure is the list's own.
+// The sheet in figures: per grade, the people on it today who are not retired and their due-totals
+// and how many are active; per period, its due-total; per status, how many claims have it. Each figure is the list's own.
 @Component({
   selector: 'app-summary',
   template: `
@@ -28,7 +30,7 @@ export interface StatusSummary {
       <h2 id="summary-heading">Summary</h2>
       <table aria-label="Summary by grade">
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of grades(); track g.grade) {
@@ -36,6 +38,7 @@ export interface StatusSummary {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
