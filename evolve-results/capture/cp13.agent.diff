@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 0d17c9d1..ec927012 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -24,6 +24,8 @@ export interface ClaimView {
+   number: number | null;
+   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
+   settledDue: string | null;
++  /** Who opened the claim; null when it was never opened. */
++  openedBy: string | null;
+ }
+ 
+ export interface ClaimForm {
+@@ -73,7 +75,8 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheetId)}/claims/${id}`, form));
+   }
+ 
+-  /** Move a claim to its next status: refused when its status does not allow it. */
++  /** Move a claim to its next status: refused when its status does not allow it, and settling is
++   *  refused (403) to the user who opened the claim. */
+   act(sheetId: string, id: number, action: ClaimAction): Promise<ClaimView> {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, {}));
+   }
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index f9db06b1..f5799791 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { RateView } from '../rates/rates-api';
+@@ -37,6 +38,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+@@ -118,9 +120,12 @@ export class PersonClaims {
+     try {
+       const changed = await this.api.act(sheet.id, claim.id, action);
+       if (this.session.sheet()?.id === sheet.id) this.changed.emit(changed);
+-    } catch {
++    } catch (e) {
+       if (this.session.sheet()?.id === sheet.id) {
+-        this.claimError.set({ id: claim.id, message: `This claim cannot be ${PAST[action]} from its status.` });
++        const message = e instanceof HttpErrorResponse && e.status === 403
++          ? 'You opened this claim, so someone else must settle it.'
++          : `This claim cannot be ${PAST[action]} from its status.`;
++        this.claimError.set({ id: claim.id, message });
+       }
+     }
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1e23f780..427f38a8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 12, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** Who opened the claim; none while a draft, or when voided without being opened. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -104,6 +108,14 @@ public class Claim {
+         this.settledDue = settledDue;
+     }
+ 
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
++
+     /** Change the claim's amount, date and note; the amount is kept to two decimals. */
+     public void set(BigDecimal amount, LocalDate date, String note) {
+         this.amount = amount.setScale(2);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index b1df9131..8a21b532 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -28,13 +28,16 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClaimController {
+ 
+     /** What the screen shows of a claim; the amount always has two decimals. The settled due is the
+-     *  due fixed when the claim was settled, or null when its due is live. */
++     *  due fixed when the claim was settled, or null when its due is live. Opened by is who opened
++     *  the claim, or null when it was never opened. */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+-            ClaimStatus status, Integer number, String settledDue) {
++            ClaimStatus status, Integer number, String settledDue,
++            String openedBy) {
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
++                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
++                    claim.getOpenedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6c496b8d..6df0118e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -60,7 +60,8 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Move a claim to a new status; a change its status does not allow is refused. */
++    /** Move a claim to a new status; a change its status does not allow is refused, as is settling
++     *  by the user who opened the claim. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+@@ -69,9 +70,14 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened a claim cannot settle it.");
++        }
+         Person person = person(sheetId, claim.getPersonId());
+         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
+         claim.setStatus(next);
++        if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
+         // A void claim keeps no number; the number it had is never given to another claim.
+         claim.setNumber(next == ClaimStatus.VOID ? null : number);
+         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow(sheetId, person, claim));
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 00000000..1ee73927
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,3 @@
++-- Who opened a claim: the signed-in user's name, set when it is opened. Null while a draft, or
++-- when it was voided without being opened. The user who opened a claim may not settle it.
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(255);
