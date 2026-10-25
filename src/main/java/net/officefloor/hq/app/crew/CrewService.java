@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.pool.SheetPoolRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -38,9 +39,11 @@ public class CrewService {
     private final SheetPoolRepository pools;
     private final PersonRepository people;
     private final Audit audit;
+    private final RollupService rollup;
 
     public CrewService(SheetRepository sheets, SheetCrewRepository crews, SheetCrewMemberRepository members,
-            SheetPoolRepository pools, PersonRepository people, Audit audit) {
+            SheetPoolRepository pools, PersonRepository people, Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.sheets = sheets;
         this.crews = crews;
         this.members = members;
@@ -82,8 +85,10 @@ public class CrewService {
         if (crews.existsBySheetIdAndName(sheetId, name) || pools.existsBySheetIdAndName(sheetId, name)) {
             throw new CrewTakenException();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetCrew added = crews.saveAndFlush(new SheetCrew(sheetId, name, lead.getId()));
         audit.change("CREW_ADDED", sheetId, by, "name=" + name, "lead=" + lead.getName());
+        rollup.recordSince(sheetId, by, before);
         return added;
     }
 
@@ -96,8 +101,10 @@ public class CrewService {
                 || members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
             throw new CrewMemberTakenException();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetCrewMember added = members.saveAndFlush(new SheetCrewMember(crew.getId(), person.getId()));
         audit.change("CREW_MEMBER_ADDED", sheetId, by, "crew=" + crew.getName(), "name=" + person.getName());
+        rollup.recordSince(sheetId, by, before);
         return added;
     }
 

@@ -666,13 +666,15 @@ public class SettingsService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPot();
     }
 
-    /** Set the sheet's pot; null for none. The balanced pools' cuts follow it. */
+    /** Set the sheet's pot; null for none. The balanced pools' cuts follow it, and so the due-totals under a cap. */
     @Transactional
     public Sheet setPot(String sheetId, String by, BigDecimal pot) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setPot(pot);
         sheets.flush();
         audit.change("SETTING_CHANGED", sheetId, by, "key=pot", "value=" + (pot == null ? "" : pot.toPlainString()));
+        rollup.recordSince(sheetId, by, before);
         return sheet;
     }
 

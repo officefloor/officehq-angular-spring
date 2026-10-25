@@ -60,8 +60,9 @@ import { FigurePipe } from '../../core/figure.pipe';
 // the remainder to the first named. The row shows each patron as "<name> <share>", sorted by name, and
 // their backing: over their patrons, the figures of the patron's SETTLED claims dated within the 90 days
 // up to and including the sheet's today, each at its frozen figure, added up, times the patron's share
-// divided by 100; the sum rounded half to even (0.00 with none). A person's due-total is at most the sheet's cap: when the
-// sum of their figures is above it, the row shows the cap and the difference as their excess; every
+// divided by 100; the sum rounded half to even (0.00 with none). A person's due-total is at most the sheet's cap less
+// their cut total (not below 0.00): when the sum of their figures is above that, the row shows it and the difference
+// as their excess; every
 // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (a due-total of n/a is no figure).
@@ -2265,19 +2266,26 @@ export class People {
     return due === null ? null : money(due);
   }
 
-  /** How far the sum of the person's figures is above the sheet's cap; 0.00 when it is not, or when
-   *  their due-total is n/a. */
+  /** How far the sum of the person's figures is above what the cap leaves them (see {@link capLeftOf});
+   *  0.00 when it is not, when there is no cap, or when their due-total is n/a. */
   protected excessOf(person: Person): string {
     const sum = this.sumCentsOf(person);
-    const cap = this.cap();
-    return money(sum === null || cap === null ? 0 : Math.max(0, sum - cap));
+    const left = this.capLeftOf(person);
+    return money(sum === null || left === null ? 0 : Math.max(0, sum - left));
   }
 
   /** The person's due-total in cents, capped; null when it is n/a. */
   private dueCentsOf(person: Person): number | null {
     const sum = this.sumCentsOf(person);
+    const left = this.capLeftOf(person);
+    return sum === null || left === null ? sum : Math.min(sum, left);
+  }
+
+  /** The most the person's due-total can be, in cents: the sheet's cap less their cut total, not below 0;
+   *  null when there is no cap. */
+  private capLeftOf(person: Person): number | null {
     const cap = this.cap();
-    return sum === null || cap === null ? sum : Math.min(sum, cap);
+    return cap === null ? null : Math.max(0, cap - (this.cutCents().get(person.id) ?? 0));
   }
 
   /** The sum of the person's figures in cents, before the cap; null when it is n/a. */

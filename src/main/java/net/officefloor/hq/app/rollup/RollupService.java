@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateRepository;
@@ -34,7 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
  * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
  * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
  * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
- * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one; of a
+ * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today less their cut total
+ * (their cuts across every pool, see {@link PoolService}), not below 0.00, when it has one; of a
  * shared claim each holder counts their part (see {@link ClaimShare#partOf}) and its own person the rest) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
@@ -58,9 +60,11 @@ public class RollupService {
     private final SheetRepository sheets;
     private final DatedSettings dated;
     private final Audit audit;
+    private final PoolService pools;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimShareRepository shares,
-            RateChain rates, SheetRepository sheets, DatedSettings dated, Audit audit) {
+            RateChain rates, SheetRepository sheets, DatedSettings dated, Audit audit, PoolService pools) {
+        this.pools = pools;
         this.shares = shares;
         this.dated = dated;
         this.people = people;
@@ -129,7 +133,7 @@ public class RollupService {
                 due = due.add(part);
                 any = true;
             }
-            due = cappedOf(due, cap);
+            due = cappedOf(due, cap, basis.cutOf(person.getId()));
             boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);
@@ -226,9 +230,10 @@ public class RollupService {
                 && !claim.isDeferredOn(today) && basis.overdueFrom(claim).isBefore(today);
     }
 
-    /** A due-total as shown: at most {@code cap}, when there is one. */
-    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap) {
-        return cap == null ? due : due.min(cap);
+    /** A due-total as shown: at most {@code cap} less the person's cut total {@code cut}, not below 0.00, when
+     * there is a cap. */
+    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap, BigDecimal cut) {
+        return cap == null ? due : due.min(cap.subtract(cut).max(zero()));
     }
 
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
@@ -282,6 +287,11 @@ public class RollupService {
         /** The cap in force on the sheet's today; null when there is none. */
         BigDecimal cap();
 
+        /** The person's cut total: their cuts across every pool they are a member of, added up; 0.00 by default. */
+        default BigDecimal cutOf(Long personId) {
+            return zero();
+        }
+
         /** The person's claim with the number. */
         Optional<Claim> claimNumbered(Long personId, String number);
 
@@ -313,6 +323,8 @@ public class RollupService {
     /** The sheet as it stands. */
     public Basis live(String sheetId) {
         return new Basis() {
+            private Map<Long, BigDecimal> cuts;
+
             private Sheet sheet() {
                 return sheets.findById(sheetId).orElse(null);
             }
@@ -352,6 +364,12 @@ public class RollupService {
             @Override
             public BigDecimal cap() {
                 return sheet() == null ? null : dated.cap(sheetId);
+            }
+
+            @Override
+            public BigDecimal cutOf(Long personId) {
+                if (cuts == null) cuts = pools.cutTotalsNow(sheetId);
+                return cuts.getOrDefault(personId, zero());
             }
 
             @Override
@@ -421,6 +439,11 @@ public class RollupService {
             }
 
             @Override
+            public BigDecimal cutOf(Long personId) {
+                return base.cutOf(personId);
+            }
+
+            @Override
             public Optional<Claim> claimNumbered(Long personId, String number) {
                 return base.claimNumbered(personId, number);
             }
@@ -448,7 +471,7 @@ public class RollupService {
     }
 
     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
-     * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap; null (n/a)
+     * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap less their cut total; null (n/a)
      * when none has a figure and no rate of their grade is in force on its today. */
     public BigDecimal dueTotalOf(List<Claim> theirs, Person person, Basis basis) {
         LocalDate today = basis.today();
@@ -462,7 +485,7 @@ public class RollupService {
             any = true;
         }
         boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
-        return any || rated ? cappedOf(due, basis.cap()) : null;
+        return any || rated ? cappedOf(due, basis.cap(), basis.cutOf(person.getId())) : null;
     }
 
     /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was

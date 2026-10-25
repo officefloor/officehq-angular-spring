@@ -24,9 +24,11 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -96,10 +98,13 @@ public class PoolService {
     private final PeriodRepository periods;
     private final SheetHistory history;
     private final Audit audit;
+    private final RollupService rollup;
 
+    /** The rollup is lazy: it works out the cut totals through this service. */
     public PoolService(SheetRepository sheets, SheetPoolRepository pools, SheetPoolMemberRepository members,
             SheetCrewRepository crews, SheetCrewMemberRepository crewMembers, PersonRepository people,
-            PeriodRepository periods, SheetHistory history, Audit audit) {
+            PeriodRepository periods, SheetHistory history, Audit audit, @Lazy RollupService rollup) {
+        this.rollup = rollup;
         this.sheets = sheets;
         this.pools = pools;
         this.members = members;
@@ -177,6 +182,19 @@ public class PoolService {
             }
         }
         return cuts;
+    }
+
+    /** Each person's cut total now, by person id: their cuts across every pool they are a member of, added up
+     * (a person with no cut is left out). */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> cutTotalsNow(String sheetId) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (Pooled pool : pools(basisNow(sheetId))) {
+            for (Member m : pool.members()) {
+                if (m.personId() != null && m.cut() != null) totals.merge(m.personId(), m.cut(), BigDecimal::add);
+            }
+        }
+        return totals;
     }
 
     /** What the pools are worked out from now: the sheet's pot, today, people, pools and crews as they stand. */
@@ -395,10 +413,12 @@ public class PoolService {
         LocalDate toDate = dateOf(to);
         datesCheck(fromDate, toDate);
         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) throw new PoolMemberTakenException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetPoolMember added = members.saveAndFlush(new SheetPoolMember(pool.getId(), person.getId(), amount)
                 .dated(fromDate, toDate));
         audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
                 "name=" + person.getName(), "share=" + amount.toPlainString()));
+        rollup.recordSince(sheetId, by, before);
         return added;
     }
 
@@ -428,10 +448,12 @@ public class PoolService {
         }
         if (above.containsKey(member.getId())) throw new PoolNestedException();
         if (depth - 1 + height(member.getId(), below) > DEPTH) throw new PoolDepthException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         SheetPoolMember added = members.saveAndFlush(SheetPoolMember.ofPool(pool.getId(), member.getId(), amount)
                 .dated(fromDate, toDate));
         audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
                 "name=" + member.getName(), "share=" + amount.toPlainString()));
+        rollup.recordSince(sheetId, by, before);
         return added;
     }
 
