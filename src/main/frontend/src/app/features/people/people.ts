@@ -71,6 +71,17 @@ import { QuickAdd } from './quick-add';
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
+        <p>
+          <button type="button" data-testid="bulk-open" (click)="openSelected()" [disabled]="bulkOpening()">
+            Open selected claims</button>
+          @if (bulkResult(); as r) {
+            Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+            refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+          }
+        </p>
+        @if (bulkError()) {
+          <p role="alert" data-testid="bulk-open-error">{{ bulkError() }}</p>
+        }
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
@@ -134,6 +145,7 @@ import { QuickAdd } from './quick-add';
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
                     [rates]="rates()" [grades]="p.grades" [periods]="periods()"
+                    [selected]="selectedClaims()" (selectedChange)="selectClaim($event.id, $event.on)"
                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
                 </td>
                 <td>
@@ -276,6 +288,13 @@ export class People {
   protected readonly stating = signal<number | null>(null);
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** The ids of the claims selected to open together. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** Whether the selected claims are being opened. */
+  protected readonly bulkOpening = signal(false);
+  /** How many the last bulk open opened and refused; cleared while the next one runs. */
+  protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkError = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -295,6 +314,9 @@ export class People {
       this.statements.set(new Map());
       this.personError.set(null);
       this.patronError.set(null);
+      this.selectedClaims.set(new Set());
+      this.bulkResult.set(null);
+      this.bulkError.set('');
       if (sheet) void this.reload(sheet.id);
     });
   }
@@ -550,6 +572,35 @@ export class People {
   protected quickAdded(added: QuickAddView): void {
     if (!this.people().some((p) => p.id === added.person.id)) this.people.update((list) => [...list, added.person]);
     this.claimAdded(added.claim);
+  }
+
+  protected selectClaim(id: number, on: boolean): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together, in list order; each that cannot be opened is left as it is. */
+  protected async openSelected(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.bulkOpening()) return;
+    this.bulkResult.set(null);
+    this.bulkError.set('');
+    this.bulkOpening.set(true);
+    try {
+      const result = await this.claimsApi.openSelected(sheet.id, [...this.selectedClaims()]);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      for (const claim of result.claims) this.claimSaved(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkResult.set({ opened: result.opened, refused: result.refused });
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.bulkError.set('The selected claims could not be opened.');
+    } finally {
+      this.bulkOpening.set(false);
+    }
   }
 
   protected claimSaved(claim: ClaimView): void {

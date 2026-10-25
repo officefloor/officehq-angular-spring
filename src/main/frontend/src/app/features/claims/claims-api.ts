@@ -48,6 +48,13 @@ export interface ClaimView {
   corrects: number | null;
 }
 
+/** What opening selected claims together did: how many were opened and refused, and the claims opened. */
+export interface BulkOpenView {
+  opened: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */
@@ -188,5 +195,10 @@ export class ClaimsApi {
    *  refused (403) to the user who opened the claim. */
   act(sheetId: string, id: number, action: ClaimAction): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, {}));
+  }
+
+  /** Open the claims of these ids together in list order; each that cannot be opened is left as it is. */
+  openSelected(sheetId: string, ids: readonly number[]): Promise<BulkOpenView> {
+    return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheetId)}/claims/open`, { ids }));
   }
 }

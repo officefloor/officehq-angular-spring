@@ -54,10 +54,20 @@ public class ClaimController {
             @Positive Integer corrects) {
     }
 
-    private final ClaimService service;
+    /** The claims selected to open together. */
+    public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+    }
 
-    public ClaimController(ClaimService service) {
+    /** What a bulk open did: the claims it opened, and how many were opened and refused. */
+    public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
+    }
+
+    private final ClaimService service;
+    private final BulkOpenService bulkOpen;
+
+    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
         this.service = service;
+        this.bulkOpen = bulkOpen;
     }
 
     /** The sheet's claims, newest first. */
@@ -88,6 +98,15 @@ public class ClaimController {
     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.name(user), id, ClaimStatus.OPEN));
+    }
+
+    /** Open the selected claims together in list order; each that cannot be opened is left as it is. */
+    @PostMapping("/claims/open")
+    public BulkOpenView openSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
+        BulkOpenService.Result result = bulkOpen.open(sheetId.trim(), SignedInUser.name(user), form.ids());
+        return new BulkOpenView(result.opened().size(), result.refused(),
+                result.opened().stream().map(ClaimView::of).toList());
     }
 
     /** Settle an open claim. */
