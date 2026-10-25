@@ -228,7 +228,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        int terms = termsOf(sheetId, person, sheets.today(sheetId));
+        int terms = termsOf(sheetId, person, person.gradeOn(dated), sheets.today(sheetId));
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseClosed(sheetId, dueBy);
         person.requireClaimable(dated);
@@ -321,9 +321,10 @@ public class ClaimService {
      * above the proof threshold in force on its date (refused before the clerk limit is considered). A
      * SETTLED claim can only be voided by a steward, and only while the sheet's today is at most 7 days
      * after its settlement (its status log's SETTLED date); its frozen figure then leaves every total and
-     * is recorded as reversed. A voided claim keeps its number, if it had one. An open of a claim whose due
+     * is recorded as reversed. A claim is given its number when it is settled (the next in the sequence it is
+ * numbered in, by its due-by, unless it already has one), not when opened; a voided claim keeps its number, if it had one. An open of a claim whose due
  * is above the review threshold in force on its date leaves it in REVIEW instead, opened by the user but
- * with no number yet, until a steward reviews it (see {@link #review}); a REVIEW claim can only be voided
+ * until a steward reviews it (see {@link #review}); a REVIEW claim can only be voided
  * here. While the claim's person is flagged on the sheet's today, only a steward may open it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -405,7 +406,6 @@ public class ClaimService {
             next = ClaimStatus.REVIEW;
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.OPEN) {
-            number = nextNumber(sheetId, claim.getDueBy());
             claim.setOpenedBy(user);
         }
         BigDecimal dueThen = null;
@@ -421,7 +421,10 @@ public class ClaimService {
             BigDecimal due = on == null ? rollup.shownOf(claim, person) : dueThen;
             if (!judged) refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, person, due)) next = ClaimStatus.PENDING;
-            else claim.setSettledDue(due);
+            else {
+                claim.setSettledDue(due);
+                if (number == null) number = nextNumber(sheetId, claim.getDueBy());
+            }
         }
         claim.setStatus(next);
         claim.setNumber(number);
@@ -605,7 +608,7 @@ public class ClaimService {
 
     /** Split {@code amount} (more than 0.00 and less than the claim's amount) off an OPEN claim: the
      * claim keeps the rest and loses any figure a statement bound it to; a new OPEN claim of the split-off
-     * amount, with the same person, date and note, is given the next number, is opened by the user, has
+     * amount, with the same person, date and note, has no number until it is settled, is opened by the user, has
      * its due-by fixed now from its date and the terms in force on the sheet's today and names the claim's number as the one
      * it was split from; it is a late entry when that due-by falls in a soft-closed period. Refused unless
      * the claim is OPEN and not deferred on the sheet's today, and when its due-by or the new claim's falls
@@ -631,20 +634,19 @@ public class ClaimService {
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
         split.setListed(sheets.nextInSequence(sheetId, "listed"));
         split.setStatus(ClaimStatus.OPEN);
-        split.setNumber(nextNumber(sheetId, split.getDueBy()));
         split.setOpenedBy(user);
         split.setSplitFrom(claim.getNumber());
         split.setTags(claim.getTags().isEmpty() ? null : String.join(",", claim.getTags()));
         split = claims.saveAndFlush(split);
         log(user, person, split);
-        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), "into=" + split.getNumber());
+        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), "into=" + (split.getNumber() == null ? "" : split.getNumber()));
         record("CLAIM_OPENED", user, person, split, split.getNumber());
         rollup.recordSince(sheetId, user, before);
         return List.of(claim, split);
     }
 
-    /** A steward's review of a claim in REVIEW: it becomes OPEN and is given the next number then,
-     * keeping who opened it. Refused unless the claim is in REVIEW, when the user is not a steward, and
+    /** A steward's review of a claim in REVIEW: it becomes OPEN, still with no number until it is
+     * settled, keeping who opened it. Refused unless the claim is in REVIEW, when the user is not a steward, and
      * when its due-by is in a closed period. */
     @Transactional
     public Claim review(String sheetId, String user, long claimId) {
@@ -655,19 +657,18 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        String number = nextNumber(sheetId, claim.getDueBy());
         claim.setStatus(ClaimStatus.OPEN);
-        claim.setNumber(number);
         claims.flush();
         log(user, person, claim);
         record("CLAIM_REVIEWED", user, person, claim, null);
-        record("CLAIM_OPENED", user, person, claim, number);
+        record("CLAIM_OPENED", user, person, claim, claim.getNumber());
         rollup.recordSince(sheetId, user, before);
         return claim;
     }
 
     /** A steward's (or the person's approver's) approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
      * shows then: what a statement bound it to, late charge included, when one did, otherwise its person's rate then together with its late charge then).
+     * It is given the next number then, unless it already has one.
      * Refused unless the claim is PENDING, when the user is not a steward or opened or last edited the claim, and when it
      * has no proofs and that due is above the proof threshold in force on its date. */
     @Transactional
@@ -681,6 +682,7 @@ public class ClaimService {
         refuseUnproved(claim, person, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
+        if (claim.getNumber() == null) claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
         claims.flush();
         log(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), "due=" + dueText(due));
@@ -729,7 +731,7 @@ public class ClaimService {
     }
 
     /** A move, by a role the permission matrix allows to reassign (a steward by default), of a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
-     * date but, unless a draft (which has no number), is given the next number in the sequence it is
+     * date but, when it already has a number (one given before numbers were given at settlement), is given the next number in the sequence it is
      * numbered in (as when opened now), its old number never used again; it loses
      * any figure a statement bound it to (it is live again until its new person's next statement), and is listed as its new person's newest claim. Refused when the user's
      * role may not reassign, when the claim is SETTLED or VOID, is a correction (it corrects a claim of its
@@ -878,7 +880,7 @@ public class ClaimService {
         }
     }
 
-    /** The number a claim due by {@code date} is given when opened now: within the period containing
+    /** The number a claim due by {@code date} is given when settled now: within the period containing
      * that date ({@code <period name>-<n>}, or {@code X-<n>} when none does) while the sheet numbers by
      * period, otherwise the next sheet-wide number in the fiscal year of that date ({@code FY<yyyy>-<n>}). */
     public String nextNumber(String sheetId, LocalDate date) {
@@ -992,7 +994,13 @@ public class ClaimService {
     /** The terms a claim of the person created on {@code date} (the sheet's today then) is due by: the person's own terms
      * in force on that day, else those of their grade in force on that day, else the sheet's then. */
     private int termsOf(String sheetId, Person person, LocalDate date) {
+        return termsOf(sheetId, person, person.gradeOn(date), date);
+    }
+
+    /** The terms as {@link #termsOf(String, Person, LocalDate)} gives them, but judged for the person's
+     * {@code grade} (the one they have on the claim's date). */
+    private int termsOf(String sheetId, Person person, String grade, LocalDate date) {
         Integer own = person.termsOn(date);
-        return own != null ? own : settings.termsFor(sheetId, person.gradeOn(date), date);
+        return own != null ? own : settings.termsFor(sheetId, grade, date);
     }
 }

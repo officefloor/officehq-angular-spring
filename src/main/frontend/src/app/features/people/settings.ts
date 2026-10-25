@@ -30,7 +30,7 @@ const STANDING: Record<PermAction, string> = {
 // is settled or approved; blank for none), its late percent (the percent of its figure an overdue claim's due gains for
 // every full 30 days it is overdue), its policy date (a claim dated before it rounds half up, one on
 // or after it half to even; blank for the sheet's today), its period numbering from (the date from which
-// a claim opened is numbered within its period; blank for off), its grace days (when the sheet's today
+// a claim settled is numbered within its period; blank for off), its grace days (when the sheet's today
 // is changed, an open period whose to-date plus them is before it is closed; blank for off), its fiscal start month (the month, 1 to 12, its fiscal year starts in), its entry date (a claim
 // added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
 // settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank

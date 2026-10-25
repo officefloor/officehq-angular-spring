@@ -57,7 +57,7 @@ export interface SheetSettings {
   policyDate: string | null;
   /** The roles given on the sheet, by user name. */
   roles: RoleGiven[];
-  /** The date (YYYY-MM-DD) from which a claim opened is numbered within its period; null when off. */
+  /** The date (YYYY-MM-DD) from which a claim settled is numbered within its period; null when off. */
   periodNumberingFrom: string | null;
   /** Every floor recorded, each from its date, oldest first. */
   floors: Dated[];

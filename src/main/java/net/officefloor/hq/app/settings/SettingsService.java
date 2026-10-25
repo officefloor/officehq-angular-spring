@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * terms in their place), and its late percent, the
  * percent of its figure an overdue claim's due gains for every full 30 days it is overdue, and its policy
  * date, which decides how a claim's live figures round (the sheet's today when none is set), and its
- * period numbering from, the date from which a claim opened is numbered within its period (off when null),
+ * period numbering from, the date from which a claim settled is numbered within its period (off when null),
  * and its proof threshold, above which a claim's due needs a proof before it is settled (none when null; each grade may
  * have its own in its place),
  * and its fiscal start month, the month (1 to 12) its fiscal year starts in (1 unless set),
