@@ -194,6 +194,35 @@ public class ClaimService {
         return saved;
     }
 
+    /** Re-settle a SETTLED claim: its due is frozen again at what it would be today as an open claim
+     *  bound by no statement (today's rates, grades, floor and late charge). Refused unless the user is
+     *  a steward of the sheet, and for a claim that is not SETTLED or is dated inside a closed period. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-settles a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal dueNow = LateCharge.dueAsOpen(claim, dueNow(sheetId, person, claim), sheets.today(sheetId),
+                settings.latePct(sheetId), rounding(sheetId, claim));
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.setSettledDue(dueNow);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_RESETTLED", user, person, saved, saved.getNumber(),
+                " old=" + text(old) + " new=" + text(saved.getSettledDue()));
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Reject a PENDING claim for a reason: it is OPEN again, bound again by its person's last
      *  statement if that statement bound it. Refused unless the user is a steward of the sheet. */
     @Transactional

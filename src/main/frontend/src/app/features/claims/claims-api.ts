@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
 
 /** An amount as a form takes it: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -208,7 +208,7 @@ export class ClaimsApi {
 
   /** Move a claim to its next status: refused when its status does not allow it, and settling or
    *  approving is refused (403) to the user who opened the claim; approving and rejecting (with a
-   *  reason) a PENDING claim are refused (403) to all but a steward. */
+   *  reason) a PENDING claim, and re-settling a SETTLED one, are refused (403) to all but a steward. */
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' ? { reason: reason ?? '' } : {};
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));

@@ -23,7 +23,13 @@ public final class LateCharge {
     /** The late charge on the claim of the figure (null: n/a, and no charge) on the sheet's today. */
     public static BigDecimal of(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
             RoundingMode rounding) {
-        if (figure == null || today == null || !claim.getStatus().isOpen() || claim.isCorrection()) return ZERO;
+        return claim.getStatus().isOpen() ? asOpen(claim, figure, today, latePct, rounding) : ZERO;
+    }
+
+    /** The late charge the claim of the figure would have on the sheet's today were it open. */
+    private static BigDecimal asOpen(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+            RoundingMode rounding) {
+        if (figure == null || today == null || claim.isCorrection()) return ZERO;
         long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), today);
         long steps = overdueDays <= 0 ? 0 : overdueDays / DAYS_PER_CHARGE;
         if (steps == 0) return ZERO;
@@ -35,5 +41,11 @@ public final class LateCharge {
     public static BigDecimal dueOf(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
             RoundingMode rounding) {
         return figure == null ? null : figure.add(of(claim, figure, today, latePct, rounding));
+    }
+
+    /** The figure with the late charge it would have were the claim open added on top; null when the figure is n/a. */
+    public static BigDecimal dueAsOpen(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+            RoundingMode rounding) {
+        return figure == null ? null : figure.add(asOpen(claim, figure, today, latePct, rounding));
     }
 }

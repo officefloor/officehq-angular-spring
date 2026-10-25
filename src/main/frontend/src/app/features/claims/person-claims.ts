@@ -11,7 +11,7 @@ import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected' };
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled' };
 
 // One person's claims, newest first, with one form to add a claim or edit one.
 @Component({
@@ -64,6 +64,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
             [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
+            [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input #rejectReason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
@@ -188,7 +190,7 @@ export class PersonClaims {
       { emitEvent: false });
   }
 
-  /** Open, settle, void, approve or reject (for a reason) a claim; the store refuses a change its
+  /** Open, settle, void, approve, reject (for a reason) or re-settle a claim; the store refuses a change its
    *  status does not allow. A clerk's settling above the clerk limit leaves the claim PENDING. */
   protected async act(claim: ClaimView, action: ClaimAction, reason = ''): Promise<void> {
     const sheet = this.session.sheet();
@@ -206,6 +208,8 @@ export class PersonClaims {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden && (action === 'approve' || action === 'reject')
           ? `Only a steward who did not open this claim can ${action} it.`
+          : forbidden && action === 'resettle'
+          ? 'Only a steward can re-settle this claim.'
           : forbidden
           ? 'You opened this claim, so someone else must settle it.'
           : periodOf(this.periods(), claim.date)?.closed

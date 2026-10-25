@@ -162,6 +162,13 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId.trim(), SignedInUser.name(user), id, form.reason().trim()));
     }
 
+    /** Re-settle a settled claim at what it would be due today as an open, unbound claim; a steward's change. */
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.resettle(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
     /** The person a claim is moved to. */
     public record ReassignForm(@NotNull Long personId) {
     }
