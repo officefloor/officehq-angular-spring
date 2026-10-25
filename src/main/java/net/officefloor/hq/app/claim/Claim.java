@@ -94,6 +94,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The user whose open editor locks the claim for other users; none when it is not locked. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -255,6 +259,20 @@ public class Claim {
 
     public String getSplitFrom() {
         return splitFrom;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    /** Whether the claim is locked by a user other than this one. */
+    public boolean isLockedAgainst(String user) {
+        return lockedBy != null && !lockedBy.equals(user);
+    }
+
+    /** Lock the claim for the user, or (null) release it. */
+    public void lockFor(String user) {
+        this.lockedBy = user;
     }
 
     /** Split the amount given off the claim into a new OPEN claim of the same person, date and note,

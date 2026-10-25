@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -8,9 +8,12 @@ import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { ClaimEditors } from './claim-editors';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitView, claimOwedCents, isDeferred, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** The claim form's fields, as typed. */
+type ClaimFields = { amount: string; date: string; note: string; corrects: string };
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled' };
 
 // One person's claims, newest first, with one form to add a claim or edit one.
@@ -117,6 +120,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
 export class PersonClaims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
+  private readonly editors = inject(ClaimEditors);
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
@@ -152,7 +156,16 @@ export class PersonClaims {
   protected readonly corrects = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ amount: this.amount, date: this.date, note: this.note, corrects: this.corrects });
 
-  protected readonly editingId = signal<number | null>(null);
+  /** The claim the editor has open, or null when the form adds a claim; it stays open while the sheet
+   *  is re-loaded. */
+  protected readonly editingId = computed(() => {
+    const sheet = this.session.sheet();
+    return sheet ? this.editors.editing(sheet.id, this.personId()) : null;
+  });
+  /** The claim whose values the form was last filled with. */
+  private filledFor: number | null = null;
+  /** The last edit button's open of the editor, settled once the store has answered it. */
+  private opening: Promise<void> = Promise.resolve();
   protected readonly saving = signal(false);
   protected readonly error = signal('');
   /** The refusal of the last action taken on a claim's row, shown on that row. */
@@ -163,6 +176,13 @@ export class PersonClaims {
       this.error.set('');
       // A refused save shown on the claim being edited belongs to the form too.
       if (this.editingId() !== null && this.claimError()?.id === this.editingId()) this.claimError.set(null);
+    });
+    // An editor left open when the sheet was re-loaded is filled again once its claim is shown.
+    effect(() => {
+      const id = this.editingId();
+      if (id === null || id === this.filledFor) return;
+      const claim = this.claims().find((c) => c.id === id);
+      if (claim) this.fill(claim);
     });
   }
 
@@ -201,18 +221,93 @@ export class PersonClaims {
     return `claim-form-${field}-${this.personId()}`;
   }
 
+  private setEditing(claimId: number | null): void {
+    const sheet = this.session.sheet();
+    if (sheet) this.editors.set(sheet.id, this.personId(), claimId);
+  }
+
   private reset(): void {
-    this.editingId.set(null);
+    this.setEditing(null);
+    this.filledFor = null;
     this.error.set('');
     this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
   }
 
-  protected edit(claim: ClaimView): void {
-    this.claimError.set(null);
-    this.editingId.set(claim.id);
-    this.error.set('');
+  private fill(claim: ClaimView): void {
+    this.filledFor = claim.id;
     this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' },
       { emitEvent: false });
+  }
+
+  /** Fill the fields of the form not typed in since the editor was opened with the claim's values. */
+  private fillUntyped(claim: ClaimView): void {
+    const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' };
+    for (const [key, control] of Object.entries(this.form.controls)) {
+      if (control.pristine) control.setValue(values[key as keyof typeof values], { emitEvent: false });
+    }
+  }
+
+  /** Release the user's lock on a claim whose editor is closed unsaved; a lock already gone is no matter. */
+  private release(sheetId: string, claimId: number): void {
+    this.api.unlock(sheetId, claimId).catch(() => undefined);
+  }
+
+  /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
+   *  sheet's today changes. A claim that cannot be edited (not a draft, or dated inside a closed period)
+   *  is refused and takes no lock, as is a viewer's edit. A claim another user's editor locks is refused
+   *  too, the editor showing its values without the lock; its save is refused while the lock holds. */
+  protected async edit(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    if (this.inClosedPeriod(claim.date)) {
+      this.claimError.set({ id: claim.id, message: 'This claim is dated inside a closed period, so it cannot be edited.' });
+      return;
+    }
+    if (claim.status !== 'DRAFT') {
+      this.claimError.set({ id: claim.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
+      return;
+    }
+    // The editor is on the claim at once, so what is typed before the store answers is kept; its
+    // fields are filled once the store has answered, and a save waits for that.
+    const was = this.editingId();
+    const typed = this.form.getRawValue();
+    const filled = this.filledFor;
+    this.setEditing(claim.id);
+    this.filledFor = claim.id;
+    this.error.set('');
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.opening = this.lock(sheet.id, claim, was, typed, filled);
+    await this.opening;
+  }
+
+  private async lock(sheetId: string, claim: ClaimView, was: number | null,
+                     typed: ClaimFields, filled: number | null): Promise<void> {
+    try {
+      const locked = await this.api.lock(sheetId, claim.id);
+      if (this.session.sheet()?.id !== sheetId) return;
+      if (was !== null && was !== claim.id) this.release(sheetId, was);
+      this.fillUntyped(locked);
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheetId) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      if (status === 423) {
+        if (was !== null && was !== claim.id) this.release(sheetId, was);
+        this.fillUntyped(claim);
+        this.claimError.set({ id: claim.id, message: 'Someone else is editing this claim, so it cannot be edited until they save or cancel.' });
+        return;
+      }
+      // Refused: the editor is back as it was.
+      this.setEditing(was);
+      this.filledFor = filled;
+      this.form.setValue(typed, { emitEvent: false });
+      const message = status === 403
+        ? 'Your role may not edit a claim on this sheet.'
+        : periodOf(this.periods(), claim.date)?.closed
+        ? 'This claim is dated inside a closed period, so it cannot be edited.'
+        : 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
+      this.claimError.set({ id: claim.id, message });
+    }
   }
 
   /** Open, settle, void, approve, reject (for a reason) or re-settle a claim; the store refuses a change its
@@ -370,7 +465,7 @@ export class PersonClaims {
     try {
       const moved = await this.api.reassign(sheet.id, claim.id, Number(to));
       if (this.session.sheet()?.id === sheet.id) {
-        if (this.editingId() === claim.id) this.reset();
+        if (this.editingId() === claim.id) this.cancel();
         this.reassigned.emit(moved);
       }
     } catch (e) {
@@ -386,12 +481,18 @@ export class PersonClaims {
     }
   }
 
+  /** Close the editor unsaved, releasing the user's lock on its claim. */
   protected cancel(): void {
+    const sheet = this.session.sheet();
+    const id = this.editingId();
     this.reset();
+    if (sheet && id !== null) this.release(sheet.id, id);
   }
 
   protected async submit(): Promise<void> {
     // A second submit before the first has answered is ignored, so it stores one record, not two.
+    if (this.saving()) return;
+    await this.opening;
     if (this.saving()) return;
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -428,10 +529,14 @@ export class PersonClaims {
       }
       if (this.session.sheet()?.id === sheet.id) this.reset();
     } catch (e) {
+      const locked = e instanceof HttpErrorResponse && e.status === 423;
       const conflict = e instanceof HttpErrorResponse && e.status === 409;
       const uncorrected = e instanceof HttpErrorResponse && e.status === 422;
       const editing = id === null ? undefined : this.claims().find((c) => c.id === id);
-      if (conflict && editing && !this.inClosedPeriod(editing.date) && !this.inClosedPeriod(date)) {
+      if (locked && editing) {
+        // Another user's editor locks the claim; the refusal is shown on the claim, and the editor stays open.
+        this.claimError.set({ id: editing.id, message: 'Someone else is editing this claim, so it cannot be saved until they save or cancel.' });
+      } else if (conflict && editing && !this.inClosedPeriod(editing.date) && !this.inClosedPeriod(date)) {
         // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
         this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
       } else {

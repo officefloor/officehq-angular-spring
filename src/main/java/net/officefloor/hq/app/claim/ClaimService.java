@@ -19,6 +19,8 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,8 +89,55 @@ public class ClaimService {
         return claim;
     }
 
+    /** Open a claim's editor for the user: the claim is locked for other users until the editor is saved
+     *  or cancelled, or the sheet's today changes. Refused, taking no lock, for a claim that cannot be
+     *  edited (dated inside a closed period, or not a DRAFT) and a claim locked by another user. */
+    @Transactional
+    public Claim lock(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseUnlessDraft(claim);
+        refuseIfLocked(claim, user);
+        claim.lockFor(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Close the user's editor of a claim without saving it, releasing the user's lock on it; a lock
+     *  of another user, or none, is left as it is. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (user.equals(claim.getLockedBy())) claim.lockFor(null);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Once the sheet's today is changed, every lock on its claims is released. */
+    @EventListener
+    @Transactional
+    public void releaseLocks(TodayChanged change) {
+        claims.releaseLocks(change.sheetId());
+    }
+
+    private static void refuseUnlessDraft(Claim claim) {
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
+        }
+    }
+
+    /** Refuse a change to a claim whose editor another user has open. */
+    private static void refuseIfLocked(Claim claim, String user) {
+        if (claim.isLockedAgainst(user)) {
+            throw new ResponseStatusException(HttpStatus.LOCKED,
+                    "The claim is being edited by " + claim.getLockedBy() + ".");
+        }
+    }
+
     /** Change a draft claim's amount, date and note; a blank date takes the sheet's today. A claim that
-     *  is no longer a draft is refused: to change an open claim, void it and add a new one. */
+     *  is no longer a draft is refused: to change an open claim, void it and add a new one. A claim
+     *  another user's editor locks is refused; saving releases the user's own lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects) {
@@ -97,14 +146,13 @@ public class ClaimService {
         LocalDate dated = dateOr(sheetId, date);
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, dated);
-        if (claim.getStatus() != ClaimStatus.DRAFT) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
-        }
+        refuseUnlessDraft(claim);
+        refuseIfLocked(claim, user);
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
         refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dated, noteOf(note), corrects);
+        claim.lockFor(null);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
         rollup.recordChanges(user, before);

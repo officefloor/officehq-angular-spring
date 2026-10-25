@@ -257,6 +257,19 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/people/${personId}/claims`, form));
   }
 
+  /** Open a claim's editor, locking the claim for other users until it is saved or cancelled, or the
+   *  sheet's today changes: refused (423) while another user's editor locks it, and refused for a claim
+   *  that cannot be edited (not a DRAFT, or dated inside a closed period) and for a viewer (403). */
+  lock(sheetId: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/lock`, {}));
+  }
+
+  /** Cancel a claim's editor, releasing the user's own lock on it. */
+  unlock(sheetId: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/unlock`, {}));
+  }
+
+  /** Save a claim's editor: refused (423) while another user's editor locks the claim. */
   update(sheetId: string, id: number, form: ClaimForm): Promise<ClaimView> {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheetId)}/claims/${id}`, form));
   }

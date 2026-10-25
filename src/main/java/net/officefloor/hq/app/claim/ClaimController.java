@@ -114,6 +114,20 @@ public class ClaimController {
                 form.amount(), form.date(), form.note(), correctsOf(form)));
     }
 
+    /** Open a claim's editor, locking the claim for other users. */
+    @PostMapping("/claims/{id}/lock")
+    public ClaimView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.lock(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** Cancel a claim's editor, releasing the user's lock on it. */
+    @PostMapping("/claims/{id}/unlock")
+    public ClaimView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.unlock(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
     /** Open a draft claim. */
     @PostMapping("/claims/{id}/open")
     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
