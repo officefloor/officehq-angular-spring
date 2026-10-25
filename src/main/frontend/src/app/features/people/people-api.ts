@@ -56,6 +56,8 @@ export interface PersonView {
   holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as patrons, in the order named. */
   patronIds: number[];
+  /** Whether the signed-in user watches the person. */
+  watched: boolean;
 }
 
 /** A new person's fields: their grade applies from the beginning of time. */
@@ -119,6 +121,11 @@ export class PeopleApi {
    *  for someone already their patron. */
   addPatron(sheetId: string, id: number, patronId: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/patrons`, { patronId }));
+  }
+
+  /** Start (true) or stop (false) the signed-in user watching the person. */
+  watch(sheetId: string, id: number, on: boolean): Promise<PersonView> {
+    return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}/watch`, { on }));
   }
 
   /** Add a draft claim to the named person, adding them with grade A first when the name is new;

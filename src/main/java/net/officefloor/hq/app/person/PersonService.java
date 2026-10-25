@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -20,14 +23,16 @@ public class PersonService {
 
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
+    private final PersonWatchRepository watches;
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetService sheets, Rollup rollup,
-            Audit audit) {
+    public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
+            SheetService sheets, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
+        this.watches = watches;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -78,6 +83,43 @@ public class PersonService {
         }
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " patron=" + patron.getName());
+        return person;
+    }
+
+    /** The ids of the people on the sheet the user watches. */
+    @Transactional(readOnly = true)
+    public Set<Long> watchedIds(String sheetId, String user) {
+        return watches.findBySheetIdAndUserName(sheetId, user).stream().map(PersonWatch::getPersonId)
+                .collect(Collectors.toSet());
+    }
+
+    /** Whether the user watches the person. */
+    @Transactional(readOnly = true)
+    public boolean isWatched(long id, String user) {
+        return watches.existsByPersonIdAndUserName(id, user);
+    }
+
+    /** Start (true) or stop (false) the user watching the person; when the user already does as asked,
+     *  nothing changes. A user who starts watching again is told after those watching meanwhile. */
+    @Transactional
+    public Person watch(String sheetId, String user, long id, boolean on) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        Optional<PersonWatch> watching = watches.findByPersonIdAndUserName(person.getId(), user);
+        if (on == watching.isPresent()) return person;
+        if (on) {
+            try {
+                watches.saveAndFlush(new PersonWatch(sheetId, person.getId(), user));
+            } catch (DataIntegrityViolationException raced) {
+                // The same user started watching from another screen at the same moment.
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "You already watch this person.");
+            }
+        } else {
+            watches.delete(watching.get());
+            watches.flush();
+        }
+        audit.recordOnCommit((on ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName());
         return person;
     }
 

@@ -101,7 +101,7 @@ import { PasteClaims } from '../claims/paste-claims';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -152,6 +152,11 @@ import { PasteClaims } from '../claims/paste-claims';
                   @if (personError()?.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                   }
+                </td>
+                <td>
+                  <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
+                  <button type="button" data-testid="person-watch" (click)="watch(p)" [disabled]="watching() === p.id"
+                    [attr.aria-pressed]="p.watched" [attr.aria-label]="'Watch ' + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
                 </td>
                 <td>
                   <span data-testid="person-patrons">{{ patronNames(p) }}</span>
@@ -417,6 +422,30 @@ export class People {
       }
     } finally {
       this.stating.set(null);
+    }
+  }
+
+  /** The person being watched or unwatched. */
+  protected readonly watching = signal<number | null>(null);
+
+  /** Start watching the person as the signed-in user, or stop when already watching. */
+  protected async watch(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.watching() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.watching.set(person.id);
+    try {
+      const changed = await this.api.watch(sheet.id, person.id, !person.watched);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: person.watched ? 'The person could not be unwatched.'
+          : 'The person could not be watched.' });
+      }
+    } finally {
+      this.watching.set(null);
     }
   }
 

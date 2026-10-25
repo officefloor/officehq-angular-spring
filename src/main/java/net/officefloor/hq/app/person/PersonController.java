@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -36,22 +37,24 @@ public class PersonController {
 
     /** What the screen shows of a person: grade is the one in force on the sheet's today, grades every
      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
-     *  they have any hold, holds every hold put on them, by from-date. */
+     *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
+     *  user watches them. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
-            List<Long> patronIds) {
+            List<Long> patronIds, boolean watched) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
-        public static PersonView of(Person person, LocalDate today) {
-            return of(person, List.of(), today);
+        public static PersonView of(Person person, LocalDate today, boolean watched) {
+            return of(person, List.of(), today, watched);
         }
 
-        /** A person with the ids of their patrons, in the order they were named, and the grade in force
-         *  on the sheet's today. */
-        public static PersonView of(Person person, List<Long> patronIds, LocalDate today) {
+        /** A person with the ids of their patrons, in the order they were named, the grade in force
+         *  on the sheet's today, and whether the signed-in user watches them. */
+        public static PersonView of(Person person, List<Long> patronIds, LocalDate today, boolean watched) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
                     person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
-                    person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds);
+                    person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
+                    watched);
         }
     }
 
@@ -67,6 +70,10 @@ public class PersonController {
 
     /** The person named as a patron. */
     public record PatronForm(@NotNull Long patronId) {
+    }
+
+    /** Whether the signed-in user is to watch the person. */
+    public record WatchForm(@NotNull Boolean on) {
     }
 
     /** A retirement; no date means the sheet's today. */
@@ -87,12 +94,17 @@ public class PersonController {
 
     /** The sheet's people in the order they were added. */
     @GetMapping
-    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(name = SignedInUser.HEADER, required = false) String user) {
         String sheet = sheetId.trim();
         Map<Long, List<Long>> patronIds = service.patronIds(sheet);
+        Set<Long> watched = user == null || user.isBlank() ? Set.of()
+                : service.watchedIds(sheet, SignedInUser.name(user));
         LocalDate today = sheets.today(sheet);
         return service.list(sheet).stream()
-                .map(p -> PersonView.of(p, patronIds.getOrDefault(p.getId(), List.of()), today)).toList();
+                .map(p -> PersonView.of(p, patronIds.getOrDefault(p.getId(), List.of()), today,
+                        watched.contains(p.getId())))
+                .toList();
     }
 
     /** Add a person. */
@@ -101,7 +113,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonForm form) {
         Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade());
-        return PersonView.of(added, sheets.today(added.getSheetId()));
+        return PersonView.of(added, sheets.today(added.getSheetId()), false);
     }
 
     /** Edit a person. */
@@ -109,31 +121,39 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
-                form.name(), form.grade(), form.gradeFrom()));
+                form.name(), form.grade(), form.gradeFrom()), user);
     }
 
     /** Retire a person from a date. */
     @PostMapping("/{id}/retire")
     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireForm form) {
-        return view(service.retire(sheetId.trim(), SignedInUser.name(user), id, form.from()));
+        return view(service.retire(sheetId.trim(), SignedInUser.name(user), id, form.from()), user);
     }
 
     /** Put a hold on a person. */
     @PostMapping("/{id}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody HoldForm form) {
-        return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, form.from(), form.to()));
+        return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, form.from(), form.to()), user);
     }
 
     /** Name another person on the sheet as one of the person's patrons. */
     @PostMapping("/{id}/patrons")
     public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PatronForm form) {
-        return view(service.addPatron(sheetId.trim(), SignedInUser.name(user), id, form.patronId()));
+        return view(service.addPatron(sheetId.trim(), SignedInUser.name(user), id, form.patronId()), user);
     }
 
-    private PersonView view(Person person) {
-        return PersonView.of(person, service.patronIdsOf(person.getId()), sheets.today(person.getSheetId()));
+    /** Start or stop the signed-in user watching a person. */
+    @PutMapping("/{id}/watch")
+    public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid WatchForm form) {
+        return view(service.watch(sheetId.trim(), SignedInUser.name(user), id, form.on()), user);
+    }
+
+    private PersonView view(Person person, String user) {
+        return PersonView.of(person, service.patronIdsOf(person.getId()), sheets.today(person.getSheetId()),
+                service.isWatched(person.getId(), SignedInUser.name(user)));
     }
 }
