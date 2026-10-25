@@ -1,0 +1,258 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bffb58bb..e238f0ce 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -15,7 +15,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+ import { Graces, Lateness, Rate, RateWithdrawn, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
+ import { Settings } from './settings';
+-import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
++import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce, policyVersionOn } from './settings.service';
+ import { Statement, StatementsService } from './statements.service';
+ import { STATUSES, Summary, SummaryPerson } from './summary';
+ import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
+@@ -312,6 +312,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+       <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people (CSV)</button>
++      <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions (CSV)</button>
+ 
+       <section aria-labelledby="snapshot-compare-heading">
+         <h3 id="snapshot-compare-heading">Compare snapshots</h3>
+@@ -2365,6 +2366,28 @@ export class People {
+     this.downloadCsv('tree.csv', lines);
+   }
+ 
++  /** Download the sheet's policy versions, re-read from the store, as a CSV file, oldest first: number,
++   *  from-date (blank when it counts on every date), the setting changed and its value, how many of the
++   *  sheet's claims have it as their policy version, and the sum of what is due on those of them that
++   *  count in the live totals, as each claim shows it (a claim with nothing due is skipped). */
++  protected async exportPolicy(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet || !(await this.readDone())) return;
++    const versions = await this.settingsService.policyVersions(sheet);
++    const froms = versions.map((v) => v.from);
++    const due = new Array<number>(versions.length).fill(0);
++    for (const p of this.people()) {
++      for (const c of this.claimsOf(p.id)) {
++        const number = policyVersionOn(froms, c.date);
++        if (number === 0 || !this.countsLive(c, p)) continue;
++        due[number - 1] += claimShownCents(c, this.rates(), p.grades, this.floors(), this.lateness(), this.roundingOf(p.id)) ?? 0;
++      }
++    }
++    const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']];
++    versions.forEach((v, i) => lines.push([String(v.number), v.from ?? '', v.key, v.value ?? '', String(v.claims), money(due[i])]));
++    this.downloadCsv('policy.csv', lines);
++  }
++
+   /** Download the person's statement as a CSV file: each claim of theirs their last statement bound,
+    *  oldest first, with number, date, amount, the bound figure as the claim shows it, and status. */
+   protected async exportStatement(person: Person): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index c69199f8..45d3f3c3 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -198,6 +198,18 @@ public class PoolService {
+         return totals;
+     }
+ 
++    /** Each person's cut total as the sheet stood {@code then}, by person id: as {@link #cutTotalsNow}, the
++     * pools worked out on its date. */
++    public Map<Long, BigDecimal> cutTotalsAsOf(SheetAsOf then) {
++        Map<Long, BigDecimal> totals = new HashMap<>();
++        for (Pooled pool : pools(Basis.of(then, then.today()))) {
++            for (Member m : pool.members()) {
++                if (m.personId() != null && m.cut() != null) totals.merge(m.personId(), m.cut(), BigDecimal::add);
++            }
++        }
++        return totals;
++    }
++
+     /** What the pools are worked out from now: the sheet's pot, today, people, pools and crews as they stand. */
+     private Basis basisNow(String sheetId) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index f201f5be..ed138222 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -222,7 +222,7 @@ public class ConsolidatedService {
+ 
+     private void addAsOf(Sum sum, String sheetId, LocalDate date) {
+         SheetAsOf sheet = history.asOf(sheetId, date);
+-        sum.add(rollup.snapshot(sheet.people(), sheet.claims(), sheet), sheet.people(), sheet.claims(), sheet.today());
++        sum.add(rollup.snapshotAsOf(sheet), sheet.people(), sheet.claims(), sheet.today());
+     }
+ 
+     /** A sheet's own due-totals per grade as its summary shows them: the due-totals of the people on the
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 76dfc248..ee7d6bfa 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimShareRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.history.SheetAsOf;
+ import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateChain;
+@@ -93,6 +94,12 @@ public class RollupService {
+                 claims.findBySheetIdOrderByListedDescIdDesc(sheetId), live(sheetId));
+     }
+ 
++    /** The figures the sheet showed as it stood then, each person's cut total as of then included (see
++     * {@link PoolService#cutTotalsAsOf}). */
++    public Snapshot snapshotAsOf(SheetAsOf then) {
++        return snapshot(then.people(), then.claims(), withCuts(then, pools.cutTotalsAsOf(then)));
++    }
++
+     /** The figures a sheet shows on {@code basis}, from {@code everyone} on it, in list order, and their
+      * claims {@code all}: as {@link #snapshot(String)} works them out for the sheet as it stands. */
+     public Snapshot snapshot(List<Person> everyone, List<Claim> all, Basis basis) {
+@@ -434,17 +441,7 @@ public class RollupService {
+     /** {@code base}, but with the grade's rate {@code pct} in force on every date. */
+     public static Basis withRate(Basis base, String grade, BigDecimal pct) {
+         Rate rate = new Rate(null, grade, null, null, pct);
+-        return new Basis() {
+-            @Override
+-            public LocalDate today() {
+-                return base.today();
+-            }
+-
+-            @Override
+-            public LocalDate policyDateInForce() {
+-                return base.policyDateInForce();
+-            }
+-
++        return new Delegating(base) {
+             @Override
+             public Optional<Rate> rateInForce(String g, LocalDate date) {
+                 return grade.equals(g) ? Optional.of(rate) : base.rateInForce(g, date);
+@@ -454,52 +451,92 @@ public class RollupService {
+             public Optional<Rate> rateFor(Claim claim, String g, LocalDate date) {
+                 return grade.equals(g) ? Optional.of(rate) : base.rateFor(claim, g, date);
+             }
++        };
++    }
+ 
++    /** {@code base}, but with each person's cut total as in {@code cuts}, by person id (0.00 for one not in it). */
++    public static Basis withCuts(Basis base, Map<Long, BigDecimal> cuts) {
++        return new Delegating(base) {
+             @Override
+-            public BigDecimal floorOn(LocalDate date) {
+-                return base.floorOn(date);
++            public BigDecimal cutOf(Long personId) {
++                return cuts.getOrDefault(personId, zero());
+             }
++        };
++    }
+ 
+-            @Override
+-            public BigDecimal latePctOn(LocalDate date) {
+-                return base.latePctOn(date);
+-            }
++    /** A basis that is {@code base} in everything. */
++    private static class Delegating implements Basis {
+ 
+-            @Override
+-            public BigDecimal capOn(LocalDate date) {
+-                return base.capOn(date);
+-            }
++        private final Basis base;
+ 
+-            @Override
+-            public BigDecimal cutOf(Long personId) {
+-                return base.cutOf(personId);
+-            }
++        Delegating(Basis base) {
++            this.base = base;
++        }
+ 
+-            @Override
+-            public Optional<Claim> claimNumbered(Long personId, String number) {
+-                return base.claimNumbered(personId, number);
+-            }
++        @Override
++        public LocalDate today() {
++            return base.today();
++        }
+ 
+-            @Override
+-            public Optional<Person> personOf(Long personId) {
+-                return base.personOf(personId);
+-            }
++        @Override
++        public LocalDate policyDateInForce() {
++            return base.policyDateInForce();
++        }
+ 
+-            @Override
+-            public Integer graceOn(String g, LocalDate date) {
+-                return base.graceOn(g, date);
+-            }
++        @Override
++        public Optional<Rate> rateInForce(String g, LocalDate date) {
++            return base.rateInForce(g, date);
++        }
+ 
+-            @Override
+-            public RoundingMode roundingOn(LocalDate date) {
+-                return base.roundingOn(date);
+-            }
++        @Override
++        public Optional<Rate> rateFor(Claim claim, String g, LocalDate date) {
++            return base.rateFor(claim, g, date);
++        }
+ 
+-            @Override
+-            public List<ClaimShare> shares() {
+-                return base.shares();
+-            }
+-        };
++        @Override
++        public BigDecimal floorOn(LocalDate date) {
++            return base.floorOn(date);
++        }
++
++        @Override
++        public BigDecimal latePctOn(LocalDate date) {
++            return base.latePctOn(date);
++        }
++
++        @Override
++        public BigDecimal capOn(LocalDate date) {
++            return base.capOn(date);
++        }
++
++        @Override
++        public BigDecimal cutOf(Long personId) {
++            return base.cutOf(personId);
++        }
++
++        @Override
++        public Optional<Claim> claimNumbered(Long personId, String number) {
++            return base.claimNumbered(personId, number);
++        }
++
++        @Override
++        public Optional<Person> personOf(Long personId) {
++            return base.personOf(personId);
++        }
++
++        @Override
++        public Integer graceOn(String g, LocalDate date) {
++            return base.graceOn(g, date);
++        }
++
++        @Override
++        public RoundingMode roundingOn(LocalDate date) {
++            return base.roundingOn(date);
++        }
++
++        @Override
++        public List<ClaimShare> shares() {
++            return base.shares();
++        }
+     }
+ 
+     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
