@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -57,7 +58,7 @@ public class ClaimService {
     /** Add a claim to a person; a claim with no date is dated the sheet's today. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = person(sheetId, personId);
         LocalDate dated = dateOr(sheetId, date);
         refuseIfClosed(sheetId, dated);
@@ -74,7 +75,7 @@ public class ClaimService {
      *  is no longer a draft is refused: to change an open claim, void it and add a new one. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         LocalDate dated = dateOr(sheetId, date);
@@ -115,7 +116,7 @@ public class ClaimService {
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfAboveClerkLimit(sheetId, user, dueNow);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
+        String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
         // A voided claim keeps its number, which is never given to another claim.
@@ -135,6 +136,20 @@ public class ClaimService {
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
+
+    /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
+     *  today on or after the setting's date), the next of the claim's period, <period name>-<n>, or of
+     *  claims in no period, X-<n>; otherwise the sheet's next sheet-wide number. */
+    private String nextNumber(String sheetId, Claim claim) {
+        LocalDate from = settings.periodNumberingFrom(sheetId);
+        if (from == null || sheets.today(sheetId).isBefore(from)) {
+            return Integer.toString(sheets.nextClaimNumber(sheetId));
+        }
+        Period period = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter((p) -> p.contains(claim.getDate())).findFirst().orElse(null);
+        if (period == null) return "X-" + sheets.nextSequenceNumber(sheetId, "none");
+        return period.getName() + "-" + sheets.nextSequenceNumber(sheetId, "period:" + period.getId());
+    }
 
     /** Refuse a clerk's settling of a claim whose due is above the sheet's clerk limit. */
     private void refuseIfAboveClerkLimit(String sheetId, String user, BigDecimal due) {
@@ -156,7 +171,7 @@ public class ClaimService {
     }
 
     /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person. */
-    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) return;
         boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
                 .filter(c -> c.getStatus() == ClaimStatus.SETTLED).isPresent();
@@ -221,7 +236,7 @@ public class ClaimService {
     }
 
     /** The claim's audit line; a claim with a number carries it, then any extra fields. */
-    private void recordChange(String event, String user, Person person, Claim claim, Integer number, String extra) {
+    private void recordChange(String event, String user, Person person, Claim claim, String number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
                 + (number == null ? "" : " number=" + number) + extra);

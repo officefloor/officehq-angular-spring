@@ -42,6 +42,10 @@ public class SettingService {
      *  to even; with no value the policy date is the sheet's today. */
     public static final String POLICY_DATE = "policy-date";
 
+    /** The key of period numbering from: while the sheet's today is on or after it, a claim opened is
+     *  numbered within its period; with no value numbering is sheet-wide. */
+    public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+
     private final SheetSettingRepository settings;
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -198,6 +202,39 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POLICY_DATE
                 + " value=" + (date == null ? "" : date.toString()));
         rollup.recordChanges(user, before);
+        return date;
+    }
+
+    /** The date the sheet numbers claims within their periods from, or null when it is blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, PERIOD_NUMBERING_FROM).map((s) -> LocalDate.parse(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the date the sheet numbers claims within their periods from; null clears it, leaving
+     *  sheet-wide numbering. Claims already numbered keep their numbers. */
+    @Transactional
+    public LocalDate setPeriodNumberingFrom(String sheetId, String user, LocalDate date) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, PERIOD_NUMBERING_FROM).orElse(null);
+        try {
+            if (date == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, PERIOD_NUMBERING_FROM, date.toString()));
+            } else {
+                setting.setValue(date.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PERIOD_NUMBERING_FROM
+                + " value=" + (date == null ? "" : date.toString()));
         return date;
     }
 

@@ -25,6 +25,9 @@ export interface SettingsView {
   policyDate: string | null;
   /** The roles the sheet has assigned, by user name. */
   roles: RoleView[];
+  /** The date (yyyy-mm-dd) from which, once the sheet's today reaches it, a claim opened is numbered
+   *  within its period; null when blank (sheet-wide numbering). */
+  periodNumberingFrom: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -63,6 +66,11 @@ export class SettingsApi {
   /** Set the policy date; null clears it, leaving the sheet's today. */
   setPolicyDate(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/policy-date`, { value }));
+  }
+
+  /** Set the date claims are numbered within their periods from; null clears it, leaving sheet-wide numbering. */
+  setPeriodNumberingFrom(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */

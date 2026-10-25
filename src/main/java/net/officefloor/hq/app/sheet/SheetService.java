@@ -55,6 +55,24 @@ public class SheetService {
         return sheets.claimNumbersUsed(id);
     }
 
+    /**
+     * The next number of one of the sheet's per-period sequences (by key): 1 for its first, then 2,
+     * and so on. The sheet stays locked until the transaction ends, so two claims opened at once
+     * never share a number.
+     */
+    @Transactional
+    public int nextSequenceNumber(String id, String key) {
+        load(id);
+        sheets.findForUpdate(id);
+        Integer used = sheets.sequenceNumbersUsed(id, key);
+        if (used == null) {
+            sheets.startSequence(id, key);
+            return 1;
+        }
+        sheets.takeSequenceNumber(id, key);
+        return used + 1;
+    }
+
     private Sheet create(String id) {
         try {
             // The only use of the real clock: a new sheet's today starts as the real date.

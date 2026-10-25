@@ -39,9 +39,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number for the claim, given when it is opened and kept once void; none while a draft. */
+    /** The claim's number, given when it is opened and kept once void; none while a draft. It is the
+     *  sheet-wide 1, 2, ..., or while period numbering is in force <period name>-<n> or X-<n>. */
     @Column(name = "claim_number")
-    private Integer number;
+    private String number;
 
     /** What was due on the claim when it was settled; none while unsettled, or when no rate applied then. */
     @Column(name = "settled_due", precision = 12, scale = 2)
@@ -61,12 +62,12 @@ public class Claim {
 
     /** The number of the settled claim of the same person a correction (a negative amount) corrects; none otherwise. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         set(amount, date, note, corrects);
@@ -104,11 +105,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Integer number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 
@@ -128,7 +129,7 @@ public class Claim {
         this.openedBy = openedBy;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
@@ -159,7 +160,7 @@ public class Claim {
 
     /** Change the claim's amount, date, note and the number it corrects; the amount is kept to two
      *  decimals, and only a correction keeps the number it corrects. */
-    public void set(BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public void set(BigDecimal amount, LocalDate date, String note, String corrects) {
         this.amount = amount.setScale(2);
         this.date = date;
         this.note = note;

@@ -31,9 +31,9 @@ public class SettingController {
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
      *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
-     *  today then). */
+     *  today then); period numbering from is null when blank (sheet-wide numbering). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles) {
+            List<RoleView> roles, LocalDate periodNumberingFrom) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -61,6 +61,10 @@ public class SettingController {
 
     /** The policy date as entered; none means the sheet's today. */
     public record PolicyDateForm(LocalDate value) {
+    }
+
+    /** The date to number claims within their periods from, as entered; none means off. */
+    public record PeriodNumberingFromForm(LocalDate value) {
     }
 
     /** A role to assign a user name, as entered on the form. */
@@ -124,6 +128,15 @@ public class SettingController {
         return view(id, service.clerkLimit(id), service.floor(id));
     }
 
+    /** Set the date the sheet numbers claims within their periods from, or clear it. */
+    @PutMapping("/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PeriodNumberingFromForm form) {
+        String id = sheetId.trim();
+        service.setPeriodNumberingFrom(id, SignedInUser.name(user), form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -136,6 +149,7 @@ public class SettingController {
     private SettingsView view(String sheetId, BigDecimal limit, BigDecimal floor) {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                 service.terms(sheetId), service.latePct(sheetId).toPlainString(),
-                service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList());
+                service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList(),
+                service.periodNumberingFrom(sheetId));
     }
 }

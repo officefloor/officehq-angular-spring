@@ -12,8 +12,9 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 /** An amount as the claim form takes it: as AMOUNT, or negative for a correction. */
 export const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 
-/** A claim number as a form takes it: a whole number of 1 or more. */
-export const CLAIM_NUMBER = /^[1-9]\d{0,8}$/;
+/** A claim number as a form takes it: a sheet-wide whole number of 1 or more, or a number within a
+ *  period, <period name>-<n> (X-<n> for a claim in no period). */
+export const CLAIM_NUMBER = /^([1-9]\d{0,8}|.{1,200}-[1-9]\d{0,8})$/;
 
 /** Whether the claim is a correction: its amount is negative. */
 export function isCorrection(claim: ClaimView): boolean {
@@ -34,8 +35,9 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number for the claim, given when it is opened and kept once void; null while a draft. */
-  number: number | null;
+  /** The claim's number, given when it is opened and kept once void; null while a draft. The sheet-wide
+   *  1, 2, ..., or while period numbering is in force <period name>-<n>, or X-<n> in no period. */
+  number: string | null;
   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
   settledDue: string | null;
   /** Who opened the claim; null when it was never opened. */
@@ -45,7 +47,7 @@ export interface ClaimView {
   /** The figure the last statement bound the claim to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
   /** The number of the settled claim a correction corrects; null when the claim is not a correction. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** What opening selected claims together did: how many were opened and refused, and the claims opened. */
@@ -61,7 +63,7 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   /** The number of the settled claim of the same person a correction corrects; null for none. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */

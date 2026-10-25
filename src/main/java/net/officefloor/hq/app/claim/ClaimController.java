@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,8 +32,8 @@ public class ClaimController {
      *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. Corrects is
      *  the number of the claim a correction corrects, or null when the claim is not a correction. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue,
-            String openedBy, boolean stated, String statedDue, Integer corrects) {
+            ClaimStatus status, String number, String settledDue,
+            String openedBy, boolean stated, String statedDue, String corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -51,7 +50,12 @@ public class ClaimController {
             @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Positive Integer corrects) {
+            @Size(max = 220) String corrects) {
+    }
+
+    /** The number a form's correction names, trimmed; none when blank. */
+    private static String correctsOf(ClaimForm form) {
+        return form.corrects() == null || form.corrects().isBlank() ? null : form.corrects().trim();
     }
 
     /** The claims selected to open together. */
@@ -82,7 +86,7 @@ public class ClaimController {
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.add(sheetId.trim(), SignedInUser.name(user), personId,
-                form.amount(), form.date(), form.note(), form.corrects()));
+                form.amount(), form.date(), form.note(), correctsOf(form)));
     }
 
     /** Edit a claim. */
@@ -90,7 +94,7 @@ public class ClaimController {
     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.update(sheetId.trim(), SignedInUser.name(user), id,
-                form.amount(), form.date(), form.note(), form.corrects()));
+                form.amount(), form.date(), form.note(), correctsOf(form)));
     }
 
     /** Open a draft claim. */

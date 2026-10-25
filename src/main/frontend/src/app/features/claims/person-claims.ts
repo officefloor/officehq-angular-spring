@@ -28,7 +28,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" />
       <label [for]="fieldId('corrects')">Corrects claim no.</label>
-      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" inputmode="numeric" />
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -165,7 +165,7 @@ export class PersonClaims {
     this.claimError.set(null);
     this.editingId.set(claim.id);
     this.error.set('');
-    this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects?.toString() ?? '' },
+    this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' },
       { emitEvent: false });
   }
 
@@ -220,7 +220,7 @@ export class PersonClaims {
       return;
     }
     const form = { amount, date: date === '' ? null : date, note: value.note.trim(),
-      corrects: correction ? Number(corrects) : null };
+      corrects: correction ? corrects : null };
     const id = this.editingId();
     this.saving.set(true);
     try {

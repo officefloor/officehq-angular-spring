@@ -34,7 +34,8 @@ function settled(control: AbstractControl): void {
 // The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
 // least a claim's live due can be) and the terms (the days after a claim's date it is due by) and the late
 // percent (what an overdue claim gains of its figure for every full 30 days overdue) and the policy date
-// (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today), and the roles it assigns user names, with one form for each.
+// (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today) and period
+// numbering from (once the sheet's today reaches it, a claim opened is numbered within its period; blank: off), and the roles it assigns user names, with one form for each.
 // Saving the settings stores each setting whose field was changed or visited since the last save, so
 // a value typed again as it was is still stored.
 @Component({
@@ -59,6 +60,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-policy-date">Policy date (yyyy-mm-dd; claims dated before it round half up, on or after it half to even; blank: the sheet's today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
         <p>Policy date now: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
+        <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd; once the sheet's today reaches it, claims opened are numbered within their period; blank: off)</label>
+        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" />
+        <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -110,6 +114,7 @@ export class Settings {
   protected readonly terms = signal(DEFAULT_TERMS);
   protected readonly latePct = signal(DEFAULT_LATE_PCT);
   protected readonly policyDate = signal<string | null>(null);
+  protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
 
   protected readonly settingsForm = new FormGroup({
@@ -118,6 +123,7 @@ export class Settings {
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -136,7 +142,7 @@ export class Settings {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [] });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       if (sheet) void this.reload(sheet.id);
@@ -158,12 +164,13 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
+    const periodNumberingFromValue = periodNumberingFrom.value.trim();
     if (changed(clerkLimit) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -182,6 +189,10 @@ export class Settings {
     }
     if (changed(policyDate) && policyDateValue !== '' && !isDate(policyDateValue)) {
       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
+    if (changed(periodNumberingFrom) && periodNumberingFromValue !== '' && !isDate(periodNumberingFromValue)) {
+      this.settingsError.set('Type a period numbering date as yyyy-mm-dd, or leave it blank for sheet-wide numbering.');
       return;
     }
     this.savingSettings.set(true);
@@ -211,6 +222,11 @@ export class Settings {
         settled(policyDate);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(periodNumberingFrom)) {
+        const settings = await this.api.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue);
+        settled(periodNumberingFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -229,6 +245,7 @@ export class Settings {
     this.sheetLatePct.pct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.sheetPolicyDate.date.set(settings.policyDate);
+    this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.assigned.set(settings.roles);
   }
 
