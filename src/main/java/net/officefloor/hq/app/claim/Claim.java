@@ -98,7 +98,7 @@ public class Claim {
     @Column(name = "locked_by")
     private String lockedBy;
 
-    /** Whether the claim was added while the period its date falls in was soft-closed. */
+    /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 

@@ -76,7 +76,7 @@ export class QuickAdd {
       }
     } catch (e) {
       this.error.set(e instanceof HttpErrorResponse && e.status === 409
-        ? 'The claim could not be added: its date is inside a closed period, or the name was taken meanwhile.'
+        ? 'The claim could not be added: its due-by is inside a closed period, or the name was taken meanwhile.'
         : 'The claim could not be added.');
     } finally {
       this.saving.set(false);

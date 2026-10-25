@@ -119,7 +119,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
-     *  dated in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
+     *  due by a date in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -181,7 +181,7 @@ public class PeriodService {
             boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
                     || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isLeftOut(claim.getDate(), today))));
-            if (!counts || !period.contains(claim.getDate())) continue;
+            if (!counts || !period.contains(claim.getDueBy())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) {
                 total = total.add(due);

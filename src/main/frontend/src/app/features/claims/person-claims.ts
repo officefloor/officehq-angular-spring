@@ -209,9 +209,9 @@ export class PersonClaims {
     return isDeferred(claim, this.session.sheet()?.today);
   }
 
-  /** The name of the period whose dates contain the claim's date, or blank when none does. */
+  /** The name of the period whose dates contain the claim's due-by, or blank when none does. */
   protected periodName(claim: ClaimView): string {
-    return periodOf(this.periods(), claim.date)?.name ?? '';
+    return periodOf(this.periods(), claim.dueBy)?.name ?? '';
   }
 
   private inClosedPeriod(date: string): boolean {
@@ -254,15 +254,15 @@ export class PersonClaims {
   }
 
   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
-   *  sheet's today changes. A claim that cannot be edited (not a draft, or dated inside a closed period)
+   *  sheet's today changes. A claim that cannot be edited (not a draft, or due by a date inside a closed period)
    *  is refused and takes no lock. A viewer's edit, and a claim another user's editor locks, are refused
    *  too, the editor showing its values without the lock; its save is refused. */
   protected async edit(claim: ClaimView): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.claimError.set(null);
-    if (this.inClosedPeriod(claim.date)) {
-      this.claimError.set({ id: claim.id, message: 'This claim is dated inside a closed period, so it cannot be edited.' });
+    if (this.inClosedPeriod(claim.dueBy)) {
+      this.claimError.set({ id: claim.id, message: 'This claim\'s due-by is inside a closed period, so it cannot be edited.' });
       return;
     }
     if (claim.status !== 'DRAFT') {
@@ -309,8 +309,8 @@ export class PersonClaims {
       this.setEditing(was);
       this.filledFor = filled;
       this.form.setValue(typed, { emitEvent: false });
-      const message = periodOf(this.periods(), claim.date)?.closed
-        ? 'This claim is dated inside a closed period, so it cannot be edited.'
+      const message = periodOf(this.periods(), claim.dueBy)?.closed
+        ? 'This claim\'s due-by is inside a closed period, so it cannot be edited.'
         : 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
       this.claimError.set({ id: claim.id, message });
     }
@@ -342,8 +342,8 @@ export class PersonClaims {
           ? 'You opened this claim, so someone else must settle it.'
           : forbidden
           ? `Your role may not ${action} a claim on this sheet.`
-          : periodOf(this.periods(), claim.date)?.closed
-            ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
+          : periodOf(this.periods(), claim.dueBy)?.closed
+            ? `This claim's due-by is inside a closed period, so it cannot be ${PAST[action]}.`
           : action === 'settle' && this.deferred(claim)
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
@@ -359,7 +359,7 @@ export class PersonClaims {
   }
 
   /** Defer an open claim until a date after the sheet's today; the store refuses a claim that is not
-   *  OPEN, a date not after today, and a claim dated inside a closed period. */
+   *  OPEN, a date not after today, and a claim whose due-by is inside a closed period. */
   protected async defer(claim: ClaimView, until: string): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -373,8 +373,8 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(deferred);
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
-        const message = periodOf(this.periods(), claim.date)?.closed
-          ? 'This claim is dated inside a closed period, so it cannot be deferred.'
+        const message = periodOf(this.periods(), claim.dueBy)?.closed
+          ? 'This claim\'s due-by is inside a closed period, so it cannot be deferred.'
           : claim.status !== 'OPEN'
           ? 'Only an OPEN claim can be deferred.'
           : 'A claim can only be deferred to a date after the sheet\'s today.';
@@ -384,7 +384,7 @@ export class PersonClaims {
   }
 
   /** Re-date an OPEN or PENDING claim; only a steward may, and the store refuses another status, a claim
-   *  dated or a new date inside a closed period, and a new date after the person's retirement. */
+   *  whose due-by is inside a closed period, and a new date after the person's retirement. */
   protected async redate(claim: ClaimView, date: string): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -402,10 +402,8 @@ export class PersonClaims {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden
           ? 'Only a steward can re-date a claim.'
-          : this.inClosedPeriod(claim.date)
-          ? 'This claim is dated inside a closed period, so it cannot be re-dated.'
-          : this.inClosedPeriod(dated)
-          ? 'The new date is inside a closed period.'
+          : this.inClosedPeriod(claim.dueBy)
+          ? 'This claim\'s due-by is inside a closed period, so it cannot be re-dated.'
           : !(claim.status === 'OPEN' || claim.status === 'PENDING')
           ? 'Only an OPEN or PENDING claim can be re-dated.'
           : `The new date is after ${this.personName()} retired.`;
@@ -431,7 +429,7 @@ export class PersonClaims {
   }
 
   /** Split an amount off an OPEN claim into a new OPEN claim; the store refuses a claim that is not OPEN,
-   *  a deferred claim, a claim dated inside a closed period, and an amount not between 0.00 and the claim's. */
+   *  a deferred claim, a claim whose due-by is inside a closed period, and an amount not between 0.00 and the claim's. */
   protected async splitClaim(claim: ClaimView, amount: string): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -446,8 +444,8 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) this.split.emit(split);
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
-        const message = periodOf(this.periods(), claim.date)?.closed
-          ? 'This claim is dated inside a closed period, so it cannot be split.'
+        const message = periodOf(this.periods(), claim.dueBy)?.closed
+          ? 'This claim\'s due-by is inside a closed period, so it cannot be split.'
           : claim.status !== 'OPEN'
           ? 'Only an OPEN claim can be split.'
           : this.deferred(claim)
@@ -478,8 +476,8 @@ export class PersonClaims {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden
           ? 'Your role may not move a claim to another person on this sheet.'
-          : periodOf(this.periods(), claim.date)?.closed
-          ? 'This claim is dated inside a closed period, so it cannot be moved.'
+          : periodOf(this.periods(), claim.dueBy)?.closed
+          ? 'This claim\'s due-by is inside a closed period, so it cannot be moved.'
           : 'This claim cannot be moved to that person; a settled or voided claim cannot move.';
         this.claimError.set({ id: claim.id, message });
       }
@@ -541,14 +539,14 @@ export class PersonClaims {
       if (locked && editing) {
         // Another user's editor locks the claim; the refusal is shown on the claim, and the editor stays open.
         this.claimError.set({ id: editing.id, message: 'Someone else is editing this claim, so it cannot be saved until they save or cancel.' });
-      } else if (conflict && editing && !this.inClosedPeriod(editing.date) && !this.inClosedPeriod(date)) {
+      } else if (conflict && editing && !this.inClosedPeriod(editing.dueBy)) {
         // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
         this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
       } else {
         this.error.set(uncorrected
           ? 'A correction must name, by number, a settled claim of this person.'
           : conflict
-          ? 'A claim dated inside a closed period cannot be added or changed.'
+          ? 'A claim whose due-by is inside a closed period cannot be added or changed.'
           : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
       }
     } finally {

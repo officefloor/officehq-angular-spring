@@ -85,7 +85,7 @@ export interface ClaimView {
   proofs: number;
   /** The number of the claim this one was split off from; null when it was not split off. */
   splitFrom: string | null;
-  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
 }
 
@@ -261,7 +261,7 @@ export class ClaimsApi {
 
   /** Open a claim's editor, locking the claim for other users until it is saved or cancelled, or the
    *  sheet's today changes: refused (423) while another user's editor locks it, and refused for a claim
-   *  that cannot be edited (not a DRAFT, or dated inside a closed period) and for a viewer (403). */
+   *  that cannot be edited (not a DRAFT, or due by a date inside a closed period) and for a viewer (403). */
   lock(sheetId: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/lock`, {}));
   }
@@ -285,19 +285,19 @@ export class ClaimsApi {
   }
 
   /** Defer an open claim until a date after the sheet's today: refused for a claim that is not OPEN,
-   *  a date not after today, and a claim dated inside a closed period. */
+   *  a date not after today, and a claim whose due-by is inside a closed period. */
   defer(sheetId: string, id: number, until: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/defer`, { until }));
   }
 
   /** Re-date an OPEN or PENDING claim: refused (403) to all but a steward, and refused for another status,
-   *  a claim dated or a new date inside a closed period, and a new date after its person's retirement. */
+   *  a claim whose due-by is inside a closed period, and a new date after its person's retirement. */
   redate(sheetId: string, id: number, date: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/redate`, { date }));
   }
 
   /** Split an amount (more than 0.00, less than the claim's amount) off an OPEN claim into a new OPEN
-   *  claim: refused for a claim that is not OPEN, a deferred claim, and a claim dated inside a closed period. */
+   *  claim: refused for a claim that is not OPEN, a deferred claim, and a claim whose due-by is inside a closed period. */
   split(sheetId: string, id: number, amount: string): Promise<SplitView> {
     return firstValueFrom(this.http.post<SplitView>(`${this.url(sheetId)}/claims/${id}/split`, { amount }));
   }

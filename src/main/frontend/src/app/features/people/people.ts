@@ -355,14 +355,14 @@ export class People {
   /** The sheet's periods in date order. */
   protected readonly periods = signal<PeriodView[]>([]);
   /** Each person's due-total for each period, in cents, by person id then period id: the figures as
-   *  shown now of their claims dated in it that counted at the end of its last day (countsAt), skipping those that are n/a; for a closed or soft-closed period, the figure
+   *  shown now of their claims due by a date in it that counted at the end of its last day (countsAt), skipping those that are n/a; for a closed or soft-closed period, the figure
    *  fixed when it was closed (0 for a person added since). */
   private readonly personPeriodCents = computed(() => {
     const by = new Map<number, Map<number, number>>(
       this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
     const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
-      const period = periodOf(this.periods(), c.date);
+      const period = periodOf(this.periods(), c.dueBy);
       const person = byId.get(c.personId);
       if (period === null || period.closed || period.softClosed || person === undefined || !this.countsAt(c, period.to)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
