@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -13,10 +14,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The sheet's people in the order they were added. */
@@ -27,17 +30,19 @@ public class PersonService {
 
     /** Add a person to the sheet. */
     @Transactional
-    public Person add(String sheetId, String name, Grade grade) {
+    public Person add(String sheetId, String user, String name, Grade grade) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
-        return save(new Person(sheetId, name, grade));
+        Person person = save(new Person(sheetId, name, grade));
+        recordChange("PERSON_ADDED", user, person);
+        return person;
     }
 
     /** Change a person's name and grade. */
     @Transactional
-    public Person update(String sheetId, long id, String name, Grade grade) {
+    public Person update(String sheetId, String user, long id, String name, Grade grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)) {
@@ -45,7 +50,14 @@ public class PersonService {
         }
         person.setName(name);
         person.setGrade(grade);
-        return save(person);
+        Person saved = save(person);
+        recordChange("PERSON_EDITED", user, saved);
+        return saved;
+    }
+
+    private void recordChange(String event, String user, Person person) {
+        audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     private Person save(Person person) {

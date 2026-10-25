@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.SignedInUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,14 +58,16 @@ public class ClaimController {
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
-            @RequestBody @Valid ClaimForm form) {
-        return ClaimView.of(service.add(sheetId.trim(), personId, form.amount(), form.date(), form.note()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
+        return ClaimView.of(service.add(sheetId.trim(), SignedInUser.name(user), personId,
+                form.amount(), form.date(), form.note()));
     }
 
     /** Edit a claim. */
     @PutMapping("/claims/{id}")
     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
-            @RequestBody @Valid ClaimForm form) {
-        return ClaimView.of(service.update(sheetId.trim(), id, form.amount(), form.date(), form.note()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClaimForm form) {
+        return ClaimView.of(service.update(sheetId.trim(), SignedInUser.name(user), id,
+                form.amount(), form.date(), form.note()));
     }
 }
