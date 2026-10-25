@@ -1,0 +1,64 @@
+{
+  "checkpoint": 43,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp43_cap",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d8865400f002c510f19798f5ebf007e11ca8e43c",
+  "reset_sha": "",
+  "preagent_sha": "febe0954d041c6f363570327622921de41b3b226",
+  "prev_sha": "febe0954d041c6f363570327622921de41b3b226",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6297041999999997,
+    "input_tokens": 44,
+    "output_tokens": 12730,
+    "cache_read_tokens": 1878921,
+    "cache_creation_tokens": 124893,
+    "num_turns": 25,
+    "duration_ms": 577163,
+    "duration_api_ms": 156356,
+    "model": "claude-opus-5-5",
+    "session_id": "16f7b8bb-8977-4c24-a32e-3617d9828dff",
+    "stop_reason": "success",
+    "result_text": "The cap is in, and `bin/e2e` passes all 4 acceptance tests on two runs in a row.\n\n**What it does**\n- **Setting:** `cap` sits on the settings form (`setting-cap`, with `setting-cap-current` showing the value now). It takes a number with up to two decimals, or blank for no cap. Saving it writes `SETTING_CHANGED key=cap value=<cap>` to the audit file, with an empty value when cleared. No schema change was needed because settings are stored as key/value rows.\n- **Server:** `Rollup` holds each person's due-total to the cap. So the ROLLUP and TOTALS lines use the capped figure, and changing the cap logs a ROLLUP for each person whose due-total moves, then TOTALS. Statements also record the capped due-total, e.g. `STATEMENT \u2026 due-total=8.00`. A due-total of n/a is never capped.\n- **Screen:** a new Excess column (`person-excess`) shows how far the sum of a person's figures goes over the cap, or 0.00. The person's due-total, the sheet's due-total, each grade's total, backing and the CSV export all use the capped figure.\n- **Left uncapped:** claim dues, overdue totals and period totals, since they aren't person due-totals. The tests expect this too, e.g. a period total of 2.20 with a cap of 2.00.\n\n**A second fix you didn't ask for:** scenario 1 failed because of an existing race in the person editor, not because of the cap. The test edits a person twice in a row. The first save looks finished straight away (the grade already shows A), so the test reopens the editor while that save is still running. When the save came back, it cleared the newly opened editor. Now a save that returns late leaves a newer editor alone and passes it the person's new version, so the next save isn't rejected as stale. This is in `src/main/frontend/src/app/features/people/people.ts`.\n\nOne risk remains in that area: if the second Save is pressed while the first save is still running, it is ignored. That didn't happen in either test run.\n\n**Files changed**\n- Server: `SettingService.java`, `SettingController.java`, `Rollup.java`, `StatementService.java`\n- Frontend: new `settings/sheet-cap.ts`, plus `settings-api.ts`, `settings.ts`, `people.ts`",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6297041999999997,
+        "num_turns": 25,
+        "duration_ms": 577163,
+        "duration_api_ms": 156356,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp43.agent.jsonl",
+  "agent_diff_file": "cp43.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
