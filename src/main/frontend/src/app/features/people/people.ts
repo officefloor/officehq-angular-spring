@@ -732,6 +732,14 @@ import { FigurePipe } from '../../core/figure.pipe';
                   >
                     Download statement
                   </button>
+                  <button
+                    type="button"
+                    data-testid="person-export"
+                    [attr.aria-label]="'Download the row of ' + p.name"
+                    (click)="exportPerson(p)"
+                  >
+                    Download row
+                  </button>
                   <label [for]="'person-inline-grade-' + p.id">Grade from today</label>
                   <select
                     [id]="'person-inline-grade-' + p.id"
@@ -2355,6 +2363,26 @@ export class People {
       lines.push([c.number ?? '', c.date, c.amount, figure === null ? 'n/a' : money(figure), c.status]);
     }
     this.downloadCsv('statement.csv', lines);
+  }
+
+  /** Download the person's row as a CSV file: one line per cell, with the value as the row shows it. */
+  protected async exportPerson(person: Person): Promise<void> {
+    if (!(await this.readDone())) return;
+    const p = this.people().find((q) => q.id === person.id) ?? person;
+    const cells: [string, string | number][] = [
+      ['person-name', withGrade(p.name, this.gradeNow(p))],
+      ['person-grade', this.gradeNow(p)],
+      ['person-claimed', this.claimedOf(p)],
+      ['person-due-total', this.dueTotalOf(p) ?? 'n/a'],
+      ['person-statement-count', this.statementsOf(p.id).length],
+      ['person-overdue-total', money(this.overdueOf(p).cents)],
+      ['person-hold', p.held ? 'yes' : 'no'],
+      ['person-retired', p.retired ? 'yes' : 'no'],
+      ['person-aliases', p.aliases.join(', ')],
+      ['person-score', this.scoreOf(p)],
+    ];
+    const lines = [['cell', 'value'], ...cells.map(([cell, v]) => [cell, String(this.figure.transform(v))])];
+    this.downloadCsv('person.csv', lines);
   }
 
   /** Wait for the sheet's last read, as of the date set when one is, to be shown, so an export taken
