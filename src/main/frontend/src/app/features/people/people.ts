@@ -21,6 +21,7 @@ import { STATUSES, Summary, SummaryPerson } from './summary';
 import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
 import { Templates } from './templates';
 import { TreeSearch } from './tree-search';
+import { TreeSearchService } from './tree-search.service';
 import { VoidReasons } from './void-reasons';
 import { VoidReasonsService } from './void-reasons.service';
 import { Pools } from './pools';
@@ -307,6 +308,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people (CSV)</button>
 
       <section aria-labelledby="snapshot-compare-heading">
         <h3 id="snapshot-compare-heading">Compare snapshots</h3>
@@ -989,6 +991,7 @@ export class People {
   private readonly poolsService = inject(PoolsService);
   private readonly crewsService = inject(CrewsService);
   private readonly plansService = inject(PlansService);
+  private readonly treeSearchService = inject(TreeSearchService);
   private readonly document = inject(DOCUMENT);
 
   /** The active sheet's grades: A, B and C, then those added to it. */
@@ -2217,6 +2220,19 @@ export class People {
       }
     }
     this.downloadCsv('periods.csv', lines);
+  }
+
+  /** Download the people of the whole tree, re-read from the store, as a CSV file: this sheet's first
+   *  in list order, then the other sheets' of its tree by sheet id, with sheet, name, grade in force on
+   *  that sheet's today and due-total as that sheet shows it. */
+  protected async exportTree(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const lines = [['sheet', 'name', 'grade', 'due-total']];
+    for (const f of await this.treeSearchService.search(sheet, '')) {
+      lines.push([f.sheet, f.name, f.grade ?? '', f.dueTotal]);
+    }
+    this.downloadCsv('tree.csv', lines);
   }
 
   /** Download the person's statement as a CSV file: each claim of theirs their last statement bound,
