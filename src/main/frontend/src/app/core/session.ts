@@ -85,4 +85,14 @@ export class Session {
     );
     if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
   }
+
+  /** Clone the active sheet to another id, which must never have been used; the id of the clone made. */
+  async cloneSheet(to: string): Promise<string> {
+    const current = this.sheetState();
+    if (!current) throw new Error('No sheet is loaded.');
+    const made = await firstValueFrom(
+      this.http.post<{ to: string }>(`/api/sheets/${encodeURIComponent(current.id)}/clone`, { to }),
+    );
+    return made.to;
+  }
 }

@@ -119,6 +119,28 @@ public class Person {
         return copy;
     }
 
+    /** A clone of the person for another sheet: everything the person has (their name, every grade with
+     *  its from-date, terms, contact, aliases, holds, retirement and past retirements, the sheet they came
+     *  from). */
+    public Person cloneTo(String otherSheetId) {
+        Person copy = new Person();
+        copy.sheetId = otherSheetId;
+        copy.originSheetId = originSheetId;
+        copy.addedOn = addedOn;
+        copy.setName(name);
+        for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
+        copy.retiredFrom = retiredFrom;
+        copy.retiredMadeOn = retiredMadeOn;
+        for (PersonRetirement r : getRetirements()) {
+            copy.retirements.add(new PersonRetirement(r.getFrom(), r.getTo(), r.getMadeOn()));
+        }
+        for (PersonHold h : getHolds()) copy.holds.add(new PersonHold(h.getFrom(), h.getTo(), h.getMadeOn()));
+        copy.terms = terms;
+        copy.contact = contact;
+        getAliases().forEach(copy::addAlias);
+        return copy;
+    }
+
     public LocalDate getAddedOn() {
         return addedOn;
     }
@@ -299,6 +321,11 @@ public class Person {
     /** The person's place in the list, lowest first. */
     public long getPosition() {
         return position != null ? position : id;
+    }
+
+    /** Put the person at a place in the list. */
+    public void placeAt(long position) {
+        this.position = position;
     }
 
     /** The sheet the person was transferred from, or null when they were added on this sheet. */

@@ -170,6 +170,18 @@ public class Rollup {
         }
     }
 
+    /** Audit, once the transaction commits, every person's figures, in the order they were added, and then
+     *  the sheet's totals, as the store holds them now. */
+    public void recordAll(String user, String sheetId) {
+        Snapshot now = snapshot(sheetId);
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        now.people().values().forEach(figures -> audit.recordOnCommit("ROLLUP" + prefix + " person=" + figures.name()
+                + " claimed=" + text(figures.claimed()) + " due-total=" + text(figures.dueTotal())
+                + " overdue-total=" + text(figures.overdueTotal())));
+        audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + text(now.claimedTotal())
+                + " due-total=" + text(now.dueTotal()) + " overdue-total=" + text(now.overdueTotal()));
+    }
+
     /** Whether the claim is overdue: open and not deferred, with its due-by plus the grace days of its
      *  person's grade before the sheet's today. */
     private static boolean isOverdue(Claim claim, int grace, LocalDate today) {

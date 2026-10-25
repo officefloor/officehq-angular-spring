@@ -32,10 +32,20 @@ public class SheetController {
     public record TodayChange(@NotNull LocalDate today) {
     }
 
-    private final SheetService service;
+    /** A clone of the sheet to another id. */
+    public record CloneRequest(@NotBlank @Size(max = 100) String to) {
+    }
 
-    public SheetController(SheetService service) {
+    /** What a clone made: the id of the sheet it made. */
+    public record CloneView(String to) {
+    }
+
+    private final SheetService service;
+    private final CloneService clones;
+
+    public SheetController(SheetService service, CloneService clones) {
         this.service = service;
+        this.clones = clones;
     }
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
@@ -56,5 +66,14 @@ public class SheetController {
     public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return SheetView.of(service.archive(id.trim(), SignedInUser.name(user)));
+    }
+
+    /** Clone the sheet to another id that was never used; a steward only. */
+    @PostMapping("/{id}/clone")
+    public CloneView cloneSheet(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid CloneRequest request) {
+        String to = request.to().trim();
+        clones.cloneTo(id.trim(), SignedInUser.name(user), to);
+        return new CloneView(to);
     }
 }

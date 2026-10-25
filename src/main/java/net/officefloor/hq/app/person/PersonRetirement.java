@@ -36,6 +36,10 @@ public class PersonRetirement {
         this.madeOn = madeOn;
     }
 
+    LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     Long getId() {
         return id;
     }

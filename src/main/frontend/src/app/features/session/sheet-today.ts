@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 
 // The active sheet's today, shown and changeable. Every date decision and default date in the app
-// uses it, never the real clock. A steward can archive the sheet here too.
+// uses it, never the real clock. A steward can archive the sheet here too, or clone it to another id.
 @Component({
   selector: 'app-sheet-today',
   imports: [ReactiveFormsModule],
@@ -20,6 +20,12 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="sheet-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="cloneForm" (ngSubmit)="cloneSheet()" aria-label="Clone sheet">
+        <label for="sheet-clone-to">Clone to sheet</label>
+        <input id="sheet-clone-to" data-testid="sheet-clone-to" formControlName="to" />
+        <button type="submit" data-testid="sheet-clone" [disabled]="saving()">Clone sheet</button>
+        <span>Last clone: <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></span>
+      </form>
     }
   `,
 })
@@ -30,13 +36,19 @@ export class SheetToday {
   protected readonly form = new FormGroup({ today: this.today });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly cloneTo = new FormControl('', { nonNullable: true });
+  protected readonly cloneForm = new FormGroup({ to: this.cloneTo });
+  /** The id of the last clone made of this sheet from this screen. */
+  protected readonly clonedTo = signal('');
 
   constructor() {
     this.today.valueChanges.subscribe(() => this.error.set(''));
-    // A freshly loaded sheet starts the field at its today and clears any error from the last one.
+    this.cloneTo.valueChanges.subscribe(() => this.error.set(''));
+    // A freshly loaded sheet starts the field at its today and clears any error and clone from the last one.
     effect(() => {
       const sheet = this.session.sheet();
       this.error.set('');
+      this.clonedTo.set('');
       this.today.setValue(sheet?.today ?? '', { emitEvent: false });
     });
   }
@@ -68,6 +80,25 @@ export class SheetToday {
       await this.session.archive();
     } catch {
       this.error.set('The sheet could not be archived.');
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async cloneSheet(): Promise<void> {
+    if (this.saving()) return;
+    const to = this.cloneTo.value.trim();
+    this.error.set('');
+    this.clonedTo.set('');
+    if (to === '') {
+      this.error.set('Type the id of the sheet to clone to.');
+      return;
+    }
+    this.saving.set(true);
+    try {
+      this.clonedTo.set(await this.session.cloneSheet(to));
+    } catch {
+      this.error.set('The sheet could not be cloned: only a steward can, to a sheet never used.');
     } finally {
       this.saving.set(false);
     }

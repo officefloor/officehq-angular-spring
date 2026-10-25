@@ -42,6 +42,10 @@ public class PersonHold {
         return madeOn == null || !madeOn.isAfter(date);
     }
 
+    LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     Long getId() {
         return id;
     }
