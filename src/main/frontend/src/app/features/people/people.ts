@@ -66,6 +66,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each row splits its figures before the cap into a settled-total (its counting SETTLED claims, at
 // their frozen figures) and an open-total (its counting OPEN and PENDING claims); the sheet's
 // settled-total and open-total simply add up everyone's.
+// Each row shows the person's score: their settled-total divided by 100, minus 5 for every overdue
+// claim of theirs that counts, rounded half to even to a whole number.
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
@@ -568,6 +570,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 @if (shows('overdue-count')) {
                   <td data-testid="person-overdue-count">{{ (overdueOf(p).count) | figure }}</td>
                 }
+                <td data-testid="person-score">{{ (scoreOf(p)) | figure }}</td>
                 @if (shows('overdue-total')) {
                   <td data-testid="person-overdue-total">{{ (money(overdueOf(p).cents)) | figure }}</td>
                 }
@@ -1351,12 +1354,14 @@ export class People {
   });
   /** The ids of the people a restricted user may see listed: the person with their name and the leads
    *  and members of every crew that person leads or belongs to; none when there is no such person.
+   *  A person they quick-added since the sheet was loaded is listed too, until it is re-loaded.
    *  Null when the user is not restricted, who sees everyone. */
   private readonly visibleIds = computed<Set<number> | null>(() => {
     const user = this.session.user();
     if (user === null || this.roles().find((r) => r.user === user)?.role !== 'restricted') return null;
     const me = this.me();
     const ids = new Set<number>();
+    this.quickAdded().forEach((id) => ids.add(id));
     if (!me) return ids;
     ids.add(me.id);
     for (const crew of this.crewsService.crews()) {
@@ -1436,6 +1441,8 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   /** A quick-add is waiting for its answer; another meanwhile is ignored. */
   private quickAdding = false;
+  /** The ids of the people the signed-in user quick-added since the sheet was loaded. */
+  private readonly quickAdded = signal<ReadonlySet<number>>(new Set());
   private readonly sheet = computed(() => this.session.sheetId());
   protected readonly pasteText = signal('');
   /** How many claims the last paste added; null before one, and while one runs. */
@@ -1518,6 +1525,7 @@ export class People {
       const sheet = this.sheet();
       this.readLoad = this.session.loads();
       this.people.set([]);
+      this.quickAdded.set(new Set());
       this.claims.set([]);
       this.sheetTags.set([]);
       this.rates.set([]);
@@ -2285,6 +2293,17 @@ export class People {
     return { count, cents: sum };
   }
 
+  /** The person's score: their settled-total divided by 100, minus 5 for every overdue claim that
+   *  counts, rounded half to even to a whole number. */
+  protected scoreOf(person: Person): string {
+    // In cents, the score is (settled - 50000 * overdue) / 10000.
+    const x = this.splitOf(person).settled - 50000 * this.overdueOf(person).count;
+    const q = Math.floor(x / 10000);
+    const r = x - q * 10000;
+    const whole = r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;
+    return String(whole === 0 ? 0 : whole);
+  }
+
   /** What is due on the person's counting OPEN and PENDING claims, in cents, as each claim shows it,
    *  split by the claim's age on the sheet's today (the days from its date): 0 to 30 days (a claim
    *  dated after today included), 31 to 60, and 61 or more. */
@@ -2673,6 +2692,7 @@ export class People {
       this.people.update((list) =>
         list.some((p) => p.id === added.person.id) ? list : [...list, added.person],
       );
+      this.quickAdded.update((ids) => new Set(ids).add(added.person.id));
       this.claimSaved(added.claim);
       this.quickName.set('');
       this.quickAmount.set('');
