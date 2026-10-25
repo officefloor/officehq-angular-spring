@@ -1,0 +1,64 @@
+{
+  "checkpoint": 27,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp27_patrons-and-backing",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3b714a0f1508afa37cd5a3fbb28c024815ef75b4",
+  "reset_sha": "",
+  "preagent_sha": "65531b63ccdf1be4c1b856a0b5d5f5eca48e762a",
+  "prev_sha": "65531b63ccdf1be4c1b856a0b5d5f5eca48e762a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7325382,
+    "input_tokens": 24,
+    "output_tokens": 9346,
+    "cache_read_tokens": 497331,
+    "cache_creation_tokens": 55757,
+    "num_turns": 13,
+    "duration_ms": 252099,
+    "duration_api_ms": 103611,
+    "model": "claude-opus-5-5",
+    "session_id": "24b16697-e63f-4d5e-97f1-cda861068e2f",
+    "stop_reason": "success",
+    "result_text": "People can now name patrons from their own row, and each row shows their patrons and their backing. `bin/e2e` passes all 4 tests in the spec.\n\n**Stored data and server**\n- **New table:** the migration `V20__person_patron.sql` adds a `person_patron` table. The database itself rules out naming yourself or the same patron twice.\n- **Kept off the person record:** patrons are not stored on the person's own record. If they were, adding one would change the person's version, and an edit someone already had open on that person would be wrongly refused.\n- **New endpoint:** `POST /api/sheets/{id}/people/{id}/patrons` adds a patron. It refuses the person themselves and anyone already their patron, and a refusal writes nothing. When it goes through it writes `PATRON_ADDED sheet=\u2026 by=\u2026 name=<name> patron=<patron name>` to the audit file.\n- **Patrons in the person data:** every person returned by the server now includes the ids of their patrons.\n\n**Front end** (`people.ts`, `people-api.ts`)\n- **New column:** each row has a Patrons column with `person-patrons` (names sorted, comma and space separated) and `person-backing`. Backing is the patrons' due-totals added up, skipping n/a, and 0.00 with no patrons.\n- **Adding a patron:** the row has a `person-patron-select` listing everyone else on the sheet, and a `person-patron-add` button.\n- **Errors:** a refusal shows `person-patron-error` on that row. The error goes away when the selection changes or any other action is taken on the row.\n\nPatrons are stored by id, not by name, so renaming a person still shows the right name in other people's patron lists. Backing is worked out on screen from the due-totals already shown there, so it moves when a patron is put on hold.\n\nThe patron picker lists retired people too, even when \"Show retired\" is off.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7325382,
+        "num_turns": 13,
+        "duration_ms": 252099,
+        "duration_api_ms": 103611,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp27.agent.jsonl",
+  "agent_diff_file": "cp27.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
