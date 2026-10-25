@@ -233,17 +233,24 @@ public class ClaimService {
     }
 
     /** Make the claims a bulk settle settled (or left pending) the sheet's next settle batch: each shows
-     *  its number. Returns the batch's number. */
+     *  its number. Its audit line, after the claims' own, carries the batch's number, how many claims it
+     *  has and the frozen dues of those SETTLED added up. Returns the batch's number. */
     @Transactional
-    public int markSettleBatch(String sheetId, List<Claim> settled) {
+    public int markSettleBatch(String sheetId, String user, List<Claim> settled) {
         int batch = sheets.nextSettleBatch(sheetId);
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : settled) {
             Claim row = claims.findForUpdate(claim.getId(), sheetId).orElseThrow();
             row.setSettleBatch(batch);
             claims.save(row);
             claim.setSettleBatch(batch);
+            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+                total = total.add(claim.getSettledDue());
+            }
         }
         claims.flush();
+        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
+                + " count=" + settled.size() + " total=" + total.toPlainString());
         return batch;
     }
 

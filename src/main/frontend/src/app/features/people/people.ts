@@ -1043,8 +1043,8 @@ export class People {
     }
   }
 
-  /** Settle the selected claims together, in list order; one left pending counts as settled, each
-   *  that cannot be settled is left as it is. */
+  /** Settle the selected claims together, in list order, all or nothing; one left pending counts as
+   *  settled, and if any cannot be settled none is and every one counts as refused. */
   protected async settleSelected(): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.bulkSettling()) return;

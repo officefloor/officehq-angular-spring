@@ -15,10 +15,13 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Opens, settles or moves selected claims together. Each is changed on its own, as its own button would,
- *  so one that cannot be changed is left as it is and the others still change. */
+ *  so one that cannot be changed is left as it is and the others still change; a bulk settle is the
+ *  exception: it settles all of them or none. */
 @Service
 public class BulkChangeService {
 
@@ -52,11 +55,17 @@ public class BulkChangeService {
         return change(sheetId, user, ids, ClaimStatus.OPEN);
     }
 
-    /** Settle the claims of these ids in list order, each by the rules of settling one: a claim left
-     *  PENDING counts as settled, one that cannot be settled is refused. An id not of the sheet is refused. */
+    /** Settle the claims of these ids in list order, each by the rules of settling one, all or nothing:
+     *  a claim left PENDING counts as settled, but if any one cannot be settled (or an id is not of the
+     *  sheet) none is, every one counts as refused and nothing is written. */
+    @Transactional
     public SettleResult settle(String sheetId, String user, Collection<Long> ids) {
         Result result = change(sheetId, user, ids, ClaimStatus.SETTLED);
-        Integer batch = result.changed().isEmpty() ? null : service.markSettleBatch(sheetId, result.changed());
+        if (result.refused() > 0) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return new SettleResult(List.of(), new LinkedHashSet<>(ids).size(), null);
+        }
+        Integer batch = result.changed().isEmpty() ? null : service.markSettleBatch(sheetId, user, result.changed());
         return new SettleResult(result.changed(), result.refused(), batch);
     }
 
