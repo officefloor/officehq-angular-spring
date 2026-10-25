@@ -1,0 +1,86 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ff3ff490..cb859311 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1043,8 +1043,8 @@ export class People {
+     }
+   }
+ 
+-  /** Settle the selected claims together, in list order; one left pending counts as settled, each
+-   *  that cannot be settled is left as it is. */
++  /** Settle the selected claims together, in list order, all or nothing; one left pending counts as
++   *  settled, and if any cannot be settled none is and every one counts as refused. */
+   protected async settleSelected(): Promise<void> {
+     const sheet = this.session.sheet();
+     if (!sheet || this.bulkSettling()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+index 24fc6ce9..1eb0935c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+@@ -15,10 +15,13 @@ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /** Opens, settles or moves selected claims together. Each is changed on its own, as its own button would,
+- *  so one that cannot be changed is left as it is and the others still change. */
++ *  so one that cannot be changed is left as it is and the others still change; a bulk settle is the
++ *  exception: it settles all of them or none. */
+ @Service
+ public class BulkChangeService {
+ 
+@@ -52,11 +55,17 @@ public class BulkChangeService {
+         return change(sheetId, user, ids, ClaimStatus.OPEN);
+     }
+ 
+-    /** Settle the claims of these ids in list order, each by the rules of settling one: a claim left
+-     *  PENDING counts as settled, one that cannot be settled is refused. An id not of the sheet is refused. */
++    /** Settle the claims of these ids in list order, each by the rules of settling one, all or nothing:
++     *  a claim left PENDING counts as settled, but if any one cannot be settled (or an id is not of the
++     *  sheet) none is, every one counts as refused and nothing is written. */
++    @Transactional
+     public SettleResult settle(String sheetId, String user, Collection<Long> ids) {
+         Result result = change(sheetId, user, ids, ClaimStatus.SETTLED);
+-        Integer batch = result.changed().isEmpty() ? null : service.markSettleBatch(sheetId, result.changed());
++        if (result.refused() > 0) {
++            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
++            return new SettleResult(List.of(), new LinkedHashSet<>(ids).size(), null);
++        }
++        Integer batch = result.changed().isEmpty() ? null : service.markSettleBatch(sheetId, user, result.changed());
+         return new SettleResult(result.changed(), result.refused(), batch);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0bdaebcf..4fbe6968 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -233,17 +233,24 @@ public class ClaimService {
+     }
+ 
+     /** Make the claims a bulk settle settled (or left pending) the sheet's next settle batch: each shows
+-     *  its number. Returns the batch's number. */
++     *  its number. Its audit line, after the claims' own, carries the batch's number, how many claims it
++     *  has and the frozen dues of those SETTLED added up. Returns the batch's number. */
+     @Transactional
+-    public int markSettleBatch(String sheetId, List<Claim> settled) {
++    public int markSettleBatch(String sheetId, String user, List<Claim> settled) {
+         int batch = sheets.nextSettleBatch(sheetId);
++        BigDecimal total = BigDecimal.ZERO.setScale(2);
+         for (Claim claim : settled) {
+             Claim row = claims.findForUpdate(claim.getId(), sheetId).orElseThrow();
+             row.setSettleBatch(batch);
+             claims.save(row);
+             claim.setSettleBatch(batch);
++            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
++                total = total.add(claim.getSettledDue());
++            }
+         }
+         claims.flush();
++        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
++                + " count=" + settled.size() + " total=" + total.toPlainString());
+         return batch;
+     }
+ 
