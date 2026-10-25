@@ -320,6 +320,17 @@ public class ClaimService {
         return claim;
     }
 
+    /** Edit the claim's amount to {@code amount} as the claim form would, keeping its date, note,
+     * correction, reference and tags, when it is a DRAFT; one in any other status is left as it is.
+     * Refused as {@link #update} refuses. Records CLAIM_EDITED. */
+    @Transactional
+    public Claim editDraftAmount(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) return claim;
+        return update(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
+                claim.getRef(), claim.getTags().isEmpty() ? null : String.join(",", claim.getTags()));
+    }
+
     /** Open the claim's editor for {@code user}, locking the claim for everyone else until it is saved
      * (see {@link #update}) or cancelled (see {@link #unlock}), or the sheet's today changes. Refused,
      * taking no lock, when the claim cannot be edited (not a DRAFT, or dated in a closed period) or

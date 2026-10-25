@@ -118,13 +118,26 @@ public class PlanService {
     }
 
     /** Change the plan's amount, from the sheet's today, for the claims generated from then on; refused
-     * when it is not above zero. Records PLAN_CHANGED. */
-    @Transactional
+     * when it is not above zero. Records PLAN_CHANGED. Then each claim the plan generated that is still a
+     * DRAFT, in the order they were made, is edited to the new amount as the claim form would edit it,
+     * in a change of its own: one the form refuses keeps its amount and writes nothing. Claims in any
+     * other status keep theirs. */
     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
-        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
-        plan.changeAmount(sheets.today(sheetId), amount);
-        return changed(sheetId, user, plan, "PLAN_CHANGED",
-                "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        Plan plan = eachClaim.execute(status -> {
+            Plan changing = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
+            changing.changeAmount(sheets.today(sheetId), amount);
+            return changed(sheetId, user, changing, "PLAN_CHANGED",
+                    "amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        });
+        String claimSheet = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
+        for (long claimId : plan.getClaimIds()) {
+            try {
+                eachClaim.execute(status -> claims.editDraftAmount(claimSheet, user, claimId, amount));
+            } catch (RuntimeException refused) {
+                // The claim form refused the edit: the claim keeps its amount.
+            }
+        }
+        return plan;
     }
 
     private Plan changed(String sheetId, String user, Plan plan, String event, String... fields) {

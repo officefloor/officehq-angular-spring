@@ -198,6 +198,11 @@ public class Plan {
         return dates;
     }
 
+    /** The ids of the claims the plan has made, in the order it made them. */
+    public List<Long> getClaimIds() {
+        return claims.stream().map(PlanClaim::getClaimId).toList();
+    }
+
     /** Keep that the plan made its claim {@code claimId} for {@code date}. */
     public void made(LocalDate date, Long claimId) {
         claims.add(new PlanClaim(date, claimId));

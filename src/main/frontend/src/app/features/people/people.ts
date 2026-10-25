@@ -2778,8 +2778,18 @@ export class People {
     this.plans.update((list) => [...list.filter((pl) => pl.id !== plan.id), plan]);
   }
 
-  protected planChanged(plan: Plan): void {
+  /** Put a changed plan in its place and re-read the sheet's claims: a new amount reaches the DRAFT
+   *  claims the plan generated. */
+  protected async planChanged(plan: Plan): Promise<void> {
     this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      const claims = await this.claimsService.list(sheet);
+      if (this.sheet() === sheet) this.claims.set(claims);
+    } catch {
+      // The claims could not be re-read; they show as they were until the sheet is loaded again.
+    }
   }
 
   /** Make the DRAFT claims every plan on the sheet is due. Shows how many were made; the old count is
