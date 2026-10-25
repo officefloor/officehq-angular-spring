@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /** A share of a claim held by another person on its sheet: a percent (two decimals, more than 0.00) of
- * what is due on the claim, which counts in the holder's due-total instead of the claim's own person's. */
+ * the claim, whose part (worked out at the holder's own rate, see the rollup) counts in the holder's
+ * due-total instead of the claim's own person's. */
 @Entity
 @Table(name = "claim_share")
 public class ClaimShare {
@@ -71,7 +72,8 @@ public class ClaimShare {
         return share.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 
-    /** The holder's part of {@code due}: {@code due} times the share divided by 100, rounded half to even. */
+    /** The holder's part of {@code due}: {@code due} times the share divided by 100, rounded half to even —
+     * the part a settled claim keeps of the figure it froze. */
     public BigDecimal partOf(BigDecimal due) {
         return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }

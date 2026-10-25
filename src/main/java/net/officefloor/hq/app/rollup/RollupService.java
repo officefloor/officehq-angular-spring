@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
  * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today less their cut total
  * (their cuts across every pool, see {@link PoolService}), not below 0.00, when it has one; of a
- * shared claim each holder counts their part (see {@link ClaimShare#partOf}) and its own person the rest) and their
+ * shared claim each holder counts their part (see {@link #partOf}) and its own person the claim's due less those parts) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
  * leave out the single highest and lowest person's figure when three or more people have one; a
@@ -112,7 +112,10 @@ public class RollupService {
             if (held == null || owner == null || !countsLive(claim, owner, today)) continue;
             BigDecimal figure = shownOf(claim, owner, basis);
             if (figure == null) continue;
-            for (ClaimShare share : held) heldParts.merge(share.getPersonId(), share.partOf(figure), BigDecimal::add);
+            for (ClaimShare share : held) {
+                BigDecimal part = partOf(claim, share, figure, byId.get(share.getPersonId()), basis);
+                if (part != null) heldParts.merge(share.getPersonId(), part, BigDecimal::add);
+            }
         }
         for (Person person : everyone) {
             BigDecimal claimed = zero();
@@ -126,7 +129,7 @@ public class RollupService {
                 BigDecimal figure = shownOf(claim, person, basis);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
-                due = due.add(ownPartOf(figure, sharesByClaim.get(claim.getId())));
+                due = due.add(ownPartOf(claim, figure, sharesByClaim.get(claim.getId()), byId, basis));
                 any = true;
             }
             BigDecimal part = heldParts.get(person.getId());
@@ -146,12 +149,32 @@ public class RollupService {
     }
 
     /** What is left of {@code figure} to the claim's own person once the holders of its {@code shares}
-     * (none when null) have their parts (see {@link ClaimShare#partOf}). */
-    static BigDecimal ownPartOf(BigDecimal figure, List<ClaimShare> shares) {
+     * (none when null), from {@code byId}, have their parts (see {@link #partOf}). */
+    private static BigDecimal ownPartOf(Claim claim, BigDecimal figure, List<ClaimShare> shares,
+            Map<Long, Person> byId, Basis basis) {
         if (shares == null) return figure;
         BigDecimal own = figure;
-        for (ClaimShare share : shares) own = own.subtract(share.partOf(figure));
+        for (ClaimShare share : shares) {
+            BigDecimal part = partOf(claim, share, figure, byId.get(share.getPersonId()), basis);
+            if (part != null) own = own.subtract(part);
+        }
         return own;
+    }
+
+    /** The {@code holder}'s part of the claim whose figure is {@code figure} by their {@code share}: on a claim
+     * showing the figure fixed when it was settled, that figure's part (see {@link ClaimShare#partOf}); otherwise
+     * the claim's amount times the share divided by 100, times the rate of the holder's own grade in force on
+     * the claim's date divided by 100, rounded as the claim rounds (see {@link #roundingOf}). Null (0.00) when
+     * the holder's grade has no rate then, or the holder is gone. */
+    private static BigDecimal partOf(Claim claim, ClaimShare share, BigDecimal figure, Person holder, Basis basis) {
+        if (frozen(claim)) return share.partOf(figure);
+        if (holder == null) return null;
+        RoundingMode rounding = roundingOf(claim, basis);
+        return basis.rateFor(claim, holder.gradeOn(claim.getDate()), claim.getDate())
+                .map(Rate::getPct)
+                .map(pct -> claim.getAmount().multiply(share.getShare()).multiply(pct).movePointLeft(4)
+                        .setScale(2, rounding))
+                .orElse(null);
     }
 
     /** Each person's score on the sheet as it stands, by person, in list order: their settled-total (what is due

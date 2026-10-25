@@ -139,6 +139,39 @@ export function claimDueCents(
   return grade === null ? null : dueCents(cents(claim.amount), rateOn(ratesFor(rates, claim.added), grade, claim.date), roundsHalfUp(claim, rounding));
 }
 
+/** A holder's part of a shared claim, in cents, by their share (a percent with two decimals): of a claim
+ *  that keeps the figure fixed when it was settled, that figure (`shownCents`) times the share divided by
+ *  100, rounded half to even; otherwise the claim's amount times the share divided by 100, times the rate
+ *  in force on the claim's date of the holder's own grade in force then (`holderGrades`) divided by 100,
+ *  rounded as the claim rounds (see roundsHalfUp). Null when the holder's grade has no rate then. */
+export function sharePartCents(
+  claim: Claim,
+  share: string,
+  shownCents: number,
+  rates: Rate[],
+  holderGrades: PersonGrade[] | null,
+  rounding: Rounding,
+): number | null {
+  const shareHundredths = BigInt(cents(share));
+  if (isFrozen(claim)) return roundedCents(BigInt(shownCents) * shareHundredths, 10000n, false);
+  const grade = holderGrades === null ? null : gradeOn(holderGrades, claim.date);
+  const pct = grade === null ? null : rateOn(ratesFor(rates, claim.added), grade, claim.date);
+  if (pct === null) return null;
+  const product = BigInt(cents(claim.amount)) * shareHundredths * BigInt(cents(pct));
+  return roundedCents(product, 100000000n, roundsHalfUp(claim, rounding));
+}
+
+/** `numerator` divided by the positive `denominator`, rounded to a whole number half to even, or half
+ *  up (away from zero) when halfUp. */
+function roundedCents(numerator: bigint, denominator: bigint, halfUp: boolean): number {
+  const negative = numerator < 0n;
+  const abs = negative ? -numerator : numerator;
+  let quotient = abs / denominator;
+  const twice = (abs % denominator) * 2n;
+  if (twice > denominator || (twice === denominator && (halfUp || quotient % 2n === 1n))) quotient += 1n;
+  return Number(negative ? -quotient : quotient);
+}
+
 /** Every grace recorded for each grade, each from its date, oldest first, as a whole number of days
  *  in text; null records no grace from then. */
 export type Graces = Partial<Record<Grade, readonly Dated<string | null>[]>>;

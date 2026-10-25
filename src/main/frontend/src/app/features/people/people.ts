@@ -13,7 +13,7 @@ import { DescendantFigures, NO_DESCENDANTS, Grade, Patron, PeopleService, Person
 import { Periods } from './periods';
 import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
-import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn } from './rates.service';
+import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
 import { Settings } from './settings';
 import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
@@ -2438,7 +2438,7 @@ export class People {
       if (!this.countsLive(c, person)) continue;
       const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
       if (due === null) continue;
-      const own = c.shares.reduce((left, s) => left - sharePart(due, s.share), due);
+      const own = c.shares.reduce((left, s) => left - (this.sharePartOf(c, s, due, person.id) ?? 0), due);
       if (isOpen(c)) open += own;
       else settled += own;
       any = true;
@@ -2453,8 +2453,8 @@ export class People {
   }
 
   /** The parts each person holds of others' claims, in cents, by person id: of every claim that counts
-   *  for its own person and has a figure, what is due on it as it shows times their share divided by
-   *  100, rounded half to even; split by whether the claim is SETTLED or OPEN and PENDING. */
+   *  for its own person and has a figure, their part by their share (see sharePartCents; none when their
+   *  grade has no rate then); split by whether the claim is SETTLED or OPEN and PENDING. */
   private readonly heldParts = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const by = new Map<number, { settled: number; open: number }>();
@@ -2464,14 +2464,23 @@ export class People {
       const due = claimShownCents(c, this.rates(), owner.grades, this.floors(), this.lateness(), this.roundingOf(owner.id));
       if (due === null) continue;
       for (const s of c.shares) {
+        const part = this.sharePartOf(c, s, due, owner.id);
+        if (part === null) continue;
         const held = by.get(s.personId) ?? { settled: 0, open: 0 };
-        if (isOpen(c)) held.open += sharePart(due, s.share);
-        else held.settled += sharePart(due, s.share);
+        if (isOpen(c)) held.open += part;
+        else held.settled += part;
         by.set(s.personId, held);
       }
     }
     return by;
   });
+
+  /** The part of the claim of `ownerId`, whose due as it shows is `due` cents, its holder holds by the
+   *  share `s` (see sharePartCents); null when the holder's grade has no rate on the claim's date. */
+  private sharePartOf(c: Claim, s: { personId: number; share: string }, due: number, ownerId: number): number | null {
+    const holder = this.people().find((p) => p.id === s.personId);
+    return sharePartCents(c, s.share, due, this.rates(), holder?.grades ?? null, this.roundingOf(ownerId));
+  }
 
   /** What is due on the person's counting SETTLED claims that are not corrections, in cents, as each
    *  claim shows it, before the cap: the settled figure their score is worked from. */
@@ -3185,12 +3194,6 @@ function trimmedSum(figures: number[]): number {
 }
 
 /** `numerator` divided by the positive `denominator`, rounded half to even to a whole number. */
-/** A holder's part of what is due on a claim, in cents: `due` times the share (with two decimals)
- *  divided by 100, rounded half to even. */
-function sharePart(due: number, share: string): number {
-  return halfEven(BigInt(due) * BigInt(cents(share)), 10000n);
-}
-
 function halfEven(numerator: bigint, denominator: bigint): number {
   const negative = numerator < 0n;
   const abs = negative ? -numerator : numerator;
