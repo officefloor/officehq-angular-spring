@@ -82,6 +82,16 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (comment of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.on }}: {{ comment.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input #commentText [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text"
+            (input)="clearClaimError(c)" />
+          <button type="button" data-testid="claim-comment-add" (click)="comment(c, commentText)"
+            [attr.aria-label]="'Comment claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -492,6 +502,30 @@ export class PersonClaims {
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.claimError.set({ id: claim.id, message: `A ${claim.status} claim cannot have a proof added.` });
+      }
+    }
+  }
+
+  /** Comment a claim with the text typed; an empty comment is refused, and so is any change by a
+   *  viewer, on an archived sheet or in the as-of view. */
+  protected async comment(claim: ClaimView, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const text = input.value.trim();
+    if (text === '') {
+      this.claimError.set({ id: claim.id, message: 'Type a comment to add.' });
+      return;
+    }
+    try {
+      const commented = await this.api.comment(sheet.id, claim.id, text);
+      if (this.session.sheet()?.id === sheet.id) {
+        input.value = '';
+        this.changed.emit(commented);
+      }
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.claimError.set({ id: claim.id, message: 'This claim cannot be commented.' });
       }
     }
   }

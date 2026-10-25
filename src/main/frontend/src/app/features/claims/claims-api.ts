@@ -95,6 +95,15 @@ export interface ClaimView {
   tags: string[];
   /** The reason the claim was voided with, or null. */
   voidReason: string | null;
+  /** The claim's comments, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
+export interface ClaimComment {
+  by: string;
+  on: string;
+  text: string;
 }
 
 /** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */
@@ -332,6 +341,11 @@ export class ClaimsApi {
    *  closed period. */
   addProof(sheetId: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/proof`, {}));
+  }
+
+  /** Comment a claim: refused for an empty comment. */
+  comment(sheetId: string, id: number, text: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/comments`, { text }));
   }
 
   /** Remind an open or pending claim: refused for a claim in any other status, and for one already

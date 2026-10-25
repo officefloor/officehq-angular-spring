@@ -36,12 +36,13 @@ public class ClaimController {
      *  the claim's proofs count. Split from is the number of the claim it was split off from, or null.
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
      *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none.
-     *  Void reason is the reason it was voided with, or null. */
+     *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
-            boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason) {
+            boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
+            List<CommentView> comments) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -51,7 +52,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
-                    claim.getTags(), claim.getVoidReason());
+                    claim.getTags(), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentView::of).toList());
         }
     }
 
@@ -60,6 +62,13 @@ public class ClaimController {
         public static LogLineView of(ClaimLogLine line) {
             return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
                     line.getDue() == null ? null : line.getDue().toPlainString());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+        public static CommentView of(ClaimComment comment) {
+            return new CommentView(comment.getBy(), comment.getOn(), comment.getText());
         }
     }
 
@@ -276,5 +285,16 @@ public class ClaimController {
             @RequestBody(required = false) @Valid VoidForm form) {
         return ClaimView.of(service.voidClaim(sheetId.trim(), SignedInUser.name(user), id,
                 form == null ? null : form.reason()));
+    }
+
+    /** The text of a comment on a claim. */
+    public record CommentForm(@NotBlank @Size(max = 1000) String text) {
+    }
+
+    /** Comment a claim; an empty comment is refused. */
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid CommentForm form) {
+        return ClaimView.of(service.comment(sheetId.trim(), SignedInUser.name(user), id, form.text()));
     }
 }

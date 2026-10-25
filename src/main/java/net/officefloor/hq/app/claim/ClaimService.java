@@ -419,6 +419,24 @@ public class ClaimService {
         return saved;
     }
 
+    /** Comment a claim, in any status, with the user and the sheet's today, writing COMMENT_ADDED.
+     *  Refused for an empty comment. No figure moves, so a claim dated inside a closed period may
+     *  still be commented. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long id, String text) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A comment cannot be empty.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.comment(user, sheets.today(sheetId), trimmed);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("COMMENT_ADDED", user, person, saved, saved.getNumber(), " text=" + trimmed);
+        return saved;
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
      *  keeps its number and date and loses any figure a statement bound it to (it is live again until
      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
