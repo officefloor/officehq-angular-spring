@@ -11,6 +11,8 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -34,15 +36,18 @@ public class PlanService {
     private final ClaimService claims;
     private final Audit audit;
     private final TransactionTemplate eachClaim;
+    private final SettingsService settings;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetRepository sheetRepository,
-            SheetService sheets, ClaimService claims, Audit audit, PlatformTransactionManager transactions) {
+            SheetService sheets, ClaimService claims, Audit audit, PlatformTransactionManager transactions,
+            SettingsService settings) {
         this.plans = plans;
         this.people = people;
         this.sheetRepository = sheetRepository;
         this.sheets = sheets;
         this.claims = claims;
         this.audit = audit;
+        this.settings = settings;
         this.eachClaim = new TransactionTemplate(transactions);
         this.eachClaim.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -81,6 +86,7 @@ public class PlanService {
      * plan, by date; the claims made, in the order they were made. Not one change: each claim is. */
     public List<Claim> generate(String sheetId, String user) {
         if (sheetRepository.findById(sheetId).isEmpty()) return List.of();
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
         LocalDate today = sheets.today(sheetId);
         List<Claim> made = new ArrayList<>();
         for (Plan plan : plans(sheetId)) {

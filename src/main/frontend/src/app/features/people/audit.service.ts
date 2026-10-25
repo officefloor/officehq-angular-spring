@@ -27,4 +27,13 @@ export class AuditService {
       }),
     );
   }
+
+  /** The sheet's activity: one line `<user> <EVENT> <count>` per user and event, by user then event. */
+  activity(sheet: string): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/activity`, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
 }

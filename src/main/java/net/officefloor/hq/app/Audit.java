@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import net.officefloor.hq.app.settings.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -120,6 +121,22 @@ public class Audit {
                             && amount.equals(fields.get("amount")) && date.equals(fields.get("date"));
             if (about) found.add(line);
         }
+        return found;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's lines, one line
+     * {@code <user> <EVENT> <count>}, sorted by user then event.
+     */
+    public synchronized List<String> activity(String sheetId) {
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+        for (String line : lines(sheetId, "")) {
+            String event = line.split(" ", 2)[0];
+            String user = fieldsOf(line).getOrDefault("by", "");
+            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
         return found;
     }
 

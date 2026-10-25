@@ -69,6 +69,11 @@ public class AuditService {
                 String.valueOf(claim.getDate()));
     }
 
+    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, by user then event. */
+    public List<String> activity(String sheetId) {
+        return audit.activity(sheetId);
+    }
+
     /** The ids of the sheet's children, their children, and so on, in id order. */
     private Set<String> descendantsOf(String sheetId) {
         Set<String> found = new TreeSet<>();

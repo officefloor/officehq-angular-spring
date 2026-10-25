@@ -27,6 +27,7 @@ import { CrewsService, crewDueCents } from './crews.service';
 import { Plans } from './plans';
 import { Plan, PlansService } from './plans.service';
 import { PoolsService } from './pools.service';
+import { Activity } from './activity';
 import { Audit } from './audit';
 import { FigurePipe } from '../../core/figure.pipe';
 
@@ -67,7 +68,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 // Each signed-in user can watch people from their row; the row shows whether that user watches them.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, Activity, Audit, Claims, Crews, Delegations, Header, Holidays, Notes, Periods, Plans, Pools, Rates, Settings, Summary, Dashboard, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -102,6 +103,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-templates />
     <app-tree-search />
     <app-audit />
+    <app-activity />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-dashboard [counts]="dashboard()" />
