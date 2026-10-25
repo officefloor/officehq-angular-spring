@@ -48,12 +48,14 @@ public class SheetService {
         return load(id).getToday();
     }
 
-    /** Change the sheet's today; it has no audit line of its own, only what it sets off (such as the
-     *  periods it closes) and then the figures it moves. */
+    /** Change the sheet's today; it has no audit line of its own: first a snapshot of each person's
+     *  due-total on the day being left, then what it sets off (such as the periods it closes) and then
+     *  the figures it moves. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id);
         Rollup.Snapshot before = rollup.snapshot(id);
+        rollup.recordSnapshot(user, before);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(id, user, today));
