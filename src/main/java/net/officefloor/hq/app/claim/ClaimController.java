@@ -122,6 +122,14 @@ public class ClaimController {
     public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to re-date together, and their new date. */
+    public record BulkRedateForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
+    /** What a bulk re-date did: the claims it re-dated, and how many were re-dated and refused. */
+    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final BulkChangeService bulk;
 
@@ -221,6 +229,15 @@ public class ClaimController {
         BulkChangeService.Result result = bulk.reassign(sheetId.trim(), SignedInUser.name(user), form.ids(),
                 form.personId());
         return new BulkReassignView(result.changed().size(), result.refused(),
+                result.changed().stream().map(ClaimView::of).toList());
+    }
+
+    /** Re-date the selected claims together in list order; each that cannot be re-dated is left as it is. */
+    @PostMapping("/claims/redate")
+    public BulkRedateView redateSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkRedateForm form) {
+        BulkChangeService.Result result = bulk.redate(sheetId.trim(), SignedInUser.name(user), form.ids(), form.date());
+        return new BulkRedateView(result.changed().size(), result.refused(),
                 result.changed().stream().map(ClaimView::of).toList());
     }
 

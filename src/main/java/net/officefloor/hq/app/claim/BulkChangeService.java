@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -19,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Opens, settles or moves selected claims together. Each is changed on its own, as its own button would,
+/** Opens, settles, moves or re-dates selected claims together. Each is changed on its own, as its own button would,
  *  so one that cannot be changed is left as it is and the others still change; a bulk settle is the
  *  exception: it settles all of them or none. */
 @Service
@@ -73,6 +74,12 @@ public class BulkChangeService {
      *  one that cannot be moved is refused. An id not of the sheet is refused. */
     public Result reassign(String sheetId, String user, Collection<Long> ids, long toPersonId) {
         return each(sheetId, user, ids, id -> service.reassign(sheetId, user, id, toPersonId, true));
+    }
+
+    /** Re-date the claims of these ids in list order, each by the rules of re-dating one; one that
+     *  cannot be re-dated is refused. An id not of the sheet is refused. */
+    public Result redate(String sheetId, String user, Collection<Long> ids, LocalDate date) {
+        return each(sheetId, user, ids, id -> service.redate(sheetId, user, id, date));
     }
 
     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {

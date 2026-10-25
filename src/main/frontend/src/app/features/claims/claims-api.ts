@@ -165,6 +165,14 @@ export interface BulkReassignView {
   claims: ClaimView[];
 }
 
+/** What re-dating selected claims together did: how many were re-dated and refused, and the claims
+ *  re-dated, in the order they were re-dated. */
+export interface BulkRedateView {
+  redated: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */
@@ -403,6 +411,11 @@ export class ClaimsApi {
   /** Move the claims of these ids to the person together in list order; each that cannot be moved is left as it is. */
   reassignSelected(sheetId: string, ids: readonly number[], personId: number): Promise<BulkReassignView> {
     return firstValueFrom(this.http.post<BulkReassignView>(`${this.url(sheetId)}/claims/reassign`, { ids, personId }));
+  }
+
+  /** Re-date the claims of these ids together in list order; each that cannot be re-dated is left as it is. */
+  redateSelected(sheetId: string, ids: readonly number[], date: string): Promise<BulkRedateView> {
+    return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheetId)}/claims/redate`, { ids, date }));
   }
 
   /** Add a draft claim per line of name,amount,date,note, in order; refused as a whole, adding
