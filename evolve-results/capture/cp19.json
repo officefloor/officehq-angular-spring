@@ -1,0 +1,64 @@
+{
+  "checkpoint": 19,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp19_quick-add",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bf5166df7838ef02e2e913f7e69be375f1195c0c",
+  "reset_sha": "",
+  "preagent_sha": "e40072bc56ec7ac7903bad20c10bd355b11c8780",
+  "prev_sha": "e40072bc56ec7ac7903bad20c10bd355b11c8780",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7671524,
+    "input_tokens": 32,
+    "output_tokens": 8675,
+    "cache_read_tokens": 653742,
+    "cache_creation_tokens": 57847,
+    "num_turns": 17,
+    "duration_ms": 182877,
+    "duration_api_ms": 80797,
+    "model": "claude-opus-5-5",
+    "session_id": "6dacd6d1-f0e1-4350-9e8f-9646d581737b",
+    "stop_reason": "success",
+    "result_text": "The quick-add bar is in, and `bin/e2e` passes all 4 tests: the quick-add test and the three existing scenarios.\n\n**What it does**\n- The bar sits under the people form. You type a name and an amount, and it creates a DRAFT claim dated the sheet's today with an empty note.\n- If a person already has that name, the claim goes to them. Names are matched the same way the people form checks them for uniqueness: spaces trimmed and case ignored, so \" dot \" finds Dot. Otherwise the person is created first with grade A.\n- The person and claim rules apply. The name can't be blank, the amount must be 0.00 or more with up to two decimals, and claims dated inside a closed period are refused. Any refusal shows `quick-error`, which clears as soon as you edit the bar.\n\n**All or nothing**\nThe server does the whole quick-add in one transaction by calling the existing \"add person\" and \"add claim\" logic. If the claim is refused, the new person is rolled back too. Audit records are only written once the change is committed, so a refusal leaves nothing in the audit file. When it succeeds, the audit lines come out in the order the test expects: `PERSON_ADDED`, `ROLLUP`, `CLAIM_ADDED`. The test doesn't try a refusal that happens after a new person would already exist, such as a closed-period date. That path relies on the rollback and wasn't exercised.\n\n**Changes**\n- **Server:** a new `quickadd` package with `QuickAddController` (`POST /api/sheets/{id}/quick-add`) and `QuickAddService`. I added `findBySheetIdAndNameKey` to `PersonRepository` and made `PersonView.of` public. The database schema didn't need to change.\n- **Front end:** a new `people/quick-add.ts` component, wired into `people.ts`, plus a `quickAdd` call in `people-api.ts`. I moved the amount check (`AMOUNT`) into `claims-api.ts` so the claim form and the bar use the same one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7671524,
+        "num_turns": 17,
+        "duration_ms": 182877,
+        "duration_api_ms": 80797,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp19.agent.jsonl",
+  "agent_diff_file": "cp19.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
