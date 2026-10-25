@@ -78,6 +78,10 @@ public class Person {
     @Column(name = "position")
     private Long position;
 
+    /** The sheet the person was transferred from; null when they were added on this sheet. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -95,10 +99,12 @@ public class Person {
     }
 
     /** A copy of the person for another sheet: their name, every grade they were given (each with its
-     *  from-date), terms, contact and aliases; not their holds, nor their retirement. */
+     *  from-date), terms, contact and aliases; not their holds, nor their retirement. The copy came
+     *  from this person's sheet. */
     public Person copyTo(String otherSheetId) {
         Person copy = new Person();
         copy.sheetId = otherSheetId;
+        copy.originSheetId = sheetId;
         copy.addedOn = addedOn;
         copy.setName(name);
         for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
@@ -272,6 +278,11 @@ public class Person {
     /** The person's place in the list, lowest first. */
     public long getPosition() {
         return position != null ? position : id;
+    }
+
+    /** The sheet the person was transferred from, or null when they were added on this sheet. */
+    public String getOriginSheetId() {
+        return originSheetId;
     }
 
     public long getVersion() {

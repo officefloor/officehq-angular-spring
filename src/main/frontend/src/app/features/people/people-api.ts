@@ -66,6 +66,8 @@ export interface PersonView {
   aliases: string[];
   /** Whether a name or alias of theirs is used on another sheet of the sheet's tree. */
   clashing: boolean;
+  /** The sheet the person was transferred from, or null when they were added on this sheet. */
+  origin: string | null;
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,

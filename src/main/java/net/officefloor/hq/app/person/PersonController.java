@@ -40,10 +40,11 @@ public class PersonController {
      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
      *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
      *  user watches them; clashing whether their name or an alias is used on another sheet of the
-     *  sheet's tree. */
+     *  sheet's tree; origin the sheet they were transferred from, null when added here. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
-            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing) {
+            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing,
+            String origin) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
             return of(person, List.of(), today, watched, clashing);
@@ -57,7 +58,8 @@ public class PersonController {
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
                     person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing);
+                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+                    person.getOriginSheetId());
         }
     }
 
