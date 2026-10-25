@@ -159,6 +159,17 @@ public class Person {
         return holds.stream().anyMatch(h -> h.covers(date));
     }
 
+    /** Whether the person's retirement date is reached by the sheet's today (on or after it). */
+    public boolean isRetiredBy(LocalDate today) {
+        return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
+    }
+
+    /** Whether the person's unbound open claim of this date leaves the live totals: dated within one of
+     *  their holds, or the person's retirement date is reached by the sheet's today. */
+    public boolean isLeftOut(LocalDate date, LocalDate today) {
+        return isHeldOn(date) || isRetiredBy(today);
+    }
+
     /** Put a hold on the person from a date to a date (none: no end). */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new PersonHold(from, to));

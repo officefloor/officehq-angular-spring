@@ -169,17 +169,20 @@ public class PersonService {
         return saved;
     }
 
-    /** Retire a person from a date, the sheet's today when none is given. Their claims keep counting;
-     *  claims dated after the date can no longer be added to them. */
+    /** Retire a person from a date, the sheet's today when none is given. Once the sheet's today reaches
+     *  the date, their open claims count in no live total, unless a statement binds them; their settled
+     *  claims still count. Claims dated after the date can no longer be added to them. */
     @Transactional
     public Person retire(String sheetId, String user, long id, LocalDate from) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         LocalDate dated = from != null ? from : sheets.today(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         person.setRetiredFrom(dated);
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + dated);
+        rollup.recordChanges(user, before);
         return saved;
     }
 

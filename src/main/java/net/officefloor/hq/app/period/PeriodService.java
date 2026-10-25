@@ -176,11 +176,11 @@ public class PeriodService {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
             // Counted by the status the claim had at the end of the period's last day; a hold only leaves
-            // out a claim still open now, as holds touch only live claims.
+            // out a claim still open now, as holds touch only live claims; so does a reached retirement.
             ClaimStatus then = claim.statusAsOf(period.getTo());
             boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
-                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isHeldOn(claim.getDate()))));
+                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isLeftOut(claim.getDate(), today))));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) {

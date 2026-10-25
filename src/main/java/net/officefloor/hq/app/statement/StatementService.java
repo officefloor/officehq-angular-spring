@@ -147,11 +147,12 @@ public class StatementService {
     }
 
     /** Only open and settled claims count toward what is claimed and due; a person's open claims dated
-     *  within one of their holds do not, unless a statement binds them, nor does a claim deferred on the
+     *  within one of their holds, or all of them once their retirement date is reached, do not, unless a
+     *  statement binds them, nor does a claim deferred on the
      *  sheet's today, as on the screen. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
                 || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isHeldOn(claim.getDate())));
+                        && (claim.isBound() || !person.isLeftOut(claim.getDate(), today)));
     }
 }

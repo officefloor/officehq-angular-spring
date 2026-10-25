@@ -247,6 +247,8 @@ export class People {
   protected readonly holding = signal<number | null>(null);
   /** The holds of each person, by id. */
   private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
+  /** The retirement date of each retired person, by id. */
+  private readonly retiredFromById = computed(() => new Map(this.people().map((p) => [p.id, p.retiredFrom])));
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -530,11 +532,21 @@ export class People {
   }
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
-   *  except open claims dated within a hold of their person that no statement binds, and claims
+   *  except open claims dated within a hold of their person, or of a person whose retirement date the
+   *  sheet's today has reached, that no statement binds, and claims
    *  deferred on the sheet's today. */
   private countsLive(claim: ClaimView): boolean {
     return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
-      && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
+      && this.leftOut(claim));
+  }
+
+  /** Whether the claim, open and unbound, leaves the live totals: dated within a hold of its person, or
+   *  its person's retirement date reached by the sheet's today. */
+  private leftOut(claim: ClaimView): boolean {
+    const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
+    const today = this.session.sheet()?.today;
+    return heldOn(this.holdsById().get(claim.personId) ?? [], claim.date)
+      || (retiredFrom !== null && today !== undefined && retiredFrom <= today);
   }
 
   /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
@@ -545,7 +557,7 @@ export class People {
     if (status === null) return false;
     const then: ClaimView = { ...claim, status };
     return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && isOpen(claim) && !isBound(then)
-      && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
+      && this.leftOut(claim));
   }
 
   /** The names of the person's patrons, sorted, comma and space separated. */
