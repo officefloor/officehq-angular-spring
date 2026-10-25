@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.history.SheetAsOf;
 import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
@@ -91,6 +92,12 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         return snapshot(people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
                 claims.findBySheetIdOrderByListedDescIdDesc(sheetId), live(sheetId));
+    }
+
+    /** The figures the sheet showed as it stood then, each person's cut total as of then included (see
+     * {@link PoolService#cutTotalsAsOf}). */
+    public Snapshot snapshotAsOf(SheetAsOf then) {
+        return snapshot(then.people(), then.claims(), withCuts(then, pools.cutTotalsAsOf(then)));
     }
 
     /** The figures a sheet shows on {@code basis}, from {@code everyone} on it, in list order, and their
@@ -434,17 +441,7 @@ public class RollupService {
     /** {@code base}, but with the grade's rate {@code pct} in force on every date. */
     public static Basis withRate(Basis base, String grade, BigDecimal pct) {
         Rate rate = new Rate(null, grade, null, null, pct);
-        return new Basis() {
-            @Override
-            public LocalDate today() {
-                return base.today();
-            }
-
-            @Override
-            public LocalDate policyDateInForce() {
-                return base.policyDateInForce();
-            }
-
+        return new Delegating(base) {
             @Override
             public Optional<Rate> rateInForce(String g, LocalDate date) {
                 return grade.equals(g) ? Optional.of(rate) : base.rateInForce(g, date);
@@ -454,52 +451,92 @@ public class RollupService {
             public Optional<Rate> rateFor(Claim claim, String g, LocalDate date) {
                 return grade.equals(g) ? Optional.of(rate) : base.rateFor(claim, g, date);
             }
+        };
+    }
 
-            @Override
-            public BigDecimal floorOn(LocalDate date) {
-                return base.floorOn(date);
-            }
-
-            @Override
-            public BigDecimal latePctOn(LocalDate date) {
-                return base.latePctOn(date);
-            }
-
-            @Override
-            public BigDecimal capOn(LocalDate date) {
-                return base.capOn(date);
-            }
-
+    /** {@code base}, but with each person's cut total as in {@code cuts}, by person id (0.00 for one not in it). */
+    public static Basis withCuts(Basis base, Map<Long, BigDecimal> cuts) {
+        return new Delegating(base) {
             @Override
             public BigDecimal cutOf(Long personId) {
-                return base.cutOf(personId);
-            }
-
-            @Override
-            public Optional<Claim> claimNumbered(Long personId, String number) {
-                return base.claimNumbered(personId, number);
-            }
-
-            @Override
-            public Optional<Person> personOf(Long personId) {
-                return base.personOf(personId);
-            }
-
-            @Override
-            public Integer graceOn(String g, LocalDate date) {
-                return base.graceOn(g, date);
-            }
-
-            @Override
-            public RoundingMode roundingOn(LocalDate date) {
-                return base.roundingOn(date);
-            }
-
-            @Override
-            public List<ClaimShare> shares() {
-                return base.shares();
+                return cuts.getOrDefault(personId, zero());
             }
         };
+    }
+
+    /** A basis that is {@code base} in everything. */
+    private static class Delegating implements Basis {
+
+        private final Basis base;
+
+        Delegating(Basis base) {
+            this.base = base;
+        }
+
+        @Override
+        public LocalDate today() {
+            return base.today();
+        }
+
+        @Override
+        public LocalDate policyDateInForce() {
+            return base.policyDateInForce();
+        }
+
+        @Override
+        public Optional<Rate> rateInForce(String g, LocalDate date) {
+            return base.rateInForce(g, date);
+        }
+
+        @Override
+        public Optional<Rate> rateFor(Claim claim, String g, LocalDate date) {
+            return base.rateFor(claim, g, date);
+        }
+
+        @Override
+        public BigDecimal floorOn(LocalDate date) {
+            return base.floorOn(date);
+        }
+
+        @Override
+        public BigDecimal latePctOn(LocalDate date) {
+            return base.latePctOn(date);
+        }
+
+        @Override
+        public BigDecimal capOn(LocalDate date) {
+            return base.capOn(date);
+        }
+
+        @Override
+        public BigDecimal cutOf(Long personId) {
+            return base.cutOf(personId);
+        }
+
+        @Override
+        public Optional<Claim> claimNumbered(Long personId, String number) {
+            return base.claimNumbered(personId, number);
+        }
+
+        @Override
+        public Optional<Person> personOf(Long personId) {
+            return base.personOf(personId);
+        }
+
+        @Override
+        public Integer graceOn(String g, LocalDate date) {
+            return base.graceOn(g, date);
+        }
+
+        @Override
+        public RoundingMode roundingOn(LocalDate date) {
+            return base.roundingOn(date);
+        }
+
+        @Override
+        public List<ClaimShare> shares() {
+            return base.shares();
+        }
     }
 
     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see

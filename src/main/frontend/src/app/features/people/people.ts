@@ -15,7 +15,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Graces, Lateness, Rate, RateWithdrawn, RatesService, Rounding, claimShownCents, overdueFrom, rateOn, sharePartCents } from './rates.service';
 import { Settings } from './settings';
-import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce } from './settings.service';
+import { Dated, RoleGiven, ScoreThresholds, SettingsService, inForce, policyVersionOn } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { STATUSES, Summary, SummaryPerson } from './summary';
 import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
@@ -312,6 +312,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
       <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people (CSV)</button>
+      <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions (CSV)</button>
 
       <section aria-labelledby="snapshot-compare-heading">
         <h3 id="snapshot-compare-heading">Compare snapshots</h3>
@@ -2363,6 +2364,28 @@ export class People {
       lines.push([f.sheet, f.name, f.grade ?? '', f.dueTotal]);
     }
     this.downloadCsv('tree.csv', lines);
+  }
+
+  /** Download the sheet's policy versions, re-read from the store, as a CSV file, oldest first: number,
+   *  from-date (blank when it counts on every date), the setting changed and its value, how many of the
+   *  sheet's claims have it as their policy version, and the sum of what is due on those of them that
+   *  count in the live totals, as each claim shows it (a claim with nothing due is skipped). */
+  protected async exportPolicy(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet || !(await this.readDone())) return;
+    const versions = await this.settingsService.policyVersions(sheet);
+    const froms = versions.map((v) => v.from);
+    const due = new Array<number>(versions.length).fill(0);
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id)) {
+        const number = policyVersionOn(froms, c.date);
+        if (number === 0 || !this.countsLive(c, p)) continue;
+        due[number - 1] += claimShownCents(c, this.rates(), p.grades, this.floors(), this.lateness(), this.roundingOf(p.id)) ?? 0;
+      }
+    }
+    const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']];
+    versions.forEach((v, i) => lines.push([String(v.number), v.from ?? '', v.key, v.value ?? '', String(v.claims), money(due[i])]));
+    this.downloadCsv('policy.csv', lines);
   }
 
   /** Download the person's statement as a CSV file: each claim of theirs their last statement bound,

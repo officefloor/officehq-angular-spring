@@ -198,6 +198,18 @@ public class PoolService {
         return totals;
     }
 
+    /** Each person's cut total as the sheet stood {@code then}, by person id: as {@link #cutTotalsNow}, the
+     * pools worked out on its date. */
+    public Map<Long, BigDecimal> cutTotalsAsOf(SheetAsOf then) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (Pooled pool : pools(Basis.of(then, then.today()))) {
+            for (Member m : pool.members()) {
+                if (m.personId() != null && m.cut() != null) totals.merge(m.personId(), m.cut(), BigDecimal::add);
+            }
+        }
+        return totals;
+    }
+
     /** What the pools are worked out from now: the sheet's pot, today, people, pools and crews as they stand. */
     private Basis basisNow(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);

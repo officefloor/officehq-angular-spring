@@ -222,7 +222,7 @@ public class ConsolidatedService {
 
     private void addAsOf(Sum sum, String sheetId, LocalDate date) {
         SheetAsOf sheet = history.asOf(sheetId, date);
-        sum.add(rollup.snapshot(sheet.people(), sheet.claims(), sheet), sheet.people(), sheet.claims(), sheet.today());
+        sum.add(rollup.snapshotAsOf(sheet), sheet.people(), sheet.claims(), sheet.today());
     }
 
     /** A sheet's own due-totals per grade as its summary shows them: the due-totals of the people on the
