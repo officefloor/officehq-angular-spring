@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,11 +27,14 @@ public class BulkChangeService {
     private final ClaimService service;
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final SettingService settings;
 
-    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people) {
+    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people,
+            SettingService settings) {
         this.service = service;
         this.claims = claims;
         this.people = people;
+        this.settings = settings;
     }
 
     /** Open the claims of these ids in list order: people in the order they were added, each person's
@@ -46,6 +51,9 @@ public class BulkChangeService {
 
     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
         Set<Long> selected = new LinkedHashSet<>(ids);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) {
+            return new Result(List.of(), selected.size()); // a viewer changes nothing: each is refused
+        }
         List<Long> ordered = inListOrder(sheetId, selected);
         List<Claim> changed = new ArrayList<>();
         int refused = selected.size() - ordered.size();

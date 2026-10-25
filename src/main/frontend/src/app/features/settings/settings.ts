@@ -116,7 +116,7 @@ function settled(control: AbstractControl): void {
       <form [formGroup]="roleForm" (ngSubmit)="saveRole()" aria-label="Assign a role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
-        <label for="role-form-role">Role (clerk or steward)</label>
+        <label for="role-form-role">Role (clerk, steward or viewer)</label>
         <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
         <datalist id="role-options">
           @for (r of roles; track r) {
@@ -332,7 +332,7 @@ export class Settings {
       value: this.permissionsForm.controls[a].value.split(',').map((r) => r.trim()).join(',') }));
     for (const { action, control, value } of permissionValues) {
       if (changed(control) && value !== '' && !value.split(',').every((r) => ROLES.includes(r as Role))) {
-        this.settingsError.set(`Name who may ${action} as a comma separated list of clerk and steward, or leave it blank for the standing rule.`);
+        this.settingsError.set(`Name who may ${action} as a comma separated list of clerk, steward and viewer, or leave it blank for the standing rule.`);
         return;
       }
     }
@@ -437,7 +437,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role as Role)) {
-      this.roleError.set('Choose a role of clerk or steward.');
+      this.roleError.set('Choose a role of clerk, steward or viewer.');
       return;
     }
     this.savingRole.set(true);

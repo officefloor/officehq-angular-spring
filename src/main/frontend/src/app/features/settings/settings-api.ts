@@ -8,7 +8,7 @@ import { DatedValue } from './dated';
 export const DEFAULT_TERMS = 14;
 
 /** The roles a sheet can assign a user name; any name not assigned one is a clerk. */
-export const ROLES = ['clerk', 'steward'] as const;
+export const ROLES = ['clerk', 'steward', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** The actions the sheet's permission matrix names, each set under perm-<action>. */

@@ -3,6 +3,7 @@ package net.officefloor.hq.app;
 import java.io.IOException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.PathResourceResolver;
@@ -15,6 +16,17 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  */
 @Configuration
 public class SpaConfig implements WebMvcConfigurer {
+
+    private final ViewerGuard viewerGuard;
+
+    public SpaConfig(ViewerGuard viewerGuard) {
+        this.viewerGuard = viewerGuard;
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(viewerGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
