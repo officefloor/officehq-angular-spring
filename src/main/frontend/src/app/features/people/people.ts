@@ -31,6 +31,8 @@ import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
+import { GeneratePlans } from '../plans/generate-plans';
+import { PersonPlans } from '../plans/person-plans';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
@@ -38,7 +40,7 @@ import { Consolidated } from '../summary/consolidated';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList, PersonPlans, GeneratePlans],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -86,6 +88,7 @@ import { Consolidated } from '../summary/consolidated';
         </form>
         <app-quick-add (added)="quickAdded($event)" />
         <app-paste-claims (added)="pasted($event)" />
+        <app-generate-plans (generated)="pasted($event)" />
         <app-import-people (added)="imported($event)" />
         <label>
           <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
@@ -210,7 +213,7 @@ import { Consolidated } from '../summary/consolidated';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -324,6 +327,9 @@ import { Consolidated } from '../summary/consolidated';
                   @if (patronError()?.id === p.id) {
                     <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                   }
+                </td>
+                <td>
+                  <app-person-plans [personId]="p.id" [personName]="p.name" />
                 </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
