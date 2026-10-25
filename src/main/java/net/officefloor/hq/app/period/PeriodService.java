@@ -82,8 +82,8 @@ public class PeriodService {
         return saved;
     }
 
-    /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures of the open and settled claims
-     *  dated in it, skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. Refused when the period is already closed. */
+    /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
+     *  dated in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. Refused when the period is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -102,9 +102,11 @@ public class PeriodService {
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
-            boolean counts = claim.getStatus() == ClaimStatus.SETTLED
-                    || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                            && (claim.isBound() || !person.isHeldOn(claim.getDate())));
+            // Counted by the status the claim had at the end of the period's last day.
+            ClaimStatus then = claim.statusAsOf(period.getTo());
+            boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
+            boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
+                    || (then.isOpen() && (bound || !person.isHeldOn(claim.getDate()))));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) {

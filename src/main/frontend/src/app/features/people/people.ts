@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -285,18 +285,17 @@ export class People {
   protected readonly money = money;
   /** The sheet's periods in date order. */
   protected readonly periods = signal<PeriodView[]>([]);
-  /** Each person's due-total for each period, in cents, by person id then period id: the figures of
-   *  their counting claims dated in it, skipping those that are n/a; for a closed period, the figure
+  /** Each person's due-total for each period, in cents, by person id then period id: the figures as
+   *  shown now of their claims dated in it that counted at the end of its last day (countsAt), skipping those that are n/a; for a closed period, the figure
    *  fixed when it was closed (0 for a person added since). */
   private readonly personPeriodCents = computed(() => {
     const by = new Map<number, Map<number, number>>(
       this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
     const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
-      if (!this.countsLive(c)) continue;
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (period === null || period.closed || person === undefined) continue;
+      if (period === null || period.closed || person === undefined || !this.countsAt(c, period.to)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       const of = by.get(person.id)!;
       if (due !== null) of.set(period.id, (of.get(period.id) ?? 0) + due);
@@ -455,6 +454,16 @@ export class People {
    *  deferred on the sheet's today. */
   private countsLive(claim: ClaimView): boolean {
     return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
+      && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
+  }
+
+  /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
+   *  its log records at the end of that day (none when added after it); deferral is as today. */
+  private countsAt(claim: ClaimView, end: string): boolean {
+    const status = statusAsOf(claim, end);
+    if (status === null) return false;
+    const then: ClaimView = { ...claim, status };
+    return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && !isBound(then)
       && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
   }
 

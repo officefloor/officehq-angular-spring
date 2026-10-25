@@ -163,6 +163,14 @@ public class Claim {
         return List.copyOf(log);
     }
 
+    /** The status the claim had at the end of the day given, as its log records it; null when it was
+     *  not yet added then. */
+    public ClaimStatus statusAsOf(LocalDate date) {
+        ClaimStatus then = null;
+        for (ClaimLogLine line : log) if (!line.getOn().isAfter(date)) then = line.getStatus();
+        return then;
+    }
+
     /** Log the claim's status now: who gave it, the sheet's today and its due (null: n/a) then. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));

@@ -44,6 +44,14 @@ export function counts(claim: ClaimView): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';
 }
 
+/** The status the claim had at the end of the day `date` (yyyy-mm-dd), as its status log records it;
+ *  null when it was not yet added then. */
+export function statusAsOf(claim: ClaimView, date: string): ClaimStatus | null {
+  let status: ClaimStatus | null = null;
+  for (const line of claim.log) if (line.on <= date) status = line.status;
+  return status;
+}
+
 export interface ClaimView {
   id: number;
   personId: number;
