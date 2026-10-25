@@ -1,0 +1,191 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 4aba6172..2ea05e5f 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -165,6 +165,14 @@ export interface BulkReassignView {
+   claims: ClaimView[];
+ }
+ 
++/** What re-dating selected claims together did: how many were re-dated and refused, and the claims
++ *  re-dated, in the order they were re-dated. */
++export interface BulkRedateView {
++  redated: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ export interface ClaimForm {
+   amount: string;
+   /** null takes the sheet's today. */
+@@ -405,6 +413,11 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.post<BulkReassignView>(`${this.url(sheetId)}/claims/reassign`, { ids, personId }));
+   }
+ 
++  /** Re-date the claims of these ids together in list order; each that cannot be re-dated is left as it is. */
++  redateSelected(sheetId: string, ids: readonly number[], date: string): Promise<BulkRedateView> {
++    return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheetId)}/claims/redate`, { ids, date }));
++  }
++
+   /** Add a draft claim per line of name,amount,date,note, in order; refused as a whole, adding
+    *  nothing, when any line is refused. */
+   paste(sheetId: string, text: string): Promise<PasteView> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e506aa87..1876a3f6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -189,6 +189,20 @@ import { PersonPlans } from '../plans/person-plans';
+         @if (bulkReassignError()) {
+           <p role="alert" data-testid="bulk-reassign-error">{{ bulkReassignError() }}</p>
+         }
++        <p>
++          <label for="bulk-redate-date">Re-date the selected claims to</label>
++          <input id="bulk-redate-date" type="date" data-testid="bulk-redate-date" #bulkRedateDate
++            (input)="bulkRedateError.set('')" />
++          <button type="button" data-testid="bulk-redate" (click)="redateSelected(bulkRedateDate.value)"
++            [disabled]="bulkRedating()">Re-date selected claims</button>
++          @if (bulkRedateResult(); as r) {
++            Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>,
++            refused <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong>
++          }
++        </p>
++        @if (bulkRedateError()) {
++          <p role="alert" data-testid="bulk-redate-error">{{ bulkRedateError() }}</p>
++        }
+         <p>
+           <label for="bulk-grade">Grade for the selected people</label>
+           <select id="bulk-grade" data-testid="bulk-grade" #bulkGrade (change)="bulkGradeError.set('')">
+@@ -705,6 +719,11 @@ export class People {
+   /** How many the last bulk move moved and refused; cleared while the next one runs. */
+   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+   protected readonly bulkReassignError = signal('');
++  /** Whether the selected claims are being re-dated. */
++  protected readonly bulkRedating = signal(false);
++  /** How many the last bulk re-date re-dated and refused; cleared while the next one runs. */
++  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
++  protected readonly bulkRedateError = signal('');
+   /** The ids of the people selected to be given a grade together. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** Whether the selected people are being given a grade. */
+@@ -746,6 +765,8 @@ export class People {
+       this.bulkSettleError.set('');
+       this.bulkReassignResult.set(null);
+       this.bulkReassignError.set('');
++      this.bulkRedateResult.set(null);
++      this.bulkRedateError.set('');
+       this.selectedPeople.set(new Set());
+       this.bulkGraded.set(null);
+       this.bulkGradeError.set('');
+@@ -1460,6 +1481,32 @@ export class People {
+     }
+   }
+ 
++  /** Re-date the selected claims to the date together, in list order, each by the rules of re-dating
++   *  one; each that cannot be re-dated is left as it is. */
++  protected async redateSelected(date: string): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet || this.bulkRedating()) return;
++    this.bulkRedateResult.set(null);
++    this.bulkRedateError.set('');
++    const dated = date.trim();
++    if (!DATE.test(dated)) {
++      this.bulkRedateError.set('Type the new date of the selected claims as yyyy-mm-dd.');
++      return;
++    }
++    this.bulkRedating.set(true);
++    try {
++      const result = await this.claimsApi.redateSelected(sheet.id, [...this.selectedClaims()], dated);
++      if (this.session.sheet()?.id !== sheet.id) return;
++      for (const claim of result.claims) this.claimSaved(claim);
++      this.selectedClaims.set(new Set());
++      this.bulkRedateResult.set({ redated: result.redated, refused: result.refused });
++    } catch {
++      if (this.session.sheet()?.id === sheet.id) this.bulkRedateError.set('The selected claims could not be re-dated.');
++    } finally {
++      this.bulkRedating.set(false);
++    }
++  }
++
+   protected selectPerson(id: number, on: boolean): void {
+     this.bulkGradeError.set('');
+     this.bulkRetireError.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+index b5a89497..89437ba2 100644
+--- a/src/main/java/net/officefloor/hq/app/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+@@ -28,7 +28,7 @@ public class ViewerGuard implements HandlerInterceptor {
+     /** The path of a sheet's requests; the sheet id is the segment after it. */
+     public static final String SHEETS = "/api/sheets/";
+ 
+-    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle", "claims/reassign", "people/grade", "clone",
++    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle", "claims/reassign", "claims/redate", "people/grade", "clone",
+             "people/retire");
+ 
+     private final SettingService settings;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+index 64c7b281..f20d9f9a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.claim;
+ 
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Comparator;
+@@ -19,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** Opens, settles or moves selected claims together. Each is changed on its own, as its own button would,
++/** Opens, settles, moves or re-dates selected claims together. Each is changed on its own, as its own button would,
+  *  so one that cannot be changed is left as it is and the others still change; a bulk settle is the
+  *  exception: it settles all of them or none. */
+ @Service
+@@ -75,6 +76,12 @@ public class BulkChangeService {
+         return each(sheetId, user, ids, id -> service.reassign(sheetId, user, id, toPersonId, true));
+     }
+ 
++    /** Re-date the claims of these ids in list order, each by the rules of re-dating one; one that
++     *  cannot be re-dated is refused. An id not of the sheet is refused. */
++    public Result redate(String sheetId, String user, Collection<Long> ids, LocalDate date) {
++        return each(sheetId, user, ids, id -> service.redate(sheetId, user, id, date));
++    }
++
+     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
+         return each(sheetId, user, ids, id -> service.changeStatus(sheetId, user, id, next));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 89bb4bd9..3d668c69 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -122,6 +122,14 @@ public class ClaimController {
+     public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+     }
+ 
++    /** The claims selected to re-date together, and their new date. */
++    public record BulkRedateForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull LocalDate date) {
++    }
++
++    /** What a bulk re-date did: the claims it re-dated, and how many were re-dated and refused. */
++    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService service;
+     private final BulkChangeService bulk;
+ 
+@@ -224,6 +232,15 @@ public class ClaimController {
+                 result.changed().stream().map(ClaimView::of).toList());
+     }
+ 
++    /** Re-date the selected claims together in list order; each that cannot be re-dated is left as it is. */
++    @PostMapping("/claims/redate")
++    public BulkRedateView redateSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkRedateForm form) {
++        BulkChangeService.Result result = bulk.redate(sheetId.trim(), SignedInUser.name(user), form.ids(), form.date());
++        return new BulkRedateView(result.changed().size(), result.refused(),
++                result.changed().stream().map(ClaimView::of).toList());
++    }
++
+     /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. */
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
