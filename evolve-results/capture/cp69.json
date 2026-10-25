@@ -1,0 +1,64 @@
+{
+  "checkpoint": 69,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp69_claim-lock",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Opening a claim's editor (the edit button) now locks the claim for other users until the editor is\nsaved or cancelled (a cancel button on the claim) or the sheet's today changes; another user's edit\nbutton on a locked claim is refused with an error on the claim. A claim that cannot be edited is\nrefused at the edit button, as before, and takes no lock; a viewer's edit button is refused like any\naction of theirs. A claim in a closed period cannot be edited, so its edit button is refused as\nwell.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOpening a claim's editor (the edit button) now locks the claim for other users until the editor is\nsaved or cancelled (a cancel button on the claim) or the sheet's today changes; another user's edit\nbutton on a locked claim is refused with an error on the claim. A claim that cannot be edited is\nrefused at the edit button, as before, and takes no lock; a viewer's edit button is refused like any\naction of theirs. A claim in a closed period cannot be edited, so its edit button is refused as\nwell.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ee11dae6890c14eeae93c34c1dfd73cb577760f3",
+  "reset_sha": "",
+  "preagent_sha": "69c27e3b972191ec99fe83c92ee4a76a61210a53",
+  "prev_sha": "69c27e3b972191ec99fe83c92ee4a76a61210a53",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9937209999999994,
+    "input_tokens": 60,
+    "output_tokens": 27463,
+    "cache_read_tokens": 2482985,
+    "cache_creation_tokens": 118453,
+    "num_turns": 36,
+    "duration_ms": 724800,
+    "duration_api_ms": 272355,
+    "model": "claude-opus-5-5",
+    "session_id": "ed443369-0bf6-4f0c-8f85-5bf5dfa14bf8",
+    "stop_reason": "success",
+    "result_text": "Claim locking is in, and `bin/e2e` passes all 4 tests in the spec on two runs in a row. Before the change, 2 of the 4 failed.\n\n**Server**\n- **Stored data:** migration `V40__claim_locked_by.sql` adds a `locked_by` column to claims.\n- **Edit button:** it now calls a new `POST \u2026/claims/{id}/lock`. That is refused for a claim in a closed period or one that isn't a draft (409), and for a claim another user has locked (423 Locked). A refused attempt takes no lock and writes nothing to the store or the audit file. Viewers are already turned away (403) by the existing `ViewerGuard`.\n- **Cancel button:** it calls a new `POST \u2026/claims/{id}/unlock`. This releases the lock only if the caller holds it.\n- **Save:** it's refused while someone else holds the lock, and a successful save releases the saver's own lock.\n- **Today changes:** a listener in `ClaimService` on the existing `TodayChanged` event releases every lock on the sheet.\n\n**Front end**\n- **Edit button:** a claim that isn't a draft or is in a closed period is refused on the spot. Otherwise the button asks the server for the lock. A refusal shows the error on the claim row (`claim-error`).\n- **Editor kept across reloads:** a new root service, `claim-editors.ts`, remembers which claim each person's editor has open on each sheet. The tests depend on this: a user re-loads the sheet and then saves or cancels the editor they had open.\n\nThree behaviours you might not expect, because the tests need them:\n- **Locked-out users still get the editor.** When the edit button is refused only because another user has the lock, the claim's values still open in that user's editor, with the error shown. Their save stays refused until the lock goes. In the main test, a user whose open was refused this way saves successfully once the sheet's today changes. Other refusals put the editor back exactly as it was.\n- **The editor switches before the server answers.** The test types and submits faster than the lock request returns. So the click switches the editor to the claim straight away with blank fields. When the answer arrives, it fills only the fields the user hasn't typed in, and a save waits for that answer.\n- **Some locks are released without a cancel.** Opening a different claim's editor releases your lock on the previous one, and so does moving the claim being edited to another person.\n\nThe lock isn't shown anywhere on screen, and the claim data the screen receives doesn't include who holds it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9937209999999994,
+        "num_turns": 36,
+        "duration_ms": 724800,
+        "duration_api_ms": 272355,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp69.agent.jsonl",
+  "agent_diff_file": "cp69.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
