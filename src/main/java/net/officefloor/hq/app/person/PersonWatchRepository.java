@@ -9,6 +9,9 @@ public interface PersonWatchRepository extends JpaRepository<PersonWatch, Long> 
     /** The person's watchers in the order they started watching. */
     List<PersonWatch> findByPersonIdOrderByIdAsc(Long personId);
 
+    /** Stop everyone watching the person. */
+    void deleteByPersonId(Long personId);
+
     /** What the user watches on the sheet. */
     List<PersonWatch> findBySheetIdAndUserName(String sheetId, String userName);
 

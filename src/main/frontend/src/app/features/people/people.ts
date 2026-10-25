@@ -8,6 +8,7 @@ import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { PoolsList } from '../pools/pools';
+import { Pools } from '../pools/pools-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
@@ -296,6 +297,16 @@ import { PasteClaims } from '../claims/paste-claims';
                 <td>
                   <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                  <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
+                  <select [id]="'person-merge-into-' + p.id" data-testid="person-merge-into" #mergeInto
+                    (change)="clearPersonError(p.id)">
+                    <option value="">Merge into</option>
+                    @for (o of people(); track o.id) {
+                      <option [value]="o.id">{{ o.name }}</option>
+                    }
+                  </select>
+                  <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
+                    [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
                 </td>
               </tr>
             }
@@ -312,6 +323,7 @@ export class People {
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly statementsApi = inject(StatementsApi);
+  private readonly pools = inject(Pools);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
   private readonly cap = inject(SheetCap);
@@ -697,6 +709,40 @@ export class People {
       }
     } finally {
       this.stating.set(null);
+    }
+  }
+
+  /** The person being merged into another. */
+  protected readonly merging = signal<number | null>(null);
+
+  /** Merge the person into the one chosen in the row's select, then re-read the sheet's people, claims,
+   *  statements and pools, which the merge changes. */
+  protected async merge(person: PersonView, select: HTMLSelectElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.merging() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const intoId = Number(select.value);
+    if (select.value === '' || !Number.isInteger(intoId)) {
+      this.personError.set({ id: person.id, message: 'Choose the person to merge into.' });
+      return;
+    }
+    if (intoId === person.id) {
+      this.personError.set({ id: person.id, message: 'A person cannot be merged into themselves.' });
+      return;
+    }
+    this.merging.set(person.id);
+    try {
+      await this.api.merge(sheet.id, person.id, intoId);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id)]);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can merge people.' : 'The person could not be merged.' });
+      }
+    } finally {
+      this.merging.set(null);
     }
   }
 

@@ -65,6 +65,24 @@ public class Pool {
         return members.stream().anyMatch((m) -> m.getPersonId() == personId);
     }
 
+    /** Give a member's place in the pool to another person: added to that person's share when they are
+     *  already a member (held to 100.00), else taken over by them; nothing when the member is not in it. */
+    public void moveMember(long fromPersonId, long intoPersonId) {
+        PoolMember from = memberOf(fromPersonId);
+        if (from == null) return;
+        PoolMember into = memberOf(intoPersonId);
+        if (into == null) {
+            from.setPersonId(intoPersonId);
+        } else {
+            into.addShare(from.getShare());
+            members.remove(from);
+        }
+    }
+
+    private PoolMember memberOf(long personId) {
+        return members.stream().filter((m) -> m.getPersonId() == personId).findFirst().orElse(null);
+    }
+
     /** Add the person with a share (kept to two decimals). */
     public void addMember(long personId, BigDecimal share) {
         members.add(new PoolMember(personId, share));

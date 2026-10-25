@@ -13,6 +13,8 @@ import java.math.BigDecimal;
 @Table(name = "pool_member")
 public class PoolMember {
 
+    private static final BigDecimal HUNDRED = new BigDecimal("100.00");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -29,6 +31,16 @@ public class PoolMember {
     PoolMember(long personId, BigDecimal share) {
         this.personId = personId;
         this.share = share.setScale(2);
+    }
+
+    void setPersonId(long personId) {
+        this.personId = personId;
+    }
+
+    /** Add to the share, held to at most 100.00. */
+    void addShare(BigDecimal more) {
+        BigDecimal sum = share.add(more);
+        share = sum.compareTo(HUNDRED) > 0 ? HUNDRED : sum;
     }
 
     public Long getId() {

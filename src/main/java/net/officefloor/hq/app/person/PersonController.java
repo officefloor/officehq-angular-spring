@@ -82,6 +82,10 @@ public class PersonController {
     public record AliasForm(@Size(max = 200) String alias) {
     }
 
+    /** The person another is to be merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -104,11 +108,14 @@ public class PersonController {
 
     private final PersonService service;
     private final BulkGradeService bulkGrade;
+    private final MergeService merges;
     private final SheetService sheets;
 
-    public PersonController(PersonService service, BulkGradeService bulkGrade, SheetService sheets) {
+    public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
+            SheetService sheets) {
         this.service = service;
         this.bulkGrade = bulkGrade;
+        this.merges = merges;
         this.sheets = sheets;
     }
 
@@ -180,6 +187,13 @@ public class PersonController {
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid AliasForm form) {
         return view(service.addAlias(sheetId.trim(), SignedInUser.name(user), id, form.alias()), user);
+    }
+
+    /** Merge a person into another; the person merged into is answered. */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid MergeForm form) {
+        return view(merges.merge(sheetId.trim(), SignedInUser.name(user), id, form.intoId()), user);
     }
 
     /** Start or stop the signed-in user watching a person. */

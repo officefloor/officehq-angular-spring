@@ -71,6 +71,11 @@ export class Pools {
     }
   }
 
+  /** Re-read the sheet's pools from the store, as after a change that moves their members. */
+  refresh(sheetId: string): Promise<void> {
+    return this.load(sheetId);
+  }
+
   /** Add a pool to the active sheet. */
   async add(sheetId: string, name: string): Promise<void> {
     const added = await this.api.add(sheetId, name);

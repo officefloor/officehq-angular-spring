@@ -150,6 +150,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/aliases`, { alias }));
   }
 
+  /** Merge the person into another; a steward only, refused into the person themselves and when either
+   *  is retired. The person merged into is answered. */
+  merge(sheetId: string, id: number, intoId: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/merge`, { intoId }));
+  }
+
   /** Start (true) or stop (false) the signed-in user watching the person. */
   watch(sheetId: string, id: number, on: boolean): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}/watch`, { on }));

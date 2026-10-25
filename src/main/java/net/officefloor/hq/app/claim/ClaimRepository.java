@@ -31,6 +31,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " and (:id is null or c.id <> :id)")
     boolean refUsed(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("id") Long id);
 
+    /** The person's claims in the order they were added, locked until the transaction ends. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Claim c where c.sheetId = :sheetId and c.personId = :personId order by c.id asc")
+    List<Claim> findForMove(@Param("sheetId") String sheetId, @Param("personId") Long personId);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The person's claim of the number, if any. */
