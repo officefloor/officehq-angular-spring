@@ -262,6 +262,11 @@ import { Consolidated } from '../summary/consolidated';
                     #retireDate (input)="clearPersonError(p.id)" />
                   <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                     [disabled]="retiring() === p.id" [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                  <button type="button" data-testid="person-unretire" (click)="unretire(p)"
+                    [disabled]="retiring() === p.id" [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
+                  @for (r of p.retirements; track $index) {
+                    <div data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</div>
+                  }
                 </td>
                 <td>
                   <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
@@ -915,6 +920,26 @@ export class People {
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: 'The person could not be retired.' });
+      }
+    } finally {
+      this.retiring.set(null);
+    }
+  }
+
+  /** Unretire the person on the sheet's today; the screen refuses no one, the store refuses anyone not retired. */
+  protected async unretire(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.retiring() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.retiring.set(person.id);
+    try {
+      const unretired = await this.api.unretire(sheet.id, person.id);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === unretired.id ? unretired : p)));
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'Only a retired person can be unretired.' });
       }
     } finally {
       this.retiring.set(null);

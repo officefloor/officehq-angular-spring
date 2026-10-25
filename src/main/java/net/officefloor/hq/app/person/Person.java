@@ -51,6 +51,11 @@ public class Person {
     @Column(name = "retired_made_on")
     private LocalDate retiredMadeOn;
 
+    /** Every past retirement of the person, ended when they were unretired. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private Set<PersonRetirement> retirements = new LinkedHashSet<>();
+
     /** The sheet's today when the person was added; null when added before this was kept. */
     @Column(name = "added_on")
     private LocalDate addedOn;
@@ -191,9 +196,25 @@ public class Person {
         return retiredFrom != null;
     }
 
-    /** Whether a claim of this date is refused: one dated after the person's retirement date. */
+    /** Unretire the person on a date (the sheet's today), keeping the retirement as a past one. */
+    public void unretire(LocalDate on) {
+        retirements.add(new PersonRetirement(retiredFrom, on, retiredMadeOn));
+        this.retiredFrom = null;
+        this.retiredMadeOn = null;
+    }
+
+    /** The person's past retirements, in the order they were ended. */
+    public List<PersonRetirement> getRetirements() {
+        List<PersonRetirement> ordered = new ArrayList<>(retirements);
+        ordered.sort(Comparator.comparing(PersonRetirement::getTo)
+                .thenComparing(PersonRetirement::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        return ordered;
+    }
+
+    /** Whether a claim of this date is refused: one dated after the person's retirement date, or after the
+     *  from-date and before the to-date of a past retirement. */
     public boolean isRetiredOn(LocalDate date) {
-        return retiredFrom != null && date.isAfter(retiredFrom);
+        return (retiredFrom != null && date.isAfter(retiredFrom)) || retirements.stream().anyMatch(r -> r.refuses(date));
     }
 
     /** The holds put on the person, the one from the beginning of time first, then by from-date, then
@@ -233,7 +254,7 @@ public class Person {
         boolean held = holds.stream().anyMatch(h -> h.madeBy(asOf) && h.covers(date));
         boolean retired = retiredFrom != null && (retiredMadeOn == null || !retiredMadeOn.isAfter(asOf))
                 && !asOf.isBefore(retiredFrom);
-        return held || retired;
+        return held || retired || retirements.stream().anyMatch(r -> r.inForceAsOf(asOf));
     }
 
     /** Put a hold on the person from a date to a date (none: no end), while the sheet's today is the date

@@ -262,6 +262,25 @@ public class PersonService {
         return saved;
     }
 
+    /** Unretire a retired person on the sheet's today; refused for anyone not retired. Their retirement is
+     *  kept as a past one, from its date to the day unretired, and claims dated within it stay refused. */
+    @Transactional
+    public Person unretire(String sheetId, String user, long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a retired person can be unretired.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        person.unretire(today);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " on=" + today);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Put a hold on a person from a date (none: the sheet's today) to a date (none: no end); refused
      *  when it ends before it starts. Their open claims dated within it count in no live total, unless
      *  a statement binds them; their settled claims still count. */

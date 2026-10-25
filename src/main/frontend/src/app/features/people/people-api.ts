@@ -36,6 +36,12 @@ export function heldOn(holds: readonly HoldView[], date: string): boolean {
   return holds.some((h) => (h.from === null || h.from <= date) && (h.to === null || date <= h.to));
 }
 
+/** A past retirement of a person, from its from-date to the day they were unretired (yyyy-mm-dd). */
+export interface RetirementView {
+  from: string;
+  to: string;
+}
+
 export interface PersonView {
   id: number;
   name: string;
@@ -49,6 +55,8 @@ export interface PersonView {
   retired: boolean;
   /** The date the person is retired from, or null while they are not retired. */
   retiredFrom: string | null;
+  /** Every past retirement of the person, in the order they were unretired. */
+  retirements: RetirementView[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
   /** Every hold put on the person, by from-date: their open claims dated within one, unless a
@@ -159,6 +167,11 @@ export class PeopleApi {
    *  the top person moving up and the bottom person moving down. */
   move(sheetId: string, id: number, direction: 'up' | 'down'): Promise<void> {
     return firstValueFrom(this.http.post<void>(`${this.url(sheetId)}/${id}/move/${direction}`, {}));
+  }
+
+  /** Unretire a retired person on the sheet's today; refused for anyone not retired. */
+  unretire(sheetId: string, id: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/unretire`, {}));
   }
 
   /** Retire the person from a date; null means the sheet's today. */
