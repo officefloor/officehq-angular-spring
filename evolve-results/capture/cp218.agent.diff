@@ -1,0 +1,299 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.service.ts b/src/main/frontend/src/app/features/people/claims.service.ts
+index b913c16c..a58e1475 100644
+--- a/src/main/frontend/src/app/features/people/claims.service.ts
++++ b/src/main/frontend/src/app/features/people/claims.service.ts
+@@ -76,6 +76,8 @@ export interface Claim {
+   waived: boolean;
+   /** Whether the claim is held; it still counts in every total. */
+   held: boolean;
++  /** The user a steward assigned the claim to review; null when never assigned. */
++  reviewAssigned: string | null;
+   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
+   proofsByKind: Record<ProofKind, number>;
+   /** The claim's shares, in the order they were given: the person holding each, by id, and the
+@@ -388,6 +390,16 @@ export class ClaimsService {
+     );
+   }
+ 
++  /** Assign a REVIEW claim to `user` to review; refused (400) when the user is blank, (403) when the
++   *  signed-in user is not a steward and (409) when the claim is not in REVIEW. */
++  assignReview(sheet: string, id: number, user: string): Promise<Claim> {
++    return firstValueFrom(
++      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/assign-review`, { user }, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Waive an OPEN or PENDING claim's late charge; refused (403) when the user is not a steward, (409)
+    *  when it is not OPEN or PENDING and (422) when it is already waived. */
+   waive(sheet: string, id: number): Promise<Claim> {
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index 2f21436a..b9c9a48f 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -136,6 +136,7 @@ const PAST: Record<ClaimAction, string> = {
+             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
+             <span>Shares <span data-testid="claim-shares">{{ (sharesOf(c)) | figure }}</span></span>
+             <span>Held <span data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | figure }}</span></span>
++            <span>Review assigned to <span data-testid="claim-review-assigned">{{ (c.reviewAssigned ?? '') | figure }}</span></span>
+             <span>Waived <span data-testid="claim-waived">{{ (c.waived ? 'yes' : 'no') | figure }}</span></span>
+             <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
+             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+@@ -319,6 +320,22 @@ const PAST: Record<ClaimAction, string> = {
+             >
+               Defer
+             </button>
++            <label [for]="fieldId('review-user-' + c.id)">Assign review to</label>
++            <input
++              [id]="fieldId('review-user-' + c.id)"
++              type="text"
++              data-testid="claim-review-user"
++              [value]="reviewUsers()[c.id] ?? ''"
++              (input)="setReviewUser(c.id, value($event))"
++            />
++            <button
++              type="button"
++              data-testid="claim-review-assign"
++              [attr.aria-label]="'Assign review of claim of ' + c.amount + ' on ' + c.date"
++              (click)="assignReview(c)"
++            >
++              Assign review
++            </button>
+             <label [for]="fieldId('redate-date-' + c.id)">Re-date to</label>
+             <input
+               [id]="fieldId('redate-date-' + c.id)"
+@@ -549,6 +566,8 @@ export class Claims {
+   protected readonly settleDates = signal<Record<number, string>>({});
+   /** The date typed to defer each claim until, by claim id. */
+   protected readonly deferDates = signal<Record<number, string>>({});
++  /** The user typed to assign each claim's review to, by claim id. */
++  protected readonly reviewUsers = signal<Record<number, string>>({});
+   /** The date typed to re-date each claim to, by claim id. */
+   protected readonly redates = signal<Record<number, string>>({});
+   /** The amount typed to split off each claim, by claim id. */
+@@ -1095,6 +1114,41 @@ export class Claims {
+     }
+   }
+ 
++  protected setReviewUser(id: number, user: string): void {
++    this.reviewUsers.update((users) => ({ ...users, [id]: user }));
++    this.clearRowError(id);
++  }
++
++  /** Assign the REVIEW claim to the user typed on its row to review; only a steward can, so a blank
++   *  user, a claim in any other status and anyone else are refused with an error. */
++  protected async assignReview(claim: Claim): Promise<void> {
++    this.clearRowError(claim.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const user = (this.reviewUsers()[claim.id] ?? '').trim();
++    if (!user) {
++      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Enter the user to assign the review to.' }));
++      return;
++    }
++    try {
++      const changed = await this.service.assignReview(sheet, claim.id, user);
++      if (this.session.sheetId() !== sheet) return;
++      this.reviewUsers.update(({ [claim.id]: _, ...rest }) => rest);
++      this.saved.emit(changed);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      this.rowErrors.update((errors) => ({
++        ...errors,
++        [claim.id]: status === 403
++          ? 'Only a steward can assign a review.'
++          : status === 400
++          ? 'Enter the user to assign the review to.'
++          : 'Only a claim in review can be assigned.',
++      }));
++    }
++  }
++
+   protected setRedate(id: number, date: string): void {
+     this.redates.update((dates) => ({ ...dates, [id]: date }));
+     this.clearRowError(id);
+diff --git a/src/main/frontend/src/app/features/people/header.ts b/src/main/frontend/src/app/features/people/header.ts
+index 65995ebc..899417d2 100644
+--- a/src/main/frontend/src/app/features/people/header.ts
++++ b/src/main/frontend/src/app/features/people/header.ts
+@@ -1,13 +1,15 @@
+-import { Component, computed, input } from '@angular/core';
++import { Component, computed, inject, input } from '@angular/core';
+ import { Claim } from './claims.service';
+ import { STATUSES } from './summary';
+ import { FigurePipe } from '../../core/figure.pipe';
++import { Session } from '../../core/session';
+ 
+ // The sheet's header, shown at all times: how many people are on the sheet (retired ones
+ // included), how many claims are in each status (as the summary counts them), and the sheet's
+ // due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
+ // overdue-total when a person on the sheet has their name or alias, and their crew total (the due-totals
+-// of the crews that person leads, added up) when they lead one.
++// of the crews that person leads, added up) when they lead one, and how many REVIEW claims are
++// assigned to the signed-in user to review.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -44,6 +46,10 @@ import { FigurePipe } from '../../core/figure.pipe';
+           <dt>My crew due</dt>
+           <dd data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</dd>
+         </div>
++        <div>
++          <dt>My reviews</dt>
++          <dd data-testid="my-reviews-count">{{ (myReviewsCount()) | figure }}</dd>
++        </div>
+       </dl>
+     </header>
+   `,
+@@ -63,6 +69,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+   `,
+ })
+ export class Header {
++  private readonly session = inject(Session);
+   /** How many people are on the sheet, retired ones included. */
+   readonly peopleCount = input.required<number>();
+   /** The sheet's claims. */
+@@ -78,6 +85,12 @@ export class Header {
+   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+   readonly myCrewDueTotal = input.required<string>();
+ 
++  /** How many REVIEW claims are assigned to the signed-in user to review. */
++  protected readonly myReviewsCount = computed(() => {
++    const user = this.session.user();
++    return this.claims().filter((c) => c.status === 'REVIEW' && user !== null && c.reviewAssigned === user).length;
++  });
++
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({
+       status,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 20e051da..70c95130 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -187,6 +187,10 @@ public class Claim {
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
++    /** The user a steward assigned the claim to review; null when never assigned. */
++    @Column(name = "review_assigned")
++    private String reviewAssigned;
++
+     protected Claim() {
+     }
+ 
+@@ -220,6 +224,7 @@ public class Claim {
+         copy.escalated = escalated;
+         copy.waived = waived;
+         copy.held = held;
++        copy.reviewAssigned = reviewAssigned;
+         copy.tags = tags;
+         copy.voidReason = voidReason;
+         return copy;
+@@ -552,4 +557,12 @@ public class Claim {
+     public void setHeld(boolean held) {
+         this.held = held;
+     }
++
++    public String getReviewAssigned() {
++        return reviewAssigned;
++    }
++
++    public void setReviewAssigned(String reviewAssigned) {
++        this.reviewAssigned = reviewAssigned;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7dcdd479..acfde731 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -46,14 +46,15 @@ public class ClaimController {
+      * {@code <label> <qty> x <unit>}. Its added mark is when it was first added, as a claim id (see
+      * {@link Claim#addedMark}), which decides the forward-only rates it takes. Last come how many of its
+      * proofs are of each kind (receipt, photo), by kind, then whether it is held, then the id of the statement
+-     * that bound it (null while unbound). */
++     * that bound it (null while unbound), its shares, and the user it is assigned to review (null when never). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
+             ClaimStatus status, String number, String settledDue,
+             String openedBy, boolean stated, String statedDue, String statedShown, String corrects, List<String> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
+             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
+             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
+-            Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares) {
++            Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares,
++            String reviewAssigned) {
+         /** The claims as views, each with its status log and comments, in the order given. */
+         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
+             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
+@@ -87,7 +88,8 @@ public class ClaimController {
+                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
+                     reviewLate(claim, log, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
+                     claim.isStated() ? claim.getStatedBy() : null,
+-                    shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList());
++                    shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList(),
++                    claim.getReviewAssigned());
+         }
+ 
+         /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */
+@@ -163,6 +165,10 @@ public class ClaimController {
+     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
+     }
+ 
++    /** The user a REVIEW claim is assigned to review, which may not be blank. */
++    public record AssignReviewRequest(@NotBlank @Size(max = 100) String user) {
++    }
++
+     /** The date a claim is settled as of; now when null. */
+     public record SettleRequest(LocalDate on) {
+     }
+@@ -366,6 +372,14 @@ public class ClaimController {
+         return view(service.review(sheetId.trim(), user.trim(), claimId));
+     }
+ 
++    @PostMapping("/claims/{claimId}/assign-review")
++    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid AssignReviewRequest request) {
++        return view(service.assignReview(sheetId.trim(), user.trim(), claimId, request.user().trim()));
++    }
++
+     @PostMapping("/claims/{claimId}/approve")
+     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dbbb64b2..bea389a2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -702,6 +702,21 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** A steward's assignment of a claim in REVIEW to {@code assignee} to review. Refused unless the claim is
++     * in REVIEW and when the user is not a steward. */
++    @Transactional
++    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
++        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
++        if (claim.getStatus() != ClaimStatus.REVIEW) throw new ClaimStatusChangeException();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        claim.setReviewAssigned(assignee);
++        claims.flush();
++        record("REVIEW_ASSIGNED", user, person, claim, null, "user=" + assignee);
++        return claim;
++    }
++
+     /** A steward's (or the person's approver's) approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
+      * shows then: what a statement bound it to, late charge included, when one did, otherwise its person's rate then together with its late charge then).
+      * It is given the next number then, unless it already has one.
+diff --git a/src/main/resources/db/migration/V116__claim_review_assigned.sql b/src/main/resources/db/migration/V116__claim_review_assigned.sql
+new file mode 100644
+index 00000000..ac7849e8
+--- /dev/null
++++ b/src/main/resources/db/migration/V116__claim_review_assigned.sql
+@@ -0,0 +1,3 @@
++-- The user a steward assigned a REVIEW claim to; null while it was never assigned. It stays after the
++-- claim leaves REVIEW.
++ALTER TABLE claim ADD COLUMN review_assigned VARCHAR(100);
