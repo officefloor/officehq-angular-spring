@@ -96,8 +96,8 @@ public class PeriodService {
             boolean counts = claim.getStatus() == ClaimStatus.SETTLED
                     || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
             if (!counts || !period.contains(claim.getDate())) continue;
-            BigDecimal figure = claimService.figure(sheetId, person, claim);
-            if (figure != null) total = total.add(figure);
+            BigDecimal due = claimService.due(sheetId, person, claim);
+            if (due != null) total = total.add(due);
         }
         period.close(total);
         Period saved = periods.saveAndFlush(period);

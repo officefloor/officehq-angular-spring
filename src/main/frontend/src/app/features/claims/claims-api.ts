@@ -102,6 +102,31 @@ export function isOverdue(claim: ClaimView, terms: number, today: string | undef
   return claim.status === 'OPEN' && today !== undefined && dueBy(claim, terms) < today;
 }
 
+/** The days a claim must be overdue for each step of the late charge. */
+export const DAYS_PER_CHARGE = 30;
+
+/** What the late charge depends on: the sheet's terms in days, its today and its late percent. */
+export interface Lateness {
+  terms: number;
+  today: string | undefined;
+  latePct: string;
+}
+
+/** The late charge on the claim of `figureCents`, in cents: the late percent of the figure for every
+ *  full 30 days the claim is overdue, rounded half to even like due; none unless it is overdue. */
+export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness): number {
+  if (late.today === undefined || !isOverdue(claim, late.terms, late.today)) return 0;
+  const steps = Math.floor((epochDay(late.today) - epochDay(claim.date) - late.terms) / DAYS_PER_CHARGE);
+  return steps <= 0 ? 0 : dueCents(figureCents * steps, late.latePct);
+}
+
+/** What is due on the claim now, in cents: its figure (see claimDueCents) with the late charge on top
+ *  while it is open and overdue, as no statement binds the charge; null when the figure is n/a. */
+export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness): number | null {
+  const figure = claimDueCents(claim, gradeRates, floorCents);
+  return figure === null ? null : figure + lateChargeCents(claim, figure, late);
+}
+
 // The claims on a sheet, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class ClaimsApi {

@@ -107,14 +107,16 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
-        if (next == ClaimStatus.SETTLED) refuseIfAboveClerkLimit(sheetId, user, figure(sheetId, person, claim));
+        // Worked out while the claim is still open: settling freezes the due, its late charge included.
+        BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
+        if (next == ClaimStatus.SETTLED) refuseIfAboveClerkLimit(sheetId, user, dueNow);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
         // A voided claim keeps its number, which is never given to another claim.
         claim.setNumber(number);
-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(figure(sheetId, person, claim));
+        if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow);
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
         if (next == ClaimStatus.SETTLED) {
@@ -162,7 +164,14 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
     }
 
-    /** The figure the claim shows and totals now: the due fixed when it was settled, else the figure
+    /** What is due on the claim now: its figure with the late charge on top while it is open and
+     *  overdue (the charge is never bound by a statement); null when the figure is n/a. */
+    public BigDecimal due(String sheetId, Person person, Claim claim) {
+        return LateCharge.dueOf(claim, figure(sheetId, person, claim), settings.terms(sheetId),
+                sheets.today(sheetId), settings.latePct(sheetId));
+    }
+
+    /** The figure under the claim's due, before any late charge: the due fixed when it was settled, else the figure
      *  its person's last statement bound it to, else its live due; null when that is n/a. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();

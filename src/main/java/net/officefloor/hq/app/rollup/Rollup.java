@@ -12,6 +12,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -24,7 +25,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
- * The sheet's figures as the screen shows them: each person's claimed and due-total, and the sheet's
+ * The sheet's figures as the screen shows them: each person's claimed and due-total (late charges
+ * included), and the sheet's
  * claimed-total and due-total. A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
  * order they were added) and then the sheet's totals when they moved.
@@ -66,6 +68,8 @@ public class Rollup {
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
         BigDecimal floor = SettingService.floorOf(settings, sheetId);
+        int terms = SettingService.termsOf(settings, sheetId);
+        BigDecimal latePct = SettingService.latePctOf(settings, sheetId);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
@@ -85,8 +89,8 @@ public class Rollup {
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 if (!counts(person, claim)) continue;
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = figure(claim, gradeRates, floor);
-                if (figure != null) due = due.add(figure);
+                BigDecimal owed = LateCharge.dueOf(claim, figure(claim, gradeRates, floor), terms, today, latePct);
+                if (owed != null) due = due.add(owed);
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }

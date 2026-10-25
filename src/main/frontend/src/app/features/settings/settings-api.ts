@@ -18,6 +18,8 @@ export interface SettingsView {
   floor: string;
   /** The days after a claim's date it is due by. */
   terms: number;
+  /** What an overdue claim gains of its figure for every full 30 days overdue, with two decimals. */
+  latePct: string;
   /** The roles the sheet has assigned, by user name. */
   roles: RoleView[];
 }
@@ -48,6 +50,11 @@ export class SettingsApi {
   /** Set the terms, in days. */
   setTerms(sheetId: string, value: number): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value }));
+  }
+
+  /** Set the late percent. */
+  setLatePct(sheetId: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/late-pct`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */

@@ -30,6 +30,13 @@ public class SettingService {
     /** The terms of a sheet that has not set them, in days. */
     public static final int DEFAULT_TERMS = 14;
 
+    /** The key of the late percent: what an overdue claim gains of its figure for every full 30 days
+     *  overdue; the sheet starts at {@link #DEFAULT_LATE_PCT}. */
+    public static final String LATE_PCT = "late-pct";
+
+    /** The late percent of a sheet that has not set one. */
+    public static final BigDecimal DEFAULT_LATE_PCT = new BigDecimal("0.00");
+
     private final SheetSettingRepository settings;
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -83,6 +90,11 @@ public class SettingService {
     /** The sheet's terms in days: the ones it set, else {@link #DEFAULT_TERMS}. */
     @Transactional(readOnly = true)
     public int terms(String sheetId) {
+        return termsOf(settings, sheetId);
+    }
+
+    /** The sheet's terms as the store holds them, within the caller's transaction. */
+    public static int termsOf(SheetSettingRepository settings, String sheetId) {
         return settings.findBySheetIdAndKey(sheetId, TERMS).map((s) -> Integer.parseInt(s.getValue()))
                 .orElse(DEFAULT_TERMS);
     }
@@ -91,6 +103,7 @@ public class SettingService {
     @Transactional
     public int setTerms(String sheetId, String user, int days) {
         sheets.load(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         SheetSetting setting = settings.findBySheetIdAndKey(sheetId, TERMS).orElse(null);
         try {
             if (setting == null) {
@@ -104,7 +117,43 @@ public class SettingService {
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + TERMS
                 + " value=" + days);
+        rollup.recordChanges(user, before);
         return days;
+    }
+
+    /** The sheet's late percent with two decimals: the one it set, else {@link #DEFAULT_LATE_PCT}. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String sheetId) {
+        return latePctOf(settings, sheetId);
+    }
+
+    /** The sheet's late percent as the store holds it, within the caller's transaction. */
+    public static BigDecimal latePctOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, LATE_PCT).map((s) -> new BigDecimal(s.getValue()))
+                .orElse(DEFAULT_LATE_PCT);
+    }
+
+    /** Set the sheet's late percent, kept to two decimals; the late charges it moves are audited after it. */
+    @Transactional
+    public BigDecimal setLatePct(String sheetId, String user, BigDecimal pct) {
+        sheets.load(sheetId);
+        BigDecimal value = pct.setScale(2);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, LATE_PCT).orElse(null);
+        try {
+            if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, LATE_PCT, value.toPlainString()));
+            } else {
+                setting.setValue(value.toPlainString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + LATE_PCT
+                + " value=" + value.toPlainString());
+        rollup.recordChanges(user, before);
+        return value;
     }
 
     /** The sheet's clerk limit with two decimals, or null when there is no limit. */

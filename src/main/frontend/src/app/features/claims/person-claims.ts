@@ -5,8 +5,9 @@ import { Session } from '../../core/session';
 import { PeriodView, periodOf } from '../periods/periods-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimDueCents, dueBy, isOverdue, money } from './claims-api';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimOwedCents, dueBy, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
@@ -69,6 +70,7 @@ export class PersonClaims {
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
+  private readonly latePct = inject(SheetLatePct);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -104,9 +106,11 @@ export class PersonClaims {
 
   /** What is due on the claim: the figure fixed when it was settled, else the figure its person's
    *  last statement bound it to, else at the person's grade's
-   *  rate in force on the claim's date and at least the sheet's floor, or n/a when the claim is dated before every rate of the grade. */
+   *  rate in force on the claim's date and at least the sheet's floor, or n/a when the claim is dated before every rate of the grade;
+   *  an open overdue claim has its late charge on top. */
   protected due(claim: ClaimView): string {
-    const due = claimDueCents(claim, this.rates(), this.floor.cents());
+    const due = claimOwedCents(claim, this.rates(), this.floor.cents(),
+      { terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct() });
     return due === null ? 'n/a' : money(due);
   }
 

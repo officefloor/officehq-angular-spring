@@ -76,13 +76,15 @@ public class StatementService {
         boolean keptFigure = false;
         int counting = 0;
         for (Claim claim : theirs) {
-            if (!counts(claim)) {
+            if (!counts(person, claim)) {
                 claim.unbind();
                 continue;
             }
             counting++;
+            // The statement binds the figure; the due-total it records carries the late charge on top.
             BigDecimal figure = claimService.figure(sheetId, person, claim);
-            if (figure != null) total = total.add(figure);
+            BigDecimal due = claimService.due(sheetId, person, claim);
+            if (due != null) total = total.add(due);
             if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) keptFigure = true;
             claim.bind(figure);
         }
@@ -97,8 +99,10 @@ public class StatementService {
         return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
     }
 
-    /** Only open and settled claims count toward what is claimed and due. */
-    private static boolean counts(Claim claim) {
-        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED;
+    /** Only open and settled claims count toward what is claimed and due; a held person's open claims
+     *  do not, as on the screen. */
+    private static boolean counts(Person person, Claim claim) {
+        return claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld());
     }
 }

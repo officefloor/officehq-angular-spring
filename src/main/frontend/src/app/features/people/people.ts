@@ -2,13 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, cents, claimDueCents, counts, isOverdue, keepsFigure, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isOverdue, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView } from './people-api';
@@ -122,6 +123,10 @@ export class People {
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
+  private readonly latePct = inject(SheetLatePct);
+  /** What the late charges depend on now. */
+  private readonly lateness = computed<Lateness>(() =>
+    ({ terms: this.terms.days(), today: this.session.sheet()?.today, latePct: this.latePct.pct() }));
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -175,7 +180,7 @@ export class People {
     for (const c of this.claims()) {
       const grade = gradeOf.get(c.personId);
       if (grade === undefined || !this.countsLive(c) || !isOverdue(c, this.terms.days(), today)) continue;
-      const due = claimDueCents(c, this.ratesOf(grade), this.floor.cents());
+      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
       const was = by.get(c.personId) ?? { count: 0, cents: 0 };
       by.set(c.personId, { count: was.count + 1, cents: was.cents + (due ?? 0) });
     }
@@ -204,7 +209,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const grade = gradeOf.get(c.personId);
       if (period === null || grade === undefined) continue;
-      const due = claimDueCents(c, this.ratesOf(grade), this.floor.cents());
+      const due = claimOwedCents(c, this.ratesOf(grade), this.floor.cents(), this.lateness());
       if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
     }
     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
@@ -361,7 +366,7 @@ export class People {
     let keptFigure = false;
     for (const c of this.claimsOf(person.id)) {
       if (!this.countsLive(c)) continue;
-      const due = claimDueCents(c, gradeRates, this.floor.cents());
+      const due = claimOwedCents(c, gradeRates, this.floor.cents(), this.lateness());
       if (due !== null) total += due;
       if (keepsFigure(c)) keptFigure = true;
     }

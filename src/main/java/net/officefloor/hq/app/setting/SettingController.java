@@ -29,8 +29,8 @@ public class SettingController {
 
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
      *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
-     *  it is due by. */
-    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {
+     *  it is due by; the late percent has two decimals. */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -50,6 +50,10 @@ public class SettingController {
 
     /** The terms as entered: whole days. */
     public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value) {
+    }
+
+    /** The late percent as entered. */
+    public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     /** A role to assign a user name, as entered on the form. */
@@ -95,6 +99,15 @@ public class SettingController {
         return view(id, service.clerkLimit(id), service.floor(id));
     }
 
+    /** Set the sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */
+    @PutMapping("/settings/late-pct")
+    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid LatePctForm form) {
+        String id = sheetId.trim();
+        service.setLatePct(id, SignedInUser.name(user), form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -106,6 +119,6 @@ public class SettingController {
 
     private SettingsView view(String sheetId, BigDecimal limit, BigDecimal floor) {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                service.terms(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList());
+                service.terms(sheetId), service.latePct(sheetId).toPlainString(), service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 }
