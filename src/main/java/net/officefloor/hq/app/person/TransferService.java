@@ -29,7 +29,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class TransferService {
 
     private final PersonRepository people;
-    private final PersonAliasRepository aliases;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
     private final ClaimRepository claims;
@@ -42,14 +41,14 @@ public class TransferService {
     private final SheetHistory history;
     private final NameTree tree;
     private final Rollup rollup;
+    private final MergeService merges;
     private final Audit audit;
 
-    public TransferService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
+    public TransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimService claimService,
             StatementRepository statements, PoolRepository pools, SettingService settings, SheetService sheets,
-            SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, Audit audit) {
+            SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, MergeService merges, Audit audit) {
         this.people = people;
-        this.aliases = aliases;
         this.patrons = patrons;
         this.watches = watches;
         this.claims = claims;
@@ -62,6 +61,7 @@ public class TransferService {
         this.history = history;
         this.tree = tree;
         this.rollup = rollup;
+        this.merges = merges;
         this.audit = audit;
     }
 
@@ -74,8 +74,10 @@ public class TransferService {
      * lost, statements are not carried and nor are references. The person then leaves this sheet entirely:
      * their patron links (both ways), pool memberships, watches, holds and statements are dropped. Refused
      * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
-     * sheet, and when the person's name, an alias or their contact is already on the other sheet, or their name or
-     * an alias on another sheet of its tree.
+     * sheet, and when their name or an alias is on another sheet of the other sheet's tree. When the person's
+     * name or an alias is already that of someone on the other sheet, the arriving person is merged into
+     * them, as a merge does (refused when that someone is retired, or when the names are those of more than
+     * one person there); otherwise refused when their contact is already on the other sheet.
      */
     @Transactional
     public void transfer(String sheetId, String user, long id, String toSheetId) {
@@ -98,23 +100,38 @@ public class TransferService {
         names.add(from.getName());
         names.addAll(from.getAliases());
         Set<String> elsewhere = tree.keysElsewhere(toSheetId, from.getId());
+        Person match = null;
         for (String name : names) {
             String key = Person.keyOf(name);
             if (elsewhere.contains(key)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "That name is already in use on a sheet of the other sheet's tree.");
             }
-            if (people.existsBySheetIdAndNameKey(toSheetId, key) || aliases.existsBySheetIdAndAliasKey(toSheetId, key)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on the other sheet.");
+            Person found = people.findByNameOrAlias(toSheetId, key).orElse(null);
+            if (found != null) {
+                if (match != null && !match.getId().equals(found.getId())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Those names are already in use by more than one person on the other sheet.");
+                }
+                match = found;
             }
         }
-        if (from.getContact() != null && people.existsBySheetIdAndContact(toSheetId, from.getContact())) {
+        if (match != null) {
+            match = people.findForUpdate(match.getId(), toSheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+            if (match.isRetired()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
+            }
+        } else if (from.getContact() != null && people.existsBySheetIdAndContact(toSheetId, from.getContact())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on the other sheet.");
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Rollup.Snapshot otherBefore = rollup.snapshot(toSheetId);
 
-        Person arrived = people.saveAndFlush(from.copyTo(toSheetId));
+        Person copy = from.copyTo(toSheetId);
+        // A merge drops the arriving person's contact.
+        if (match != null) copy.setContact(null);
+        Person arrived = people.saveAndFlush(copy);
 
         // The claims that had a number take the other sheet's next, in the order they were opened.
         List<Claim> theirs = claims.findForMove(sheetId, from.getId());
@@ -150,6 +167,11 @@ public class TransferService {
         rollup.recordChanges(user, before);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + arrived.getName()
                 + " from=" + sheetId);
+        if (match != null) {
+            Person into = merges.absorb(toSheetId, arrived, match);
+            audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from=" + arrived.getName()
+                    + " into=" + into.getName());
+        }
         rollup.recordChanges(user, otherBefore);
         // The request changes this sheet, which is kept as it commits; the other sheet is kept here.
         history.keep(toSheetId);

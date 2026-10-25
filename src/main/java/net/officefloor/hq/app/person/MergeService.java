@@ -74,6 +74,19 @@ public class MergeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
+        Person saved = absorb(sheetId, from, into);
+        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
+                + " into=" + saved.getName());
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /**
+     * Fold one person of the sheet into another, as a merge does, without checking who may or recording
+     * it; the person merged into.
+     */
+    @Transactional
+    public Person absorb(String sheetId, Person from, Person into) {
         LocalDate today = sheets.today(sheetId);
 
         long listed = claims.lastListed(sheetId);
@@ -113,11 +126,6 @@ public class MergeService {
         people.delete(from);
         people.flush();
         names.forEach(into::addAlias);
-        Person saved = people.saveAndFlush(into);
-
-        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
-                + " into=" + saved.getName());
-        rollup.recordChanges(user, before);
-        return saved;
+        return people.saveAndFlush(into);
     }
 }
