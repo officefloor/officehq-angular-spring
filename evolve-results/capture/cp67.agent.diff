@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 65e26914..21cb3c53 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -105,7 +105,7 @@ import { PasteClaims } from '../claims/paste-claims';
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+         <table data-testid="people-list">
+           <thead>
+-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+           </thead>
+           <tbody>
+             @for (p of shownPeople(); track p.id) {
+@@ -123,6 +123,7 @@ import { PasteClaims } from '../claims/paste-claims';
+                   <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+                   due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+                 </td>
++                <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+                 <td>
+                   <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                   from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
+@@ -326,11 +327,24 @@ export class People {
+     }
+     return new Map([...totals].map(([id, total]) => [id, money(total)]));
+   });
+-  /** Per grade, the people on it today who are not retired, and their due-totals added up, skipping
+-   *  those that are n/a. */
++  /** The ids of the people who are active: those with an open (PENDING included) claim that counts,
++   *  dated within the 30 days up to and including the sheet's today. */
++  protected readonly activeIds = computed(() => {
++    const today = this.session.sheet()?.today;
++    const ids = new Set<number>();
++    if (today === undefined) return ids;
++    const from = daysBefore(today, 29);
++    for (const c of this.claims()) {
++      if (isOpen(c) && this.countsLive(c) && c.date >= from && c.date <= today) ids.add(c.personId);
++    }
++    return ids;
++  });
++  /** Per grade, the people on it today who are not retired, their due-totals added up, skipping
++   *  those that are n/a, and how many of them are active. */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() => GRADES.map((grade) => {
+     const on = this.people().filter((p) => !p.retired && this.gradeToday(p) === grade);
+-    return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)) };
++    return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)),
++      active: on.filter((p) => this.activeIds().has(p.id)).length };
+   }));
+   /** Each period's due-total, as its row shows it. */
+   protected readonly periodSummary = computed<PeriodSummary[]>(() =>
+@@ -891,3 +905,9 @@ function trimmedSum(figures: number[]): number {
+   const total = figures.reduce((t, f) => t + f, 0);
+   return figures.length < 3 ? total : total - Math.max(...figures) - Math.min(...figures);
+ }
++
++/** The date `days` days before `date` (both yyyy-mm-dd). */
++function daysBefore(date: string, days: number): string {
++  const [y, m, d] = date.split('-').map(Number);
++  return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
++}
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 89edb2cc..6d7518fb 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -5,6 +5,8 @@ export interface GradeSummary {
+   grade: string;
+   count: number;
+   dueTotal: string;
++  /** How many of them are active. */
++  active: number;
+ }
+ 
+ /** A period's line of the summary: its due-total. */
+@@ -19,8 +21,8 @@ export interface StatusSummary {
+   count: number;
+ }
+ 
+-// The sheet in figures: per grade, the people on it today who are not retired and their due-totals;
+-// per period, its due-total; per status, how many claims have it. Each figure is the list's own.
++// The sheet in figures: per grade, the people on it today who are not retired and their due-totals
++// and how many are active; per period, its due-total; per status, how many claims have it. Each figure is the list's own.
+ @Component({
+   selector: 'app-summary',
+   template: `
+@@ -28,7 +30,7 @@ export interface StatusSummary {
+       <h2 id="summary-heading">Summary</h2>
+       <table aria-label="Summary by grade">
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of grades(); track g.grade) {
+@@ -36,6 +38,7 @@ export interface StatusSummary {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
