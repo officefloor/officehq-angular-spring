@@ -1,0 +1,64 @@
+{
+  "checkpoint": 143,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp143_fiscal-year",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a95a38b0aa29dfaac9140abfd8ab87317051dd9e",
+  "reset_sha": "",
+  "preagent_sha": "50263b7f42f2ceb01833e4327c1190914435c577",
+  "prev_sha": "50263b7f42f2ceb01833e4327c1190914435c577",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1837596000000004,
+    "input_tokens": 6,
+    "output_tokens": 798,
+    "cache_read_tokens": 188748,
+    "cache_creation_tokens": 2812,
+    "num_turns": 2,
+    "duration_ms": 10497,
+    "duration_api_ms": 134179,
+    "model": "claude-opus-5-5",
+    "session_id": "ba045587-69b8-4ef9-9f97-8218b5ffef13",
+    "stop_reason": "success",
+    "result_text": "The fiscal year change is in, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What it does now**\n- **Setting:** the settings form has a \"Fiscal year start month\" field. It accepts a whole number from 1 to 12 and defaults to 1. It isn't dated, so it has no from-date. Anything else, such as `13`, `x` or a blank, shows the settings error and saves nothing. A valid save writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=fiscal-start-month value=<month>` to the audit file.\n- **Fiscal year on each period:** each period row has a new \"Fiscal year\" column showing `FY<yyyy>`, worked out from the period's from-date. For example, with the year starting in April, a period starting 2026-01-15 shows FY2025, because that fiscal year began in April 2025. The column updates as soon as the setting is saved.\n- **Generating a fiscal year:** you type a four-digit year and press \"Generate fiscal year\". It makes the twelve monthly periods from the start month of that year onward, using the existing monthly generator. That means months whose name is taken, or that overlap an existing period, are skipped. It shows how many it made in the same count the other generator uses, and an invalid year shows the generate error.\n\n**Where the changes are**\n- **Server:**\n  - `SettingService` and `SettingController` have the new setting. It's stored as an ordinary per-sheet setting, so no schema change was needed.\n  - `PeriodService` has a new `generateFiscalYear`, served at `POST \u2026/periods/generate-fy`. I moved the month-by-month loop out of the existing generator so both generators share it.\n- **Front end:**\n  - A new `sheet-fiscal.ts` holds the start month and the fiscal year calculation.\n  - `settings.ts` has the new field.\n  - `periods.ts` has the new column and the fiscal year form.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1837596000000004,
+        "num_turns": 2,
+        "duration_ms": 10497,
+        "duration_api_ms": 134179,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp143.agent.jsonl",
+  "agent_diff_file": "cp143.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
