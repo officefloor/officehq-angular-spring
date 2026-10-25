@@ -125,6 +125,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
+        if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, claim, dueNow);
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
@@ -167,6 +168,24 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_DEFERRED", user, person, saved, saved.getNumber(), " until=" + until);
         rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim dated
+     *  inside a closed period. No figure moves. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot have a proof added.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_PROOF_ADDED", user, person, saved, saved.getNumber(), " proofs=" + saved.getProofs());
         return saved;
     }
 
@@ -213,6 +232,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal dueNow = due(sheetId, person, claim);
+        refuseIfUnproven(sheetId, claim, dueNow);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(dueNow);
@@ -303,6 +323,18 @@ public class ClaimService {
                 .filter((p) -> p.contains(claim.getDate())).findFirst().orElse(null);
         if (period == null) return "X-" + sheets.nextSequenceNumber(sheetId, "none");
         return period.getName() + "-" + sheets.nextSequenceNumber(sheetId, "period:" + period.getId());
+    }
+
+    /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold
+     *  in force on the claim's date (a due of n/a, or no threshold, needs none). */
+    private void refuseIfUnproven(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null || claim.getProofs() > 0) return;
+        BigDecimal threshold = settings.proofThreshold(sheetId, claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's due is above the proof threshold of " + threshold.toPlainString()
+                            + "; add a proof before it is settled.");
+        }
     }
 
     /** Whether the user is a clerk settling a claim whose due is above the sheet's clerk limit. */

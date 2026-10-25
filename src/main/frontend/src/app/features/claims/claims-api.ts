@@ -73,6 +73,8 @@ export interface ClaimView {
   log: ClaimLogLine[];
   /** yyyy-mm-dd: the date the claim was last deferred until; null when it never was. */
   deferredUntil: string | null;
+  /** How many proofs the claim has had added; a claim due above the proof threshold needs one to be settled. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who gave it, the sheet's today then (yyyy-mm-dd), and
@@ -232,6 +234,12 @@ export class ClaimsApi {
    *  a date not after today, and a claim dated inside a closed period. */
   defer(sheetId: string, id: number, until: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/defer`, { until }));
+  }
+
+  /** Raise a claim's proofs count by one: refused for a SETTLED or VOID claim, and a claim dated inside a
+   *  closed period. */
+  addProof(sheetId: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/proof`, {}));
   }
 
   /** Move a draft, open or pending claim to another person, as their newest claim: refused (403) to

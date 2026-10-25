@@ -32,11 +32,12 @@ public class ClaimController {
      *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. Corrects is
      *  the number of the claim a correction corrects, or null when the claim is not a correction. The log is
      *  its status log, oldest first. Deferred until is the date the claim was last deferred until, or null when
-     *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. */
+     *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. Proofs is
+     *  the claim's proofs count. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
-            List<LogLineView> log, LocalDate deferredUntil) {
+            List<LogLineView> log, LocalDate deferredUntil, int proofs) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -44,7 +45,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    claim.getDeferredUntil());
+                    claim.getDeferredUntil(), claim.getProofs());
         }
     }
 
@@ -180,6 +181,13 @@ public class ClaimController {
     public ClaimView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid DeferForm form) {
         return ClaimView.of(service.defer(sheetId.trim(), SignedInUser.name(user), id, form.until()));
+    }
+
+    /** Raise a claim's proofs count by one; refused for a settled or voided claim. */
+    @PostMapping("/claims/{id}/proof")
+    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.addProof(sheetId.trim(), SignedInUser.name(user), id));
     }
 
     /** The person a claim is moved to. */

@@ -51,6 +51,10 @@ public class SettingService {
     /** The key of the cap: the most a person's due-total can be; no value means no cap. */
     public static final String CAP = "cap";
 
+    /** The key of the proof threshold: a claim whose due is above it cannot be settled or approved
+     *  without a proof; no value means none. */
+    public static final String PROOF_THRESHOLD = "proof-threshold";
+
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
     private final SheetRoleRepository roles;
@@ -268,6 +272,20 @@ public class SettingService {
     public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit, LocalDate from) {
         BigDecimal value = limit == null ? null : limit.setScale(2);
         record(sheetId, user, CLERK_LIMIT, value == null ? "" : value.toPlainString(), from);
+        return value;
+    }
+
+    /** The proof threshold in force on the date, with two decimals, or null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String sheetId, LocalDate date) {
+        return dated(sheetId).proofThresholdOn(date);
+    }
+
+    /** Record the sheet's proof threshold, kept to two decimals, from a date; null clears it from then. */
+    @Transactional
+    public BigDecimal setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        BigDecimal value = threshold == null ? null : threshold.setScale(2);
+        record(sheetId, user, PROOF_THRESHOLD, value == null ? "" : value.toPlainString(), from);
         return value;
     }
 

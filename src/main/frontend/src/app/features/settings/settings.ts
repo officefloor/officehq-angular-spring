@@ -39,9 +39,10 @@ function settled(control: AbstractControl): void {
 // percent (what an overdue claim gains of its figure for every full 30 days overdue) and the policy date
 // (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today) and period
 // numbering from (once the sheet's today reaches it, a claim opened is numbered within its period; blank: off) and the cap
-// (the most a person's due-total can be; blank: no cap), and the roles it assigns user names, with one form for each.
+// (the most a person's due-total can be; blank: no cap) and the proof threshold (a claim whose due is above
+// the one in force on its date needs a proof to be settled or approved; blank: none), and the roles it assigns user names, with one form for each.
 // The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the late
-// percent and the cap) are dated: each has a from-date field (blank: the sheet's today), and saving records
+// percent, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
 // the sheet's today.
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
@@ -91,6 +92,11 @@ function settled(control: AbstractControl): void {
         <label for="setting-cap-from">Cap from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" />
         <p>Cap now: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
+        <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof to be settled; blank: none)</label>
+        <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal" />
+        <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
+        <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
+        <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -151,6 +157,7 @@ export class Settings {
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly cap = computed(() => this.now('cap'));
+  protected readonly proofThreshold = computed(() => this.now('proof-threshold'));
   protected readonly assigned = signal<RoleView[]>([]);
 
   protected readonly settingsForm = new FormGroup({
@@ -166,6 +173,8 @@ export class Settings {
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
+    proofThreshold: new FormControl('', { nonNullable: true }),
+    proofThresholdFrom: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's own terms, a field per grade; part of the settings form. */
   protected readonly gradeTermsForm = new FormGroup({
@@ -198,7 +207,7 @@ export class Settings {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, dated: {} });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {} });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -225,12 +234,12 @@ export class Settings {
     if (!sheet) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
-      periodNumberingFrom, cap, capFrom } = this.settingsForm.controls;
+      periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
       { label: 'terms', control: termsFrom }, { label: 'late percent', control: latePctFrom },
-      { label: 'cap', control: capFrom },
+      { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
     ];
     for (const { label, control } of froms) {
@@ -249,6 +258,7 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
+    const proofThresholdValue = proofThreshold.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -283,6 +293,10 @@ export class Settings {
     }
     if (dirty(cap, capFrom) && capValue !== '' && !MONEY.test(capValue)) {
       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
+      return;
+    }
+    if (dirty(proofThreshold, proofThresholdFrom) && proofThresholdValue !== '' && !MONEY.test(proofThresholdValue)) {
+      this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     this.savingSettings.set(true);
@@ -332,6 +346,13 @@ export class Settings {
         const settings = await this.api.setCap(sheet.id, capValue === '' ? null : capValue, fromOf(capFrom));
         settled(cap);
         settled(capFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      if (dirty(proofThreshold, proofThresholdFrom)) {
+        const settings = await this.api.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue,
+          fromOf(proofThresholdFrom));
+        settled(proofThreshold);
+        settled(proofThresholdFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
     } catch {

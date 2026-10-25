@@ -13,7 +13,7 @@ import net.officefloor.hq.app.person.Grade;
  * their from-dates, in date order. The value in force on a date is the one of the latest from-date on or
  * before it; before every from-date, and from a blank value, a key has its starting value (the floor
  * {@link SettingService#DEFAULT_FLOOR}, the late percent {@link SettingService#DEFAULT_LATE_PCT}, the terms
- * {@link SettingService#DEFAULT_TERMS}; none for the clerk limit, the cap and a grade's own terms).
+ * {@link SettingService#DEFAULT_TERMS}; none for the clerk limit, the proof threshold, the cap and a grade's own terms).
  */
 public final class DatedSettings {
 
@@ -73,6 +73,11 @@ public final class DatedSettings {
     /** The cap in force on the date, or null when there is none. */
     public BigDecimal capOn(LocalDate date) {
         return decimalOn(SettingService.CAP, date);
+    }
+
+    /** The proof threshold in force on the date, or null when there is none. */
+    public BigDecimal proofThresholdOn(LocalDate date) {
+        return decimalOn(SettingService.PROOF_THRESHOLD, date);
     }
 
     /** The clerk limit in force on the date, or null when there is none. */

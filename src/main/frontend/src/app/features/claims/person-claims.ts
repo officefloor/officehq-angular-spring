@@ -54,7 +54,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</span></span>
-          <span>Deferred until <span data-testid="claim-deferred-until">{{ deferred(c) ? c.deferredUntil : '' }}</span></span>
+          <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
@@ -78,6 +79,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #deferDate type="date" [id]="'claim-defer-date-' + c.id" data-testid="claim-defer-date" />
           <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+            [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to">
             <option value="">Choose a person</option>
@@ -227,6 +230,8 @@ export class PersonClaims {
             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
           : action === 'settle' && this.deferred(claim)
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
+          : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
+            ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
             : `This claim cannot be ${PAST[action]} from its status.`;
         this.claimError.set({ id: claim.id, message });
       }
@@ -253,6 +258,25 @@ export class PersonClaims {
           : claim.status !== 'OPEN'
           ? 'Only an OPEN claim can be deferred.'
           : 'A claim can only be deferred to a date after the sheet\'s today.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Raise a claim's proofs count by one; the store refuses a SETTLED or VOID claim and a claim dated
+   *  inside a closed period. */
+  protected async addProof(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    try {
+      const proven = await this.api.addProof(sheet.id, claim.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(proven);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = periodOf(this.periods(), claim.date)?.closed
+          ? 'This claim is dated inside a closed period, so no proof can be added.'
+          : `A ${claim.status} claim cannot have a proof added.`;
         this.claimError.set({ id: claim.id, message });
       }
     }

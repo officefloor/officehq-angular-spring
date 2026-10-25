@@ -37,11 +37,11 @@ public class SettingController {
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
-     *  has two decimals, or is null when there is no cap. Each of these figures is the one in force on the
+     *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none. Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            Map<String, List<DatedView>> dated) {
+            Map<String, List<DatedView>> dated, String proofThreshold) {
     }
 
     /** A value a dated setting takes from a date; blank when the setting is cleared from then. */
@@ -61,6 +61,11 @@ public class SettingController {
 
     /** The cap as entered; none means no cap. */
     public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /** The proof threshold as entered; none means no threshold. */
+    public record ProofThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
     }
 
     /** The floor as entered. */
@@ -179,6 +184,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's proof threshold, or clear it. */
+    @PutMapping("/settings/proof-threshold")
+    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ProofThresholdForm form) {
+        String id = sheetId.trim();
+        service.setProofThreshold(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -204,7 +218,7 @@ public class SettingController {
         return new SettingsView(text(dated.clerkLimitOn(today)), dated.floorOn(today).toPlainString(),
                 dated.termsOn(today), dated.latePctOn(today).toPlainString(), service.policyDate(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
-                gradeTerms, text(dated.capOn(today)), history);
+                gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)));
     }
 
     private static String text(BigDecimal value) {

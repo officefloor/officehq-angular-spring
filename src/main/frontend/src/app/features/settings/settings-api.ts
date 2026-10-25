@@ -37,7 +37,9 @@ export interface SettingsView {
   gradeTerms: Partial<Record<Grade, number>>;
   /** The most a person's due-total can be, with two decimals, or null when there is no cap. */
   cap: string | null;
-  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap) take
+  /** The due above which a claim needs a proof to be settled or approved, with two decimals, or null when there is none. */
+  proofThreshold: string | null;
+  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold) take
    *  from their from-dates, in date order. */
   dated: Partial<Record<string, DatedValue[]>>;
 }
@@ -63,6 +65,11 @@ export class SettingsApi {
   /** Record the cap from a date (null: the sheet's today); null clears it from then, leaving no cap. */
   setCap(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/cap`, { value, from }));
+  }
+
+  /** Record the proof threshold from a date (null: the sheet's today); null clears it from then, leaving none. */
+  setProofThreshold(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }));
   }
 
   /** Record the floor from a date (null: the sheet's today). */
