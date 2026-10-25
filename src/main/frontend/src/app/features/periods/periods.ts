@@ -41,6 +41,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)"
+                  [disabled]="closing() === p.id" [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -61,7 +63,7 @@ export class Periods {
   /** Each period's due-total with two decimals, by period id. */
   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
   readonly added = output<PeriodView>();
-  /** A period that was closed. */
+  /** A period that was closed or reopened. */
   readonly changed = output<PeriodView>();
 
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -70,7 +72,7 @@ export class Periods {
   protected readonly form = new FormGroup({ name: this.name, from: this.from, to: this.to });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
-  /** The period being closed. */
+  /** The period being closed or reopened. */
   protected readonly closing = signal<number | null>(null);
   /** The refusal of the last action taken on a period's row, shown on that row. */
   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
@@ -99,6 +101,28 @@ export class Periods {
       if (this.session.sheet()?.id === sheet.id) {
         this.periodError.set({ id: period.id, message: e instanceof HttpErrorResponse && e.status === 409
           ? 'This period is already closed.' : 'The period could not be closed.' });
+      }
+    } finally {
+      this.closing.set(null);
+    }
+  }
+
+  /** Reopen a closed period, making its due-total live again; the store refuses anyone but a steward,
+   *  and a period that is not closed. */
+  protected async reopen(period: PeriodView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.closing() !== null) return;
+    this.periodError.set(null);
+    this.closing.set(period.id);
+    try {
+      const reopened = await this.api.reopen(sheet.id, period.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(reopened);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const status = e instanceof HttpErrorResponse ? e.status : 0;
+        this.periodError.set({ id: period.id, message: status === 403
+          ? 'Only a steward can reopen a period.'
+          : status === 409 ? 'This period is not closed.' : 'The period could not be reopened.' });
       }
     } finally {
       this.closing.set(null);
