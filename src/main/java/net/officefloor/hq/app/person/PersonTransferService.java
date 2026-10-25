@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -52,6 +53,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final SheetPoolMemberRepository poolMembers;
+    private final ClaimShareRepository claimShares;
     private final CrewService crews;
     private final PeriodRepository periods;
     private final SettingsService settings;
@@ -62,7 +64,7 @@ public class PersonTransferService {
     public PersonTransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimLineRepository lines, ClaimService claimService, StatementRepository statements,
-            SheetPoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods, SettingsService settings,
+            SheetPoolMemberRepository poolMembers, ClaimShareRepository claimShares, CrewService crews, PeriodRepository periods, SettingsService settings,
             SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -74,6 +76,7 @@ public class PersonTransferService {
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.claimShares = claimShares;
         this.crews = crews;
         this.periods = periods;
         this.settings = settings;
@@ -162,6 +165,9 @@ public class PersonTransferService {
             comments.moveClaim(claim.getId(), copy.getId());
             lines.moveClaim(claim.getId(), copy.getId());
         }
+        claimShares.deleteAll(claimShares.findByClaimIdInOrderByIdAsc(moving.stream().map(Claim::getId).toList()));
+        claimShares.deleteAll(claimShares.findByPersonIdOrderByIdAsc(from.getId()));
+        claimShares.flush();
         claims.deleteAll(moving);
         claims.flush();
 

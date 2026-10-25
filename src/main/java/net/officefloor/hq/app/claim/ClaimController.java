@@ -53,15 +53,17 @@ public class ClaimController {
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
-            Map<String, Integer> proofsByKind, boolean held, Long statedBy) {
+            Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
             Map<Long, List<ClaimComment>> comments = service.commentsOf(claims);
             Map<Long, List<ClaimLine>> lines = service.linesOf(claims);
+            Map<Long, List<ClaimShare>> shares = service.sharesOf(claims);
             Map<String, LocalDate> lateBefore = new HashMap<>();
             return claims.stream().map(c -> of(c, logs.getOrDefault(c.getId(), List.of()),
                     comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()),
+                    shares.getOrDefault(c.getId(), List.of()),
                     lateBefore.computeIfAbsent(c.getSheetId(), service::reviewLateBefore))).toList();
         }
 
@@ -73,7 +75,7 @@ public class ClaimController {
         /** The claim as a view, with its status log; a claim in REVIEW whose review day (its last REVIEW
          * entry in the log) is before {@code lateBefore} is late (none is when that is null). */
         static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines,
-                LocalDate lateBefore) {
+                List<ClaimShare> shares, LocalDate lateBefore) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -84,7 +86,8 @@ public class ClaimController {
                     claim.getVoidReason(), comments.stream().map(ClaimView::line).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
                     reviewLate(claim, log, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
-                    claim.isStated() ? claim.getStatedBy() : null);
+                    claim.isStated() ? claim.getStatedBy() : null,
+                    shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList());
         }
 
         /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */
@@ -200,6 +203,19 @@ public class ClaimController {
         }
     }
 
+    /** A share of a claim: the person who holds it, by id, and the percent they hold, with two decimals. */
+    public record ShareView(long personId, String share) {
+    }
+
+    /** A share given on a claim: the person, by id, and the percent, with up to two decimals. */
+    public record ShareRequest(@NotNull Long personId,
+            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+
+        BigDecimal shareValue() {
+            return new BigDecimal(share.trim()).setScale(2);
+        }
+    }
+
     /** The date a claim is re-dated to. */
     public record RedateRequest(@NotNull LocalDate date) {
     }
@@ -266,11 +282,13 @@ public class ClaimController {
             Map<Long, List<ClaimLog>> logs = service.logsOf(then.claims());
             Map<Long, List<ClaimComment>> comments = service.commentsOf(then.claims());
             Map<Long, List<ClaimLine>> lines = service.linesOf(then.claims());
+            Map<Long, List<ClaimShare>> shares = service.sharesOf(then.claims());
             return then.claims().stream()
                     .map(c -> ClaimView.of(c, then.logged(logs.getOrDefault(c.getId(), List.of())),
                             comments.getOrDefault(c.getId(), List.of()).stream()
                                     .filter(k -> !k.getDate().isAfter(asOf)).toList(),
                             lines.getOrDefault(c.getId(), List.of()),
+                            shares.getOrDefault(c.getId(), List.of()),
                             then.reviewSla() == null ? null : then.today().minusDays(then.reviewSla())))
                     .toList();
         }
@@ -452,6 +470,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DeferRequest request) {
         return view(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
+    }
+
+    @PostMapping("/claims/{claimId}/shares")
+    public ClaimView share(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ShareRequest request) {
+        return view(service.share(sheetId.trim(), user.trim(), claimId, request.personId(), request.shareValue()));
     }
 
     /** Split an amount off the claim: the claim as it is now, then the new claim. */

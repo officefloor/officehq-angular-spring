@@ -47,6 +47,7 @@ public class ClaimService {
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
     private final ClaimLineRepository lines;
+    private final ClaimShareRepository shares;
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
@@ -62,8 +63,10 @@ public class ClaimService {
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RollupService rollup, SheetService sheets,
             PeriodRepository periods, SettingsService settings, PersonWatchRepository watches, HolidayService holidays,
             Audit audit, SheetTagRepository tagRepository, VoidReasonService voidReasons,
-            ClaimCommentRepository comments, ClaimLineRepository lines, SheetHistory history) {
+            ClaimCommentRepository comments, ClaimLineRepository lines, ClaimShareRepository shares,
+            SheetHistory history) {
         this.history = history;
+        this.shares = shares;
         this.comments = comments;
         this.lines = lines;
         this.voidReasons = voidReasons;
@@ -139,6 +142,38 @@ public class ClaimService {
         if (of.isEmpty()) return Map.of();
         return lines.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
                 .collect(Collectors.groupingBy(ClaimLine::getClaimId));
+    }
+
+    /** The shares of each of the claims, in the order they were given, by claim id. */
+    public Map<Long, List<ClaimShare>> sharesOf(List<Claim> of) {
+        if (of.isEmpty()) return Map.of();
+        return shares.findByClaimIdInOrderByIdAsc(of.stream().map(Claim::getId).toList()).stream()
+                .collect(Collectors.groupingBy(ClaimShare::getClaimId));
+    }
+
+    /** Share the claim with another person on the sheet: they hold {@code share} percent (more than 0.00)
+     * of what is due on it. Refused when the person is the claim's own, already holds a share of it, when
+     * its shares would total more than 100.00, and when the claim is SETTLED, VOID or DELETED. */
+    @Transactional
+    public Claim share(String sheetId, String user, long claimId, long personId, BigDecimal share) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ClaimShareException();
+        }
+        Person holder = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (share.signum() <= 0 || holder.getId().equals(claim.getPersonId())) throw new ClaimShareException();
+        List<ClaimShare> held = shares.findByClaimIdOrderByIdAsc(claim.getId());
+        if (held.stream().anyMatch(s -> s.getPersonId().equals(holder.getId()))) throw new ClaimShareException();
+        BigDecimal total = held.stream().map(ClaimShare::getShare).reduce(share, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) throw new ClaimShareException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        ClaimShare given = shares.saveAndFlush(new ClaimShare(sheetId, claim.getId(), holder.getId(), share));
+        record("CLAIM_SHARED", user, person, claim, null, "with=" + holder.getName(), "share=" + given.shareText());
+        rollup.recordSince(sheetId, user, before);
+        return claim;
     }
 
     /** Add a line to a DRAFT claim: {@code label} (not blank), {@code qty} (at least 1) of {@code unit}

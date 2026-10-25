@@ -632,6 +632,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                     [policyDate]="policyDateInForce()"
                     [roundings]="roundings()"
                     [others]="othersOf(p.id)"
+                    [everyone]="everyone()"
                     [selected]="selectedClaims()"
                     (selectToggled)="selectClaim($event.id, $event.selected)"
                     (saved)="claimSaved($event)"
@@ -2279,12 +2280,40 @@ export class People {
       if (!this.countsLive(c, person)) continue;
       const due = claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id));
       if (due === null) continue;
-      if (isOpen(c)) open += due;
-      else settled += due;
+      const own = c.shares.reduce((left, s) => left - sharePart(due, s.share), due);
+      if (isOpen(c)) open += own;
+      else settled += own;
+      any = true;
+    }
+    const held = this.heldParts().get(person.id);
+    if (held) {
+      settled += held.settled;
+      open += held.open;
       any = true;
     }
     return { settled, open, any };
   }
+
+  /** The parts each person holds of others' claims, in cents, by person id: of every claim that counts
+   *  for its own person and has a figure, what is due on it as it shows times their share divided by
+   *  100, rounded half to even; split by whether the claim is SETTLED or OPEN and PENDING. */
+  private readonly heldParts = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const by = new Map<number, { settled: number; open: number }>();
+    for (const c of this.claims()) {
+      const owner = byId.get(c.personId);
+      if (c.shares.length === 0 || owner === undefined || !this.countsLive(c, owner)) continue;
+      const due = claimShownCents(c, this.rates(), owner.grades, this.floors(), this.lateness(), this.roundingOf(owner.id));
+      if (due === null) continue;
+      for (const s of c.shares) {
+        const held = by.get(s.personId) ?? { settled: 0, open: 0 };
+        if (isOpen(c)) held.open += sharePart(due, s.share);
+        else held.settled += sharePart(due, s.share);
+        by.set(s.personId, held);
+      }
+    }
+    return by;
+  });
 
   /** What is due on the person's counting SETTLED claims that are not corrections, in cents, as each
    *  claim shows it, before the cap: the settled figure their score is worked from. */
@@ -2590,6 +2619,9 @@ export class People {
   }
 
   /** The other people on the sheet, by name, whom the person's claims can be moved to. */
+  /** Everyone on the sheet, in list order, by id and name. */
+  protected readonly everyone = computed(() => this.people().map((p) => ({ id: p.id, name: p.name })));
+
   protected othersOf(personId: number): { id: number; name: string }[] {
     return this.people()
       .filter((p) => p.id !== personId)
@@ -2945,6 +2977,12 @@ function trimmedSum(figures: number[]): number {
 }
 
 /** `numerator` divided by the positive `denominator`, rounded half to even to a whole number. */
+/** A holder's part of what is due on a claim, in cents: `due` times the share (with two decimals)
+ *  divided by 100, rounded half to even. */
+function sharePart(due: number, share: string): number {
+  return halfEven(BigInt(due) * BigInt(cents(share)), 10000n);
+}
+
 function halfEven(numerator: bigint, denominator: bigint): number {
   const negative = numerator < 0n;
   const abs = negative ? -numerator : numerator;

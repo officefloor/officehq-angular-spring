@@ -14,6 +14,8 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -32,7 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
  * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
  * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
  * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
- * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one) and their
+ * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one; of a
+ * shared claim each holder counts their part (see {@link ClaimShare#partOf}) and its own person the rest) and their
  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
  * leave out the single highest and lowest person's figure when three or more people have one; a
@@ -50,13 +53,15 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final ClaimShareRepository shares;
     private final RateChain rates;
     private final SheetRepository sheets;
     private final DatedSettings dated;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates,
-            SheetRepository sheets, DatedSettings dated, Audit audit) {
+    public RollupService(PersonRepository people, ClaimRepository claims, ClaimShareRepository shares,
+            RateChain rates, SheetRepository sheets, DatedSettings dated, Audit audit) {
+        this.shares = shares;
         this.dated = dated;
         this.people = people;
         this.claims = claims;
@@ -89,6 +94,21 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
+        Map<Long, List<ClaimShare>> sharesByClaim = new LinkedHashMap<>();
+        for (ClaimShare share : basis.shares()) {
+            sharesByClaim.computeIfAbsent(share.getClaimId(), k -> new ArrayList<>()).add(share);
+        }
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : everyone) byId.put(person.getId(), person);
+        Map<Long, BigDecimal> heldParts = new LinkedHashMap<>();
+        for (Claim claim : all) {
+            List<ClaimShare> held = sharesByClaim.get(claim.getId());
+            Person owner = byId.get(claim.getPersonId());
+            if (held == null || owner == null || !countsLive(claim, owner, today)) continue;
+            BigDecimal figure = shownOf(claim, owner, basis);
+            if (figure == null) continue;
+            for (ClaimShare share : held) heldParts.merge(share.getPersonId(), share.partOf(figure), BigDecimal::add);
+        }
         for (Person person : everyone) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -101,7 +121,12 @@ public class RollupService {
                 BigDecimal figure = shownOf(claim, person, basis);
                 if (figure == null) continue;
                 if (isOverdue(claim, basis)) overdue = overdue.add(figure);
-                due = due.add(figure);
+                due = due.add(ownPartOf(figure, sharesByClaim.get(claim.getId())));
+                any = true;
+            }
+            BigDecimal part = heldParts.get(person.getId());
+            if (part != null) {
+                due = due.add(part);
                 any = true;
             }
             due = cappedOf(due, cap);
@@ -113,6 +138,15 @@ public class RollupService {
                     text(overdue)));
         }
         return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
+    }
+
+    /** What is left of {@code figure} to the claim's own person once the holders of its {@code shares}
+     * (none when null) have their parts (see {@link ClaimShare#partOf}). */
+    static BigDecimal ownPartOf(BigDecimal figure, List<ClaimShare> shares) {
+        if (shares == null) return figure;
+        BigDecimal own = figure;
+        for (ClaimShare share : shares) own = own.subtract(share.partOf(figure));
+        return own;
     }
 
     /** Each person's score on the sheet as it stands, by person, in list order: their settled-total (what is due
@@ -257,6 +291,11 @@ public class RollupService {
         /** The grade's grace days in force on the date; null when it has none then. */
         Integer graceOn(String grade, LocalDate date);
 
+        /** The shares of the sheet's claims, in the order they were given; none by default. */
+        default List<ClaimShare> shares() {
+            return List.of();
+        }
+
         /** The rounding mode in force on the date; null when there is none then. */
         RoundingMode roundingOn(LocalDate date);
 
@@ -334,6 +373,11 @@ public class RollupService {
             public RoundingMode roundingOn(LocalDate date) {
                 return dated.roundingOn(sheetId, date);
             }
+
+            @Override
+            public List<ClaimShare> shares() {
+                return shares.findBySheetIdOrderByIdAsc(sheetId);
+            }
         };
     }
 
@@ -394,6 +438,11 @@ public class RollupService {
             @Override
             public RoundingMode roundingOn(LocalDate date) {
                 return base.roundingOn(date);
+            }
+
+            @Override
+            public List<ClaimShare> shares() {
+                return base.shares();
             }
         };
     }

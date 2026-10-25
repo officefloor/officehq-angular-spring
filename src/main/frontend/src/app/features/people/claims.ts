@@ -134,6 +134,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Split from <span data-testid="claim-split-from">{{ (c.splitFrom ?? '') | figure }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | figure }}</span></span>
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
+            <span>Shares <span data-testid="claim-shares">{{ (sharesOf(c)) | figure }}</span></span>
             <span>Held <span data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | figure }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ (c.waived ? 'yes' : 'no') | figure }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
@@ -385,6 +386,33 @@ const PAST: Record<ClaimAction, string> = {
             >
               Move
             </button>
+            <label [for]="fieldId('share-with-' + c.id)">Share with</label>
+            <select
+              [id]="fieldId('share-with-' + c.id)"
+              data-testid="claim-share-select"
+              (change)="setShareWith(c.id, value($event))"
+            >
+              <option value="" [selected]="!shareWiths()[c.id]">Choose a person</option>
+              @for (o of everyone(); track o.id) {
+                <option [value]="o.id" [selected]="shareWiths()[c.id] === '' + o.id">{{ (o.name) | figure }}</option>
+              }
+            </select>
+            <label [for]="fieldId('share-pct-' + c.id)">Share percent</label>
+            <input
+              [id]="fieldId('share-pct-' + c.id)"
+              data-testid="claim-share-pct"
+              inputmode="decimal"
+              [value]="sharePcts()[c.id] ?? ''"
+              (input)="setSharePct(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-share-add"
+              [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date"
+              (click)="share(c)"
+            >
+              Share
+            </button>
             <label [for]="fieldId('inline-amount-' + c.id)">New amount</label>
             <input
               [id]="fieldId('inline-amount-' + c.id)"
@@ -480,6 +508,8 @@ export class Claims {
   readonly roundings = input.required<Dated<string | null>[]>();
   /** The other people on the sheet, whom a claim can be moved to. */
   readonly others = input.required<{ id: number; name: string }[]>();
+  /** Everyone on the sheet, in list order: a claim can be shared with any of them but its own person. */
+  readonly everyone = input.required<{ id: number; name: string }[]>();
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim was selected or unselected. */
@@ -529,6 +559,10 @@ export class Claims {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The person chosen to move each claim to, by claim id: their id as text. */
   protected readonly reassignTos = signal<Record<number, string>>({});
+  /** The person chosen to share each claim with, by claim id. */
+  protected readonly shareWiths = signal<Record<number, string>>({});
+  /** The share percent typed for each claim, by claim id. */
+  protected readonly sharePcts = signal<Record<number, string>>({});
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'review', label: 'Review' },
@@ -1265,6 +1299,51 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 422
           ? 'That claim is dated after that person retired.'
           : 'Only a draft, open or pending claim that is not a correction can be moved to another person.',
+      }));
+    }
+  }
+
+  /** The claim's holders as `<name> <share>`, in the order the shares were given, comma separated. */
+  protected sharesOf(claim: Claim): string {
+    const names = new Map(this.everyone().map((p) => [p.id, p.name]));
+    return claim.shares.map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  protected setShareWith(id: number, personId: string): void {
+    this.shareWiths.update((chosen) => ({ ...chosen, [id]: personId }));
+    this.clearRowError(id);
+  }
+
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((typed) => ({ ...typed, [id]: pct }));
+    this.clearRowError(id);
+  }
+
+  /** Share the claim with the person chosen at the percent typed. */
+  protected async share(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = Number(this.shareWiths()[claim.id] ?? '');
+    const pct = (this.sharePcts()[claim.id] ?? '').trim();
+    if (!to || !/^\d{1,3}(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: 'Choose a person and type a share percent more than 0.00 with up to two decimals.',
+      }));
+      return;
+    }
+    try {
+      const shared = await this.service.share(sheet, claim.id, to, pct);
+      if (this.session.sheetId() !== sheet) return;
+      this.shareWiths.update(({ [claim.id]: _, ...rest }) => rest);
+      this.sharePcts.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(shared);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: 'A claim that is not settled, void or deleted can be shared with another person who holds no share of it, up to 100.00 in all.',
       }));
     }
   }

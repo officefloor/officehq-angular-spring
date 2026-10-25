@@ -78,6 +78,15 @@ export interface Claim {
   held: boolean;
   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
   proofsByKind: Record<ProofKind, number>;
+  /** The claim's shares, in the order they were given: the person holding each, by id, and the
+   *  percent they hold of what is due on it, with two decimals. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: the person holding it and the percent they hold, with two decimals. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 /** The kind a proof is; one added without a kind is a receipt. */
@@ -417,6 +426,18 @@ export class ClaimsService {
   settlePart(sheet: string, id: number, amount: string): Promise<Claim[]> {
     return firstValueFrom(
       this.http.post<Claim[]>(`${this.url(sheet)}/claims/${id}/settle-part`, { amount }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Share the claim with another person on the sheet at a percent; refused (400) when the percent
+   *  has more than two decimals and (422) when it is not more than 0.00, when the person is the
+   *  claim's own or already holds a share, when the shares would total more than 100.00, and when
+   *  the claim is SETTLED, VOID or DELETED. */
+  share(sheet: string, id: number, personId: number, share: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/shares`, { personId, share }, {
         headers: this.session.headers(),
       }),
     );

@@ -6,6 +6,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.SheetPoolMember;
@@ -37,6 +39,7 @@ public class PersonMergeService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final SheetPoolMemberRepository poolMembers;
+    private final ClaimShareRepository claimShares;
     private final CrewService crews;
     private final PeriodRepository periods;
     private final SettingsService settings;
@@ -45,7 +48,7 @@ public class PersonMergeService {
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            ClaimRepository claims, StatementRepository statements, SheetPoolMemberRepository poolMembers,
+            ClaimRepository claims, StatementRepository statements, SheetPoolMemberRepository poolMembers, ClaimShareRepository claimShares,
             CrewService crews, PeriodRepository periods, SettingsService settings, SheetService sheets, RollupService rollup,
             Audit audit) {
         this.people = people;
@@ -54,6 +57,7 @@ public class PersonMergeService {
         this.claims = claims;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.claimShares = claimShares;
         this.crews = crews;
         this.periods = periods;
         this.settings = settings;
@@ -114,6 +118,25 @@ public class PersonMergeService {
                 member.setPersonId(into.getId());
             }
             poolMembers.flush();
+        }
+
+        // A share the merged person held passes to the person merged into, unless the claim is theirs or
+        // they hold one of it already; a share they held of a claim now theirs is dropped.
+        for (Claim claim : moved) {
+            claimShares.findByClaimIdOrderByIdAsc(claim.getId()).stream()
+                    .filter(s -> s.getPersonId().equals(into.getId())).forEach(claimShares::delete);
+        }
+        claimShares.flush();
+        for (ClaimShare held : claimShares.findByPersonIdOrderByIdAsc(from.getId())) {
+            Long claimId = held.getClaimId();
+            boolean own = claims.findById(claimId).map(c -> c.getPersonId().equals(into.getId())).orElse(true);
+            if (own || claimShares.findByClaimIdOrderByIdAsc(claimId).stream()
+                    .anyMatch(s -> s.getPersonId().equals(into.getId()))) {
+                claimShares.delete(held);
+            } else {
+                held.setPersonId(into.getId());
+            }
+            claimShares.flush();
         }
 
         crews.personMerged(from.getId(), into.getId());
