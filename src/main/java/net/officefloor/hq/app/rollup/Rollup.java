@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total (late charges
- * included), and the sheet's
+ * included, held to the sheet's cap), and the sheet's
  * claimed-total and due-total. A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
  * order they were added) and then the sheet's totals when they moved.
@@ -70,6 +70,7 @@ public class Rollup {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
         BigDecimal floor = SettingService.floorOf(settings, sheetId);
         BigDecimal latePct = SettingService.latePctOf(settings, sheetId);
+        BigDecimal cap = SettingService.capOf(settings, sheetId);
         LocalDate policyDate = Rounding.policyDate(SettingService.policyDateOf(settings, sheetId), today);
         Map<Grade, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdInOrder(sheetId)) {
@@ -106,9 +107,10 @@ public class Rollup {
                 if (figure != null && today != null && !claim.getDate().isAfter(today)) keptFigure = true;
             }
             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
-            BigDecimal personDue = (today == null
+            // Held to the sheet's cap; n/a is not capped.
+            BigDecimal personDue = SettingService.capped((today == null
                     || Rate.inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
-                            ? null : due;
+                            ? null : due, cap);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) dueTotal = dueTotal.add(personDue);

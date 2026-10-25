@@ -9,6 +9,7 @@ import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
+import { SheetCap } from '../settings/sheet-cap';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
@@ -87,7 +88,7 @@ import { QuickAdd } from './quick-add';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -96,6 +97,7 @@ import { QuickAdd } from './quick-add';
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+                <td data-testid="person-excess">{{ excess(p) }}</td>
                 <td>
                   <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
                   due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
@@ -181,6 +183,7 @@ export class People {
   private readonly statementsApi = inject(StatementsApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
+  private readonly cap = inject(SheetCap);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly document = inject(DOCUMENT);
@@ -310,6 +313,8 @@ export class People {
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
+  /** Counts the editors opened, so a save answered after another editor was opened leaves that one be. */
+  private editorsOpened = 0;
   protected readonly saving = signal(false);
   protected readonly error = signal('');
 
@@ -533,10 +538,26 @@ export class People {
     return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
   }
 
+  /** The person's due-total in cents: the sum of their figures held to the sheet's cap; null (n/a), which
+   *  is not capped, when that sum is. */
+  private dueCentsOf(person: PersonView): number | null {
+    const sum = this.figureCentsOf(person);
+    const cap = this.cap.cents();
+    return sum === null || cap === null ? sum : Math.min(sum, cap);
+  }
+
+  /** The person's excess: how far the sum of their figures is above the cap, with two decimals; 0.00
+   *  when it is not above it, there is no cap, or it is n/a. */
+  protected excess(person: PersonView): string {
+    const sum = this.figureCentsOf(person);
+    const due = this.dueCentsOf(person);
+    return money(sum === null || due === null ? 0 : sum - due);
+  }
+
   /** The sum of the figures due on the person's open and settled claims, each at the grade in force on
    *  its date, in cents; null (n/a) when no rate of their grade in force today is in force today and
    *  none of their claims keeps a figure. */
-  private dueCentsOf(person: PersonView): number | null {
+  private figureCentsOf(person: PersonView): number | null {
     const today = this.session.sheet()?.today;
     const gradeToday = this.gradeToday(person);
     let total = 0;
@@ -651,6 +672,7 @@ export class People {
   protected edit(person: PersonView): void {
     this.personError.set(null);
     this.patronError.set(null);
+    this.editorsOpened++;
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.error.set('');
@@ -700,6 +722,7 @@ export class People {
       return;
     }
     this.saving.set(true);
+    const editor = this.editorsOpened;
     try {
       if (id === null) {
         const added = await this.api.add(sheet.id, { name: value.name.trim(), grade: value.grade });
@@ -710,9 +733,11 @@ export class People {
             version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+          // An editor opened on the person while this save ran edits the version it stored.
+          if (editor !== this.editorsOpened && this.editingId() === saved.id) this.editingVersion.set(saved.version);
         }
       }
-      if (this.session.sheet()?.id === sheet.id) this.reset();
+      if (this.session.sheet()?.id === sheet.id && editor === this.editorsOpened) this.reset();
     } catch (e) {
       if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
         await this.showCurrent(sheet.id, id);

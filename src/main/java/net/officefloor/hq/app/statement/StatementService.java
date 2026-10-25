@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,10 +39,12 @@ public class StatementService {
     private final RateService rates;
     private final SheetService sheets;
     private final Rollup rollup;
+    private final SettingService settings;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateService rates, SheetService sheets, Rollup rollup, Audit audit) {
+            ClaimService claimService, RateService rates, SheetService sheets, Rollup rollup, SettingService settings,
+            Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -49,6 +52,7 @@ public class StatementService {
         this.rates = rates;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -93,8 +97,10 @@ public class StatementService {
             claim.bind(figure);
         }
         // As the screen shows it: n/a when no rate of the grade in force today is in force today and no
-        // claim keeps a figure.
-        BigDecimal dueTotal = rates.inForce(sheetId, person.gradeOn(today), today) == null && !keptFigure ? null : total;
+        // claim keeps a figure; held to the sheet's cap.
+        BigDecimal dueTotal = SettingService.capped(
+                rates.inForce(sheetId, person.gradeOn(today), today) == null && !keptFigure ? null : total,
+                settings.cap(sheetId));
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

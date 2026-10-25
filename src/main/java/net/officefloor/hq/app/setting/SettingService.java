@@ -48,6 +48,9 @@ public class SettingService {
      *  numbered within its period; with no value numbering is sheet-wide. */
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
+    /** The key of the cap: the most a person's due-total can be; no value means no cap. */
+    public static final String CAP = "cap";
+
     private final SheetSettingRepository settings;
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -275,6 +278,36 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PERIOD_NUMBERING_FROM
                 + " value=" + (date == null ? "" : date.toString()));
         return date;
+    }
+
+    /** The sheet's cap with two decimals, or null when there is no cap. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return capOf(settings, sheetId);
+    }
+
+    /** The sheet's cap as the store holds it, within the caller's transaction; null when there is none. */
+    public static BigDecimal capOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, CAP).map((s) -> new BigDecimal(s.getValue())).orElse(null);
+    }
+
+    /** A person's due-total held to the cap: the cap when it is above it; n/a (null) and no cap leave it as it is. */
+    public static BigDecimal capped(BigDecimal dueTotal, BigDecimal cap) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+    }
+
+    /** Set the sheet's cap, kept to two decimals; null clears it, leaving no cap. The due-totals it moves
+     *  are audited after it. */
+    @Transactional
+    public BigDecimal setCap(String sheetId, String user, BigDecimal cap) {
+        sheets.load(sheetId);
+        BigDecimal value = cap == null ? null : cap.setScale(2);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        store(sheetId, CAP, value == null ? null : value.toPlainString());
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + CAP
+                + " value=" + (value == null ? "" : value.toPlainString()));
+        rollup.recordChanges(user, before);
+        return value;
     }
 
     /** The sheet's clerk limit with two decimals, or null when there is no limit. */

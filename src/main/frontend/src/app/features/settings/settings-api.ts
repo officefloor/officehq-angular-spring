@@ -34,6 +34,8 @@ export interface SettingsView {
   periodNumberingFrom: string | null;
   /** The terms each grade set for itself, in days, by grade; a grade not here uses the sheet's terms. */
   gradeTerms: Partial<Record<Grade, number>>;
+  /** The most a person's due-total can be, with two decimals, or null when there is no cap. */
+  cap: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -52,6 +54,11 @@ export class SettingsApi {
   /** Set the clerk limit; null clears it, leaving no limit. */
   setClerkLimit(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit`, { value }));
+  }
+
+  /** Set the cap; null clears it, leaving no cap. */
+  setCap(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/cap`, { value }));
   }
 
   /** Set the floor. */

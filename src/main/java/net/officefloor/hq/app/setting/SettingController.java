@@ -36,9 +36,10 @@ public class SettingController {
      *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
-     *  the terms each grade set for itself, by grade, a grade without its own using the sheet's. */
+     *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
+     *  has two decimals, or is null when there is no cap. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -50,6 +51,10 @@ public class SettingController {
 
     /** The clerk limit as entered; none means no limit. */
     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** The cap as entered; none means no cap. */
+    public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     /** The floor as entered. */
@@ -158,6 +163,15 @@ public class SettingController {
         return view(id, service.clerkLimit(id), service.floor(id));
     }
 
+    /** Set the sheet's cap: the most a person's due-total can be; or clear it. */
+    @PutMapping("/settings/cap")
+    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid CapForm form) {
+        String id = sheetId.trim();
+        service.setCap(id, SignedInUser.name(user), form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -171,7 +185,12 @@ public class SettingController {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                 service.terms(sheetId), service.latePct(sheetId).toPlainString(),
                 service.policyDate(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList(),
-                service.periodNumberingFrom(sheetId), gradeTerms(sheetId));
+                service.periodNumberingFrom(sheetId), gradeTerms(sheetId), cap(sheetId));
+    }
+
+    private String cap(String sheetId) {
+        BigDecimal cap = service.cap(sheetId);
+        return cap == null ? null : cap.toPlainString();
     }
 
     private Map<String, Integer> gradeTerms(String sheetId) {
