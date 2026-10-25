@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a481e9e9..c6589b90 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -828,26 +828,30 @@ export class People {
+       && this.leftOut(claim));
+   }
+ 
+-  /** The names of the person's patrons, sorted, comma and space separated. */
++  /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
+   protected patronNames(person: PersonView): string {
+     const nameOf = new Map(this.people().map((p) => [p.id, p.name]));
+-    return person.patronIds.map((id) => nameOf.get(id) ?? '').filter((n) => n !== '')
+-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
++    return sharesOf(person.patronIds).map(([id, share]) => [nameOf.get(id) ?? '', share] as const)
++      .filter(([n]) => n !== '').sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
++      .map(([n, share]) => `${n} ${money(Number(share))}`).join(', ');
+   }
+ 
+-  /** The person's backing: their patrons' settled figures added up, over their SETTLED claims dated
+-   *  within the 90 days up to and including the sheet's today, each at its frozen figure; 0.00 with none. */
++  /** The person's backing: over their patrons, the patron's settled figure (their SETTLED claims dated
++   *  within the 90 days up to and including the sheet's today, each at its frozen figure) times their
++   *  share over 100, added up and rounded half to even; 0.00 with none. */
+   protected backing(person: PersonView): string {
+     const today = this.session.sheet()?.today;
+     if (today === undefined) return money(0);
+     const from = daysBefore(today, 89);
+-    const patrons = new Set(person.patronIds);
+-    let total = 0;
++    const shares = new Map(sharesOf(person.patronIds));
++    const figures = new Map<number, number>();
+     for (const c of this.claims()) {
+-      if (patrons.has(c.personId) && c.status === 'SETTLED' && c.settledDue !== null
+-        && c.date >= from && c.date <= today) total += cents(c.settledDue);
++      if (shares.has(c.personId) && c.status === 'SETTLED' && c.settledDue !== null
++        && c.date >= from && c.date <= today) figures.set(c.personId, (figures.get(c.personId) ?? 0) + cents(c.settledDue));
+     }
+-    return money(total);
++    let total = 0n;
++    for (const [id, figure] of figures) total += BigInt(figure) * (shares.get(id) ?? 0n);
++    return money(Number(divideHalfEven(total, 10000n)));
+   }
+ 
+   protected clearPatronError(personId: number): void {
+@@ -1360,3 +1364,19 @@ function daysBefore(date: string, days: number): string {
+   const [y, m, d] = date.split('-').map(Number);
+   return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
+ }
++
++/** A whole number divided by another, rounded half to even. */
++function divideHalfEven(value: bigint, by: bigint): bigint {
++  const quotient = value / by;
++  const twice = 2n * (value % by);
++  return twice > by || (twice === by && quotient % 2n !== 0n) ? quotient + 1n : quotient;
++}
++
++/** The shares (in hundredths) of the patrons, in the order they were named: 100.00 split equally, each
++ *  rounded half to even, the remainder to the first named. */
++function sharesOf(patronIds: readonly number[]): [number, bigint][] {
++  const count = BigInt(patronIds.length);
++  if (count === 0n) return [];
++  const each = divideHalfEven(10000n, count);
++  return patronIds.map((id, i) => [id, i === 0 ? 10000n - each * (count - 1n) : each]);
++}
