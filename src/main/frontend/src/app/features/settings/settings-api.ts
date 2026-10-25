@@ -76,6 +76,9 @@ export interface SettingsView {
   parent: string | null;
   /** The month, 1 to 12, each fiscal year starts on; 1 unless set. Not dated. */
   fiscalStartMonth: number;
+  /** The amount a person's due-total going above audits an alert, with two decimals, or null when off.
+   *  Not dated. */
+  alertThreshold: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -159,6 +162,11 @@ export class SettingsApi {
   /** Set the month each fiscal year starts on, 1 to 12. */
   setFiscalStartMonth(sheetId: string, value: number): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }));
+  }
+
+  /** Set the alert threshold; null clears it, turning alerts off. */
+  setAlertThreshold(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/alert-threshold`, { value }));
   }
 
   /** Set the pot; null clears it, leaving no pot. */

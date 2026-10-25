@@ -35,7 +35,8 @@ import org.springframework.stereotype.Service;
  * claimed-total, due-total and overdue-total (the last two leaving out the single highest and lowest
  * person's figure when three or more people have one). A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
- * order they were added) and then the sheet's totals when they moved.
+ * order they were added) and then the sheet's totals when they moved, and then an ALERT for each person
+ * whose due-total went from at or below the sheet's alert threshold (or none) to above it.
  */
 @Service
 public class Rollup {
@@ -168,6 +169,19 @@ public class Rollup {
             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + text(after.claimedTotal())
                     + " due-total=" + text(after.dueTotal()) + " overdue-total=" + text(after.overdueTotal()));
         }
+        BigDecimal threshold = SettingService.alertThresholdOf(settings, before.sheetId());
+        if (threshold == null) return;
+        after.people().forEach((id, now) -> {
+            Figures was = before.people().get(id);
+            if (above(now.dueTotal(), threshold) && (was == null || !above(was.dueTotal(), threshold))) {
+                audit.recordOnCommit("ALERT" + prefix + " name=" + now.name() + " due-total=" + text(now.dueTotal()));
+            }
+        });
+    }
+
+    /** Whether a due-total is above the threshold; none is not. */
+    private static boolean above(BigDecimal dueTotal, BigDecimal threshold) {
+        return dueTotal != null && dueTotal.compareTo(threshold) > 0;
     }
 
     /** Audit, once the transaction commits, every person's figures, in the order they were added, and then

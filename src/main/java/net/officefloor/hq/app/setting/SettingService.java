@@ -94,6 +94,10 @@ public class SettingService implements ActingFor {
      *  value means none. Not dated. */
     public static final String POT = "pot";
 
+    /** The key of the alert threshold: a change that takes a person's due-total from at or below it (or from
+     *  none) to above it audits an ALERT for them; no value means off. Not dated. */
+    public static final String ALERT_THRESHOLD = "alert-threshold";
+
     /** The key of the parent: the sheet whose rates (then its parent's, up to {@link #PARENT_LEVELS} levels up)
      *  are used for a grade and date that have none in force on this sheet; no value means none. Not dated. */
     public static final String PARENT = "parent";
@@ -456,6 +460,44 @@ public class SettingService implements ActingFor {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
+                + " value=" + (value == null ? "" : value.toPlainString()));
+        return value;
+    }
+
+    /** The sheet's alert threshold, with two decimals, or null when it is blank (off). */
+    @Transactional(readOnly = true)
+    public BigDecimal alertThreshold(String sheetId) {
+        return alertThresholdOf(settings, sheetId);
+    }
+
+    /** The sheet's alert threshold as the store holds it, within the caller's transaction; null when off. */
+    public static BigDecimal alertThresholdOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, ALERT_THRESHOLD).map((s) -> new BigDecimal(s.getValue()).setScale(2))
+                .orElse(null);
+    }
+
+    /** Set the sheet's alert threshold, kept to two decimals; null clears it, turning alerts off. */
+    @Transactional
+    public BigDecimal setAlertThreshold(String sheetId, String user, BigDecimal threshold) {
+        BigDecimal value = threshold == null ? null : threshold.setScale(2);
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, ALERT_THRESHOLD).orElse(null);
+        try {
+            if (value == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, ALERT_THRESHOLD, value.toPlainString()));
+            } else {
+                setting.setValue(value.toPlainString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + ALERT_THRESHOLD
                 + " value=" + (value == null ? "" : value.toPlainString()));
         return value;
     }
