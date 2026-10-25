@@ -1,0 +1,74 @@
+{
+  "checkpoint": 236,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    52,
+    54,
+    89,
+    160
+  ],
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "request": {
+    "spec": "A claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c921776c33e53f9fac11ed84f03a98668b5377cc",
+  "reset_sha": "",
+  "preagent_sha": "6c81e0fabeb4c5d58fe171e7387452206a1de11e",
+  "prev_sha": "6c81e0fabeb4c5d58fe171e7387452206a1de11e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6732581999999996,
+    "input_tokens": 76,
+    "output_tokens": 21884,
+    "cache_read_tokens": 2448251,
+    "cache_creation_tokens": 93203,
+    "num_turns": 39,
+    "duration_ms": 980804,
+    "duration_api_ms": 270023,
+    "model": "claude-opus-5-5",
+    "session_id": "67cc1621-8997-49ea-8f54-46923ce0ea1b",
+    "stop_reason": "success",
+    "result_text": "The deferral change is in, and the three tests that exercise it pass. The fourth, \"scenario 3\", still fails, at two steps that have nothing to do with deferral.\n\n**What changed**\n- **New rule:** a claim only counts as deferred while no statement binds it. A bound claim that gets deferred stays in the totals and counts, can still be overdue, can be settled, and is counted by the next statement. The deferral starts once the binding ends, either because the statement is cancelled or because a later statement leaves the claim unbound.\n- **Settled while bound:** the test expects a claim that was deferred and then settled while bound to show as deferred and drop out of the totals once unbound. To support that without affecting other settled claims, I added a stored flag, `deferred_bound` (migration `V122__claim_deferred_bound.sql`). It records whether the deferral was made while a statement bound the claim. Deferring sets it, transfers and clones copy it, and the claim data sent to the browser includes it.\n- **Server:** `Claim.isDeferredOn` (in `Claim.java`) has the new rule, and `RollupService.countsAs` leaves out a settled claim that is deferred.\n- **Front end:** `deferred()` in `claims.service.ts` and the totals check in `people.ts` follow the same rule.\n\n**Test results:** the main deferral test plus scenarios 1 and 2 pass. Scenario 3 fails the same way on every run. It never defers a claim, and my changes only apply when a claim has a deferral date, so they can't cause this. To see what else it trips on, I ran a throwaway copy of the spec outside the repo with the failing assertions removed. It shows two mismatches with how the app currently works:\n1. **Merge with a soft-closed period** (line 1787): when Ada is merged into Cam, the app adds Ada's fixed 5.00 for 2026-03 to Cam's, so Cam shows 6.00. The test expects 1.00. Adding the figures on merge is the documented rule in `PersonMergeService`.\n2. **Paused plan** (line 2051): the app shows no next dates for a plan that is paused now. The test expects `2026-04-15`.\n\nMaking these pass would mean changing merge and plan behaviour that the request doesn't mention, so I left them alone. The first full run also failed once earlier in scenario 3, at the paste step (line 1455). That looks like a timing issue in the test, and it didn't happen again. If you want scenario 3 to pass anyway, I can change those two behaviours to match the test. Just confirm that's what you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6732581999999996,
+        "num_turns": 39,
+        "duration_ms": 980804,
+        "duration_api_ms": 270023,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp236.agent.jsonl",
+  "agent_diff_file": "cp236.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
