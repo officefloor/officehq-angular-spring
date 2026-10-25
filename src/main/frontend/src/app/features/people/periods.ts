@@ -11,7 +11,7 @@ const YEAR = /^\d{4}$/;
 // The periods of the sheet, by from-date, each with the fiscal year its from-date falls in, the due-total of the counting claims dated in
 // it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
 // that close, soft-close and reopen it, whether a steward has locked it (a locked period cannot be reopened) and the buttons that
-// lock and unlock it, and the
+// lock and unlock it, the count of its claims (VOID and DELETED ones left out), and the
 // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year; quarterly ones for a calendar year.
 @Component({
   selector: 'app-periods',
@@ -148,6 +148,7 @@ const YEAR = /^\d{4}$/;
               <th scope="col">Due</th>
               <th scope="col">Closed</th>
               <th scope="col">Locked</th>
+              <th scope="col">Claims</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -162,6 +163,7 @@ const YEAR = /^\d{4}$/;
                 <td data-testid="period-due-total">{{ (dueTotals()[p.name] ?? '0.00') | figure }}</td>
                 <td data-testid="period-closed">{{ (p.closed ? (p.soft ? 'soft' : 'yes') : 'no') | figure }}</td>
                 <td data-testid="period-locked">{{ (p.locked ? 'yes' : 'no') | figure }}</td>
+                <td data-testid="period-claims-count">{{ (claimCounts()[p.name] ?? 0) | figure }}</td>
                 <td>
                   @if (!p.closed || p.soft) {
                     <button
@@ -255,6 +257,8 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total, by name: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Record<string, string>>();
+  /** Each period's count of claims, by name: those whose due-by falls in it, VOID and DELETED ones left out. */
+  readonly claimCounts = input.required<Record<string, number>>();
   /** The month (1 to 12) the sheet's fiscal year starts in. */
   readonly fiscalStartMonth = input.required<number>();
   /** A period was added. */

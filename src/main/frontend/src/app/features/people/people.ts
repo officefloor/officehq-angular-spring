@@ -122,7 +122,7 @@ import { FigurePipe } from '../../core/figure.pipe';
     <app-duplicates />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-grades />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
     <app-dashboard [counts]="dashboard()" />
     <app-summary
       [people]="summaryPeople()"
@@ -1280,6 +1280,19 @@ export class People {
       for (const [name, sum] of Object.entries(figures)) sums[name] += sum;
     }
     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+  });
+  /** Each period's count of claims, by name: the claims whose due-by falls in it, VOID and DELETED ones left out. */
+  protected readonly periodClaimCounts = computed(() => {
+    const counts: Record<string, number> = {};
+    for (const p of this.periods()) counts[p.name] = 0;
+    for (const person of this.people()) {
+      for (const c of this.claimsOf(person.id)) {
+        if (c.status === 'VOID' || c.status === 'DELETED') continue;
+        const period = periodOn(this.periods(), c.dueBy);
+        if (period !== null) counts[period.name] += 1;
+      }
+    }
+    return counts;
   });
   /** Each period's classic due-total, by name: while it is open, what is due on the claims whose
    *  due-by falls in it that count by their status now (OPEN, SETTLED and PENDING), as each claim
