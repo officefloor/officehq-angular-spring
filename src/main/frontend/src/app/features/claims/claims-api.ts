@@ -6,6 +6,9 @@ import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 export type ClaimAction = 'open' | 'settle' | 'void';
 
+/** An amount as a form takes it: 0.00 or more, with up to two decimals. */
+export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+
 /** Only open and settled claims count toward what is claimed and due. */
 export function counts(claim: ClaimView): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';

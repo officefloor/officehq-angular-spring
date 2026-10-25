@@ -9,7 +9,8 @@ import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { StatementView, StatementsApi } from '../statements/statements-api';
-import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
+import { GRADES, Grade, PeopleApi, PersonView, QuickAddView } from './people-api';
+import { QuickAdd } from './quick-add';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
@@ -17,7 +18,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd],
   template: `
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
@@ -43,6 +44,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
             <p role="alert" data-testid="person-form-error">{{ error() }}</p>
           }
         </form>
+        <app-quick-add (added)="quickAdded($event)" />
         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
         <table data-testid="people-list">
@@ -270,6 +272,12 @@ export class People {
 
   protected claimAdded(claim: ClaimView): void {
     this.claims.update((list) => [claim, ...list]);
+  }
+
+  /** A quick-add's claim, and its person when the quick-add added them. */
+  protected quickAdded(added: QuickAddView): void {
+    if (!this.people().some((p) => p.id === added.person.id)) this.people.update((list) => [...list, added.person]);
+    this.claimAdded(added.claim);
   }
 
   protected claimSaved(claim: ClaimView): void {

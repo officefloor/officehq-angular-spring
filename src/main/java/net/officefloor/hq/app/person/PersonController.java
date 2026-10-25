@@ -25,7 +25,7 @@ public class PersonController {
 
     /** What the screen shows of a person. */
     public record PersonView(long id, String name, Grade grade, long version) {
-        static PersonView of(Person person) {
+        public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }

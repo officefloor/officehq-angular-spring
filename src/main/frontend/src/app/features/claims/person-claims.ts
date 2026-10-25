@@ -4,9 +4,8 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { PeriodView, periodOf } from '../periods/periods-api';
 import { RateView } from '../rates/rates-api';
-import { ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
 
-const AMOUNT = /^\d+(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
