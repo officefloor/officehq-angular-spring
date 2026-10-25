@@ -306,6 +306,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
 
       <section aria-labelledby="snapshot-compare-heading">
         <h3 id="snapshot-compare-heading">Compare snapshots</h3>
@@ -2200,6 +2201,22 @@ export class People {
       }
     }
     this.downloadCsv('claims.csv', lines);
+  }
+
+  /** Download the period figures as a CSV file: people in list order, retired people included, and
+   *  for each the periods in the order added, with the figure and carried figure as the row shows them. */
+  protected async exportPeriods(): Promise<void> {
+    if (!(await this.readDone())) return;
+    const lines = [['person', 'period', 'figure', 'carried']];
+    const added = [...this.periods()].sort((a, b) => a.id - b.id);
+    for (const p of this.people()) {
+      for (const pd of added) {
+        const figure = this.personPeriodCents().get(p.id)?.[pd.name] ?? 0;
+        const carried = this.personCarriedCents().get(p.id)?.[pd.name] ?? 0;
+        lines.push([p.name, pd.name, money(figure), money(carried)]);
+      }
+    }
+    this.downloadCsv('periods.csv', lines);
   }
 
   /** Download the person's statement as a CSV file: each claim of theirs their last statement bound,
