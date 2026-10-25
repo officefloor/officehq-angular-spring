@@ -60,6 +60,9 @@ export interface Person {
   tags: string[];
   /** The reason of the person's flag in force on the sheet's today; null when none is. */
   flag: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may; null when
+   *  they have none. */
+  approver: string | null;
 }
 
 /** A past retirement of a person, from `from` to `to`, the day they were unretired (YYYY-MM-DD). */
@@ -270,6 +273,15 @@ export class PeopleService {
   flag(sheet: string, id: number, reason: string, until: string): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheet)}/${id}/flag`, { reason, until }, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Make `user` the person's approver (none when blank). */
+  setApprover(sheet: string, id: number, user: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheet)}/${id}/approver`, { user }, {
         headers: this.session.headers(),
       }),
     );

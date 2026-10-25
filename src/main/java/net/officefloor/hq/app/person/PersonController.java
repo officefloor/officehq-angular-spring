@@ -65,7 +65,8 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<RetirementView> retirements, List<String> tags, Integer undatedTerms, String flag) {
+            List<RetirementView> retirements, List<String> tags, Integer undatedTerms, String flag,
+            String approver) {
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
@@ -73,7 +74,7 @@ public class PersonController {
                     person.getHolds().stream().map(HoldView::of).toList(), person.termsOn(today),
                     person.getContact(), person.getAliases(), clashing, person.getOriginSheetId(),
                     person.getRetirements().stream().map(RetirementView::of).toList(), person.getTags(),
-                    person.getTerms(), person.flagOn(today));
+                    person.getTerms(), person.flagOn(today), person.getApprover());
         }
     }
 
@@ -109,6 +110,10 @@ public class PersonController {
 
     /** A flag to put on a person: a reason (not blank) and the last day it is in force. */
     public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** The user to make a person's approver (blank for none). */
+    public record ApproverRequest(@Size(max = 100) String user) {
     }
 
     /** A hold to put a person on: from {@code from} (the sheet's today when left out) to {@code to}
@@ -425,6 +430,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FlagRequest request) {
         return view(sheetId, service.flag(sheetId.trim(), user.trim(), personId, request.reason(), request.until()));
+    }
+
+    @PostMapping("/{personId}/approver")
+    public PersonView setApprover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ApproverRequest request) {
+        return view(sheetId, service.setApprover(sheetId.trim(), user.trim(), personId, request.user()));
     }
 
     @ExceptionHandler(PersonContactTakenException.class)

@@ -110,6 +110,11 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null when
+     * they have none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** The person's place in the sheet's list: people are listed by it, lowest first. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -186,6 +191,7 @@ public class Person {
         copy.tags = tags;
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         copy.position = position;
         return copy;
     }
@@ -379,6 +385,14 @@ public class Person {
     /** The reason of the person's flag in force on {@code today}; null when none is. */
     public String flagOn(LocalDate today) {
         return isFlaggedOn(today) ? flagReason : null;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     public Long getPosition() {

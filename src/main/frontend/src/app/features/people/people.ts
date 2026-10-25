@@ -473,6 +473,7 @@ import { FigurePipe } from '../../core/figure.pipe';
               }
               <th scope="col">Retired from</th>
               <th scope="col">Flag</th>
+              <th scope="col">Approver</th>
               @if (shows('hold')) {
                 <th scope="col">On hold</th>
               }
@@ -558,6 +559,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                 }
                 <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | figure }}</td>
                 <td data-testid="person-flag-shown">{{ (p.flag ?? '') | figure }}</td>
+                <td data-testid="person-approver">{{ (p.approver ?? '') | figure }}</td>
                 @if (shows('hold')) {
                   <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | figure }}</td>
                 }
@@ -754,6 +756,21 @@ import { FigurePipe } from '../../core/figure.pipe';
                     (click)="flag(p)"
                   >
                     Flag
+                  </button>
+                  <label [for]="'person-approver-input-' + p.id">Approver</label>
+                  <input
+                    [id]="'person-approver-input-' + p.id"
+                    data-testid="person-approver-input"
+                    [value]="approverInputs()[p.id] ?? ''"
+                    (input)="setHoldDate(approverInputs, p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-approver-save"
+                    [attr.aria-label]="'Set the approver of ' + p.name"
+                    (click)="setApprover(p)"
+                  >
+                    Set approver
                   </button>
                   <label [for]="'person-alias-input-' + p.id">Alias</label>
                   <input
@@ -979,6 +996,8 @@ export class People {
   protected readonly holdTos = signal<Record<number, string>>({});
   protected readonly flagReasons = signal<Record<number, string>>({});
   protected readonly flagUntils = signal<Record<number, string>>({});
+  /** The approver typed on each person's row, by person id. */
+  protected readonly approverInputs = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
@@ -1454,6 +1473,7 @@ export class People {
       this.holdTos.set({});
       this.flagReasons.set({});
       this.flagUntils.set({});
+      this.approverInputs.set({});
       this.aliasInputs.set({});
       this.patrons.set([]);
       this.snapshots.set([]);
@@ -1914,6 +1934,23 @@ export class People {
     } catch {
       if (this.sheet() !== sheet) return;
       this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'Only a steward can flag a person.' }));
+    }
+  }
+
+  /** Make the user typed on the person's row their approver (none when blank). */
+  protected async setApprover(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    const user = (this.approverInputs()[person.id] ?? '').trim();
+    try {
+      const saved = await this.service.setApprover(sheet, person.id, user);
+      if (this.sheet() !== sheet) return;
+      this.put(saved);
+      this.approverInputs.update(({ [person.id]: _, ...rest }) => rest);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({ ...errors, [person.id]: 'The approver could not be set.' }));
     }
   }
 

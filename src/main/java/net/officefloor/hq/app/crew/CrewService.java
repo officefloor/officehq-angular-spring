@@ -113,16 +113,13 @@ public class CrewService {
         crews.flush();
     }
 
-    /** The person {@code fromId} is merged into {@code intoId}: the crews they lead are led by the other
-     * (who leaves those crews' members), and their memberships move to the other where the other is neither
-     * the lead nor already a member. */
+    /** The person {@code fromId} is merged into {@code intoId}: the crews they lead are led by the other,
+     * except one the other is already a member of, which keeps them as a member and is left without a lead;
+     * and their memberships move to the other where the other is neither the lead nor already a member. */
     @Transactional
     public void personMerged(long fromId, long intoId) {
         for (SheetCrew crew : crews.findByLeadPersonIdOrderByIdAsc(fromId)) {
-            crew.setLeadPersonId(intoId);
-            for (SheetCrewMember m : members.findByCrewIdOrderByIdAsc(crew.getId())) {
-                if (m.getPersonId().equals(intoId)) members.delete(m);
-            }
+            crew.setLeadPersonId(members.existsByCrewIdAndPersonId(crew.getId(), intoId) ? null : intoId);
         }
         crews.flush();
         members.flush();

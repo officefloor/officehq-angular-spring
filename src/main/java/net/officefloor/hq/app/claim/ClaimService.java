@@ -666,7 +666,7 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward's approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
+    /** A steward's (or the person's approver's) approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
      * shows then: what a statement bound it to, late charge included, when one did, otherwise its person's rate then together with its late charge then).
      * Refused unless the claim is PENDING, when the user is not a steward or opened or last edited the claim, and when it
      * has no proofs and that due is above the proof threshold in force on its date. */
@@ -711,7 +711,7 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward's rejection of a PENDING claim, for {@code reason}: it goes back to OPEN, bound again
+    /** A steward's (or the person's approver's) rejection of a PENDING claim, for {@code reason}: it goes back to OPEN, bound again
      * by its person's last statement if that statement included it. Refused unless the claim is
      * PENDING, and when the user is not a steward. */
     @Transactional
@@ -808,13 +808,23 @@ public class ClaimService {
         if (sheets.today(sheetId).isAfter(settled.plusDays(7))) throw new ClaimVoidLateException();
     }
 
-    /** The PENDING claim, locked, for a steward to approve or reject. */
+    /** The PENDING claim, locked, for a steward or its person's approver to approve or reject. */
     private Claim lockPending(String sheetId, String user, long claimId) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.PENDING) throw new ClaimStatusChangeException();
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD && !isApprover(sheetId, user, claim)) {
+            throw new ClaimNotStewardException();
+        }
         return claim;
+    }
+
+    /** Whether {@code user} is the approver of the claim's person. */
+    private boolean isApprover(String sheetId, String user, Claim claim) {
+        return people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(Person::getApprover)
+                .filter(user::equals)
+                .isPresent();
     }
 
     private static String dueText(BigDecimal due) {

@@ -763,7 +763,7 @@ export class Claims {
             : action === 'review'
             ? 'Only a steward can review that claim.'
             : action === 'approve' || action === 'reject'
-            ? `Only a steward${action === 'approve' ? ' who did not open or last edit that claim' : ''} can ${action} it.`
+            ? `Only a steward or the person's approver${action === 'approve' ? ' who did not open or last edit that claim' : ''} can ${action} it.`
             : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 400 && action === 'settle'
           ? "A claim can only be settled as of a date on or before the sheet's today, and not before it was added."

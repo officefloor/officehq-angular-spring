@@ -256,6 +256,18 @@ public class PersonService {
         return person;
     }
 
+    /** Makes {@code approver} (kept without the spaces around it; none when blank) the person's
+     * approver: that user may approve or reject their PENDING claims as a steward may. */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long personId, String approver) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        String name = approver == null || approver.isBlank() ? null : approver.trim();
+        person.setApprover(name);
+        people.flush();
+        audit.change("APPROVER_SET", sheetId, user, "name=" + person.getName(), "user=" + (name == null ? "" : name));
+        return person;
+    }
+
     /** Puts the person on a hold from {@code from} (the sheet's today when left out) to {@code to}
      * (no end when left out); refused when it would end before it starts. The same hold may be put on
      * again. A hold ends on its to-date: there is no release. */
