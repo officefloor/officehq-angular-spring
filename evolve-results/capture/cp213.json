@@ -1,0 +1,64 @@
+{
+  "checkpoint": 213,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp213_parent-plans",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "251941ee5ec4dfc382906453886968c226bcd615",
+  "reset_sha": "",
+  "preagent_sha": "44217c80ac42a2c879791ce7b5a21748c65032c8",
+  "prev_sha": "44217c80ac42a2c879791ce7b5a21748c65032c8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7765716000000001,
+    "input_tokens": 34,
+    "output_tokens": 10329,
+    "cache_read_tokens": 687118,
+    "cache_creation_tokens": 54054,
+    "num_turns": 19,
+    "duration_ms": 343808,
+    "duration_api_ms": 129696,
+    "model": "claude-opus-5-5",
+    "session_id": "8fdc4060-a2e5-458b-8074-9a574a26dfb8",
+    "stop_reason": "success",
+    "result_text": "A plan can now name one of its sheet's descendants, and its claims are made on that sheet. `bin/e2e` passes all 4 tests in the spec, including the new \"parent plans\" test.\n\n**Database:** migration `V112__plan_target_sheet.sql` adds a nullable `target_sheet_id` column to `person_plan`.\n\n**Server:**\n- **Adding a plan:** the plan form takes an optional sheet id. It must be a child, grandchild and so on of the plan's sheet. Any other id, including one never loaded, is refused with a new `PlanSheetException` (422), which writes nothing. When a sheet is given, `PLAN_ADDED` gets `sheet=<id>` at the end of the line; without one the line is unchanged.\n- **Generating:** for a plan with a target sheet, each due claim is added on that sheet for the person with the same name, using that sheet's rules. So `CLAIM_ADDED` goes into that sheet's audit. If there's no such person the plan is skipped: it makes nothing, its count stays the same, and it tries again next time.\n- **Dates:** which dates are due is still worked out from the plan's own sheet's today, not the target sheet's. The test relies on this: the child's today was 2026-03-01 but claims for 03-06 and 03-11 were made.\n- **The count:** \"made\" includes claims on other sheets. The response's claim list only holds claims on the current sheet, so the screen doesn't add another sheet's claims to its own people.\n\n**Front end:** the plan form has a new `plan-form-sheet` input, and a plan row shows \"on sheet X\" when it has a target.\n\nThe server changes are in `plan/Plan.java`, `PlanService.java` and `PlanController.java`. The front end changes are in `plans.ts` and `plans.service.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7765716000000001,
+        "num_turns": 19,
+        "duration_ms": 343808,
+        "duration_api_ms": 129696,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp213.agent.jsonl",
+  "agent_diff_file": "cp213.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
