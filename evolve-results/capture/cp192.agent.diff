@@ -1,0 +1,186 @@
+diff --git a/src/main/frontend/src/app/features/people/crews.ts b/src/main/frontend/src/app/features/people/crews.ts
+index 529a1040..066a3ab0 100644
+--- a/src/main/frontend/src/app/features/people/crews.ts
++++ b/src/main/frontend/src/app/features/people/crews.ts
+@@ -1,6 +1,6 @@
+ import { Component, effect, inject, input, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+-import { Person } from './people.service';
++import { Person, gradeOn, withGrade } from './people.service';
+ import { money } from './claims.service';
+ import { Crew, CrewsService, crewDueCents } from './crews.service';
+ import { PoolsService } from './pools.service';
+@@ -37,7 +37,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+         <div class="crew" [attr.data-testid]="'crew-row-' + crew.name">
+           <h3>{{ (crew.name) | figure }}</h3>
+           <p>
+-            Lead <span data-testid="crew-lead">{{ (crew.lead?.name ?? '') | figure }}</span>,
++            Lead <span data-testid="crew-lead">{{ (leadOf(crew)) | figure }}</span>,
+             due-total <span data-testid="crew-due-total">{{ (dueTotalOf(crew)) | figure }}</span>
+           </p>
+           @if (crew.members.length > 0) {
+@@ -118,6 +118,14 @@ export class Crews {
+     return money(crewDueCents(crew, this.dueCents()));
+   }
+ 
++  /** The crew's lead as the screen shows a name: with the grade in force on the sheet's today. */
++  protected leadOf(crew: Crew): string {
++    const lead = crew.lead;
++    if (!lead) return '';
++    const person = this.people().find((p) => p.id === lead.personId);
++    return person ? withGrade(lead.name, gradeOn(person.grades, this.session.today()) ?? person.grade) : lead.name;
++  }
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 63f97d34..b16a440e 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -138,6 +138,11 @@ export function gradeOn(grades: PersonGrade[], date: string | null): Grade | nul
+   return best?.grade ?? null;
+ }
+ 
++/** A name as the screen shows it: the name, then the grade in force in brackets. */
++export function withGrade(name: string, grade: string | null): string {
++  return grade ? `${name} (${grade})` : name;
++}
++
+ /** A sheet's descendants' figures added up: their people (retired ones included), and each one's
+  *  due-total and overdue-total as that sheet shows it, with two decimals. */
+ export interface DescendantFigures {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b3b305b6..ebd17d39 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,7 +7,7 @@ import { Holidays } from './holidays';
+ import { Notes } from './notes';
+ import { Header } from './header';
+ import { Claim, ClaimStatus, ClaimsService, cents, counts, deferred, isCorrection, isOpen, money, overdue, statusOn } from './claims.service';
+-import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn } from './people.service';
++import { DescendantFigures, GRADES, Grade, Patron, PeopleService, Person, Snapshot, gradeOn, heldOn, withGrade } from './people.service';
+ import { Periods } from './periods';
+ import { Period, PeriodsService, periodOn } from './periods.service';
+ import { Rates } from './rates';
+@@ -498,7 +498,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+                     (change)="selectPerson(p.id, checked($event))"
+                   />
+                 </td>
+-                <td data-testid="person-name">{{ (p.name) | figure }}</td>
++                <td data-testid="person-name">{{ (withGrade(p.name, gradeNow(p))) | figure }}</td>
+                 <td data-testid="person-grade">{{ (gradeNow(p)) | figure }}</td>
+                 @if (shows('terms')) {
+                   <td data-testid="person-terms">{{ (p.terms ?? '') | figure }}</td>
+@@ -1020,15 +1020,15 @@ export class People {
+   });
+   /** Each person's patrons as "<name> <share>", sorted by name and comma separated, by person id. */
+   private readonly patronNames = computed(() => {
+-    const byId = new Map(this.people().map((p) => [p.id, p.name]));
++    const byId = new Map(this.people().map((p) => [p.id, p]));
+     const by = new Map<number, string>();
+     for (const [id, shares] of this.patronShares()) {
+       const named = shares.flatMap(({ patronId, share }) => {
+-        const name = byId.get(patronId);
+-        return name === undefined ? [] : [{ name, share }];
++        const patron = byId.get(patronId);
++        return patron === undefined ? [] : [{ name: patron.name, shown: withGrade(patron.name, this.gradeNow(patron)), share }];
+       });
+       named.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+-      by.set(id, named.map(({ name, share }) => `${name} ${money(share)}`).join(', '));
++      by.set(id, named.map(({ shown, share }) => `${shown} ${money(share)}`).join(', '));
+     }
+     return by;
+   });
+@@ -2033,6 +2033,8 @@ export class People {
+   }
+ 
+   /** The person's grade in force on the sheet's today. */
++  protected readonly withGrade = withGrade;
++
+   protected gradeNow(person: Person): Grade {
+     return gradeOn(person.grades, this.session.today()) ?? person.grade;
+   }
+diff --git a/src/main/frontend/src/app/features/people/tree-search.service.ts b/src/main/frontend/src/app/features/people/tree-search.service.ts
+index 457f8785..1efcd3b9 100644
+--- a/src/main/frontend/src/app/features/people/tree-search.service.ts
++++ b/src/main/frontend/src/app/features/people/tree-search.service.ts
+@@ -3,11 +3,13 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+-/** A person found over a sheet's tree: their sheet, name and due-total as that sheet shows it. */
++/** A person found over a sheet's tree: their sheet, name and due-total as that sheet shows it, and the
++ *  grade in force on that sheet's today. */
+ export interface Found {
+   sheet: string;
+   name: string;
+   dueTotal: string;
++  grade: string | null;
+ }
+ 
+ // The people of a sheet's tree whose name or an alias contains some text, read from the server.
+diff --git a/src/main/frontend/src/app/features/people/tree-search.ts b/src/main/frontend/src/app/features/people/tree-search.ts
+index d2e70849..8038789d 100644
+--- a/src/main/frontend/src/app/features/people/tree-search.ts
++++ b/src/main/frontend/src/app/features/people/tree-search.ts
+@@ -2,9 +2,10 @@ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { Found, TreeSearchService } from './tree-search.service';
+ import { FigurePipe } from '../../core/figure.pipe';
++import { withGrade } from './people.service';
+ 
+ // The tree search: every person of this sheet and the other sheets of its tree whose name or an alias
+-// contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>. It changes
++// contains the typed text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>. It changes
+ // nothing.
+ @Component({
+   selector: 'app-tree-search',
+@@ -24,7 +25,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+       @if (found().length > 0) {
+         <ol data-testid="search-list">
+           @for (f of found(); track $index) {
+-            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (f.name) | figure }} {{ (f.dueTotal) | figure }}</li>
++            <li data-testid="search-line">{{ (f.sheet) | figure }} {{ (withGrade(f.name, f.grade)) | figure }} {{ (f.dueTotal) | figure }}</li>
+           }
+         </ol>
+       }
+@@ -54,6 +55,7 @@ export class TreeSearch {
+   private readonly session = inject(Session);
+   private readonly service = inject(TreeSearchService);
+ 
++  protected readonly withGrade = withGrade;
+   protected readonly text = signal('');
+   protected readonly found = signal<Found[]>([]);
+   protected readonly count = signal('');
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index b4d0e85c..6ef5ada9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -48,8 +48,9 @@ public class ConsolidatedService {
+         this.people = people;
+     }
+ 
+-    /** One person found by {@link #search}: their sheet, name and due-total as that sheet shows it. */
+-    public record Found(String sheet, String name, String dueTotal) {
++    /** One person found by {@link #search}: their sheet, name and due-total as that sheet shows it, and
++     * the grade in force on that sheet's today. */
++    public record Found(String sheet, String name, String dueTotal, String grade) {
+     }
+ 
+     /** Every person of the sheet and the other sheets of its tree whose name or an alias contains
+@@ -64,12 +65,13 @@ public class ConsolidatedService {
+         List<Found> found = new ArrayList<>();
+         for (String id : order) {
+             RollupService.Snapshot snapshot = rollup.snapshot(id);
++            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
+             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                 if (!matches(person.getName(), needle)
+                         && person.getAliases().stream().noneMatch(a -> matches(a, needle))) continue;
+                 RollupService.Figures figures = snapshot.people().get(person.getId());
+                 found.add(new Found(id, person.getName(),
+-                        figures == null ? RollupService.NONE : figures.dueTotal()));
++                        figures == null ? RollupService.NONE : figures.dueTotal(), person.gradeOn(today)));
+             }
+         }
+         return found;
