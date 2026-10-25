@@ -7,8 +7,8 @@ import { RateView, RatesApi, rateInForce } from './rates-api';
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's rate in force today for each grade, and every rate with its from-date, with one form
-// to set a grade's rate from a from-date.
+// The sheet's rate in force today for each grade, and every rate with its from-date and to-date,
+// with one form to set a grade's rate from a from-date through a to-date.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -26,6 +26,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
         <label for="rate-form-from">From (blank: from the start)</label>
         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+        <label for="rate-form-to">To (blank: until the next rate)</label>
+        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
@@ -46,13 +48,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </table>
       <table data-testid="rates-list" aria-label="All rates">
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of rates(); track r.grade + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -73,7 +76,8 @@ export class Rates {
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   protected readonly pct = new FormControl('', { nonNullable: true });
   protected readonly from = new FormControl('', { nonNullable: true });
-  protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from });
+  protected readonly to = new FormControl('', { nonNullable: true });
+  protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from, to: this.to });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
 
@@ -101,7 +105,7 @@ export class Rates {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.error.set('');
-    const { grade, pct, from } = this.form.getRawValue();
+    const { grade, pct, from, to } = this.form.getRawValue();
     if (!GRADES.includes(grade)) {
       this.error.set('Choose a grade of A, B or C.');
       return;
@@ -114,9 +118,18 @@ export class Rates {
       this.error.set('Type a from-date as yyyy-mm-dd, or leave it blank.');
       return;
     }
+    if (to.trim() !== '' && !DATE.test(to.trim())) {
+      this.error.set('Type a to-date as yyyy-mm-dd, or leave it blank.');
+      return;
+    }
+    if (from.trim() !== '' && to.trim() !== '' && to.trim() < from.trim()) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.saving.set(true);
     try {
-      const rate = await this.api.set(sheet.id, grade, pct.trim(), from.trim() === '' ? null : from.trim());
+      const rate = await this.api.set(sheet.id, grade, pct.trim(), from.trim() === '' ? null : from.trim(),
+        to.trim() === '' ? null : to.trim());
       if (this.session.sheet()?.id === sheet.id) this.saved.emit(rate);
     } catch {
       this.error.set('The rate could not be set.');

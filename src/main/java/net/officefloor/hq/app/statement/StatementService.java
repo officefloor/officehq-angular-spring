@@ -88,6 +88,8 @@ public class StatementService {
             if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) keptFigure = true;
             // A live figure at a grade other than today's is not undone by today's grade having no rate.
             if (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today)) keptFigure = true;
+            // Nor is a live figure on a claim dated by today undone by its rate having ended since.
+            if (figure != null && !claim.getDate().isAfter(today)) keptFigure = true;
             claim.bind(figure);
         }
         // As the screen shows it: n/a when no rate of the grade in force today is in force today and no

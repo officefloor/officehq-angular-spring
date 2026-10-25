@@ -35,28 +35,29 @@ public class RateService {
     }
 
     /** The grade's rate in force on a date: the one with the latest from-date on or before it, or
-     *  null when the date is before every rate the grade has. */
+     *  null when the date is before every rate the grade has or after that rate's to-date. */
     @Transactional(readOnly = true)
     public Rate inForce(String sheetId, Grade grade, LocalDate date) {
-        Rate inForce = null;
-        for (Rate rate : rates.findForGrade(sheetId, grade)) {
-            if (rate.appliesBy(date)) inForce = rate;
-        }
-        return inForce;
+        return Rate.inForce(rates.findForGrade(sheetId, grade), date);
     }
 
-    /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time),
-     *  replacing the rate it had for that from-date. */
+    /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time) through
+     *  a to-date (none: until the grade's next rate), replacing the rate it had for that from-date. A
+     *  to-date before the from-date is refused. */
     @Transactional
-    public Rate set(String sheetId, String user, Grade grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String sheetId, String user, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
+        }
         sheets.load(sheetId);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = (from == null ? rates.findFromStart(sheetId, grade) : rates.findFrom(sheetId, grade, from))
                 .orElse(null);
         if (rate == null) {
-            rate = new Rate(sheetId, grade, from, pct);
+            rate = new Rate(sheetId, grade, from, to, pct);
         } else {
             rate.setPct(pct);
+            rate.setTo(to);
         }
         Rate saved;
         try {
@@ -66,7 +67,8 @@ public class RateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The rate was changed by someone else.");
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + saved.getGrade()
-                + " rate=" + saved.getPct().toPlainString() + (from == null ? "" : " from=" + from));
+                + " rate=" + saved.getPct().toPlainString() + (from == null ? "" : " from=" + from)
+                + (to == null ? "" : " to=" + to));
         rollup.recordChanges(user, before);
         return saved;
     }

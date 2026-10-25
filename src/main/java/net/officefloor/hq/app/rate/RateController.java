@@ -26,16 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
-     *  rate applies from the beginning of time. */
-    public record RateView(Grade grade, String pct, LocalDate from) {
+     *  rate applies from the beginning of time; no to-date, until the grade's next rate. */
+    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom());
+            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo());
         }
     }
 
-    /** A rate's percent and from-date, as entered on the form; no from-date means from the beginning of time. */
+    /** A rate's percent, from-date and to-date, as entered on the form; no from-date means from the
+     *  beginning of time, no to-date until the grade's next rate. */
     public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal pct,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
     }
 
     private final RateService service;
@@ -50,10 +51,10 @@ public class RateController {
         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
     }
 
-    /** Set the rate for a grade from a from-date, replacing the one it had for that from-date. */
+    /** Set the rate for a grade from a from-date through a to-date, replacing the one it had for that from-date. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RateForm form) {
-        return RateView.of(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.pct()));
+        return RateView.of(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.to(), form.pct()));
     }
 }

@@ -537,6 +537,7 @@ export class People {
    *  its date, in cents; null (n/a) when no rate of their grade in force today is in force today and
    *  none of their claims keeps a figure. */
   private dueCentsOf(person: PersonView): number | null {
+    const today = this.session.sheet()?.today;
     const gradeToday = this.gradeToday(person);
     let total = 0;
     let keptFigure = false;
@@ -548,12 +549,15 @@ export class People {
       if (keepsFigure(c)) keptFigure = true;
       // A live figure at a grade other than today's is not undone by today's grade having no rate.
       if (due !== null && grade !== gradeToday) keptFigure = true;
+      // Nor is a live figure on a claim dated by today undone by its rate having ended since.
+      if (due !== null && today !== undefined && c.date <= today) keptFigure = true;
     }
     return this.rateOf(gradeToday) === null && !keptFigure ? null : total;
   }
 
   /** The person's due-total with two decimals, or n/a when no rate of their grade in force today is in
-   *  force today and no claim keeps a figure (settled, bound by a statement, or at another grade). */
+   *  force today and no claim keeps a figure (settled, bound by a statement, at another grade, or dated by
+   *  today). */
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);

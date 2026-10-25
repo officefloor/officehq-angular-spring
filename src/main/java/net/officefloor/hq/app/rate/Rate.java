@@ -13,7 +13,8 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.person.Grade;
 
 /** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
- *  (or from the beginning of time, when it has none) until the grade's next rate. */
+ *  (or from the beginning of time, when it has none) until the grade's next rate, and no later than
+ *  its to-date when it has one. */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -32,16 +33,20 @@ public class Rate {
     @Column(name = "from_date")
     private LocalDate from;
 
+    @Column(name = "to_date")
+    private LocalDate to;
+
     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal pct;
 
     protected Rate() {
     }
 
-    public Rate(String sheetId, Grade grade, LocalDate from, BigDecimal pct) {
+    public Rate(String sheetId, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
         this.sheetId = sheetId;
         this.grade = grade;
         this.from = from;
+        this.to = to;
         setPct(pct);
     }
 
@@ -62,6 +67,15 @@ public class Rate {
         return from;
     }
 
+    /** The last date the rate is in force, or null when it runs until the grade's next rate. */
+    public LocalDate getTo() {
+        return to;
+    }
+
+    public void setTo(LocalDate to) {
+        this.to = to;
+    }
+
     public BigDecimal getPct() {
         return pct;
     }
@@ -74,5 +88,20 @@ public class Rate {
     /** Whether the rate is in force on or before this date. */
     public boolean appliesBy(LocalDate date) {
         return from == null || !from.isAfter(date);
+    }
+
+    /** Whether the rate's to-date has passed by this date. */
+    public boolean endedBy(LocalDate date) {
+        return to != null && to.isBefore(date);
+    }
+
+    /** Of one grade's rates (from the start first, then by from-date), the one in force on the date:
+     *  the one with the latest from-date on or before it, unless its to-date has passed; null when none is. */
+    public static Rate inForce(Iterable<Rate> gradeRates, LocalDate date) {
+        Rate inForce = null;
+        for (Rate rate : gradeRates) {
+            if (rate.appliesBy(date)) inForce = rate;
+        }
+        return inForce == null || inForce.endedBy(date) ? null : inForce;
     }
 }

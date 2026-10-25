@@ -102,10 +102,12 @@ public class Rollup {
                 }
                 // A live figure at a grade other than today's is not undone by today's grade having no rate.
                 if (figure != null && grade != gradeToday) keptFigure = true;
+                // Nor is a live figure on a claim dated by today undone by its rate having ended since.
+                if (figure != null && today != null && !claim.getDate().isAfter(today)) keptFigure = true;
             }
             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
             BigDecimal personDue = (today == null
-                    || inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
+                    || Rate.inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
                             ? null : due;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
@@ -143,7 +145,7 @@ public class Rollup {
     private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
-        Rate rate = inForce(gradeRates, claim.getDate());
+        Rate rate = Rate.inForce(gradeRates, claim.getDate());
         if (rate == null) return null;
         BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
         return claim.isCorrection() ? due : due.max(floor);
@@ -156,15 +158,6 @@ public class Rollup {
             if (claim.getCorrects().equals(other.getNumber())) return other;
         }
         return null;
-    }
-
-    /** Of the grade's rates (from the start first, then by from-date), the one in force on the date. */
-    private static Rate inForce(List<Rate> gradeRates, LocalDate date) {
-        Rate inForce = null;
-        for (Rate rate : gradeRates) {
-            if (rate.appliesBy(date)) inForce = rate;
-        }
-        return inForce;
     }
 
     private static boolean same(BigDecimal a, BigDecimal b) {

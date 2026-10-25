@@ -9,17 +9,19 @@ export interface RateView {
   pct: string;
   /** The date the rate is in force from (yyyy-mm-dd), or null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date the rate is in force (yyyy-mm-dd), or null when it runs until the grade's next rate. */
+  to: string | null;
 }
 
 /** Of one grade's rates, the one in force on a date: the one with the latest from-date on or before
- *  it, or null when the date is before every one of them. */
+ *  it, or null when the date is before every one of them or after that one's to-date. */
 export function rateInForce(rates: readonly RateView[], date: string): RateView | null {
   let inForce: RateView | null = null;
   for (const r of rates) {
     if (r.from !== null && r.from > date) continue;
     if (inForce === null || (inForce.from ?? '') < (r.from ?? '')) inForce = r;
   }
-  return inForce;
+  return inForce !== null && inForce.to !== null && inForce.to < date ? null : inForce;
 }
 
 /** Whether two rates are the same grade's rate for the same from-date. */
@@ -55,8 +57,9 @@ export class RatesApi {
     return firstValueFrom(this.http.get<RateView[]>(this.url(sheetId)));
   }
 
-  /** Set the grade's rate from a from-date (null: from the beginning of time), replacing the one it had for it. */
-  set(sheetId: string, grade: Grade, pct: string, from: string | null): Promise<RateView> {
-    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from }));
+  /** Set the grade's rate from a from-date (null: from the beginning of time) through a to-date
+   *  (null: until the grade's next rate), replacing the one it had for that from-date. */
+  set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
+    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
   }
 }
