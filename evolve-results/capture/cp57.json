@@ -1,0 +1,64 @@
+{
+  "checkpoint": 57,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp57_split-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split. CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split. CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2a9b19e4b16789588395756db34f158f47e4492b",
+  "reset_sha": "",
+  "preagent_sha": "b0efb6ee75f581b46f343b5f36fa44d2da4aa073",
+  "prev_sha": "b0efb6ee75f581b46f343b5f36fa44d2da4aa073",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9844798000000001,
+    "input_tokens": 36,
+    "output_tokens": 10226,
+    "cache_read_tokens": 956759,
+    "cache_creation_tokens": 73558,
+    "num_turns": 21,
+    "duration_ms": 292445,
+    "duration_api_ms": 129880,
+    "model": "claude-opus-5-5",
+    "session_id": "eac9c1c4-d187-4bef-9f75-77666e0ee3d4",
+    "stop_reason": "success",
+    "result_text": "An OPEN claim can now be split. All 4 tests in the acceptance spec pass when I run `bin/e2e`.\n\n**What a split does**\n- Each claim row has a \"Split off\" amount field (`claim-split-amount`) and a Split button (`claim-split`).\n- The original claim keeps the rest of its amount and loses any figure a statement bound it to, so its due is worked out live again.\n- A new OPEN claim is created with the split-off amount, the same person, date and note, and the next number. It is opened by the signed-in user, its due-by is fixed from the terms in force on the date, and it is listed first under the person.\n- A new `claim-split-from` field shows the original's number on the new claim and is blank on every other claim.\n- The audit file gets `CLAIM_SPLIT \u2026 number=<original> into=<new>` with the remaining amount, then `CLAIM_OPENED` for the new claim, then the usual rollup lines.\n\n**When a split is refused** (the row's `claim-error` shows and nothing is written)\n- The claim is not OPEN (PENDING, settled, voided or still a draft).\n- The claim is deferred.\n- The claim is dated inside a closed period.\n- The amount is 0.00 or less, or not less than the claim's amount.\n\n**Changes**\n- **Stored data:** a new migration, `V35__claim_split_from.sql`, adds a `split_from` column to the claim table.\n- **Server:** `Claim.splitOff`, `ClaimService.split`, and a `POST /claims/{id}/split` endpoint. It returns both the updated original and the new claim, so the screen updates without reloading.\n- **Front end:** the split field and button in `person-claims.ts`, a `split` call in `claims-api.ts`, and `claimSplit` in `people.ts` to update the list.\n\n**Decision for you:** the split only checks the rules in the request, plus the existing block on viewers changing anything. It doesn't check the sheet's permission matrix, so a role that isn't allowed to open claims can still split one, which creates a new opened claim. The request and test say nothing about this. If splitting should follow the \"open\" permission, it's a one-line check in `ClaimService.split`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9844798000000001,
+        "num_turns": 21,
+        "duration_ms": 292445,
+        "duration_api_ms": 129880,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp57.agent.jsonl",
+  "agent_diff_file": "cp57.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
