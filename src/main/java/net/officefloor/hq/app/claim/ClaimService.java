@@ -79,7 +79,7 @@ public class ClaimService {
      *  its adding. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : entryDateOr(sheetId);
         // The terms are fixed now, those in force on the claim's date; the due-by counts them in business days.
@@ -88,15 +88,19 @@ public class ClaimService {
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
+        String reference = refOf(ref);
+        refuseIfRefUsed(sheetId, reference, null);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects, terms, dueBy);
+        claim.setRef(reference);
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         boolean late = periods.isSoftClosedOn(sheetId, dueBy);
         if (late) claim.markLateEntry();
         claim = claims.saveAndFlush(claim);
         logStatus(sheetId, user, person, claim);
-        recordChange("CLAIM_ADDED", user, person, claim);
+        recordChange("CLAIM_ADDED", user, person, claim, claim.getNumber(),
+                reference == null ? "" : " ref=" + reference);
         if (late) recordChange("LATE_ENTRY", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -170,7 +174,7 @@ public class ClaimService {
      *  another user's editor locks is refused; saving releases the user's own lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         LocalDate dated = dateOr(sheetId, date);
@@ -179,8 +183,11 @@ public class ClaimService {
         refuseIfLocked(claim, user);
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
         refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
+        String reference = refOf(ref);
+        refuseIfRefUsed(sheetId, reference, claim.getId());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.set(amount, dated, noteOf(note), corrects);
+        claim.setRef(reference);
         claim.lockFor(null);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_EDITED", user, person(sheetId, saved.getPersonId()), saved);
@@ -594,6 +601,15 @@ public class ClaimService {
         }
     }
 
+    /** Refuse a reference another claim on the sheet (other than the one given) already carries, compared
+     *  without regard to case; no reference is never refused. */
+    private void refuseIfRefUsed(String sheetId, String ref, Long id) {
+        if (ref != null && claims.refUsed(sheetId, ref, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The reference '" + ref + "' is already used on this sheet.");
+        }
+    }
+
     /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person. */
     private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) return;
@@ -699,6 +715,11 @@ public class ClaimService {
     private LocalDate entryDateOr(String sheetId) {
         LocalDate entry = settings.entryDate(sheetId);
         return entry != null ? entry : sheets.today(sheetId);
+    }
+
+    /** A reference as given, trimmed; none when blank. */
+    public static String refOf(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
     }
 
     private static String noteOf(String note) {

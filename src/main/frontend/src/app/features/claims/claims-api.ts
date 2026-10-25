@@ -89,6 +89,8 @@ export interface ClaimView {
   lateEntry: boolean;
   /** yyyy-mm-dd: the last day (the sheet's today then) a reminder was written for the claim; null when never. */
   reminded: string | null;
+  /** The claim's external reference; null when it has none. */
+  ref: string | null;
 }
 
 /** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */
@@ -133,6 +135,8 @@ export interface ClaimForm {
   note: string;
   /** The number of the settled claim of the same person a correction corrects; null for none. */
   corrects: string | null;
+  /** The claim's external reference, trimmed; null for none. */
+  ref: string | null;
 }
 
 /** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */

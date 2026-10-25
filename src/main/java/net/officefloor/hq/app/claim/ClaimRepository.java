@@ -26,6 +26,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select c from Claim c where c.sheetId = :sheetId and c.personId = :personId order by c.id desc")
     List<Claim> findForStatement(@Param("sheetId") String sheetId, @Param("personId") Long personId);
 
+    /** Whether a claim on the sheet, other than the one given (null: none), carries the reference, compared without regard to case. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and lower(c.ref) = lower(:ref)"
+            + " and (:id is null or c.id <> :id)")
+    boolean refUsed(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("id") Long id);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The person's claim of the number, if any. */

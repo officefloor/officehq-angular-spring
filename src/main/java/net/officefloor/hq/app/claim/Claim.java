@@ -117,6 +117,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The claim's external reference, unique on its sheet without regard to case; none when it has none. */
+    @Column(name = "ref")
+    private String ref;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -201,6 +205,15 @@ public class Claim {
 
     public String getNote() {
         return note;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    /** Give the claim its external reference, or (null) none. */
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public ClaimStatus getStatus() {
