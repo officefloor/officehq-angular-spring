@@ -1,0 +1,64 @@
+{
+  "checkpoint": 17,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp17_periods",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has periods, added on the screen: a name (unique on the sheet) and a from and to date,\ninclusive, no two periods overlapping; a bad period is refused with an error on the period form.\nA claim belongs to the period whose dates contain its date, or to none. Show each claim's period,\nand for each period its due-total: the due of the claims that count whose date falls in it.\nAdding a period writes PERIOD_ADDED period=<name> from=<date> to=<date>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has periods, added on the screen: a name (unique on the sheet) and a from and to date,\ninclusive, no two periods overlapping; a bad period is refused with an error on the period form.\nA claim belongs to the period whose dates contain its date, or to none. Show each claim's period,\nand for each period its due-total: the due of the claims that count whose date falls in it.\nAdding a period writes PERIOD_ADDED period=<name> from=<date> to=<date>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cf00b3ded23d5b8fa7a122abdc1db05031c29689",
+  "reset_sha": "",
+  "preagent_sha": "288c6f12ca8b9c80b43e0614275f4956232d2bde",
+  "prev_sha": "288c6f12ca8b9c80b43e0614275f4956232d2bde",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8963816,
+    "input_tokens": 28,
+    "output_tokens": 11498,
+    "cache_read_tokens": 574028,
+    "cache_creation_tokens": 68938,
+    "num_turns": 15,
+    "duration_ms": 220571,
+    "duration_api_ms": 111368,
+    "model": "claude-opus-5-5",
+    "session_id": "0565cf25-1955-424d-9de4-ba8784affa19",
+    "stop_reason": "success",
+    "result_text": "Periods are in, and all 4 tests in the spec pass when run through `bin/e2e`.\n\n**What it does now**\n- There's a new Periods section on the screen with a form for name, from date and to date, and a table listing each period with its due-total.\n- A period is refused, with the error shown on the period form and nothing saved or audited, if:\n  - the name is blank or already used on the sheet (ignoring case);\n  - the to date is before the from date;\n  - it shares a day with another period.\n- Each claim now shows the period whose dates include its date, or nothing if no period does.\n- A period's due-total adds up the due of the claims that count (OPEN and SETTLED) dated inside it. These are the same claims that make up a person's due-total. A claim whose due shows as n/a adds nothing.\n- Adding a period writes `PERIOD_ADDED sheet=<id> by=<user> period=<name> from=<date> to=<date>` to the audit file once the save goes through.\n\n**How it's built**\n- **Stored data:** a new migration, `V14__period.sql`, adds a `period` table. The database itself also enforces unique names per sheet and from \u2264 to.\n- **Server:** a new `period` package with the entity, repository, service and controller, served at `GET` and `POST /api/sheets/{sheetId}/periods`. To stop two people adding overlapping periods at the same moment, the sheet's row is locked while a period is added, using a new `SheetRepository.findForUpdate`.\n- **Front end:** new `periods-api.ts` and `periods.ts` files. `people.ts` loads the periods along with the rest of the sheet and works out each period's due-total. Like the existing totals, this is calculated in the browser. `person-claims.ts` shows the `claim-period` cell.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8963816,
+        "num_turns": 15,
+        "duration_ms": 220571,
+        "duration_api_ms": 111368,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp17.agent.jsonl",
+  "agent_diff_file": "cp17.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
