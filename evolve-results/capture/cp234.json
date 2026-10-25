@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8851fad3ff99898d7c69452949464146f4f8e39a",
+  "reset_sha": "",
+  "preagent_sha": "3dafdfe962cda25ead9b0ff6c14704f54d85ce1b",
+  "prev_sha": "3dafdfe962cda25ead9b0ff6c14704f54d85ce1b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5224152,
+    "input_tokens": 6,
+    "output_tokens": 476,
+    "cache_read_tokens": 98058,
+    "cache_creation_tokens": 2123,
+    "num_turns": 2,
+    "duration_ms": 8540,
+    "duration_api_ms": 84338,
+    "model": "claude-opus-5-5",
+    "session_id": "0bb5b279-1ccd-442c-9477-6c508833a4d1",
+    "stop_reason": "success",
+    "result_text": "The tree export works: `bin/e2e` passed all 4 tests, the tree export test plus the three longer scenarios.\n\nThere's a new \"Export the tree's people (CSV)\" button (`data-testid=\"export-tree\"`) next to the other export buttons. It downloads `tree.csv` with the header `sheet,name,grade,due-total`. Rows list the loaded sheet's people first, in list order, then the people of the other sheets in its tree, by sheet id.\n\nIt uses the tree search the server already has, run with blank search text so it returns everyone. That search reads from the store, so the file shows what's stored now. Each row has the person's grade on their own sheet's today and their due-total as that sheet shows it, or `n/a` when there is none.\n\nThe only file changed is `src/main/frontend/src/app/features/people/people.ts`. No server or stored-data changes were needed.\n\nRetired people are included in the export, because the tree search doesn't leave them out. That matches the existing people export.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5224152,
+        "num_turns": 2,
+        "duration_ms": 8540,
+        "duration_api_ms": 84338,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
