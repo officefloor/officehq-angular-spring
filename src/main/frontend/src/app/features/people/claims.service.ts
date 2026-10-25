@@ -76,6 +76,8 @@ export interface Claim {
   waived: boolean;
   /** Whether the claim is held; it still counts in every total. */
   held: boolean;
+  /** The user a steward assigned the claim to review; null when never assigned. */
+  reviewAssigned: string | null;
   /** How many of the claim's proofs are of each kind, by kind (receipt, photo). */
   proofsByKind: Record<ProofKind, number>;
   /** The claim's shares, in the order they were given: the person holding each, by id, and the
@@ -383,6 +385,16 @@ export class ClaimsService {
   hold(sheet: string, id: number): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/hold`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** Assign a REVIEW claim to `user` to review; refused (400) when the user is blank, (403) when the
+   *  signed-in user is not a steward and (409) when the claim is not in REVIEW. */
+  assignReview(sheet: string, id: number, user: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheet)}/claims/${id}/assign-review`, { user }, {
         headers: this.session.headers(),
       }),
     );

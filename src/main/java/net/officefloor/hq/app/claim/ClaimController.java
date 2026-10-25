@@ -46,14 +46,15 @@ public class ClaimController {
      * {@code <label> <qty> x <unit>}. Its added mark is when it was first added, as a claim id (see
      * {@link Claim#addedMark}), which decides the forward-only rates it takes. Last come how many of its
      * proofs are of each kind (receipt, photo), by kind, then whether it is held, then the id of the statement
-     * that bound it (null while unbound). */
+     * that bound it (null while unbound), its shares, and the user it is assigned to review (null when never). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String statedShown, String corrects, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
-            Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares) {
+            Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares,
+            String reviewAssigned) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -87,7 +88,8 @@ public class ClaimController {
                     claim.getSettleBatch(), lines.stream().map(ClaimView::line).toList(), claim.addedMark(),
                     reviewLate(claim, log, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
                     claim.isStated() ? claim.getStatedBy() : null,
-                    shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList());
+                    shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList(),
+                    claim.getReviewAssigned());
         }
 
         /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */
@@ -161,6 +163,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim: one word, as it is written into the audit. */
     public record RejectRequest(@NotNull @Pattern(regexp = "\\s*\\S{1,200}\\s*") String reason) {
+    }
+
+    /** The user a REVIEW claim is assigned to review, which may not be blank. */
+    public record AssignReviewRequest(@NotBlank @Size(max = 100) String user) {
     }
 
     /** The date a claim is settled as of; now when null. */
@@ -364,6 +370,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.review(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/assign-review")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AssignReviewRequest request) {
+        return view(service.assignReview(sheetId.trim(), user.trim(), claimId, request.user().trim()));
     }
 
     @PostMapping("/claims/{claimId}/approve")

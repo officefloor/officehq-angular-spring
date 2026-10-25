@@ -187,6 +187,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim to review; null when never assigned. */
+    @Column(name = "review_assigned")
+    private String reviewAssigned;
+
     protected Claim() {
     }
 
@@ -220,6 +224,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
+        copy.reviewAssigned = reviewAssigned;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;
@@ -551,5 +556,13 @@ public class Claim {
 
     public void setHeld(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    public void setReviewAssigned(String reviewAssigned) {
+        this.reviewAssigned = reviewAssigned;
     }
 }

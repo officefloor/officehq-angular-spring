@@ -1,13 +1,15 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import { Claim } from './claims.service';
 import { STATUSES } from './summary';
 import { FigurePipe } from '../../core/figure.pipe';
+import { Session } from '../../core/session';
 
 // The sheet's header, shown at all times: how many people are on the sheet (retired ones
 // included), how many claims are in each status (as the summary counts them), and the sheet's
 // due-total and overdue-total (as its totals show them), and the signed-in user's own due-total and
 // overdue-total when a person on the sheet has their name or alias, and their crew total (the due-totals
-// of the crews that person leads, added up) when they lead one.
+// of the crews that person leads, added up) when they lead one, and how many REVIEW claims are
+// assigned to the signed-in user to review.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -44,6 +46,10 @@ import { FigurePipe } from '../../core/figure.pipe';
           <dt>My crew due</dt>
           <dd data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</dd>
         </div>
+        <div>
+          <dt>My reviews</dt>
+          <dd data-testid="my-reviews-count">{{ (myReviewsCount()) | figure }}</dd>
+        </div>
       </dl>
     </header>
   `,
@@ -63,6 +69,7 @@ import { FigurePipe } from '../../core/figure.pipe';
   `,
 })
 export class Header {
+  private readonly session = inject(Session);
   /** How many people are on the sheet, retired ones included. */
   readonly peopleCount = input.required<number>();
   /** The sheet's claims. */
@@ -77,6 +84,12 @@ export class Header {
   readonly myOverdueTotal = input.required<string>();
   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
   readonly myCrewDueTotal = input.required<string>();
+
+  /** How many REVIEW claims are assigned to the signed-in user to review. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user();
+    return this.claims().filter((c) => c.status === 'REVIEW' && user !== null && c.reviewAssigned === user).length;
+  });
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({

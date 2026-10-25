@@ -136,6 +136,7 @@ const PAST: Record<ClaimAction, string> = {
             <span>Review late <span data-testid="claim-review-late">{{ (c.reviewLate ? 'yes' : 'no') | figure }}</span></span>
             <span>Shares <span data-testid="claim-shares">{{ (sharesOf(c)) | figure }}</span></span>
             <span>Held <span data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | figure }}</span></span>
+            <span>Review assigned to <span data-testid="claim-review-assigned">{{ (c.reviewAssigned ?? '') | figure }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ (c.waived ? 'yes' : 'no') | figure }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ (c.remindedOn ?? '') | figure }}</span></span>
             <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
@@ -318,6 +319,22 @@ const PAST: Record<ClaimAction, string> = {
               (click)="defer(c)"
             >
               Defer
+            </button>
+            <label [for]="fieldId('review-user-' + c.id)">Assign review to</label>
+            <input
+              [id]="fieldId('review-user-' + c.id)"
+              type="text"
+              data-testid="claim-review-user"
+              [value]="reviewUsers()[c.id] ?? ''"
+              (input)="setReviewUser(c.id, value($event))"
+            />
+            <button
+              type="button"
+              data-testid="claim-review-assign"
+              [attr.aria-label]="'Assign review of claim of ' + c.amount + ' on ' + c.date"
+              (click)="assignReview(c)"
+            >
+              Assign review
             </button>
             <label [for]="fieldId('redate-date-' + c.id)">Re-date to</label>
             <input
@@ -549,6 +566,8 @@ export class Claims {
   protected readonly settleDates = signal<Record<number, string>>({});
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The user typed to assign each claim's review to, by claim id. */
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   /** The date typed to re-date each claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
@@ -1091,6 +1110,41 @@ export class Claims {
           : e instanceof HttpErrorResponse && e.status === 422
           ? "A claim can only be deferred to a date after the sheet's today."
           : 'Only an open claim can be deferred.',
+      }));
+    }
+  }
+
+  protected setReviewUser(id: number, user: string): void {
+    this.reviewUsers.update((users) => ({ ...users, [id]: user }));
+    this.clearRowError(id);
+  }
+
+  /** Assign the REVIEW claim to the user typed on its row to review; only a steward can, so a blank
+   *  user, a claim in any other status and anyone else are refused with an error. */
+  protected async assignReview(claim: Claim): Promise<void> {
+    this.clearRowError(claim.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[claim.id] ?? '').trim();
+    if (!user) {
+      this.rowErrors.update((errors) => ({ ...errors, [claim.id]: 'Enter the user to assign the review to.' }));
+      return;
+    }
+    try {
+      const changed = await this.service.assignReview(sheet, claim.id, user);
+      if (this.session.sheetId() !== sheet) return;
+      this.reviewUsers.update(({ [claim.id]: _, ...rest }) => rest);
+      this.saved.emit(changed);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [claim.id]: status === 403
+          ? 'Only a steward can assign a review.'
+          : status === 400
+          ? 'Enter the user to assign the review to.'
+          : 'Only a claim in review can be assigned.',
       }));
     }
   }

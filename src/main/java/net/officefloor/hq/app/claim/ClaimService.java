@@ -702,6 +702,21 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward's assignment of a claim in REVIEW to {@code assignee} to review. Refused unless the claim is
+     * in REVIEW and when the user is not a steward. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (claim.getStatus() != ClaimStatus.REVIEW) throw new ClaimStatusChangeException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setReviewAssigned(assignee);
+        claims.flush();
+        record("REVIEW_ASSIGNED", user, person, claim, null, "user=" + assignee);
+        return claim;
+    }
+
     /** A steward's (or the person's approver's) approval of a PENDING claim: it becomes SETTLED, fixing what is due on it then (as it
      * shows then: what a statement bound it to, late charge included, when one did, otherwise its person's rate then together with its late charge then).
      * It is given the next number then, unless it already has one.
