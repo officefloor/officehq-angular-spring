@@ -99,8 +99,10 @@ export class Periods {
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(closed);
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
-        this.periodError.set({ id: period.id, message: e instanceof HttpErrorResponse && e.status === 409
-          ? 'This period is already closed.' : 'The period could not be closed.' });
+        const status = e instanceof HttpErrorResponse ? e.status : 0;
+        this.periodError.set({ id: period.id, message: status === 403
+          ? 'Your role may not close a period on this sheet.'
+          : status === 409 ? 'This period is already closed.' : 'The period could not be closed.' });
       }
     } finally {
       this.closing.set(null);
@@ -121,7 +123,7 @@ export class Periods {
       if (this.session.sheet()?.id === sheet.id) {
         const status = e instanceof HttpErrorResponse ? e.status : 0;
         this.periodError.set({ id: period.id, message: status === 403
-          ? 'Only a steward can reopen a period.'
+          ? 'Your role may not reopen a period on this sheet.'
           : status === 409 ? 'This period is not closed.' : 'The period could not be reopened.' });
       }
     } finally {

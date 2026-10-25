@@ -37,11 +37,12 @@ public class SettingController {
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
-     *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none. Each of these figures is the one in force on the
+     *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none;
+     *  permissions holds, by action, the roles that may take it as set (blank: the standing rule). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            Map<String, List<DatedView>> dated, String proofThreshold) {
+            Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions) {
     }
 
     /** A value a dated setting takes from a date; blank when the setting is cleared from then. */
@@ -92,6 +93,10 @@ public class SettingController {
 
     /** The date to number claims within their periods from, as entered; none means off. */
     public record PeriodNumberingFromForm(LocalDate value) {
+    }
+
+    /** The roles that may take an action as entered, comma separated; blank keeps the standing rule. */
+    public record PermissionForm(@Size(max = 200) String value) {
     }
 
     /** A role to assign a user name, as entered on the form. */
@@ -193,6 +198,16 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the roles that may take an action, or clear them to keep the standing rule. */
+    @PutMapping("/settings/perm/{action}")
+    public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable String action, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Valid PermissionForm form) {
+        String id = sheetId.trim();
+        service.setPermission(id, SignedInUser.name(user), action, form.value());
+        return view(id);
+    }
+
     /** Assign a user name a role on the sheet. */
     @PutMapping("/roles")
     public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -218,7 +233,8 @@ public class SettingController {
         return new SettingsView(text(dated.clerkLimitOn(today)), dated.floorOn(today).toPlainString(),
                 dated.termsOn(today), dated.latePctOn(today).toPlainString(), service.policyDate(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
-                gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)));
+                gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
+                service.permissions(sheetId));
     }
 
     private static String text(BigDecimal value) {

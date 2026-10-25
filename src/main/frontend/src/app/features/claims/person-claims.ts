@@ -224,8 +224,10 @@ export class PersonClaims {
           ? `Only a steward who did not open this claim can ${action} it.`
           : forbidden && action === 'resettle'
           ? 'Only a steward can re-settle this claim.'
-          : forbidden
+          : forbidden && action === 'settle' && claim.openedBy === this.session.user()
           ? 'You opened this claim, so someone else must settle it.'
+          : forbidden
+          ? `Your role may not ${action} a claim on this sheet.`
           : periodOf(this.periods(), claim.date)?.closed
             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
           : action === 'settle' && this.deferred(claim)
@@ -282,7 +284,7 @@ export class PersonClaims {
     }
   }
 
-  /** Move a draft, open or pending claim to the chosen person; only a steward may. */
+  /** Move a draft, open or pending claim to the chosen person; only a role the permission matrix allows may. */
   protected async reassign(claim: ClaimView, to: string): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -301,7 +303,7 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden
-          ? 'Only a steward can move a claim to another person.'
+          ? 'Your role may not move a claim to another person on this sheet.'
           : periodOf(this.periods(), claim.date)?.closed
           ? 'This claim is dated inside a closed period, so it cannot be moved.'
           : 'This claim cannot be moved to that person; a settled or voided claim cannot move.';

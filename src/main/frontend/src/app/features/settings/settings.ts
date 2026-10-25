@@ -3,7 +3,7 @@ import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@a
 import { Session } from '../../core/session';
 import { GRADES, Grade } from '../people/people-api';
 import { DatedValue, valueOn } from './dated';
-import { DEFAULT_TERMS, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
+import { DEFAULT_TERMS, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { SheetCap } from './sheet-cap';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
@@ -45,6 +45,8 @@ function settled(control: AbstractControl): void {
 // percent, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
 // the sheet's today.
+// The permission matrix names, for each of open, settle, void, reassign, close and reopen, the roles that
+// may take it, comma separated (blank: the standing rule); it is not dated.
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -97,6 +99,14 @@ function settled(control: AbstractControl): void {
         <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
         <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+        <fieldset>
+          <legend>Permissions (the roles that may take each action, comma separated; blank: the standing rule)</legend>
+          @for (a of permissionActions; track a) {
+            <label [for]="'setting-perm-' + a">Who may {{ a }} (blank: {{ standing[a] }})</label>
+            <input [id]="'setting-perm-' + a" [attr.data-testid]="'setting-perm-' + a" [formControl]="permissionsForm.controls[a]" />
+            <p>Who may {{ a }} now: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</span></p>
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -144,6 +154,12 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
+  protected readonly permissionActions = PERMISSION_ACTIONS;
+  /** Who may take each action while its permission is blank. */
+  protected readonly standing: Record<PermissionAction, string> = {
+    open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
+    reassign: 'steward', reopen: 'steward',
+  };
   /** By key, the values the dated settings take from their from-dates. */
   private readonly dated = signal<Partial<Record<string, DatedValue[]>>>({});
   /** The value of a dated setting in force on the sheet's today, or null when it has none. */
@@ -159,6 +175,7 @@ export class Settings {
   protected readonly cap = computed(() => this.now('cap'));
   protected readonly proofThreshold = computed(() => this.now('proof-threshold'));
   protected readonly assigned = signal<RoleView[]>([]);
+  protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
 
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
@@ -188,6 +205,15 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   } satisfies Record<Grade, FormControl<string>>);
+  /** The roles that may take each action, a field per action; part of the settings form. */
+  protected readonly permissionsForm = new FormGroup({
+    open: new FormControl('', { nonNullable: true }),
+    settle: new FormControl('', { nonNullable: true }),
+    void: new FormControl('', { nonNullable: true }),
+    reassign: new FormControl('', { nonNullable: true }),
+    close: new FormControl('', { nonNullable: true }),
+    reopen: new FormControl('', { nonNullable: true }),
+  } satisfies Record<PermissionAction, FormControl<string>>);
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -201,19 +227,22 @@ export class Settings {
     this.settingsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+    this.permissionsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     // Each load of a sheet re-reads its settings from the store and starts the forms afresh.
     effect(() => {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {} });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {}, permissions: {} });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
       this.gradeTermsForm.markAsUntouched();
       this.gradeTermsFromForm.markAsPristine();
       this.gradeTermsFromForm.markAsUntouched();
+      this.permissionsForm.markAsPristine();
+      this.permissionsForm.markAsUntouched();
       if (sheet) void this.reload(sheet.id);
     });
   }
@@ -299,6 +328,14 @@ export class Settings {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const permissionValues = PERMISSION_ACTIONS.map((a) => ({ action: a, control: this.permissionsForm.controls[a],
+      value: this.permissionsForm.controls[a].value.split(',').map((r) => r.trim()).join(',') }));
+    for (const { action, control, value } of permissionValues) {
+      if (changed(control) && value !== '' && !value.split(',').every((r) => ROLES.includes(r as Role))) {
+        this.settingsError.set(`Name who may ${action} as a comma separated list of clerk and steward, or leave it blank for the standing rule.`);
+        return;
+      }
+    }
     this.savingSettings.set(true);
     try {
       if (dirty(clerkLimit, clerkLimitFrom)) {
@@ -355,6 +392,12 @@ export class Settings {
         settled(proofThresholdFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      for (const { action, control, value } of permissionValues) {
+        if (!changed(control)) continue;
+        const settings = await this.api.setPermission(sheet.id, action, value);
+        settled(control);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -379,6 +422,7 @@ export class Settings {
     this.sheetPolicyDate.date.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.assigned.set(settings.roles);
+    this.permissions.set(settings.permissions);
   }
 
   protected async saveRole(): Promise<void> {

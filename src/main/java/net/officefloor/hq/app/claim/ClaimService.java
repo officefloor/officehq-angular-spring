@@ -102,7 +102,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
-     *  by the user who opened the claim. A clerk's settling of a claim whose due is above the sheet's
+     *  by the user who opened the claim, and an action the sheet's permission matrix does not allow the
+     *  user's role. A clerk's settling of a claim whose due is above the sheet's
      *  clerk limit leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
      *  steward settles anything). */
     @Transactional
@@ -114,6 +115,8 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(next),
+                "Your role may not " + ACTIONS.get(next) + " a claim on this sheet.");
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then.");
@@ -191,7 +194,8 @@ public class ClaimService {
 
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
      *  keeps its number and date and loses any figure a statement bound it to (it is live again until
-     *  its new person's next statement). Refused unless the user is a steward of the sheet, and for a
+     *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
+     *  role to reassign (by default, a steward), and for a
      *  settled or voided claim, a claim dated inside a closed period, a move to the claim's own person,
      *  or to a person retired by the claim's date. */
     @Transactional
@@ -199,9 +203,8 @@ public class ClaimService {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         refuseIfClosed(sheetId, claim.getDate());
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward moves a claim to another person.");
-        }
+        settings.refuseUnlessPermitted(sheetId, user, "reassign",
+                "Your role may not move a claim to another person on this sheet.");
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be moved to another person.");
@@ -302,6 +305,11 @@ public class ClaimService {
         }
         return claim;
     }
+
+    /** The permission matrix's action for each status a claim is moved to by opening, settling or voiding it. */
+    private static final Map<ClaimStatus, String> ACTIONS = Map.of(
+            ClaimStatus.OPEN, "open", ClaimStatus.SETTLED, "settle", ClaimStatus.PENDING, "settle",
+            ClaimStatus.VOID, "void");
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.PENDING, "CLAIM_PENDING",

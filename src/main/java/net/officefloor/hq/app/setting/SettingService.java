@@ -2,7 +2,12 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -54,6 +59,15 @@ public class SettingService {
     /** The key of the proof threshold: a claim whose due is above it cannot be settled or approved
      *  without a proof; no value means none. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
+
+    /** The actions the sheet's permission matrix names, each set under perm-<action>. */
+    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+
+    /** The roles that may take an action whose permission is blank: the standing rule. */
+    private static final Map<String, Set<Role>> STANDING_PERMISSIONS = Map.of(
+            "open", EnumSet.of(Role.CLERK, Role.STEWARD), "settle", EnumSet.of(Role.CLERK, Role.STEWARD),
+            "void", EnumSet.of(Role.CLERK, Role.STEWARD), "close", EnumSet.of(Role.CLERK, Role.STEWARD),
+            "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD));
 
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
@@ -286,6 +300,77 @@ public class SettingService {
     public BigDecimal setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         BigDecimal value = threshold == null ? null : threshold.setScale(2);
         record(sheetId, user, PROOF_THRESHOLD, value == null ? "" : value.toPlainString(), from);
+        return value;
+    }
+
+    /** The key of an action's permission. */
+    public static String permissionKey(String action) {
+        return "perm-" + action;
+    }
+
+    /** The roles each action's permission names, by action, as the sheet set them (comma separated);
+     *  blank when it keeps the standing rule. */
+    @Transactional(readOnly = true)
+    public Map<String, String> permissions(String sheetId) {
+        Map<String, String> permissions = new LinkedHashMap<>();
+        for (String action : PERMISSION_ACTIONS) {
+            permissions.put(action, settings.findBySheetIdAndKey(sheetId, permissionKey(action))
+                    .map(SheetSetting::getValue).orElse(""));
+        }
+        return permissions;
+    }
+
+    /** Refuse an action the user's role is not allowed by the sheet's permission matrix (a blank
+     *  permission keeps the standing rule), with the action's usual error. */
+    @Transactional(readOnly = true)
+    public void refuseUnlessPermitted(String sheetId, String user, String action, String refusal) {
+        String value = settings.findBySheetIdAndKey(sheetId, permissionKey(action)).map(SheetSetting::getValue)
+                .orElse("");
+        Set<Role> allowed = value.isBlank() ? STANDING_PERMISSIONS.get(action) : rolesOf(value);
+        if (!allowed.contains(roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, refusal);
+        }
+    }
+
+    /** The roles a comma separated list names; refused when one of them is not a role. */
+    private static Set<Role> rolesOf(String value) {
+        Set<Role> roles = EnumSet.noneOf(Role.class);
+        for (String label : value.split(",")) {
+            roles.add(Role.of(label.trim()).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Name the roles as a comma separated list of clerk and steward.")));
+        }
+        return roles;
+    }
+
+    /** Set the roles that may take an action, as a comma separated list; blank clears it, keeping the
+     *  standing rule. Not dated. */
+    @Transactional
+    public String setPermission(String sheetId, String user, String action, String roles) {
+        if (!PERMISSION_ACTIONS.contains(action)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such action.");
+        }
+        String value = roles == null || roles.isBlank() ? ""
+                : String.join(",", Arrays.stream(roles.split(",")).map(String::trim).toList());
+        if (!value.isEmpty()) rolesOf(value);
+        sheets.load(sheetId);
+        String key = permissionKey(action);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, key).orElse(null);
+        try {
+            if (value.isEmpty()) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, key, value));
+            } else {
+                setting.setValue(value);
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + key + " value=" + value);
         return value;
     }
 

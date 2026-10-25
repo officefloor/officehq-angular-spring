@@ -11,6 +11,10 @@ export const DEFAULT_TERMS = 14;
 export const ROLES = ['clerk', 'steward'] as const;
 export type Role = (typeof ROLES)[number];
 
+/** The actions the sheet's permission matrix names, each set under perm-<action>. */
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+
 export interface RoleView {
   user: string;
   role: Role;
@@ -42,6 +46,8 @@ export interface SettingsView {
   /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold) take
    *  from their from-dates, in date order. */
   dated: Partial<Record<string, DatedValue[]>>;
+  /** By action, the roles that may take it as the sheet set them, comma separated; blank keeps the standing rule. */
+  permissions: Partial<Record<PermissionAction, string>>;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -100,6 +106,11 @@ export class SettingsApi {
   /** Set the date claims are numbered within their periods from; null clears it, leaving sheet-wide numbering. */
   setPeriodNumberingFrom(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the roles that may take an action, comma separated; blank keeps the standing rule. */
+  setPermission(sheetId: string, action: PermissionAction, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/perm/${action}`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */

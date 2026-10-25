@@ -458,12 +458,13 @@ export class People {
   }
 
   /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
-   *  its log records at the end of that day (none when added after it); deferral is as today. */
+   *  its log records at the end of that day (none when added after it); deferral is as today, and a hold
+   *  only leaves out a claim that is still open now, as holds touch only live claims. */
   private countsAt(claim: ClaimView, end: string): boolean {
     const status = statusAsOf(claim, end);
     if (status === null) return false;
     const then: ClaimView = { ...claim, status };
-    return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && !isBound(then)
+    return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && isOpen(claim) && !isBound(then)
       && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
   }
 

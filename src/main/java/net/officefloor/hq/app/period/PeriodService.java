@@ -14,7 +14,6 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -83,13 +82,14 @@ public class PeriodService {
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
-     *  dated in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. Refused when the period is already closed. */
+     *  dated in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
         sheetRows.findForUpdate(sheetId);
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        settings.refuseUnlessPermitted(sheetId, user, "close", "Your role may not close a period on this sheet.");
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed.");
         }
@@ -102,11 +102,12 @@ public class PeriodService {
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
-            // Counted by the status the claim had at the end of the period's last day.
+            // Counted by the status the claim had at the end of the period's last day; a hold only leaves
+            // out a claim still open now, as holds touch only live claims.
             ClaimStatus then = claim.statusAsOf(period.getTo());
             boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
-                    || (then.isOpen() && (bound || !person.isHeldOn(claim.getDate()))));
+                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isHeldOn(claim.getDate()))));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) {
@@ -121,17 +122,15 @@ public class PeriodService {
         return saved;
     }
 
-    /** Reopen a closed period, making its due-total live again. Refused when the user is not a steward
-     *  of the sheet, or the period is not closed. */
+    /** Reopen a closed period, making its due-total live again. Refused when the sheet's permission
+     *  matrix does not allow the user's role to reopen (by default, only a steward), or the period is not closed. */
     @Transactional
     public Period reopen(String sheetId, String user, long id) {
         // Locked as closing locks it, so a reopen and a close of the period do not cross.
         sheetRows.findForUpdate(sheetId);
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
-        }
+        settings.refuseUnlessPermitted(sheetId, user, "reopen", "Your role may not reopen a period on this sheet.");
         if (!period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is not closed.");
         }
