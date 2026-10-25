@@ -563,7 +563,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        claim.setDeferredUntil(until);
+        claim.deferUntil(until);
         claims.flush();
         record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), "until=" + until);
         rollup.recordSince(sheetId, user, before);

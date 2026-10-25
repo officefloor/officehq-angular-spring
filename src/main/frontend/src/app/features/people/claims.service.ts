@@ -75,6 +75,8 @@ export interface Claim {
   /** Whether the claim is PENDING past the sheet's pending SLA: its pending day plus the SLA days is
    *  before the sheet's today. */
   pendingLate: boolean;
+  /** Whether the claim was last deferred while a statement bound it. */
+  deferredBound: boolean;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
   /** Whether the claim is held; it still counts in every total. */
@@ -142,10 +144,12 @@ export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
-/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a date after it. Until
- *  then it counts in no total, is not overdue, cannot be settled and no statement binds it. */
+/** Whether a claim is deferred on the sheet's today: deferred until a date after it, bound by no
+ *  statement, and OPEN (or SETTLED, when it was deferred while a statement bound it). Until then it
+ *  counts in no total, is not overdue, cannot be settled and no statement binds it. */
 export function deferred(claim: Claim, today: string | null): boolean {
-  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+  if (claim.stated || claim.deferredUntil === null || today === null || today >= claim.deferredUntil) return false;
+  return claim.status === 'OPEN' || (claim.status === 'SETTLED' && claim.deferredBound);
 }
 
 /** Whether a claim is overdue: OPEN or PENDING, not deferred, and overdue from a date before the

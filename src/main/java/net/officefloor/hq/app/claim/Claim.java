@@ -124,10 +124,15 @@ public class Claim {
     @Column(name = "added")
     private Long added;
 
-    /** The date the claim is deferred until; null when it was never deferred. While it is OPEN and the
-     * sheet's today is before this date it is deferred (see {@link #isDeferredOn}). */
+    /** The date the claim is deferred until; null when it was never deferred. While it is OPEN, no
+     * statement binds it and the sheet's today is before this date it is deferred (see {@link #isDeferredOn}). */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
+
+    /** Whether the claim was last deferred while a statement bound it: it stays live (and can be settled)
+     * while bound, and once the binding ends the deferral takes effect on it, SETTLED or not. */
+    @Column(name = "deferred_bound", nullable = false)
+    private boolean deferredBound;
 
     /** How many proofs the claim has been given; raised by one at a time while it is neither SETTLED nor VOID. */
     @Column(name = "proofs", nullable = false)
@@ -223,6 +228,7 @@ public class Claim {
         copy.openedBy = openedBy;
         copy.editedBy = editedBy;
         copy.deferredUntil = deferredUntil;
+        copy.deferredBound = deferredBound;
         copy.proofs = proofs;
         copy.proofsPhoto = proofsPhoto;
         copy.lateEntry = lateEntry;
@@ -447,6 +453,16 @@ public class Claim {
         this.deferredUntil = deferredUntil;
     }
 
+    public boolean isDeferredBound() {
+        return deferredBound;
+    }
+
+    /** Defer the claim until {@code until}, remembering whether a statement binds it now. */
+    public void deferUntil(LocalDate until) {
+        this.deferredUntil = until;
+        this.deferredBound = stated;
+    }
+
     public boolean isEscalated() {
         return escalated;
     }
@@ -478,9 +494,11 @@ public class Claim {
         if (PHOTO.equals(kind)) this.proofsPhoto++;
     }
 
-    /** Whether the claim is deferred on {@code today}: OPEN and deferred until a date after it. */
+    /** Whether the claim is deferred on {@code today}: deferred until a date after it, bound by no
+     * statement, and OPEN (or SETTLED, when it was deferred while a statement bound it). */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        if (stated || deferredUntil == null || today == null || !today.isBefore(deferredUntil)) return false;
+        return status == ClaimStatus.OPEN || (status == ClaimStatus.SETTLED && deferredBound);
     }
 
     /** Whether a user other than {@code user} holds the claim's lock on {@code today}. */

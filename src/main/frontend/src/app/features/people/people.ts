@@ -2165,6 +2165,7 @@ export class People {
   private countsAs(claim: Claim, status: ClaimStatus, person: Person): boolean {
     const as = { ...claim, status };
     if (!counts(as)) return false;
+    if (claim.status === 'SETTLED' && deferred(claim, this.session.today())) return false;
     if (!isOpen(as)) return true;
     if (deferred(claim, this.session.today())) return false;
     const today = this.session.today();

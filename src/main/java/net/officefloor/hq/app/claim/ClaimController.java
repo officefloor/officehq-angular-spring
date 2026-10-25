@@ -46,7 +46,8 @@ public class ClaimController {
      * {@code <label> <qty> x <unit>}. Its added mark is when it was first added, as a claim id (see
      * {@link Claim#addedMark}), which decides the forward-only rates it takes. Last come how many of its
      * proofs are of each kind (receipt, photo), by kind, then whether it is held, then the id of the statement
-     * that bound it (null while unbound), its shares, and the user it is assigned to review (null when never). */
+     * that bound it (null while unbound), its shares, the user it is assigned to review (null when never), whether it is late as PENDING, and whether it
+     * was last deferred while a statement bound it. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String statedShown, String corrects, List<String> log,
@@ -54,7 +55,7 @@ public class ClaimController {
             String ref, List<String> tags, String voidReason, List<String> comments, String editedBy,
             Integer settleBatch, List<String> lines, long added, boolean reviewLate, boolean waived,
             Map<String, Integer> proofsByKind, boolean held, Long statedBy, List<ShareView> shares,
-            String reviewAssigned, boolean pendingLate) {
+            String reviewAssigned, boolean pendingLate, boolean deferredBound) {
         /** The claims as views, each with its status log and comments, in the order given. */
         public static List<ClaimView> allOf(List<Claim> claims, ClaimService service) {
             Map<Long, List<ClaimLog>> logs = service.logsOf(claims);
@@ -92,7 +93,7 @@ public class ClaimController {
                     late(claim, log, ClaimStatus.REVIEW, lateBefore), claim.isWaived(), proofsByKind(claim), claim.isHeld(),
                     claim.isStated() ? claim.getStatedBy() : null,
                     shares.stream().map(s -> new ShareView(s.getPersonId(), s.shareText())).toList(),
-                    claim.getReviewAssigned(), late(claim, log, ClaimStatus.PENDING, pendingLateBefore));
+                    claim.getReviewAssigned(), late(claim, log, ClaimStatus.PENDING, pendingLateBefore), claim.isDeferredBound());
         }
 
         /** How many of the claim's proofs are of each kind, by kind, in the order the kinds are offered. */

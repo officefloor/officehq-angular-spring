@@ -238,7 +238,7 @@ public class RollupService {
     }
 
     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
-     * SETTLED, but not an OPEN claim deferred on {@code today}, nor OPEN or PENDING when its person's
+     * SETTLED, but not a claim deferred on {@code today} (see {@link Claim#isDeferredOn}), nor OPEN or PENDING when its person's
      * retirement date is reached on {@code today} and no statement binds it. A hold, the person's or the
      * claim's own, does not take it out. */
     public static boolean countsLive(Claim claim, Person person, LocalDate today) {
@@ -255,6 +255,7 @@ public class RollupService {
      * {@code status} (see {@link #countsLive}). */
     public static boolean countsAs(Claim claim, ClaimStatus status, Person person, LocalDate today) {
         if (!status.counts()) return false;
+        if (claim.getStatus() == ClaimStatus.SETTLED && claim.isDeferredOn(today)) return false;
         if (!status.isOpen()) return true;
         if (claim.isDeferredOn(today)) return false;
         return claim.isStated() || !person.isRetiredOn(today);
