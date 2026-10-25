@@ -39,23 +39,25 @@ public class PersonController {
     /** What the screen shows of a person: grade is the one in force on the sheet's today, grades every
      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
      *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
-     *  user watches them. */
+     *  user watches them; clashing whether their name or an alias is used on another sheet of the
+     *  sheet's tree. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
-            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases) {
+            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
-        public static PersonView of(Person person, LocalDate today, boolean watched) {
-            return of(person, List.of(), today, watched);
+        public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
+            return of(person, List.of(), today, watched, clashing);
         }
 
         /** A person with the ids of their patrons, in the order they were named, the grade in force
          *  on the sheet's today, and whether the signed-in user watches them. */
-        public static PersonView of(Person person, List<Long> patronIds, LocalDate today, boolean watched) {
+        public static PersonView of(Person person, List<Long> patronIds, LocalDate today, boolean watched,
+                boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
                     person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact(), person.getAliases());
+                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing);
         }
     }
 
@@ -134,9 +136,10 @@ public class PersonController {
         Set<Long> watched = user == null || user.isBlank() ? Set.of()
                 : service.watchedIds(sheet, SignedInUser.name(user));
         LocalDate today = sheets.today(sheet);
+        Set<Long> clashing = service.clashingIds(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, patronIds.getOrDefault(p.getId(), List.of()), today,
-                        watched.contains(p.getId())))
+                        watched.contains(p.getId()), clashing.contains(p.getId())))
                 .toList();
     }
 
@@ -147,7 +150,7 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonForm form) {
         Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade(),
                 termsOf(form.terms()), form.contact());
-        return PersonView.of(added, sheets.today(added.getSheetId()), false);
+        return PersonView.of(added, sheets.today(added.getSheetId()), false, service.isClashing(added));
     }
 
     /** Edit a person. */
@@ -224,6 +227,6 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, service.patronIdsOf(person.getId()), sheets.today(person.getSheetId()),
-                service.isWatched(person.getId(), SignedInUser.name(user)));
+                service.isWatched(person.getId(), SignedInUser.name(user)), service.isClashing(person));
     }
 }

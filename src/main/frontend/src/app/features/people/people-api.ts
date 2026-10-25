@@ -64,6 +64,8 @@ export interface PersonView {
   contact: string | null;
   /** The other names the person is found by, sorted as names are compared. */
   aliases: string[];
+  /** Whether a name or alias of theirs is used on another sheet of the sheet's tree. */
+  clashing: boolean;
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,

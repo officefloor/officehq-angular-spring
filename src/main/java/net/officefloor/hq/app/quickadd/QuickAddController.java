@@ -54,6 +54,7 @@ public class QuickAddController {
         String name = SignedInUser.name(user);
         QuickAddService.Added added = service.add(sheetId.trim(), name, form.name(), form.amount());
         return new QuickAddView(PersonView.of(added.person(), sheets.today(added.person().getSheetId()),
-                people.isWatched(added.person().getId(), name)), ClaimView.of(added.claim()));
+                people.isWatched(added.person().getId(), name), people.isClashing(added.person())),
+                ClaimView.of(added.claim()));
     }
 }

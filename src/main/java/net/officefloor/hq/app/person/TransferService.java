@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.asof.SheetHistory;
 import net.officefloor.hq.app.claim.Claim;
@@ -39,13 +40,14 @@ public class TransferService {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final SheetHistory history;
+    private final NameTree tree;
     private final Rollup rollup;
     private final Audit audit;
 
     public TransferService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimService claimService,
             StatementRepository statements, PoolRepository pools, SettingService settings, SheetService sheets,
-            SheetRepository sheetRows, SheetHistory history, Rollup rollup, Audit audit) {
+            SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, Audit audit) {
         this.people = people;
         this.aliases = aliases;
         this.patrons = patrons;
@@ -58,6 +60,7 @@ public class TransferService {
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.history = history;
+        this.tree = tree;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -71,7 +74,8 @@ public class TransferService {
      * lost, statements are not carried and nor are references. The person then leaves this sheet entirely:
      * their patron links (both ways), pool memberships, watches, holds and statements are dropped. Refused
      * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
-     * sheet, and when the person's name, an alias or their contact is already on the other sheet.
+     * sheet, and when the person's name, an alias or their contact is already on the other sheet, or their name or
+     * an alias on another sheet of its tree.
      */
     @Transactional
     public void transfer(String sheetId, String user, long id, String toSheetId) {
@@ -93,8 +97,13 @@ public class TransferService {
         List<String> names = new ArrayList<>();
         names.add(from.getName());
         names.addAll(from.getAliases());
+        Set<String> elsewhere = tree.keysElsewhere(toSheetId, from.getId());
         for (String name : names) {
             String key = Person.keyOf(name);
+            if (elsewhere.contains(key)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "That name is already in use on a sheet of the other sheet's tree.");
+            }
             if (people.existsBySheetIdAndNameKey(toSheetId, key) || aliases.existsBySheetIdAndAliasKey(toSheetId, key)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on the other sheet.");
             }

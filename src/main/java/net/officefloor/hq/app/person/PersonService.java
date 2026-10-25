@@ -28,16 +28,18 @@ public class PersonService {
     private final PersonWatchRepository watches;
     private final PersonAliasRepository aliases;
     private final SheetService sheets;
+    private final NameTree tree;
     private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            PersonAliasRepository aliases, SheetService sheets, Rollup rollup, Audit audit) {
+            PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
         this.aliases = aliases;
         this.sheets = sheets;
+        this.tree = tree;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -46,6 +48,20 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** The ids of the sheet's people whose name or an alias is used on another sheet of its tree. */
+    @Transactional(readOnly = true)
+    public Set<Long> clashingIds(String sheetId) {
+        Set<String> elsewhere = tree.keysElsewhere(sheetId, NameTree.NO_ONE);
+        return list(sheetId).stream().filter(p -> NameTree.clashes(p, elsewhere)).map(Person::getId)
+                .collect(Collectors.toSet());
+    }
+
+    /** Whether the person's name or an alias is used on another sheet of their sheet's tree. */
+    @Transactional(readOnly = true)
+    public boolean isClashing(Person person) {
+        return tree.clashes(person);
     }
 
     /** The ids of each person's patrons on the sheet, by person, in the order they were named; a person
@@ -137,14 +153,18 @@ public class PersonService {
         return add(sheetId, user, name, grade, terms, null);
     }
 
-    /** Add a person to the sheet with a contact (blank or null: none); refused when another person on
-     *  the sheet has the same contact. */
+    /** Add a person to the sheet with a contact (blank or null: none); refused when the name is used as a
+     *  name or alias on the sheet or on another sheet of its tree, or when another person on the sheet has
+     *  the same contact. */
     @Transactional
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
+        }
+        if (tree.usedElsewhere(sheetId, name)) {
+            throw nameInUseInTree();
         }
         String contactKey = Person.contactOf(contact);
         if (contactKey != null && people.existsBySheetIdAndContact(sheetId, contactKey)) {
@@ -164,7 +184,9 @@ public class PersonService {
     /** Change a person's name and give them a grade from a from-date (none: the sheet's today), keeping
      *  the grades they were given from other dates; refused when someone has saved the person since
      *  the editor loaded this version of them, or when another person on the sheet has the contact
-     *  given (blank or null: none). */
+     *  given (blank or null: none). Refused too when the name, or any of the person's aliases, is used on
+     *  another sheet of the sheet's tree, so a person who clashes can only be edited by a rename that
+     *  leaves them clashing no more. */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
             LocalDate gradeFrom, Integer terms, String contact) {
@@ -176,6 +198,11 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
+        }
+        Set<String> elsewhere = tree.keysElsewhere(sheetId, id);
+        if (elsewhere.contains(Person.keyOf(name))
+                || person.getAliases().stream().map(Person::keyOf).anyMatch(elsewhere::contains)) {
+            throw nameInUseInTree();
         }
         String contactKey = Person.contactOf(contact);
         if (contactKey != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contactKey, id)) {
@@ -196,7 +223,7 @@ public class PersonService {
     }
 
     /** Give a person another name they are found by; refused when blank, or when it equals, as names
-     *  are compared, any name or alias on the sheet. */
+     *  are compared, any name or alias on the sheet or on another sheet of its tree. */
     @Transactional
     public Person addAlias(String sheetId, String user, long id, String alias) {
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -207,6 +234,9 @@ public class PersonService {
         String key = Person.keyOf(alias);
         if (people.existsBySheetIdAndNameKey(sheetId, key) || aliases.existsBySheetIdAndAliasKey(sheetId, key)) {
             throw nameInUse();
+        }
+        if (tree.usedElsewhere(sheetId, alias)) {
+            throw nameInUseInTree();
         }
         person.addAlias(alias);
         Person saved = save(person);
@@ -279,6 +309,10 @@ public class PersonService {
 
     private static ResponseStatusException contactInUse() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on the sheet.");
+    }
+
+    private static ResponseStatusException nameInUseInTree() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on a sheet of this sheet's tree.");
     }
 
     private static ResponseStatusException nameInUse() {
