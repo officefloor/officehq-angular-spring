@@ -91,6 +91,12 @@ export interface BulkGradeView {
   changed: number;
 }
 
+/** What a bulk retire did: the people it retired, in list order, and how many. */
+export interface BulkRetireView {
+  people: PersonView[];
+  retired: number;
+}
+
 /** What the quick-add bar sends: a person's name and a claim's amount. */
 export interface QuickAddForm {
   name: string;
@@ -141,6 +147,12 @@ export class PeopleApi {
    *  as the person form would. */
   grade(sheetId: string, ids: number[], grade: Grade, from: string | null): Promise<BulkGradeView> {
     return firstValueFrom(this.http.post<BulkGradeView>(`${this.url(sheetId)}/grade`, { ids, grade, from }));
+  }
+
+  /** Retire the people of these ids from a date (null: the sheet's today), each in list order as the
+   *  row's retire would. */
+  retireSelected(sheetId: string, ids: number[], from: string | null): Promise<BulkRetireView> {
+    return firstValueFrom(this.http.post<BulkRetireView>(`${this.url(sheetId)}/retire`, { ids, from }));
   }
 
   /** Swap the person with the one above (up) or below (down) them in the list; refused with 409 for

@@ -114,6 +114,14 @@ public class PersonController {
     public record BulkGradeView(List<PersonView> people, int changed) {
     }
 
+    /** The people selected to be retired together, from the date (none: the sheet's today). */
+    public record BulkRetireForm(@NotNull List<@NotNull Long> ids, LocalDate from) {
+    }
+
+    /** What a bulk retire did: the people it retired, and how many. */
+    public record BulkRetireView(List<PersonView> people, int retired) {
+    }
+
     /** The import box's text: lines of name,grade,terms,contact. */
     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -125,12 +133,14 @@ public class PersonController {
     private final PersonService service;
     private final ImportPeopleService imports;
     private final BulkGradeService bulkGrade;
+    private final BulkRetireService bulkRetire;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetService sheets;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
-            TransferService transfers, SheetService sheets, ImportPeopleService imports) {
+            TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire) {
+        this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
         this.bulkGrade = bulkGrade;
@@ -190,6 +200,14 @@ public class PersonController {
         List<Person> changed = bulkGrade.grade(sheetId.trim(), SignedInUser.name(user), form.ids(), form.grade(),
                 form.from());
         return new BulkGradeView(changed.stream().map(p -> view(p, user)).toList(), changed.size());
+    }
+
+    /** Retire the selected people together from a date, each in list order as the row's retire would. */
+    @PostMapping("/retire")
+    public BulkRetireView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkRetireForm form) {
+        List<Person> retired = bulkRetire.retire(sheetId.trim(), SignedInUser.name(user), form.ids(), form.from());
+        return new BulkRetireView(retired.stream().map(p -> view(p, user)).toList(), retired.size());
     }
 
     /** Swap a person with the one above them in the list ("up") or below them ("down"). */

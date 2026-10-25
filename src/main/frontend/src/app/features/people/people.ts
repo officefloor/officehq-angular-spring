@@ -191,6 +191,20 @@ import { Consolidated } from '../summary/consolidated';
         @if (bulkGradeError()) {
           <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
         }
+        <p>
+          <label for="bulk-retire-date">Retire the selected people from</label>
+          <input id="bulk-retire-date" type="date" data-testid="bulk-retire-date" #bulkRetireDate
+            (input)="bulkRetireError.set('')" aria-describedby="bulk-retire-date-hint" />
+          <span id="bulk-retire-date-hint">Blank: the sheet's today</span>
+          <button type="button" data-testid="bulk-retire" (click)="retireSelected(bulkRetireDate)"
+            [disabled]="bulkRetiring()">Retire the selected people</button>
+          @if (bulkRetired() !== null) {
+            Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong>
+          }
+        </p>
+        @if (bulkRetireError()) {
+          <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
+        }
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
@@ -628,6 +642,11 @@ export class People {
   /** How many the last bulk grade changed; cleared while the next one runs. */
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal('');
+  /** Whether the selected people are being retired. */
+  protected readonly bulkRetiring = signal(false);
+  /** How many the last bulk retire retired; cleared while the next one runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -660,6 +679,8 @@ export class People {
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set('');
       if (sheet) void this.reload(sheet.id);
     });
     // A change of the sheet's parent changes the rates its dues fall back on, so they are re-read.
@@ -1297,6 +1318,7 @@ export class People {
 
   protected selectPerson(id: number, on: boolean): void {
     this.bulkGradeError.set('');
+    this.bulkRetireError.set('');
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
       if (on) next.add(id);
@@ -1312,6 +1334,7 @@ export class People {
     if (!sheet || this.bulkGrading()) return;
     this.bulkGraded.set(null);
     this.bulkGradeError.set('');
+    this.bulkRetireError.set('');
     this.personError.set(null);
     const grade = gradeSelect.value as Grade;
     const from = fromInput.value.trim();
@@ -1335,6 +1358,35 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) this.bulkGradeError.set('The selected people could not be given the grade.');
     } finally {
       this.bulkGrading.set(false);
+    }
+  }
+
+  /** Retire the selected people from the date (blank: the sheet's today), in list order, each as the
+   *  row's retire would. */
+  protected async retireSelected(fromInput: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.bulkRetiring()) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set('');
+    this.bulkGradeError.set('');
+    this.personError.set(null);
+    const from = fromInput.value.trim();
+    if (from !== '' && !DATE.test(from)) {
+      this.bulkRetireError.set('Enter the date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
+    this.bulkRetiring.set(true);
+    try {
+      const result = await this.api.retireSelected(sheet.id, [...this.selectedPeople()], from === '' ? null : from);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const retired = new Map(result.people.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => retired.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(result.retired);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.bulkRetireError.set('The selected people could not be retired.');
+    } finally {
+      this.bulkRetiring.set(false);
     }
   }
 
