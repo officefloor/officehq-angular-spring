@@ -1,0 +1,64 @@
+{
+  "checkpoint": 66,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp66_redate-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can re-date an OPEN or PENDING claim (a date entry and a button on the claim;\nCLAIM_REDATED naming the claim with its new date and ending old=<old date> new=<new date>). A\ndate after the person's retirement, a claim in a closed period or a new date inside one, or anyone\nbut a steward, is refused with an error on the claim. The due-by stays as it was fixed; a figure\nbound by a statement stays bound; the claim's period follows the new date, and when per-period\nnumbering is on and the period changes, the claim receives the next number of its new period's\nsequence and its old number is never used again.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can re-date an OPEN or PENDING claim (a date entry and a button on the claim;\nCLAIM_REDATED naming the claim with its new date and ending old=<old date> new=<new date>). A\ndate after the person's retirement, a claim in a closed period or a new date inside one, or anyone\nbut a steward, is refused with an error on the claim. The due-by stays as it was fixed; a figure\nbound by a statement stays bound; the claim's period follows the new date, and when per-period\nnumbering is on and the period changes, the claim receives the next number of its new period's\nsequence and its old number is never used again.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f0087456329315627dc3b56a311f4e173f785d2c",
+  "reset_sha": "",
+  "preagent_sha": "dd38d94170ad326b0c7ce0f873f2baaaeee2d7d7",
+  "prev_sha": "dd38d94170ad326b0c7ce0f873f2baaaeee2d7d7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7821092000000001,
+    "input_tokens": 26,
+    "output_tokens": 7275,
+    "cache_read_tokens": 552086,
+    "cache_creation_tokens": 65761,
+    "num_turns": 15,
+    "duration_ms": 232698,
+    "duration_api_ms": 83598,
+    "model": "claude-opus-5-5",
+    "session_id": "9fd2f86a-0436-4cd3-a68f-82afd4be147a",
+    "stop_reason": "success",
+    "result_text": "Stewards can now re-date OPEN or PENDING claims. I ran `bin/e2e` and all 4 acceptance tests pass.\n\n**How it behaves**\n- Each claim row has a \"Re-date to\" date entry (`claim-date-new`) and a Re-date button (`claim-redate`).\n- These are refused, with the reason shown on the claim (`claim-error`):\n  - anyone who isn't a steward;\n  - a claim in any other status;\n  - a claim dated inside a closed period, or a new date inside one;\n  - a new date after the person retired.\n- A refusal writes nothing to the store or the audit file.\n- When it goes through, only the date changes: the due-by stays as it was and a statement's figure stays bound. The period shown follows the new date.\n- If per-period numbering is on and the claim moves to a different period, it gets the next number in its new period. Being in no period counts as a period here and uses the `X-<n>` numbers. The old number is never reused, because each period's counter only goes up.\n- The audit record is `CLAIM_REDATED ... number=<n> old=<old date> new=<new date>`. Any change to the totals is recorded after it in the usual way.\n\n**Changes**\n- `Claim.java`: a `redate(date)` method.\n- `ClaimService.java`: the `redate` operation. I also moved the \"is numbering on\" check and the \"which period holds this date\" lookup into small helpers, which the existing numbering code now uses as well.\n- `ClaimController.java`: `POST /api/sheets/{sheetId}/claims/{id}/redate`.\n- `claims-api.ts` and `person-claims.ts`: the API call, the row controls and the error messages.\n\n**Cases the request left open**\n- **Numbering was off when the claim was opened, but is on now:** its sheet-wide number is replaced only if the period changes.\n- **Numbering is off:** the claim keeps its number whatever the new date.\n\nNo database schema change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7821092000000001,
+        "num_turns": 15,
+        "duration_ms": 232698,
+        "duration_api_ms": 83598,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp66.agent.jsonl",
+  "agent_diff_file": "cp66.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
