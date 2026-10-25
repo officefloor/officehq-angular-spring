@@ -146,6 +146,31 @@ public class SettingsService {
         record(sheetId, by, DatedSettings.CLERK_LIMIT, limit == null ? null : limit.toPlainString(), from, false);
     }
 
+    /** The grades with their own clerk limit in force on the sheet's today, by grade. */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> gradeClerkLimits(String sheetId) {
+        LocalDate today = today(sheetId);
+        Map<String, BigDecimal> limits = new LinkedHashMap<>();
+        for (String grade : GRADES) {
+            BigDecimal own = dated.gradeClerkLimitOn(sheetId, grade, today);
+            if (own != null) limits.put(grade, own);
+        }
+        return limits;
+    }
+
+    /** The clerk limit of a claim of a person of {@code grade} (see {@link DatedSettings#clerkLimitFor}). */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimitFor(String sheetId, String grade) {
+        return dated.clerkLimitFor(sheetId, grade);
+    }
+
+    /** Record the grade's own clerk limit from {@code from} (the sheet's today when null); null records
+     * that the grade uses the sheet's clerk limit from then. */
+    @Transactional
+    public void setGradeClerkLimit(String sheetId, String by, String grade, BigDecimal limit, LocalDate from) {
+        record(sheetId, by, DatedSettings.gradeClerkLimitKey(grade), limit == null ? null : limit.toPlainString(), from, false);
+    }
+
     /** The floor in force on the sheet's today. */
     @Transactional(readOnly = true)
     public BigDecimal floor(String sheetId) {

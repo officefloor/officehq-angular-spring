@@ -72,6 +72,9 @@ export interface SheetSettings {
   /** The due above which a claim needs a proof before it is settled or approved, with two decimals;
    *  null when there is none. */
   proofThreshold: string | null;
+  /** The grades with their own clerk limit in force on the sheet's today, with two decimals, by
+   *  grade; a grade not in it uses the sheet's. */
+  gradeClerkLimits: Partial<Record<Grade, string>>;
   /** The grades with their own proof threshold in force on the sheet's today, with two decimals, by
    *  grade; a grade not in it uses the sheet's. */
   gradeProofThresholds: Partial<Record<Grade, string>>;
@@ -190,8 +193,19 @@ export class SettingsService {
     );
   }
 
-  /** A null value records that the grade uses the sheet's proof threshold; a null from records it
+  /** A null value records that the grade uses the sheet's clerk limit; a null from records it
    *  from the sheet's today. */
+  setGradeClerkLimit(sheet: string, grade: Grade, value: string | null, from: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(
+        `${this.url(sheet)}/settings/clerk-limit/${grade}`,
+        { value, from },
+        { headers: this.session.headers() },
+      ),
+    );
+  }
+
+  /** A null value records that the grade uses the sheet's proof threshold; a null from records it from the sheet's today. */
   setGradeProofThreshold(sheet: string, grade: Grade, value: string | null, from: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(

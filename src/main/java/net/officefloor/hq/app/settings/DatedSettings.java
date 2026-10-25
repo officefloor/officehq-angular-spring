@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The values in force of a sheet's dated settings: on a date, the value recorded with the latest
  * from-date on or before it, and before every from-date the sheet's starting value (floor 1.00, late
- * percent 0.00, terms 14 days; no clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no review threshold, no grade's own terms and no grade's grace days). A claim's floor, late
+ * percent 0.00, terms 14 days; no clerk limit, no grade's own clerk limit, no cap, no proof threshold, no grade's own proof threshold, no note threshold, no review threshold, no grade's own terms and no grade's grace days). A claim's floor, late
  * percent, terms, proof threshold, note threshold and review threshold are those in force on its date; the clerk limit and the cap those on the sheet's
  * today. */
 @Service
@@ -51,6 +51,11 @@ public class DatedSettings {
     /** The key a grade's own proof threshold is kept under. */
     public static String gradeProofThresholdKey(String grade) {
         return PROOF_THRESHOLD + "-" + grade;
+    }
+
+    /** The key a grade's own clerk limit is kept under. */
+    public static String gradeClerkLimitKey(String grade) {
+        return CLERK_LIMIT + "-" + grade;
     }
 
     /** The key a grade's grace days are kept under. */
@@ -105,6 +110,20 @@ public class DatedSettings {
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String sheetId) {
         return valueOn(sheetId, CLERK_LIMIT, today(sheetId)).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The grade's own clerk limit in force on the date; null when it has none then. */
+    @Transactional(readOnly = true)
+    public BigDecimal gradeClerkLimitOn(String sheetId, String grade, LocalDate date) {
+        return grade == null ? null : valueOn(sheetId, gradeClerkLimitKey(grade), date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The clerk limit of a claim of a person of {@code grade}: the grade's own in force on the sheet's
+     * today, or else the sheet's in force then; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimitFor(String sheetId, String grade) {
+        BigDecimal own = gradeClerkLimitOn(sheetId, grade, today(sheetId));
+        return own != null ? own : clerkLimit(sheetId);
     }
 
     /** The cap in force on the sheet's today; null when there is none. */

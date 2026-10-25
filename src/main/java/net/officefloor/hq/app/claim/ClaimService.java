@@ -373,7 +373,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = rollup.shownOf(claim, person);
             if (!judged) refuseUnproved(claim, person, due);
-            if (overLimit(sheetId, user, due)) next = ClaimStatus.PENDING;
+            if (overLimit(sheetId, user, person, due)) next = ClaimStatus.PENDING;
             else claim.setSettledDue(due);
         }
         claim.setStatus(next);
@@ -832,10 +832,11 @@ public class ClaimService {
     }
 
     /** Whether a settle by {@code user} of a claim whose due is {@code due} needs a steward's approval:
-     * the user is a clerk and the due is above the sheet's clerk limit. */
-    private boolean overLimit(String sheetId, String user, BigDecimal due) {
+     * the user is a clerk and the due is above the clerk limit in force on the sheet's today (the person's
+     * grade's own then, else the sheet's). */
+    private boolean overLimit(String sheetId, String user, Person person, BigDecimal due) {
         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
-        BigDecimal limit = settings.clerkLimit(sheetId);
+        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)));
         return limit != null && due.compareTo(limit) > 0;
     }
 

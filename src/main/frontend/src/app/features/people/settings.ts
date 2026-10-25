@@ -76,6 +76,31 @@ const STANDING: Record<PermAction, string> = {
             (no limit)
           }
         </span>
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ (g) | figure }}</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeClerkLimitInput()[g]"
+            (input)="setGradeClerkLimitInput(g, value($event)); gradeClerkLimitChanged.add(g); settingsError.set(null)"
+            (keydown)="gradeClerkLimitChanged.add(g)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ (g) | figure }} from</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            type="date"
+            [value]="gradeClerkLimitFrom()[g]"
+            (input)="setGradeClerkLimitFrom(g, value($event)); gradeClerkLimitChanged.add(g); settingsError.set(null)"
+          />
+          <span>
+            In force: <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (gradeClerkLimitShown(g)) | figure }}</span>
+            @if (gradeClerkLimits()[g] === undefined) {
+              (the sheet's clerk limit)
+            }
+          </span>
+        }
         <label for="setting-floor">Floor</label>
         <input
           id="setting-floor"
@@ -621,6 +646,9 @@ export class Settings {
   protected readonly grades = GRADES;
   /** The grades' own terms in force, in days, by grade; a grade not in it uses the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The grades' own clerk limits in force on the sheet's today, with two decimals, by grade; a grade
+   *  not in it uses the sheet's. */
+  protected readonly gradeClerkLimits = signal<Partial<Record<Grade, string>>>({});
   /** The grades' own proof thresholds in force, with two decimals, by grade; a grade not in it uses
    *  the sheet's. */
   protected readonly gradeProofThresholds = signal<Partial<Record<Grade, string>>>({});
@@ -682,6 +710,7 @@ export class Settings {
   protected readonly gradeTermsInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeGraceInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeClerkLimitInput = signal<Record<Grade, string>>(blankGrades());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFromInput = signal('');
   protected readonly graceDaysInput = signal('');
@@ -707,6 +736,7 @@ export class Settings {
   protected readonly gradeTermsFrom = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeGraceFrom = signal<Record<Grade, string>>(blankGrades());
   protected readonly gradeProofThresholdFrom = signal<Record<Grade, string>>(blankGrades());
+  protected readonly gradeClerkLimitFrom = signal<Record<Grade, string>>(blankGrades());
   /** Whether each field was typed in (a key pressed in it, even one that left its value as it was)
    *  since the settings were last loaded or saved; a field is saved when it was, or when it differs
    *  from the value in force. */
@@ -722,6 +752,7 @@ export class Settings {
   protected readonly gradeTermsChanged = new Set<Grade>();
   protected readonly gradeGraceChanged = new Set<Grade>();
   protected readonly gradeProofThresholdChanged = new Set<Grade>();
+  protected readonly gradeClerkLimitChanged = new Set<Grade>();
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected graceDaysChanged = false;
@@ -790,6 +821,10 @@ export class Settings {
       this.gradeProofThresholdInput.set(blankGrades());
       this.gradeProofThresholdChanged.clear();
       this.gradeProofThresholdFrom.set(blankGrades());
+      this.gradeClerkLimits.set({});
+      this.gradeClerkLimitInput.set(blankGrades());
+      this.gradeClerkLimitChanged.clear();
+      this.gradeClerkLimitFrom.set(blankGrades());
       this.latePct.set('');
       this.latePctInput.set('');
       this.latePctChanged = false;
@@ -874,6 +909,19 @@ export class Settings {
     this.gradeGraceInput.update((inputs) => ({ ...inputs, [grade]: text }));
   }
 
+  protected setGradeClerkLimitFrom(grade: Grade, text: string): void {
+    this.gradeClerkLimitFrom.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  protected setGradeClerkLimitInput(grade: Grade, text: string): void {
+    this.gradeClerkLimitInput.update((inputs) => ({ ...inputs, [grade]: text }));
+  }
+
+  /** The grade's own clerk limit in force; empty when it uses the sheet's. */
+  protected gradeClerkLimitShown(grade: Grade): string {
+    return this.gradeClerkLimits()[grade] ?? '';
+  }
+
   protected setGradeProofThresholdFrom(grade: Grade, text: string): void {
     this.gradeProofThresholdFrom.update((inputs) => ({ ...inputs, [grade]: text }));
   }
@@ -937,6 +985,9 @@ export class Settings {
     const gradeProofThresholds = GRADES.map((grade) => ({ grade, text: this.gradeProofThresholdInput()[grade].trim() })).filter(
       ({ grade, text }) => this.gradeProofThresholdChanged.has(grade) || text !== this.gradeProofThresholdShown(grade),
     );
+    const gradeClerkLimits = GRADES.map((grade) => ({ grade, text: this.gradeClerkLimitInput()[grade].trim() })).filter(
+      ({ grade, text }) => this.gradeClerkLimitChanged.has(grade) || text !== this.gradeClerkLimitShown(grade),
+    );
     const latePct = this.latePctInput().trim();
     const saveLatePct = this.latePctChanged || latePct !== this.latePct();
     const policyDate = this.policyDateInput().trim();
@@ -979,6 +1030,7 @@ export class Settings {
     const gradeTermsFrom = { ...this.gradeTermsFrom() };
     const gradeGraceFrom = { ...this.gradeGraceFrom() };
     const gradeProofThresholdFrom = { ...this.gradeProofThresholdFrom() };
+    const gradeClerkLimitFrom = { ...this.gradeClerkLimitFrom() };
     const badFrom = [
       saveLimit ? limitFrom : '',
       saveFloor ? floorFrom : '',
@@ -992,6 +1044,7 @@ export class Settings {
       ...gradeTerms.map(({ grade }) => gradeTermsFrom[grade].trim()),
       ...gradeGraces.map(({ grade }) => gradeGraceFrom[grade].trim()),
       ...gradeProofThresholds.map(({ grade }) => gradeProofThresholdFrom[grade].trim()),
+      ...gradeClerkLimits.map(({ grade }) => gradeClerkLimitFrom[grade].trim()),
     ].some((from) => from !== '' && !DATE.test(from));
     if (badFrom) {
       this.settingsError.set('Type a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.');
@@ -999,6 +1052,13 @@ export class Settings {
     }
     if (saveLimit && limit !== '' && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    const badClerkLimit = gradeClerkLimits.find(({ text }) => text !== '' && !LIMIT.test(text));
+    if (badClerkLimit) {
+      this.settingsError.set(
+        `Type a clerk limit for grade ${badClerkLimit.grade} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`,
+      );
       return;
     }
     if (saveFloor && !LIMIT.test(floor)) {
@@ -1113,6 +1173,16 @@ export class Settings {
         if (this.limit().trim() === limit && this.limitFrom().trim() === limitFrom) {
           this.limitChanged = false;
           this.limitFrom.set('');
+        }
+        this.show(settings);
+      }
+      for (const { grade, text } of gradeClerkLimits) {
+        const from = gradeClerkLimitFrom[grade].trim();
+        const settings = await this.service.setGradeClerkLimit(sheet, grade, text || null, from || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.gradeClerkLimitInput()[grade].trim() === text && this.gradeClerkLimitFrom()[grade].trim() === from) {
+          this.gradeClerkLimitChanged.delete(grade);
+          this.setGradeClerkLimitFrom(grade, '');
         }
         this.show(settings);
       }
@@ -1317,6 +1387,7 @@ export class Settings {
       this.showGradeTermsInputs();
       this.showGradeGraceInputs();
       this.showGradeProofThresholdInputs();
+      this.showGradeClerkLimitInputs();
       this.showPermInputs();
       if (!this.policyDateChanged) this.policyDateInput.set(this.policyDate() ?? '');
       if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(this.periodNumberingFrom() ?? '');
@@ -1394,6 +1465,7 @@ export class Settings {
         this.showGradeTermsInputs();
         this.showGradeGraceInputs();
         this.showGradeProofThresholdInputs();
+        this.showGradeClerkLimitInputs();
         this.showPermInputs();
         if (!this.policyDateChanged) this.policyDateInput.set(settings.policyDate ?? '');
         if (!this.periodNumberingFromChanged) this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
@@ -1442,6 +1514,17 @@ export class Settings {
     });
   }
 
+  /** Show each grade's own clerk limit in force in its field, but keep what was typed in one since. */
+  private showGradeClerkLimitInputs(): void {
+    this.gradeClerkLimitInput.update((inputs) => {
+      const next = { ...inputs };
+      for (const grade of GRADES) {
+        if (!this.gradeClerkLimitChanged.has(grade)) next[grade] = this.gradeClerkLimitShown(grade);
+      }
+      return next;
+    });
+  }
+
   /** Show each action's roles as set in its field, but keep what was typed in one since. */
   private showPermInputs(): void {
     this.permInput.update((inputs) => {
@@ -1464,6 +1547,7 @@ export class Settings {
     this.gradeTerms.set(settings.gradeTerms ?? {});
     this.gradeGraces.set(settings.gradeGraces ?? {});
     this.gradeProofThresholds.set(settings.gradeProofThresholds ?? {});
+    this.gradeClerkLimits.set(settings.gradeClerkLimits ?? {});
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
