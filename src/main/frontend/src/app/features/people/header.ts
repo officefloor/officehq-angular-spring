@@ -50,6 +50,10 @@ import { Session } from '../../core/session';
           <dt>My reviews</dt>
           <dd data-testid="my-reviews-count">{{ (myReviewsCount()) | figure }}</dd>
         </div>
+        <div>
+          <dt>Watched due</dt>
+          <dd data-testid="watched-due-total">{{ (watchedDueTotal()) | figure }}</dd>
+        </div>
       </dl>
     </header>
   `,
@@ -84,6 +88,8 @@ export class Header {
   readonly myOverdueTotal = input.required<string>();
   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
   readonly myCrewDueTotal = input.required<string>();
+  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
+  readonly watchedDueTotal = input.required<string>();
 
   /** How many REVIEW claims are assigned to the signed-in user to review. */
   protected readonly myReviewsCount = computed(() => {

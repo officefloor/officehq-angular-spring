@@ -81,6 +81,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
+      [watchedDueTotal]="watchedDueTotal()"
     />
     <section aria-label="Consolidated figures" data-testid="consolidated" class="consolidated">
       <span>Over this sheet and the sheets below it:</span>
@@ -1358,6 +1359,12 @@ export class People {
     if (led.length === 0) return '';
     const due = this.dueCentsById();
     return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));
+  });
+  /** The due-totals of the people the signed-in user watches, added up (n/a ones skipped); 0.00 when
+   *  they watch no one. */
+  protected readonly watchedDueTotal = computed(() => {
+    const due = this.dueCentsById();
+    return money([...this.watched()].reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
   });
   /** The ids of the people a restricted user may see listed: the person with their name and the leads
    *  and members of every crew that person leads or belongs to; none when there is no such person.
