@@ -1,0 +1,99 @@
+package net.officefloor.hq.app.statement;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class StatementService {
+
+    /** A person's statements: how many were taken, and the last one (none when none was). */
+    public record Summary(long personId, int count, Statement last) {
+    }
+
+    /** A statement just taken: the person's summary after it, and their claims as it bound them, newest first. */
+    public record Taken(Summary summary, List<Claim> claims) {
+    }
+
+    private final StatementRepository statements;
+    private final PersonRepository people;
+    private final ClaimRepository claims;
+    private final ClaimService claimService;
+    private final RateService rates;
+    private final SheetService sheets;
+    private final Audit audit;
+
+    public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+            ClaimService claimService, RateService rates, SheetService sheets, Audit audit) {
+        this.statements = statements;
+        this.people = people;
+        this.claims = claims;
+        this.claimService = claimService;
+        this.rates = rates;
+        this.sheets = sheets;
+        this.audit = audit;
+    }
+
+    /** The statement summary of each person on the sheet who has had a statement taken. */
+    @Transactional(readOnly = true)
+    public List<Summary> list(String sheetId) {
+        Map<Long, Summary> by = new LinkedHashMap<>();
+        for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+            Summary was = by.get(s.getPersonId());
+            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
+        }
+        return List.copyOf(by.values());
+    }
+
+    /** Take the person's statement: record their due-total now, bind each of their counting claims to
+     *  the figure it shows now, and leave every other claim of theirs unbound. */
+    @Transactional
+    public Taken take(String sheetId, String user, long personId) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        LocalDate today = sheets.today(sheetId);
+        List<Claim> theirs = claims.findForStatement(sheetId, personId);
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean keptFigure = false;
+        int counting = 0;
+        for (Claim claim : theirs) {
+            if (!counts(claim)) {
+                claim.unbind();
+                continue;
+            }
+            counting++;
+            BigDecimal figure = claimService.figure(sheetId, person, claim);
+            if (figure != null) total = total.add(figure);
+            if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) keptFigure = true;
+            claim.bind(figure);
+        }
+        // As the screen shows it: n/a when no rate of the grade is in force today and no claim keeps a figure.
+        BigDecimal dueTotal = rates.inForce(sheetId, person.getGrade(), today) == null && !keptFigure ? null : total;
+        claims.saveAllAndFlush(theirs);
+        statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, user));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counting);
+        List<Statement> all = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        return new Taken(new Summary(personId, all.size(), all.get(all.size() - 1)), theirs);
+    }
+
+    /** Only open and settled claims count toward what is claimed and due. */
+    private static boolean counts(Claim claim) {
+        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED;
+    }
+}

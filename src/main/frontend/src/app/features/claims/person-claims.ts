@@ -39,6 +39,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -88,7 +89,8 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  /** What is due on the claim: the figure fixed when it was settled, else at the person's grade's
+  /** What is due on the claim: the figure fixed when it was settled, else the figure its person's
+   *  last statement bound it to, else at the person's grade's
    *  rate in force on the claim's date, or n/a when the claim is dated before every rate of the grade. */
   protected due(claim: ClaimView): string {
     const due = claimDueCents(claim, this.rates());

@@ -29,15 +29,17 @@ public class ClaimController {
 
     /** What the screen shows of a claim; the amount always has two decimals. The settled due is the
      *  due fixed when the claim was settled, or null when its due is live. Opened by is who opened
-     *  the claim, or null when it was never opened. */
+     *  the claim, or null when it was never opened. Stated is whether the person's last statement bound
+     *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue,
-            String openedBy) {
-        static ClaimView of(Claim claim) {
+            String openedBy, boolean stated, String statedDue) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
         }
     }
 

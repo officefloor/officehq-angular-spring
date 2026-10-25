@@ -80,7 +80,7 @@ public class ClaimService {
         if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
         // A void claim keeps no number; the number it had is never given to another claim.
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
-        if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow(sheetId, person, claim));
+        if (next == ClaimStatus.SETTLED) claim.setSettledDue(figure(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
         if (next == ClaimStatus.SETTLED) {
@@ -98,6 +98,14 @@ public class ClaimService {
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+    }
+
+    /** The figure the claim shows and totals now: the due fixed when it was settled, else the figure
+     *  its person's last statement bound it to, else its live due; null when that is n/a. */
+    public BigDecimal figure(String sheetId, Person person, Claim claim) {
+        if (claim.getSettledDue() != null) return claim.getSettledDue();
+        if (claim.isStated()) return claim.getStatedDue();
+        return dueNow(sheetId, person, claim);
     }
 
     /** What is due on the claim now at its person's grade's rate in force on the claim's date, rounded

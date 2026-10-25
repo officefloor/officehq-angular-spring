@@ -2,15 +2,17 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, cents, claimDueCents, counts, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, cents, claimDueCents, counts, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
+import { StatementView, StatementsApi } from '../statements/statements-api';
 import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
-// due-total, and the sheet's rates.
+// due-total, and the sheet's rates. Each person's statement button records their due-total and binds
+// their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims, Rates],
@@ -42,7 +44,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of people(); track p.id) {
@@ -51,6 +53,16 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
                 <td data-testid="person-grade">{{ p.grade }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+                <td>
+                  <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+                  taken; last <span data-testid="person-stated-total">{{ statementOf(p.id)?.lastDueTotal ?? '' }}</span>
+                  on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span>
+                  <button type="button" data-testid="person-statement" (click)="takeStatement(p)"
+                    [disabled]="stating() === p.id" [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                  @if (personError()?.id === p.id) {
+                    <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                  }
+                </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
                     [rates]="ratesOf(p.grade)"
@@ -73,6 +85,7 @@ export class People {
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
+  private readonly statementsApi = inject(StatementsApi);
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -106,6 +119,12 @@ export class People {
     for (const p of this.people()) total += this.dueCentsOf(p) ?? 0;
     return money(total);
   });
+  /** The statements of each person who has had one taken, by person. */
+  protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
+  /** The person whose statement is being taken. */
+  protected readonly stating = signal<number | null>(null);
+  /** The refusal of the last action taken on a person's row, shown on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -121,15 +140,19 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.statements.set(new Map());
+      this.personError.set(null);
       if (sheet) void this.reload(sheet.id);
     });
   }
 
   private async reload(sheetId: string): Promise<void> {
     try {
-      const [people, claims, rates] = await Promise.all([
-        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId)]);
+      const [people, claims, rates, statements] = await Promise.all([
+        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId),
+        this.statementsApi.list(sheetId)]);
       if (this.session.sheet()?.id === sheetId) {
+        this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.rates.set(rates);
         this.claims.set(claims);
         this.people.set(people);
@@ -141,6 +164,31 @@ export class People {
 
   protected claimsOf(personId: number): ClaimView[] {
     return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  protected statementOf(personId: number): StatementView | undefined {
+    return this.statements().get(personId);
+  }
+
+  /** Take the person's statement, then show it and their claims as it bound them. */
+  protected async takeStatement(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.stating() !== null) return;
+    this.personError.set(null);
+    this.stating.set(person.id);
+    try {
+      const taken = await this.statementsApi.take(sheet.id, person.id);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const bound = new Map(taken.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => bound.get(c.id) ?? c));
+      this.statements.update((by) => new Map(by).set(person.id, taken.statement));
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
+      }
+    } finally {
+      this.stating.set(null);
+    }
   }
 
   /** The sum of the person's open and settled claims, with two decimals. */
@@ -160,7 +208,7 @@ export class People {
   }
 
   /** The sum of the figures due on the person's open and settled claims, in cents; null (n/a) when no
-   *  rate of their grade is in force today and none of their settled claims keeps a figure. */
+   *  rate of their grade is in force today and none of their claims keeps a figure. */
   private dueCentsOf(person: PersonView): number | null {
     const gradeRates = this.ratesOf(person.grade);
     let total = 0;
@@ -169,13 +217,13 @@ export class People {
       if (!counts(c)) continue;
       const due = claimDueCents(c, gradeRates);
       if (due !== null) total += due;
-      if (c.settledDue !== null) keptFigure = true;
+      if (keepsFigure(c)) keptFigure = true;
     }
     return this.rateOf(person.grade) === null && !keptFigure ? null : total;
   }
 
   /** The person's due-total with two decimals, or n/a when no rate of their grade is in force today
-   *  and no settled claim keeps a figure. */
+   *  and no claim keeps a figure (settled, or bound by a statement). */
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);
@@ -202,6 +250,7 @@ export class People {
   }
 
   protected edit(person: PersonView): void {
+    this.personError.set(null);
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.error.set('');

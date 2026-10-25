@@ -26,6 +26,10 @@ export interface ClaimView {
   settledDue: string | null;
   /** Who opened the claim; null when it was never opened. */
   openedBy: string | null;
+  /** Whether the person's last statement bound the claim to a figure. */
+  stated: boolean;
+  /** The figure the last statement bound the claim to, with two decimals; null when unbound or n/a then. */
+  statedDue: string | null;
 }
 
 export interface ClaimForm {
@@ -33,6 +37,11 @@ export interface ClaimForm {
   /** null takes the sheet's today. */
   date: string | null;
   note: string;
+}
+
+/** Whether the claim keeps a figure whatever the rates: one fixed when it was settled, or bound by a statement. */
+export function keepsFigure(claim: ClaimView): boolean {
+  return claim.settledDue !== null || (claim.stated && claim.statedDue !== null);
 }
 
 /** An amount in whole cents, so sums of amounts are exact. */
@@ -45,10 +54,12 @@ export function money(total: number): string {
   return (total / 100).toFixed(2);
 }
 
-/** What is due on the claim, in cents: the figure fixed when it was settled, else at the rate of
- *  `gradeRates` (its person's grade's rates) in force on the claim's date; null when there is none. */
+/** What is due on the claim, in cents: the figure fixed when it was settled, else the figure its
+ *  person's last statement bound it to, else at the rate of `gradeRates` (its person's grade's rates)
+ *  in force on the claim's date; null when there is none. */
 export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[]): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateInForce(gradeRates, claim.date);
   return rate === null ? null : dueCents(cents(claim.amount), rate.pct);
 }

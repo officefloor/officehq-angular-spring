@@ -13,6 +13,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    /** The person's claims, locked until the transaction ends, so a statement binds them all at one moment. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Claim c where c.sheetId = :sheetId and c.personId = :personId order by c.id desc")
+    List<Claim> findForStatement(@Param("sheetId") String sheetId, @Param("personId") Long personId);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The claim, locked until the transaction ends, so two status changes cannot both pass. */

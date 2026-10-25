@@ -51,6 +51,14 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Whether the person's last statement bound the claim to a figure; it then shows stated due. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the last statement bound the claim to; none when unbound, or when it was n/a then. */
+    @Column(name = "stated_due", precision = 12, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -114,6 +122,26 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a figure (null: n/a) as a statement takes it. */
+    public void bind(BigDecimal figure) {
+        this.stated = true;
+        this.statedDue = figure;
+    }
+
+    /** Leave the claim unbound, its due live again. */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
     }
 
     /** Change the claim's amount, date and note; the amount is kept to two decimals. */
