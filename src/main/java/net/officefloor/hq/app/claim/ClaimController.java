@@ -31,18 +31,20 @@ public class ClaimController {
      *  the claim, or null when it was never opened. Stated is whether the person's last statement bound
      *  the claim; stated due is the figure it bound it to, or null when unbound or n/a then. Corrects is
      *  the number of the claim a correction corrects, or null when the claim is not a correction. The log is
-     *  its status log, oldest first. */
+     *  its status log, oldest first. Deferred until is the date the claim was last deferred until, or null when
+     *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
-            List<LogLineView> log) {
+            List<LogLineView> log, LocalDate deferredUntil) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList());
+                    claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
+                    claim.getDeferredUntil());
         }
     }
 
@@ -167,6 +169,17 @@ public class ClaimController {
     public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return ClaimView.of(service.resettle(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** The date a claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    /** Defer an open claim until a date after the sheet's today. */
+    @PostMapping("/claims/{id}/defer")
+    public ClaimView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid DeferForm form) {
+        return ClaimView.of(service.defer(sheetId.trim(), SignedInUser.name(user), id, form.until()));
     }
 
     /** The person a claim is moved to. */

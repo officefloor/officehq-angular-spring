@@ -81,6 +81,11 @@ public class Claim {
     @Column(name = "listed", nullable = false)
     private long listed;
 
+    /** The date the claim is deferred until: while the sheet's today is before it an OPEN claim counts
+     *  in no total, is not overdue, cannot be settled and no statement binds it; none when never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -200,6 +205,20 @@ public class Claim {
      *  binds a PENDING claim (its binding holds again should it be rejected). */
     public boolean isBound() {
         return stated && status != ClaimStatus.PENDING;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    /** Defer the claim until the date. */
+    public void deferUntil(LocalDate until) {
+        this.deferredUntil = until;
+    }
+
+    /** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date. */
+    public boolean isDeferredOn(LocalDate today) {
+        return deferredUntil != null && status == ClaimStatus.OPEN && today != null && today.isBefore(deferredUntil);
     }
 
     public BigDecimal getStatedDue() {

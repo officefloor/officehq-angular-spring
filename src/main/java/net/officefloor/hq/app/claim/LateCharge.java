@@ -20,10 +20,11 @@ public final class LateCharge {
     private LateCharge() {
     }
 
-    /** The late charge on the claim of the figure (null: n/a, and no charge) on the sheet's today. */
+    /** The late charge on the claim of the figure (null: n/a, and no charge) on the sheet's today; none
+     *  while the claim is deferred, as it is not overdue then. */
     public static BigDecimal of(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
             RoundingMode rounding) {
-        return claim.getStatus().isOpen() ? asOpen(claim, figure, today, latePct, rounding) : ZERO;
+        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) ? asOpen(claim, figure, today, latePct, rounding) : ZERO;
     }
 
     /** The late charge the claim of the figure would have on the sheet's today were it open. */

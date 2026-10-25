@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, cents, claimOwedCents, counts, isBound, isDeferred, isOpen, isOverdue, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -451,9 +451,10 @@ export class People {
   }
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
-   *  except open claims dated within a hold of their person that no statement binds. */
+   *  except open claims dated within a hold of their person that no statement binds, and claims
+   *  deferred on the sheet's today. */
   private countsLive(claim: ClaimView): boolean {
-    return counts(claim) && !(isOpen(claim) && !isBound(claim)
+    return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
       && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date));
   }
 

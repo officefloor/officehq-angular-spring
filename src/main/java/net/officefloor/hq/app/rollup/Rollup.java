@@ -99,7 +99,7 @@ public class Rollup {
             boolean keptFigure = false;
             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
             for (Claim claim : theirs) {
-                if (!counts(person, claim)) continue;
+                if (!counts(person, claim, today)) continue;
                 claimed = claimed.add(claim.getAmount());
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
@@ -147,16 +147,18 @@ public class Rollup {
         }
     }
 
-    /** Whether the claim is overdue: open, with its due-by before the sheet's today. */
+    /** Whether the claim is overdue: open and not deferred, with its due-by before the sheet's today. */
     private static boolean isOverdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today);
+        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null && claim.getDueBy().isBefore(today);
     }
 
     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's
-     *  open claims dated within one of their holds do not, unless a statement binds them. */
-    private static boolean counts(Person person, Claim claim) {
+     *  open claims dated within one of their holds do not, unless a statement binds them; nor does a
+     *  claim deferred on the sheet's today. */
+    private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
+                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
+                        && (claim.isBound() || !person.isHeldOn(claim.getDate())));
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,

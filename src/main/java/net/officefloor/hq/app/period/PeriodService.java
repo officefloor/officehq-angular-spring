@@ -83,7 +83,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures of the open and settled claims
-     *  dated in it, skipping those that are n/a and the unbound open claims dated within a hold of their person. Refused when the period is already closed. */
+     *  dated in it, skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. Refused when the period is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -95,6 +95,7 @@ public class PeriodService {
         }
         Map<Long, Person> peopleById = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+        LocalDate today = sheets.today(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         Map<Long, BigDecimal> personTotals = new HashMap<>();
         for (Long personId : peopleById.keySet()) personTotals.put(personId, BigDecimal.ZERO.setScale(2));
@@ -102,7 +103,8 @@ public class PeriodService {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
             boolean counts = claim.getStatus() == ClaimStatus.SETTLED
-                    || (claim.getStatus().isOpen() && (claim.isBound() || !person.isHeldOn(claim.getDate())));
+                    || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
+                            && (claim.isBound() || !person.isHeldOn(claim.getDate())));
             if (!counts || !period.contains(claim.getDate())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) {

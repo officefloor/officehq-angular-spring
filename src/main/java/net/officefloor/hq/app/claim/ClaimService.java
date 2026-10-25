@@ -114,6 +114,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then.");
+        }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it.");
@@ -137,6 +141,31 @@ public class ClaimService {
         } else {
             recordChange(event, user, person, saved, number, "");
         }
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the
+     *  claim counts in no total, is not overdue, cannot be settled and no statement binds it. Refused for
+     *  a claim that is not OPEN, a date not after today, and a claim dated inside a closed period. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long id, LocalDate until) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred; only an OPEN one can.");
+        }
+        if (!until.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim can only be deferred to a date after the sheet's today.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.deferUntil(until);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_DEFERRED", user, person, saved, saved.getNumber(), " until=" + until);
         rollup.recordChanges(user, before);
         return saved;
     }

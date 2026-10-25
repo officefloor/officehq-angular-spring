@@ -33,6 +33,12 @@ export function isBound(claim: ClaimView): boolean {
   return claim.stated && claim.status !== 'PENDING';
 }
 
+/** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date.
+ *  A deferred claim counts in no total, is not overdue, cannot be settled and no statement binds it. */
+export function isDeferred(claim: ClaimView, today: string | undefined): boolean {
+  return claim.deferredUntil !== null && claim.status === 'OPEN' && today !== undefined && today < claim.deferredUntil;
+}
+
 /** Only open (PENDING included) and settled claims count toward what is claimed and due. */
 export function counts(claim: ClaimView): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';
@@ -65,6 +71,8 @@ export interface ClaimView {
   dueBy: string;
   /** The claim's status log, oldest first: a line for each status it has had. */
   log: ClaimLogLine[];
+  /** yyyy-mm-dd: the date the claim was last deferred until; null when it never was. */
+  deferredUntil: string | null;
 }
 
 /** A line of a claim's status log: the status, who gave it, the sheet's today then (yyyy-mm-dd), and
@@ -155,9 +163,9 @@ function epochDay(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
-/** Whether the claim is overdue: open, with its due-by before the sheet's today. */
+/** Whether the claim is overdue: open and not deferred, with its due-by before the sheet's today. */
 export function isOverdue(claim: ClaimView, today: string | undefined): boolean {
-  return isOpen(claim) && today !== undefined && claim.dueBy < today;
+  return isOpen(claim) && !isDeferred(claim, today) && today !== undefined && claim.dueBy < today;
 }
 
 /** The days a claim must be overdue for each step of the late charge. */
@@ -218,6 +226,12 @@ export class ClaimsApi {
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' ? { reason: reason ?? '' } : {};
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));
+  }
+
+  /** Defer an open claim until a date after the sheet's today: refused for a claim that is not OPEN,
+   *  a date not after today, and a claim dated inside a closed period. */
+  defer(sheetId: string, id: number, until: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/defer`, { until }));
   }
 
   /** Move a draft, open or pending claim to another person, as their newest claim: refused (403) to
