@@ -4,6 +4,8 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { ClaimView, ClaimsApi, cents, claimDueCents, counts, keepsFigure, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
+import { Periods } from '../periods/periods';
+import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { StatementView, StatementsApi } from '../statements/statements-api';
@@ -11,14 +13,15 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
-// due-total, and the sheet's rates. Each person's statement button records their due-total and binds
+// due-total, the sheet's rates, and its periods with the due-total of the counting claims dated in each. Each person's statement button records their due-total and binds
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods],
   template: `
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" />
       <section aria-labelledby="people-heading">
         <h2 id="people-heading">People</h2>
         <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
@@ -65,7 +68,7 @@ import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
                 </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
-                    [rates]="ratesOf(p.grade)"
+                    [rates]="ratesOf(p.grade)" [periods]="periods()"
                     (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
                 </td>
                 <td>
@@ -86,6 +89,7 @@ export class People {
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly statementsApi = inject(StatementsApi);
+  private readonly periodsApi = inject(PeriodsApi);
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -119,6 +123,23 @@ export class People {
     for (const p of this.people()) total += this.dueCentsOf(p) ?? 0;
     return money(total);
   });
+  /** The sheet's periods in date order. */
+  protected readonly periods = signal<PeriodView[]>([]);
+  /** Each period's due-total, by period id: the figures of the counting claims dated in it, skipping
+   *  those that are n/a. */
+  protected readonly periodDueTotals = computed(() => {
+    const cents = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+    for (const c of this.claims()) {
+      if (!counts(c)) continue;
+      const period = periodOf(this.periods(), c.date);
+      const grade = gradeOf.get(c.personId);
+      if (period === null || grade === undefined) continue;
+      const due = claimDueCents(c, this.ratesOf(grade));
+      if (due !== null) cents.set(period.id, (cents.get(period.id) ?? 0) + due);
+    }
+    return new Map([...cents].map(([id, total]) => [id, money(total)]));
+  });
   /** The statements of each person who has had one taken, by person. */
   protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
   /** The person whose statement is being taken. */
@@ -140,6 +161,7 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.periods.set([]);
       this.statements.set(new Map());
       this.personError.set(null);
       if (sheet) void this.reload(sheet.id);
@@ -148,12 +170,13 @@ export class People {
 
   private async reload(sheetId: string): Promise<void> {
     try {
-      const [people, claims, rates, statements] = await Promise.all([
+      const [people, claims, rates, statements, periods] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId),
-        this.statementsApi.list(sheetId)]);
+        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId)]);
       if (this.session.sheet()?.id === sheetId) {
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.rates.set(rates);
+        this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);
       }
@@ -233,6 +256,11 @@ export class People {
     // Kept as the store lists them: in grade order, then the rate from the start, then by from-date.
     this.rates.update((list) => [...list.filter((r) => !sameRate(r, rate)), rate]
       .sort((a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
+  }
+
+  protected periodAdded(period: PeriodView): void {
+    // Kept as the store lists them: in date order.
+    this.periods.update((list) => [...list, period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 
   protected claimAdded(claim: ClaimView): void {

@@ -2,6 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { PeriodView, periodOf } from '../periods/periods-api';
 import { RateView } from '../rates/rates-api';
 import { ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
 
@@ -40,6 +41,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -69,6 +71,8 @@ export class PersonClaims {
   readonly claims = input.required<ClaimView[]>();
   /** The rates of the person's grade, whatever their from-dates. */
   readonly rates = input.required<RateView[]>();
+  /** The sheet's periods in date order. */
+  readonly periods = input.required<PeriodView[]>();
   readonly added = output<ClaimView>();
   readonly saved = output<ClaimView>();
   /** A claim whose status changed. */
@@ -95,6 +99,11 @@ export class PersonClaims {
   protected due(claim: ClaimView): string {
     const due = claimDueCents(claim, this.rates());
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** The name of the period whose dates contain the claim's date, or blank when none does. */
+  protected periodName(claim: ClaimView): string {
+    return periodOf(this.periods(), claim.date)?.name ?? '';
   }
 
   protected fieldId(field: string): string {
