@@ -1,0 +1,122 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 40b4e433..324d6448 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -694,7 +694,7 @@ public class ClaimService {
+ 
+     /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
+      *  today on or after the setting's date), the next of the claim's period (the one its due-by falls in), <period name>-<n>, or of
+-     *  claims in no period, X-<n>; otherwise the sheet's next sheet-wide number. */
++     *  claims in no period, X-<n> (each per sheet); otherwise the next number of the sequence the sheets of its tree share. */
+     public String nextNumber(String sheetId, Claim claim) {
+         if (!isPeriodNumbering(sheetId)) {
+             return Integer.toString(sheets.nextClaimNumber(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index cc65efbd..c2fb022f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import jakarta.persistence.LockModeType;
++import java.util.Collection;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
+@@ -10,14 +11,14 @@ import org.springframework.data.repository.query.Param;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
+ 
+-    /** Count one more claim number given out; the sheet's row stays locked until the transaction ends. */
++    /** Set how many claim numbers the sheet has given out: its last number given. */
+     @Modifying(flushAutomatically = true)
+-    @Query("update Sheet s set s.claimNumbersUsed = s.claimNumbersUsed + 1 where s.id = :id")
+-    int takeClaimNumber(@Param("id") String id);
++    @Query("update Sheet s set s.claimNumbersUsed = :used where s.id = :id")
++    int setClaimNumbersUsed(@Param("id") String id, @Param("used") int used);
+ 
+-    /** How many claim numbers the sheet has given out. */
+-    @Query("select s.claimNumbersUsed from Sheet s where s.id = :id")
+-    int claimNumbersUsed(@Param("id") String id);
++    /** The last claim number given on any of the sheets; 0 when none has given one. */
++    @Query("select coalesce(max(s.claimNumbersUsed), 0) from Sheet s where s.id in :ids")
++    int lastClaimNumber(@Param("ids") Collection<String> ids);
+ 
+     /** Count one more settle batch; the sheet's row stays locked until the transaction ends. */
+     @Modifying(flushAutomatically = true)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 19a9a59e..c00c338d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,10 +2,18 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.Instant;
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.HashSet;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
++import net.officefloor.hq.app.setting.SheetParentLink;
++import net.officefloor.hq.app.setting.SheetParentRepository;
+ import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -23,9 +31,11 @@ public class SheetService {
+     private final Audit audit;
+     // The settings read the sheet's today, so they are looked up when needed rather than injected.
+     private final ObjectProvider<SettingService> settings;
++    private final SheetParentRepository parents;
+ 
+     public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events, Audit audit,
+-            ObjectProvider<SettingService> settings) {
++            ObjectProvider<SettingService> settings, SheetParentRepository parents) {
++        this.parents = parents;
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.events = events;
+@@ -88,14 +98,35 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The sheet's next claim number: 1 for its first opened claim, then 2, and so on. The sheet stays
+-     * locked until the transaction ends, so two claims opened at once never share a number.
++     * The sheet's next claim number, from the one sequence shared by the sheets of its tree (the sheet at
++     * its top, reached through the parents, and all that sheet's descendants): the next after the last
++     * number given on any sheet of the tree. The tree's top sheet stays locked until the transaction
++     * ends, so two claims opened at once anywhere in the tree never share a number.
+      */
+     @Transactional
+     public int nextClaimNumber(String id) {
+         load(id);
+-        sheets.takeClaimNumber(id);
+-        return sheets.claimNumbersUsed(id);
++        String top = id;
++        Set<String> up = new HashSet<>(List.of(id));
++        for (String parent = parentOf(top); parent != null && up.add(parent); parent = parentOf(parent)) {
++            top = parent;
++        }
++        sheets.findForUpdate(top);
++        Set<String> tree = new LinkedHashSet<>(List.of(top));
++        Deque<String> next = new ArrayDeque<>(tree);
++        while (!next.isEmpty()) {
++            for (SheetParentLink child : parents.findByParentId(next.pop())) {
++                if (tree.add(child.getSheetId())) next.add(child.getSheetId());
++            }
++        }
++        int number = sheets.lastClaimNumber(tree) + 1;
++        sheets.setClaimNumbersUsed(id, number);
++        return number;
++    }
++
++    /** The sheet's parent; null when it names none. */
++    private String parentOf(String id) {
++        return parents.findById(id).map(SheetParentLink::getParentId).orElse(null);
+     }
+ 
+     /**
