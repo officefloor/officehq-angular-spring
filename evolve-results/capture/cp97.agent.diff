@@ -1,0 +1,49 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f196f80e..2bc95529 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -99,6 +99,21 @@ import { PasteClaims } from '../claims/paste-claims';
+             </tbody>
+           </table>
+         }
++        @if (monthTotals().length > 0) {
++          <table aria-label="Due by month">
++            <thead>
++              <tr><th scope="col">Month</th><th scope="col">Due</th></tr>
++            </thead>
++            <tbody>
++              @for (m of monthTotals(); track m.month) {
++                <tr>
++                  <th scope="row">{{ m.month }}</th>
++                  <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        }
+         <p>
+           <button type="button" data-testid="bulk-open" (click)="openSelected()" [disabled]="bulkOpening()">
+             Open selected claims</button>
+@@ -423,6 +438,22 @@ export class People {
+     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+       .map(([tag, total]) => ({ tag, dueTotal: money(total) }));
+   });
++  /** For every calendar month (yyyy-mm) any claim on the sheet is dated in, sorted: the figures of the
++   *  claims dated in it that count added up, skipping those that are n/a. */
++  protected readonly monthTotals = computed(() => {
++    const totals = new Map<string, number>();
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    for (const c of this.claims()) {
++      const month = c.date.slice(0, 7);
++      if (!totals.has(month)) totals.set(month, 0);
++      const person = byId.get(c.personId);
++      if (person === undefined || !this.countsLive(c)) continue;
++      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
++      totals.set(month, totals.get(month)! + due);
++    }
++    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
++      .map(([month, total]) => ({ month, dueTotal: money(total) }));
++  });
+   /** Everyone's settled-total and open-total added up, not trimmed. */
+   protected readonly sheetSettledOpen = computed(() => {
+     let settled = 0;
