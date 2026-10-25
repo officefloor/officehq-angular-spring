@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -12,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.BusinessDays;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.holiday.HolidaysChanged;
+import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -738,6 +740,35 @@ public class ClaimService {
         if (rate == null) return null;
         return claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2,
                 rounding(sheetId, claim));
+    }
+
+    /** How many claims a candidate rate would change and by how much in all. */
+    public record RatePreview(int count, BigDecimal diff) {
+    }
+
+    /** What a candidate percent for a grade, applied on every date, would do to the OPEN and PENDING claims of
+     *  people on that grade on the claim's date: how many would show a different due, and the sum of new due
+     *  less current due (an n/a due counting as 0.00). A claim bound by a statement does not change; nothing is saved. */
+    @Transactional(readOnly = true)
+    public RatePreview previewRate(String sheetId, Grade grade, BigDecimal pct) {
+        Map<Long, Person> byId = new HashMap<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (!claim.getStatus().isOpen() || claim.isBound() || claim.getSettledDue() != null) continue;
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || person.gradeOn(claim.getDate()) != grade) continue;
+            RoundingMode rounding = rounding(sheetId, claim);
+            BigDecimal figure = claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding);
+            BigDecimal next = LateCharge.dueOf(claim, figure, settings.floor(sheetId, claim.getDate()),
+                    sheets.today(sheetId), grace(sheetId, person, claim), settings.dated(sheetId)::latePctOn, rounding);
+            BigDecimal current = due(sheetId, person, claim);
+            if (current != null && current.compareTo(next) == 0) continue;
+            count++;
+            diff = diff.add(next.subtract(current == null ? BigDecimal.ZERO : current));
+        }
+        return new RatePreview(count, diff.setScale(2));
     }
 
     /** How the claim's live figures round under the sheet's policy date: by the date of the claim a

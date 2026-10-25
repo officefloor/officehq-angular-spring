@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Grade;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -39,10 +41,26 @@ public class RateController {
             LocalDate from, LocalDate to) {
     }
 
-    private final RateService service;
+    /** What a candidate rate would do: how many claims would show a different due, and the sum of
+     *  the differences with two decimals. */
+    public record PreviewView(int count, String diff) {
+    }
 
-    public RateController(RateService service) {
+    private final RateService service;
+    private final ClaimService claims;
+
+    public RateController(RateService service, ClaimService claims) {
         this.service = service;
+        this.claims = claims;
+    }
+
+    /** Preview a candidate percent for a grade on every date against the sheet's OPEN and PENDING
+     *  claims; nothing is saved and nothing is audited. */
+    @GetMapping("/{grade}/preview")
+    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
+            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal pct) {
+        ClaimService.RatePreview preview = claims.previewRate(sheetId.trim(), grade, pct);
+        return new PreviewView(preview.count(), preview.diff().toPlainString());
     }
 
     /** The sheet's rates in grade order, then by from-date; a grade with no rate is left out. */

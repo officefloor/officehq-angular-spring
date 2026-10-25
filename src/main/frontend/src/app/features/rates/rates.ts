@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, input, output, signal } from '@ang
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { GRADES, Grade } from '../people/people-api';
-import { RateView, RatesApi, rateInForce } from './rates-api';
+import { RatePreview, RateView, RatesApi, rateInForce } from './rates-api';
 
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,6 +31,26 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
+        <label for="rate-preview-grade">Grade</label>
+        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" />
+        <button type="submit" data-testid="rate-preview" [disabled]="previewing()">Preview</button>
+        @if (previewError()) {
+          <p role="alert" data-testid="rate-preview-error">{{ previewError() }}</p>
+        }
+        @if (previewed(); as p) {
+          <p aria-live="polite">
+            Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
+            difference in due: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
         }
       </form>
       <table aria-label="Rates in force today">
@@ -80,13 +100,22 @@ export class Rates {
   protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from, to: this.to });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly previewGrade = new FormControl<Grade>('A', { nonNullable: true });
+  protected readonly previewPct = new FormControl('', { nonNullable: true });
+  protected readonly previewForm = new FormGroup({ grade: this.previewGrade, pct: this.previewPct });
+  protected readonly previewing = signal(false);
+  protected readonly previewError = signal('');
+  protected readonly previewed = signal<RatePreview | null>(null);
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
-    // Each load of a sheet starts the form without the error from the last one.
+    this.previewForm.valueChanges.subscribe(() => this.previewError.set(''));
+    // Each load of a sheet starts the forms without the error or preview from the last one.
     effect(() => {
       this.session.loaded();
       this.error.set('');
+      this.previewError.set('');
+      this.previewed.set(null);
     });
   }
 
@@ -135,6 +164,34 @@ export class Rates {
       this.error.set('The rate could not be set.');
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** Show what the candidate rate would do to the grade's open claims; nothing is saved. The last
+   *  result is cleared while the preview runs, so two equal results are still told apart. */
+  protected async preview(): Promise<void> {
+    if (this.previewing()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.previewError.set('');
+    this.previewed.set(null);
+    const { grade, pct } = this.previewForm.getRawValue();
+    if (!GRADES.includes(grade)) {
+      this.previewError.set('Choose a grade of A, B or C.');
+      return;
+    }
+    if (!PCT.test(pct.trim())) {
+      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.previewing.set(true);
+    try {
+      const result = await this.api.preview(sheet.id, grade, pct.trim());
+      if (this.session.sheet()?.id === sheet.id) this.previewed.set(result);
+    } catch {
+      this.previewError.set('The rate could not be previewed.');
+    } finally {
+      this.previewing.set(false);
     }
   }
 }

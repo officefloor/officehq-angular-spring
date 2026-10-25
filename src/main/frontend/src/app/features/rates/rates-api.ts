@@ -43,6 +43,13 @@ export function dueCents(amountCents: number, pct: string, halfUp = false): numb
   return Number(whole * sign);
 }
 
+/** What a candidate rate would do: how many claims would show a different due, and the sum of the
+ *  differences (new due less current due) with two decimals. */
+export interface RatePreview {
+  count: number;
+  diff: string;
+}
+
 // The sheet's rates per grade, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class RatesApi {
@@ -61,5 +68,10 @@ export class RatesApi {
    *  (null: until the grade's next rate), replacing the one it had for that from-date. */
   set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
+  }
+
+  /** Preview the grade's candidate percent on every date; nothing is saved. */
+  preview(sheetId: string, grade: Grade, pct: string): Promise<RatePreview> {
+    return firstValueFrom(this.http.get<RatePreview>(`${this.url(sheetId)}/${grade}/preview`, { params: { pct } }));
   }
 }
