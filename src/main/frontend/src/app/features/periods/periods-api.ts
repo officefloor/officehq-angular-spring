@@ -11,7 +11,9 @@ export interface PeriodView {
   to: string;
   /** Whether the period is closed: no claim dated in it can then change. */
   closed: boolean;
-  /** The due-total fixed when the period was closed, with two decimals; null while it is open. */
+  /** Whether the period is soft-closed: its figures are fixed, but claims dated in it can still change. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed, with two decimals; null while it is open. */
   closedTotal: string | null;
   /** Each person's due-total fixed when the period was closed, with two decimals, by person id; empty
    *  while it is open. A person missing from it (added after the close) has 0.00. */
@@ -61,8 +63,14 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/close`, {}));
   }
 
-  /** Reopen a closed period, making its due-total live again: refused unless the user is a steward
-   *  and the period is closed. */
+  /** Soft-close a period, fixing its figures while its claims can still change: refused when it is
+   *  closed or soft-closed already. */
+  softClose(sheetId: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/soft-close`, {}));
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again: refused unless the user
+   *  is a steward and the period is closed or soft-closed. */
   reopen(sheetId: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/reopen`, {}));
   }

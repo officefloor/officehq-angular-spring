@@ -20,4 +20,9 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     @Query("select count(p) > 0 from Period p where p.sheetId = :sheetId and p.closed = true"
             + " and p.from <= :date and p.to >= :date")
     boolean isClosedOn(@Param("sheetId") String sheetId, @Param("date") LocalDate date);
+
+    /** Whether the date falls within one of the sheet's soft-closed periods. */
+    @Query("select count(p) > 0 from Period p where p.sheetId = :sheetId and p.softClosed = true"
+            + " and p.from <= :date and p.to >= :date")
+    boolean isSoftClosedOn(@Param("sheetId") String sheetId, @Param("date") LocalDate date);
 }

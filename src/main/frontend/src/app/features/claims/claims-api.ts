@@ -85,6 +85,8 @@ export interface ClaimView {
   proofs: number;
   /** The number of the claim this one was split off from; null when it was not split off. */
   splitFrom: string | null;
+  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */

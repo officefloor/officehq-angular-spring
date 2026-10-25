@@ -7,7 +7,7 @@ import { PeriodView, PeriodsApi } from './periods-api';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's periods in date order, each with the due-total of the counting claims dated in it
-// (fixed once the period is closed) and whether it is closed, with one form to add a period.
+// (fixed once the period is closed or soft-closed) and whether it is closed (or soft-closed), with one form to add a period.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -50,10 +50,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-soft-close" (click)="close(p, true)"
+                  [disabled]="closing() === p.id" [attr.aria-label]="'Soft-close period ' + p.name">Soft-close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (periodError()?.id === p.id) {
@@ -144,14 +146,15 @@ export class Periods {
     }
   }
 
-  /** Close a period, fixing its due-total; the store refuses one already closed. */
-  protected async close(period: PeriodView): Promise<void> {
+  /** Close (or soft-close) a period, fixing its due-total; the store refuses one already closed, and a
+   *  soft close of one already soft-closed. */
+  protected async close(period: PeriodView, soft = false): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.closing() !== null) return;
     this.periodError.set(null);
     this.closing.set(period.id);
     try {
-      const closed = await this.api.close(sheet.id, period.id);
+      const closed = soft ? await this.api.softClose(sheet.id, period.id) : await this.api.close(sheet.id, period.id);
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(closed);
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {

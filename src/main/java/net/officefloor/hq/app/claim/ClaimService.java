@@ -67,7 +67,8 @@ public class ClaimService {
         return person.getTerms() != null ? person.getTerms() : settings.terms(sheetId, person.gradeOn(date), date);
     }
 
-    /** Add a claim to a person; a claim with no date is dated the sheet's today. */
+    /** Add a claim to a person; a claim with no date is dated the sheet's today. A claim dated inside a
+     *  soft-closed period is a late entry, audited after its adding. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
@@ -82,9 +83,12 @@ public class ClaimService {
                 termsOf(sheetId, person, dated));
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
+        boolean late = periods.isSoftClosedOn(sheetId, dated);
+        if (late) claim.markLateEntry();
         claim = claims.saveAndFlush(claim);
         logStatus(sheetId, user, person, claim);
         recordChange("CLAIM_ADDED", user, person, claim);
+        if (late) recordChange("LATE_ENTRY", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
     }

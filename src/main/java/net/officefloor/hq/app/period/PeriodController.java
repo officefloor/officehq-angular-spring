@@ -26,15 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
-     *  it is closed and, once closed, the due-total fixed then (null while open) and each person's
+     *  it is closed, whether it is soft-closed and, once closed or soft-closed, the due-total fixed then (null while open) and each person's
      *  due-total fixed then, by person id (empty while open). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
-                    period.isClosed(),
+                    period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
                     personTotals);
         }
@@ -86,7 +86,14 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId.trim(), SignedInUser.name(user), id));
     }
 
-    /** Reopen a closed period, making its due-total live again; a steward only. */
+    /** Soft-close a period, fixing its figures while its claims can still change. */
+    @PostMapping("/{id}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.softClose(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** Reopen a closed or soft-closed period, making its due-total live again; a steward only. */
     @PostMapping("/{id}/reopen")
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {

@@ -300,7 +300,7 @@ export class People {
   /** The sheet's periods in date order. */
   protected readonly periods = signal<PeriodView[]>([]);
   /** Each person's due-total for each period, in cents, by person id then period id: the figures as
-   *  shown now of their claims dated in it that counted at the end of its last day (countsAt), skipping those that are n/a; for a closed period, the figure
+   *  shown now of their claims dated in it that counted at the end of its last day (countsAt), skipping those that are n/a; for a closed or soft-closed period, the figure
    *  fixed when it was closed (0 for a person added since). */
   private readonly personPeriodCents = computed(() => {
     const by = new Map<number, Map<number, number>>(
@@ -309,12 +309,12 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (period === null || period.closed || person === undefined || !this.countsAt(c, period.to)) continue;
+      if (period === null || period.closed || period.softClosed || person === undefined || !this.countsAt(c, period.to)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       const of = by.get(person.id)!;
       if (due !== null) of.set(period.id, (of.get(period.id) ?? 0) + due);
     }
-    for (const period of this.periods().filter((q) => q.closed)) {
+    for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
       for (const [id, of] of by) of.set(period.id, cents(period.closedPersonTotals[id] ?? '0.00'));
     }
     return by;
