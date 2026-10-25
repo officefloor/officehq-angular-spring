@@ -1,0 +1,369 @@
+diff --git a/src/main/frontend/src/app/features/people/claims.ts b/src/main/frontend/src/app/features/people/claims.ts
+index e9c8e5af..0e5555ea 100644
+--- a/src/main/frontend/src/app/features/people/claims.ts
++++ b/src/main/frontend/src/app/features/people/claims.ts
+@@ -776,7 +776,7 @@ export class Claims {
+           : e instanceof HttpErrorResponse && e.status === 423
+           ? 'That claim is dated in a closed period.'
+           : e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && claim.status === 'DRAFT'
+-          ? 'Its person already has as many open claims in that claim\'s period as the period allows.'
++          ? 'Its person already has as many open claims as the sheet, or that claim\'s period, allows.'
+           : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+           ? 'Choose a reason from the sheet\'s list to void that claim.'
+           : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
+diff --git a/src/main/frontend/src/app/features/people/settings.service.ts b/src/main/frontend/src/app/features/people/settings.service.ts
+index 5ec48c71..3f63dc7c 100644
+--- a/src/main/frontend/src/app/features/people/settings.service.ts
++++ b/src/main/frontend/src/app/features/people/settings.service.ts
+@@ -101,6 +101,8 @@ export interface SheetSettings {
+   scoreLog?: boolean;
+   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
+   reviewSla: number | null;
++  /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
++  maxOpen?: number | null;
+   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
+    *  or approved, comma separated; null when none are listed. */
+   proofKinds: string | null;
+@@ -351,6 +353,13 @@ export class SettingsService {
+     );
+   }
+ 
++  /** A null value means no maximum of open claims per person. */
++  setMaxOpen(sheet: string, value: string | null): Promise<SheetSettings> {
++    return firstValueFrom(
++      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/max-open`, { value }, { headers: this.session.headers() }),
++    );
++  }
++
+   /** A null value means no review SLA. */
+   setReviewSla(sheet: string, value: string | null): Promise<SheetSettings> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/settings.ts b/src/main/frontend/src/app/features/people/settings.ts
+index 78aa689a..de2d634e 100644
+--- a/src/main/frontend/src/app/features/people/settings.ts
++++ b/src/main/frontend/src/app/features/people/settings.ts
+@@ -492,6 +492,21 @@ const STANDING: Record<PermAction, string> = {
+             (none)
+           }
+         </span>
++        <label for="setting-max-open">Max open claims per person</label>
++        <input
++          id="setting-max-open"
++          data-testid="setting-max-open"
++          inputmode="numeric"
++          [value]="maxOpenInput()"
++          (input)="maxOpenInput.set(value($event)); maxOpenChanged = true; settingsError.set(null)"
++          (keydown)="maxOpenChanged = true"
++        />
++        <span>
++          In force: <span data-testid="setting-max-open-current">{{ (maxOpen() ?? '') | figure }}</span>
++          @if (maxOpen() === null) {
++            (none)
++          }
++        </span>
+         <label for="setting-entry-date">Entry date</label>
+         <input
+           id="setting-entry-date"
+@@ -737,6 +752,8 @@ export class Settings {
+   protected readonly defaultGrade = signal<string | null>(null);
+   /** The review SLA as set, as text; null when there is none. */
+   protected readonly reviewSla = signal<string | null>(null);
++  /** The most OPEN or PENDING claims a person may have, as text; null when there is no maximum. */
++  protected readonly maxOpen = signal<string | null>(null);
+   protected readonly pot = signal<string | null>(null);
+   /** The alert threshold as set; null when it is off. */
+   protected readonly alertThreshold = signal<string | null>(null);
+@@ -772,6 +789,7 @@ export class Settings {
+   protected readonly proofKindsInput = signal('');
+   protected readonly defaultGradeInput = signal('');
+   protected readonly reviewSlaInput = signal('');
++  protected readonly maxOpenInput = signal('');
+   protected readonly potInput = signal('');
+   protected readonly alertThresholdInput = signal('');
+   protected readonly fiscalStartMonthInput = signal('');
+@@ -817,6 +835,7 @@ export class Settings {
+   protected proofKindsChanged = false;
+   protected defaultGradeChanged = false;
+   protected reviewSlaChanged = false;
++  protected maxOpenChanged = false;
+   protected potChanged = false;
+   protected alertThresholdChanged = false;
+   protected fiscalStartMonthChanged = false;
+@@ -900,6 +919,9 @@ export class Settings {
+       this.reviewSlaInput.set('');
+       this.escalateAfterChanged = false;
+       this.reviewSlaChanged = false;
++      this.maxOpen.set(null);
++      this.maxOpenInput.set('');
++      this.maxOpenChanged = false;
+       this.scoreMid.set(null);
+       this.scoreHigh.set(null);
+       this.scoreMidInput.set('');
+@@ -1067,6 +1089,8 @@ export class Settings {
+     const reviewSla = this.reviewSlaInput().trim();
+     const saveEscalateAfter = this.escalateAfterChanged || escalateAfter !== (this.escalateAfter() ?? '');
+     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
++    const maxOpen = this.maxOpenInput().trim();
++    const saveMaxOpen = this.maxOpenChanged || maxOpen !== (this.maxOpen() ?? '');
+     const scoreMid = this.scoreMidInput().trim();
+     const saveScoreMid = this.scoreMidChanged || scoreMid !== (this.scoreMid() ?? '');
+     const scoreHigh = this.scoreHighInput().trim();
+@@ -1226,6 +1250,10 @@ export class Settings {
+       this.settingsError.set('Type the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+       return;
+     }
++    if (saveMaxOpen && maxOpen !== '' && !TERMS.test(maxOpen)) {
++      this.settingsError.set('Type the maximum of open claims per person as a whole number, 0 or more, or leave it blank for none.');
++      return;
++    }
+     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
+       this.settingsError.set('Type the month the fiscal year starts in as a whole number from 1 to 12.');
+       return;
+@@ -1440,6 +1468,12 @@ export class Settings {
+         if (this.reviewSlaInput().trim() === reviewSla) this.reviewSlaChanged = false;
+         this.show(settings);
+       }
++      if (saveMaxOpen) {
++        const settings = await this.service.setMaxOpen(sheet, maxOpen || null);
++        if (this.session.sheetId() !== sheet) return;
++        if (this.maxOpenInput().trim() === maxOpen) this.maxOpenChanged = false;
++        this.show(settings);
++      }
+       if (saveFiscalStartMonth) {
+         const settings = await this.service.setFiscalStartMonth(sheet, fiscalStartMonth);
+         if (this.session.sheetId() !== sheet) return;
+@@ -1503,6 +1537,7 @@ export class Settings {
+       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
+       if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
+       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
++      if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
+       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
+       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
+       if (!this.alertThresholdChanged) this.alertThresholdInput.set(this.alertThreshold() ?? '');
+@@ -1584,6 +1619,7 @@ export class Settings {
+         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
+         if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
+         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
++        if (!this.maxOpenChanged) this.maxOpenInput.set(this.maxOpen() ?? '');
+         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
+         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
+         if (!this.alertThresholdChanged) this.alertThresholdInput.set(settings.alertThreshold ?? '');
+@@ -1667,6 +1703,7 @@ export class Settings {
+     this.scoreHigh.set(settings.scoreHigh == null ? null : String(settings.scoreHigh));
+     this.scoreLog.set(settings.scoreLog ?? false);
+     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
++    this.maxOpen.set(settings.maxOpen == null ? null : String(settings.maxOpen));
+     this.proofKinds.set(settings.proofKinds ?? null);
+     this.defaultGrade.set(settings.defaultGrade ?? null);
+     this.entryDate.set(settings.entryDate ?? null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index 58a26a40..14f1274c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -173,7 +173,7 @@ public class ClaimBulkService {
+             try {
+                 changed.add(service.changeStatus(sheetId, user, claim.getId(), next));
+             } catch (ClaimStatusChangeException | ClaimPeriodClosedException | ClaimSelfSettleException | ClaimProofRequiredException | ClaimNoteRequiredException | ClaimNotFoundException | ClaimNotStewardException
+-                    | ClaimCapException | PersonNotFoundException e) {
++                    | ClaimCapException | ClaimMaxOpenException | PersonNotFoundException e) {
+                 refused++;
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimMaxOpenException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimMaxOpenException.java
+new file mode 100644
+index 00000000..6679d18a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimMaxOpenException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Opening a claim whose person already has as many OPEN or PENDING claims as the sheet's maximum allows. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimMaxOpenException extends RuntimeException {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e79d6b44..d308f251 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -400,6 +400,7 @@ public class ClaimService {
+         }
+         if (next == ClaimStatus.OPEN) refuseNoteless(claim, rollup.shownOf(claim, person));
+         if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
++        if (next == ClaimStatus.OPEN) refuseOverMaxOpen(sheetId, claim);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         String number = claim.getNumber();
+         if (next == ClaimStatus.OPEN && overReview(claim, person)) {
+@@ -969,6 +970,17 @@ public class ClaimService {
+     /** Refuse opening the claim when the period its due-by falls in caps its person's OPEN or PENDING
+      * claims in it, and they already have that many. The period is locked until the transaction ends,
+      * so two claims are never opened past its cap at once. */
++    /** Refuse opening the claim when its person already has the sheet's maximum of OPEN or PENDING claims. */
++    private void refuseOverMaxOpen(String sheetId, Claim claim) {
++        Integer max = settings.maxOpen(sheetId);
++        if (max == null) return;
++        long open = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
++                .filter(c -> !c.getId().equals(claim.getId()) && c.getPersonId().equals(claim.getPersonId())
++                        && c.getStatus().isOpen())
++                .count();
++        if (open >= max) throw new ClaimMaxOpenException();
++    }
++
+     private void refuseOverCap(String sheetId, Claim claim) {
+         LocalDate dueBy = claim.getDueBy();
+         Period capped = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetAsOf.java b/src/main/java/net/officefloor/hq/app/history/SheetAsOf.java
+index 211d72a9..a033cf7b 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetAsOf.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetAsOf.java
+@@ -185,6 +185,11 @@ public class SheetAsOf implements RollupService.Basis {
+         return sheet == null ? null : sheet.getReviewSla();
+     }
+ 
++    /** The most OPEN or PENDING claims a person could have at once; null when there was no maximum. */
++    public Integer maxOpen() {
++        return sheet == null ? null : sheet.getMaxOpen();
++    }
++
+     /** The grace days then; null when they were off. */
+     public Integer graceDays() {
+         return sheet == null ? null : sheet.getGraceDays();
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 7ef45c47..3b151026 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -42,13 +42,13 @@ public class SettingsController {
+         }
+     }
+ 
+-    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on. */
++    /** The sheet's settings; the floor is sent as text with two decimals; the cap is sent as text with two decimals, null when there is none; the clerk limit is sent as text with two decimals, null when there is none; the terms in days; the grades' own terms in days, by grade (a grade not in it uses the sheet's terms); the late percent as text with two decimals; the policy date as set, null when it is the sheet's today; the period numbering from, null when it is off. The clerk limit, the floor, the cap, the terms, the grades' own terms and the late percent are those in force on the sheet's today; every floor, late percent and cap recorded, each from its date, oldest first, follow (a claim's floor and late percent are those in force on its date; a cap recorded as none is null); the proof threshold in force on the sheet's today, as text with two decimals, null when there is none, follows; then the permission matrix as set, the roles that may take each action by action (open, settle, void, reassign, close, reopen), blank for its standing rule; then the grace days, null when they are off; then the note threshold in force on the sheet's today, as text with two decimals, null when there is none; then the entry date, null when it is off; then the grades' grace days in force on the sheet's today, in days, by grade (a grade not in it has none); then every grace recorded for each grade, each from its date, oldest first, by grade (a grace recorded as none is null); then the grades' own proof thresholds in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the pot, as text with two decimals, null when there is none; then the id of the parent sheet, null when there is none; then the fiscal start month, 1 to 12; then the alert threshold, as text with two decimals, null when it is off; then the rounding mode in force on the sheet's today (half-up or half-even), null when there is none; then every rounding mode recorded, each from its date, oldest first (one recorded as none is null); then the review threshold in force on the sheet's today, as text with two decimals, null when there is none; then the escalation gap in days, null when it is off; then the review SLA in days, null when there is none; then the proof kinds, comma separated, null when none are listed; then the default grade, null when it is A; then the grades' own clerk limits in force on the sheet's today, as text with two decimals, by grade (a grade not in it uses the sheet's); then the mid and the high score thresholds, each null when it is not set; then whether the score log is on; then the maximum of OPEN or PENDING claims per person, null when there is none. */
+     public record SettingsView(String clerkLimit, String floor, String cap, int terms, Map<String, Integer> gradeTerms, String latePct, LocalDate policyDate,
+             List<RoleView> roles, LocalDate periodNumberingFrom, List<DatedView> floors, List<DatedView> latePcts, List<DatedView> caps,
+             String proofThreshold, Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
+             Map<String, Integer> gradeGraces, Map<String, List<DatedView>> graces, Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth, String alertThreshold,
+             String rounding, List<DatedView> roundings, String reviewThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
+-            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
++            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen) {
+     }
+ 
+     /** The roles that may take an action: a comma separated list of clerk and steward; blank or null for
+@@ -303,7 +303,7 @@ public class SettingsController {
+                 service.history(sheet, DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
+                 text(service.reviewThreshold(sheet)), service.escalateAfter(sheet), service.reviewSla(sheet), service.proofKinds(sheet),
+                 service.defaultGrade(sheet), textOf(service.gradeClerkLimits(sheet)),
+-                service.scoreMid(sheet), service.scoreHigh(sheet), service.scoreLog(sheet));
++                service.scoreMid(sheet), service.scoreHigh(sheet), service.scoreLog(sheet), service.maxOpen(sheet));
+     }
+ 
+     /** Every grace recorded for each grade, oldest first, by grade. */
+@@ -360,7 +360,7 @@ public class SettingsController {
+                 then.history(DatedSettings.ROUNDING).stream().map(DatedView::of).toList(),
+                 text(then.valueOn(DatedSettings.REVIEW_THRESHOLD, today).map(BigDecimal::new).orElse(null)),
+                 then.escalateAfter(), then.reviewSla(), then.proofKinds(), then.defaultGrade(),
+-                textOf(gradeClerkLimits), then.scoreMid(), then.scoreHigh(), then.scoreLog());
++                textOf(gradeClerkLimits), then.scoreMid(), then.scoreHigh(), then.scoreLog(), then.maxOpen());
+     }
+ 
+     /** Each grade's threshold as text with two decimals, by grade. */
+@@ -588,6 +588,15 @@ public class SettingsController {
+         return get(sheet, user, null);
+     }
+ 
++    @PutMapping("/settings/max-open")
++    public SettingsView setMaxOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid GraceDaysRequest request) {
++        String sheet = sheetId.trim();
++        service.setMaxOpen(sheet, user.trim(), request.daysValue());
++        return get(sheet, user, null);
++    }
++
+     @PutMapping("/settings/grace-days")
+     public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index d4e680af..0be8a417 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -563,6 +563,22 @@ public class SettingsService {
+         return sheet;
+     }
+ 
++    /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
++    @Transactional(readOnly = true)
++    public Integer maxOpen(String sheetId) {
++        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getMaxOpen();
++    }
++
++    /** Set the sheet's maximum of open claims per person; null means none. */
++    @Transactional
++    public Sheet setMaxOpen(String sheetId, String by, Integer max) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        sheet.setMaxOpen(max);
++        sheets.flush();
++        audit.change("SETTING_CHANGED", sheetId, by, "key=max-open", "value=" + (max == null ? "" : max));
++        return sheet;
++    }
++
+     /** The sheet's grace days; null when they are off. */
+     @Transactional(readOnly = true)
+     public Integer graceDays(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 8d2c6d8c..f6be683f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -57,6 +57,10 @@ public class Sheet {
+     @Column(name = "review_sla")
+     private Integer reviewSla;
+ 
++    /** The most OPEN or PENDING claims a person may have at once; null when there is no maximum. */
++    @Column(name = "max_open")
++    private Integer maxOpen;
++
+     @Column(name = "score_mid")
+     private Integer scoreMid;
+ 
+@@ -113,7 +117,7 @@ public class Sheet {
+     }
+ 
+     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
+-     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, score thresholds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
++     * today and its settings (policy date, period numbering, grace days, escalation gap, review SLA, maximum open claims, proof kinds, score thresholds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
+      * with it, and this sheet is its source; it is not archived and has had no settle batch. */
+     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
+         Sheet copy = new Sheet(id, createdBy, createdAt, today);
+@@ -124,6 +128,7 @@ public class Sheet {
+         copy.proofKinds = proofKinds;
+         copy.defaultGrade = defaultGrade;
+         copy.reviewSla = reviewSla;
++        copy.maxOpen = maxOpen;
+         copy.scoreMid = scoreMid;
+         copy.scoreHigh = scoreHigh;
+         copy.scoreLog = scoreLog;
+@@ -223,6 +228,14 @@ public class Sheet {
+         this.reviewSla = reviewSla;
+     }
+ 
++    public Integer getMaxOpen() {
++        return maxOpen;
++    }
++
++    public void setMaxOpen(Integer maxOpen) {
++        this.maxOpen = maxOpen;
++    }
++
+     public Integer getScoreMid() {
+         return scoreMid;
+     }
+diff --git a/src/main/resources/db/migration/V113__sheet_max_open.sql b/src/main/resources/db/migration/V113__sheet_max_open.sql
+new file mode 100644
+index 00000000..f4b28f0b
+--- /dev/null
++++ b/src/main/resources/db/migration/V113__sheet_max_open.sql
+@@ -0,0 +1,3 @@
++-- The sheet's maximum of OPEN or PENDING claims per person: opening a claim is refused when its person
++-- already has this many. Null means none.
++ALTER TABLE sheet ADD COLUMN max_open INTEGER;

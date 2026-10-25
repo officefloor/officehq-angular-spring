@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7826a38d8a2bb9d3b77c27f831c2f2c5a7ac4665",
+  "reset_sha": "",
+  "preagent_sha": "841453dcfc9ea587690012fd930b25184bb00626",
+  "prev_sha": "841453dcfc9ea587690012fd930b25184bb00626",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9971483999999999,
+    "input_tokens": 46,
+    "output_tokens": 11062,
+    "cache_read_tokens": 1169702,
+    "cache_creation_tokens": 67723,
+    "num_turns": 24,
+    "duration_ms": 349192,
+    "duration_api_ms": 145789,
+    "model": "claude-opus-5-5",
+    "session_id": "f84e3b3b-f3bf-4cf1-aad5-3dde5d0973ab",
+    "stop_reason": "success",
+    "result_text": "I added the max-open-claims setting and wired it into all three ways of opening a claim. The main \"max open claims\" test passes, as do scenarios 1 and 3. **Scenario 2 still fails**, at `acceptance.spec.ts:1035`, on a part of the app I didn't touch.\n\n**Why scenario 2 fails:** the test pauses a plan on 2026-03-10 and never resumes it. It then expects the plan's `plan-next-dates` to show `\"2026-03-15, 2026-04-15\"`, but the app shows nothing. That matches what the plan code says it should do: in `plan/Plan.java`, a plan date that falls during an unresumed pause is skipped. So the test expects paused plans to keep listing their upcoming dates, which goes against how plans are built. I didn't run the suite before my change, so I can't prove this failed already. But nothing I changed touches plans, so it isn't caused by this change. I left it alone because changing it is outside this request. If you decide paused plans should still list their dates, it's a small change to `Plan.nextDates`. Because the test stops at that line, the rest of scenario 2 hasn't run.\n\n**What changed:**\n- **Stored data:** a new migration, `V113__sheet_max_open.sql`, adds a `max_open` number column to the sheet; blank means no maximum. The value is carried into sheet clones and into the as-of-a-date views of the sheet.\n- **Server:**\n  - A new `PUT /settings/max-open` endpoint and a `maxOpen` field on the settings response.\n  - Saving writes `SETTING_CHANGED key=max-open value=<n>`, or `value=` when cleared.\n  - Opening a claim is refused when its person already has that many OPEN or PENDING claims, not counting the claim being opened. This check sits in the shared open step, so it covers the open button, the bulk open button and paste:\n    - **Open button:** shows the claim's error.\n    - **Bulk open:** counts the claim as refused.\n    - **Paste:** shows the paste error and changes nothing.\n- **Front end:** a \"Max open claims per person\" field (`setting-max-open`) and its current value (`setting-max-open-current`), which takes a whole number or blank and is checked like the other number settings. I also reworded the open-refused message so it covers both this maximum and the existing per-period cap.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9971483999999999,
+        "num_turns": 24,
+        "duration_ms": 349192,
+        "duration_api_ms": 145789,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
