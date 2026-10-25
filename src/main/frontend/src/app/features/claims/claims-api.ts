@@ -13,7 +13,7 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 export const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 
 /** A claim number as a form takes it: a sheet-wide whole number of 1 or more, or a number within a
- *  period, <period name>-<n> (X-<n> for a claim in no period). */
+ *  period, <period name>-<n> (X-<n> for a claim in no period), or within a fiscal year, FY<year>-<n>. */
 export const CLAIM_NUMBER = /^([1-9]\d{0,8}|.{1,200}-[1-9]\d{0,8})$/;
 
 /** Whether the claim is a correction: its amount is negative. */
@@ -61,8 +61,9 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number, given when it is opened and kept once void; null while a draft. The sheet-wide
-   *  1, 2, ..., or while period numbering is in force <period name>-<n>, or X-<n> in no period. */
+  /** The claim's number, given when it is opened and kept once void; null while a draft. FY<year>-<n>
+   *  within its fiscal year (or the sheet-wide 1, 2, ... given before), or while period numbering is in
+   *  force <period name>-<n>, or X-<n> in no period. */
   number: string | null;
   /** The due fixed when the claim was settled, with two decimals; null while its due is live. */
   settledDue: string | null;

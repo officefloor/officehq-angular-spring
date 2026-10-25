@@ -726,14 +726,23 @@ public class ClaimService {
 
     /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
      *  today on or after the setting's date), the next of the claim's period (the one its due-by falls in), <period name>-<n>, or of
-     *  claims in no period, X-<n> (each per sheet); otherwise the next number of the sequence the sheets of its tree share. */
+     *  claims in no period, X-<n> (each per sheet); otherwise FY<year>-<n>, the next number within the
+     *  fiscal year its due-by falls in (named by the calendar year it starts in), of the sequence of that
+     *  year the sheets of its tree share. */
     public String nextNumber(String sheetId, Claim claim) {
         if (!isPeriodNumbering(sheetId)) {
-            return Integer.toString(sheets.nextClaimNumber(sheetId));
+            int year = fiscalYearOf(sheetId, claim.getDueBy() != null ? claim.getDueBy() : claim.getDate());
+            return "FY" + year + "-" + sheets.nextFiscalYearNumber(sheetId, year);
         }
         Period period = periodOf(sheetId, claim.getDueBy());
         if (period == null) return "X-" + sheets.nextSequenceNumber(sheetId, "none");
         return period.getName() + "-" + sheets.nextSequenceNumber(sheetId, "period:" + period.getId());
+    }
+
+    /** The fiscal year of the sheet the date falls in: the calendar year it starts in. */
+    private int fiscalYearOf(String sheetId, LocalDate date) {
+        int startMonth = settings.fiscalStartMonth(sheetId);
+        return date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
     }
 
     /** Whether the sheet's period numbering is in force: its today on or after the setting's date. */

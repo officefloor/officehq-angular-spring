@@ -64,7 +64,7 @@ public class Claim {
     private ClaimStatus status = ClaimStatus.DRAFT;
 
     /** The claim's number, given when it is opened and kept once void; none while a draft. It is the
-     *  sheet-wide 1, 2, ..., or while period numbering is in force <period name>-<n> or X-<n>. */
+     *  FY<year>-<n> within its fiscal year (or the sheet-wide 1, 2, ... given before), or while period numbering is in force <period name>-<n> or X-<n>. */
     @Column(name = "claim_number")
     private String number;
 

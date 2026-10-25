@@ -98,13 +98,26 @@ public class SheetService {
     }
 
     /**
-     * The sheet's next claim number, from the one sequence shared by the sheets of its tree (the sheet at
-     * its top, reached through the parents, and all that sheet's descendants): the next after the last
-     * number given on any sheet of the tree. The tree's top sheet stays locked until the transaction
-     * ends, so two claims opened at once anywhere in the tree never share a number.
+     * The sheet's next claim number within a fiscal year (the calendar year it starts in), from the one
+     * sequence of that year shared by the sheets of its tree: 1 for the tree's first claim numbered in
+     * the year, then the next after the last given on any sheet of the tree. The tree's top sheet stays
+     * locked until the transaction ends, so two claims opened at once anywhere in the tree never share a number.
      */
     @Transactional
-    public int nextClaimNumber(String id) {
+    public int nextFiscalYearNumber(String id, int fiscalYear) {
+        Set<String> tree = lockTree(id);
+        String key = "fy:" + fiscalYear;
+        int number = sheets.lastSequenceNumber(tree, key) + 1;
+        if (sheets.sequenceNumbersUsed(id, key) == null) {
+            sheets.startSequence(id, key, number);
+        } else {
+            sheets.setSequenceNumbersUsed(id, key, number);
+        }
+        return number;
+    }
+
+    /** Load the sheet and lock the top sheet of its tree until the transaction ends; the tree's sheets. */
+    private Set<String> lockTree(String id) {
         load(id);
         String top = id;
         Set<String> up = new HashSet<>(List.of(id));
@@ -119,9 +132,7 @@ public class SheetService {
                 if (tree.add(child.getSheetId())) next.add(child.getSheetId());
             }
         }
-        int number = sheets.lastClaimNumber(tree) + 1;
-        sheets.setClaimNumbersUsed(id, number);
-        return number;
+        return tree;
     }
 
     /** The sheet's parent; null when it names none. */
@@ -151,7 +162,7 @@ public class SheetService {
         sheets.findForUpdate(id);
         Integer used = sheets.sequenceNumbersUsed(id, key);
         if (used == null) {
-            sheets.startSequence(id, key);
+            sheets.startSequence(id, key, 1);
             return 1;
         }
         sheets.takeSequenceNumber(id, key);

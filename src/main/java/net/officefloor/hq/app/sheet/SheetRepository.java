@@ -34,11 +34,22 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
             nativeQuery = true)
     Integer sequenceNumbersUsed(@Param("id") String id, @Param("key") String key);
 
-    /** Start one of the sheet's per-period sequences, its first number given out. */
+    /** Start one of the sheet's sequences, with how many numbers it has given out. */
     @Modifying(flushAutomatically = true)
-    @Query(value = "insert into claim_number_sequence (sheet_id, sequence_key, used) values (:id, :key, 1)",
+    @Query(value = "insert into claim_number_sequence (sheet_id, sequence_key, used) values (:id, :key, :used)",
             nativeQuery = true)
-    int startSequence(@Param("id") String id, @Param("key") String key);
+    int startSequence(@Param("id") String id, @Param("key") String key, @Param("used") int used);
+
+    /** Set how many numbers one of the sheet's sequences has given out: its last number given. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "update claim_number_sequence set used = :used where sheet_id = :id and sequence_key = :key",
+            nativeQuery = true)
+    int setSequenceNumbersUsed(@Param("id") String id, @Param("key") String key, @Param("used") int used);
+
+    /** The last number one sequence (by key) has given on any of the sheets; 0 when none has given one. */
+    @Query(value = "select coalesce(max(used), 0) from claim_number_sequence where sheet_id in (:ids)"
+            + " and sequence_key = :key", nativeQuery = true)
+    int lastSequenceNumber(@Param("ids") Collection<String> ids, @Param("key") String key);
 
     /** Count one more number given out by one of the sheet's per-period sequences. */
     @Modifying(flushAutomatically = true)
