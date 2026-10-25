@@ -19,6 +19,8 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The sheet's number for the claim, given when it is opened; null while a draft or once void. */
+  number: number | null;
 }
 
 export interface ClaimForm {

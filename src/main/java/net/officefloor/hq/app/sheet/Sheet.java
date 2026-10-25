@@ -22,6 +22,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** How many claim numbers the sheet has given out; the next opened claim takes one more. */
+    @Column(name = "claim_numbers_used", nullable = false)
+    private int claimNumbersUsed;
+
     protected Sheet() {
     }
 

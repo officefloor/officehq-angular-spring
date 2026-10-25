@@ -38,6 +38,17 @@ public class SheetService {
         return sheets.saveAndFlush(sheet);
     }
 
+    /**
+     * The sheet's next claim number: 1 for its first opened claim, then 2, and so on. The sheet stays
+     * locked until the transaction ends, so two claims opened at once never share a number.
+     */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        load(id);
+        sheets.takeClaimNumber(id);
+        return sheets.claimNumbersUsed(id);
+    }
+
     private Sheet create(String id) {
         try {
             // The only use of the real clock: a new sheet's today starts as the real date.

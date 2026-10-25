@@ -39,6 +39,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
+    /** The sheet's number for the claim, given when it is opened; none while a draft or once void. */
+    @Column(name = "claim_number")
+    private Integer number;
+
     protected Claim() {
     }
 
@@ -78,6 +82,14 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) {
         this.status = status;
+    }
+
+    public Integer getNumber() {
+        return number;
+    }
+
+    public void setNumber(Integer number) {
+        this.number = number;
     }
 
     /** Change the claim's amount, date and note; the amount is kept to two decimals. */

@@ -63,9 +63,12 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
         claim.setStatus(next);
+        // A void claim keeps no number; the number it had is never given to another claim.
+        claim.setNumber(next == ClaimStatus.VOID ? null : number);
         Claim saved = claims.saveAndFlush(claim);
-        recordChange(EVENTS.get(next), user, person(sheetId, saved.getPersonId()), saved);
+        recordChange(EVENTS.get(next), user, person(sheetId, saved.getPersonId()), saved, number);
         return saved;
     }
 
@@ -78,8 +81,14 @@ public class ClaimService {
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {
+        recordChange(event, user, person, claim, claim.getNumber());
+    }
+
+    /** The claim's audit line; a claim with a number (or that had one, when voided) carries it at the end. */
+    private void recordChange(String event, String user, Person person, Claim claim, Integer number) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
+                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
+                + (number == null ? "" : " number=" + number));
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {
