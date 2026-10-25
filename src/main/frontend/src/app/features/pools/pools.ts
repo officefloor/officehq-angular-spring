@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -309,7 +310,7 @@ function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigin
   return members.map((m, i) => [m.key, cuts[i]]);
 }
 
-// The sheet's pools, with a form to add one.
+// The sheet's pools, with a form to add one and a button that downloads them as a CSV file.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule, PoolRow],
@@ -324,6 +325,7 @@ function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigin
           <p role="alert" data-testid="pool-form-error">{{ message }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
       <div role="list" aria-label="Pools">
         @for (p of store.pools(); track p.id) {
           <app-pool-row [pool]="p" [people]="people()" [pools]="store.pools()" [cuts]="cuts().get(p.id) ?? null" />
@@ -336,6 +338,7 @@ export class PoolsList {
   private readonly session = inject(Session);
   protected readonly store = inject(Pools);
   private readonly sheetPot = inject(SheetPot);
+  private readonly document = inject(DOCUMENT);
 
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
@@ -352,6 +355,27 @@ export class PoolsList {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  /** Downloads the pools as a CSV file: one line per member, pools and their members in the order they
+   *  were added, a pool member as pool:<name>, and the cut as its row shows it (empty when none). */
+  protected exportCsv(): void {
+    const pools = this.store.pools();
+    const poolsById = new Map(pools.map((p) => [p.id, p]));
+    const cuts = this.cuts();
+    const today = this.session.sheet()?.today;
+    const lines = [['pool', 'member', 'share', 'cut'],
+      ...pools.flatMap((p) => membersOf(p, this.people(), poolsById, today)
+        .map((m) => [p.name, m.name, m.share, cuts.get(p.id)?.get(m.key) ?? '']))];
+    const field = (v: string) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = lines.map((l) => l.map(field).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const link = this.document.createElement('a');
+    link.href = url;
+    link.download = 'pools.csv';
+    link.click();
+    // Released once the browser has taken the file.
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected async submit(): Promise<void> {
