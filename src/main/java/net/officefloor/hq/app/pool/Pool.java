@@ -62,7 +62,7 @@ public class Pool {
 
     /** Whether the person is a member of the pool. */
     public boolean hasMember(long personId) {
-        return members.stream().anyMatch((m) -> m.getPersonId() == personId);
+        return members.stream().anyMatch((m) -> m.isPerson(personId));
     }
 
     /** Give a member's place in the pool to another person: added to that person's share when they are
@@ -81,15 +81,25 @@ public class Pool {
 
     /** Take the person out of the pool; nothing when they are not in it. */
     public void removeMember(long personId) {
-        members.removeIf((m) -> m.getPersonId() == personId);
+        members.removeIf((m) -> m.isPerson(personId));
     }
 
     private PoolMember memberOf(long personId) {
-        return members.stream().filter((m) -> m.getPersonId() == personId).findFirst().orElse(null);
+        return members.stream().filter((m) -> m.isPerson(personId)).findFirst().orElse(null);
+    }
+
+    /** Whether the pool is a member of this one. */
+    public boolean hasMemberPool(long poolId) {
+        return members.stream().anyMatch((m) -> m.getMemberPoolId() != null && m.getMemberPoolId() == poolId);
     }
 
     /** Add the person with a share (kept to two decimals). */
     public void addMember(long personId, BigDecimal share) {
-        members.add(new PoolMember(personId, share));
+        members.add(new PoolMember(personId, null, share));
+    }
+
+    /** Add another pool as a member with a share (kept to two decimals). */
+    public void addMemberPool(long poolId, BigDecimal share) {
+        members.add(new PoolMember(null, poolId, share));
     }
 }

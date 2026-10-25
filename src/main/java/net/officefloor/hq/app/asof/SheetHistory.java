@@ -15,7 +15,9 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -194,6 +196,7 @@ public class SheetHistory {
     private static List<Table> discover(DatabaseMetaData meta) throws SQLException {
         String schema = "PUBLIC";
         Map<String, List<String>> columns = new LinkedHashMap<>();
+        Set<String> notNull = new HashSet<>();
         try (ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME").toUpperCase();
@@ -206,6 +209,9 @@ public class SheetHistory {
                 while (rs.next()) {
                     if ("YES".equalsIgnoreCase(rs.getString("IS_GENERATEDCOLUMN"))) continue;
                     found.add(new String[] {rs.getString("ORDINAL_POSITION"), rs.getString("COLUMN_NAME").toUpperCase()});
+                    if ("NO".equalsIgnoreCase(rs.getString("IS_NULLABLE"))) {
+                        notNull.add(table.getKey() + "." + rs.getString("COLUMN_NAME").toUpperCase());
+                    }
                 }
                 found.sort((a, b) -> Integer.compare(Integer.parseInt(a[0]), Integer.parseInt(b[0])));
                 found.forEach((c) -> table.getValue().add(c[1]));
@@ -221,6 +227,8 @@ public class SheetHistory {
                             rs.getString("PKTABLE_NAME").toUpperCase(), rs.getString("PKCOLUMN_NAME").toUpperCase()});
                 }
             }
+            // A reference no row leaves blank picks all of a table's rows, so it is tried first.
+            refs.sort(Comparator.comparing((String[] ref) -> !notNull.contains(table + "." + ref[0])));
             references.put(table, refs);
         }
         Map<String, String> ofSheet = new HashMap<>();

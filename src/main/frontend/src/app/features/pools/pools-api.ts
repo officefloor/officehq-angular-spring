@@ -3,9 +3,11 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A person in a pool, with their share percent (two decimals). */
+/** A member of a pool, a person or another pool of the sheet (the other id null), with its share percent
+ *  (two decimals). */
 export interface PoolMemberView {
-  personId: number;
+  personId: number | null;
+  poolId: number | null;
   share: string;
 }
 
@@ -35,10 +37,12 @@ export class PoolsApi {
     return firstValueFrom(this.http.post<PoolView>(this.url(sheetId), { name }));
   }
 
-  /** Add a person to a pool with a share: refused when they are in it already, or for a share that is
-   *  not more than 0.00 and at most 100.00 with up to two decimals. The pool as it is then. */
-  addMember(sheetId: string, poolId: number, personId: number, share: string): Promise<PoolView> {
-    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheetId)}/${poolId}/members`, { personId, share }));
+  /** Add a person, or another pool, to a pool with a share: refused when the person is in it already,
+   *  when the pool is itself, a member of a pool already, contains it through any chain or would make a
+   *  chain of pools more than three deep, or for a share that is not more than 0.00 and at most 100.00
+   *  with up to two decimals. The pool as it is then. */
+  addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<PoolView> {
+    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share }));
   }
 }
 
@@ -84,8 +88,8 @@ export class Pools {
   }
 
   /** Add a member to a pool of the active sheet; the store's answer replaces the pool. */
-  async addMember(sheetId: string, poolId: number, personId: number, share: string): Promise<void> {
-    const pool = await this.api.addMember(sheetId, poolId, personId, share);
+  async addMember(sheetId: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
+    const pool = await this.api.addMember(sheetId, poolId, member, share);
     if (this.session.sheet()?.id !== sheetId) return;
     this.state.update((list) => list.map((p) => (p.id === pool.id ? pool : p)));
   }

@@ -5,17 +5,54 @@ import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { PersonView } from '../people/people-api';
 import { SheetPot } from '../settings/sheet-pot';
-import { Pools, PoolView } from './pools-api';
+import { PoolMemberView, Pools, PoolView } from './pools-api';
 
 /** A share percent as typed: up to two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+/** How many pools deep a chain of pools may go. */
+const MAX_DEPTH = 3;
+/** The member select's value for a pool member: this prefix and the pool's id. */
+const POOL_VALUE = 'pool:';
 
-// One pool: its members with their shares, its total share and whether it is balanced, and a form
-// to add a member. A retired member's share counts as 0.00 toward the total.
-// With a pot set, each member of a balanced pool shows a cut: the pot times their share divided by 100,
+/** A member as the screens show it: a person or a pool, with its key in the pool's member test ids. */
+interface MemberRow {
+  key: string;
+  name: string;
+  share: string;
+  retired: boolean;
+}
+
+/** The member's key: the person's id, or pool-<name> for a pool. */
+function memberKey(m: PoolMemberView, poolsById: ReadonlyMap<number, PoolView>): string {
+  return m.personId !== null ? String(m.personId) : `pool-${poolsById.get(m.poolId ?? -1)?.name ?? m.poolId}`;
+}
+
+/** The pool each member pool is in, by the member pool's id. */
+function parentsOf(pools: readonly PoolView[]): Map<number, PoolView> {
+  const parents = new Map<number, PoolView>();
+  for (const p of pools) for (const m of p.members) if (m.poolId !== null) parents.set(m.poolId, p);
+  return parents;
+}
+
+/** How many pools deep the pool's chains go: 1 with no member pools. */
+function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen = new Set<number>()): number {
+  if (seen.has(pool.id)) return 1;
+  seen.add(pool.id);
+  let deepest = 0;
+  for (const m of pool.members) {
+    const sub = m.poolId !== null ? poolsById.get(m.poolId) : undefined;
+    if (sub) deepest = Math.max(deepest, depthOf(sub, poolsById, seen));
+  }
+  return deepest + 1;
+}
+
+// One pool: its members (people and other pools) with their shares, its total share and whether it is
+// balanced, and a form to add a member. A retired member's share counts as 0.00 toward the total.
+// With a pot, each member of a balanced pool shows a cut: the pot times their share divided by 100,
 // rounded half to even to two decimals (a retired member cuts 0.00); the pot less the cuts added up goes
 // to the member with the largest share, the earliest added on a tie, so the cuts total exactly the pot.
-// An unbalanced pool, or no pot, shows no cut.
+// A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
+// there as its pot. An unbalanced pool, or no pot, shows no cut.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule],
@@ -27,11 +64,11 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
       balanced <span data-testid="pool-balanced">{{ balanced() ? 'yes' : 'no' }}</span>
     </p>
     <ul [attr.aria-label]="'Members of ' + pool().name">
-      @for (m of members(); track m.personId) {
-        <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
+      @for (m of members(); track m.key) {
+        <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.key">
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
-          <span data-testid="pool-cut" aria-label="Cut">{{ cuts()?.get(m.personId) ?? '' }}</span>
+          <span data-testid="pool-cut" aria-label="Cut">{{ cuts()?.get(m.key) ?? '' }}</span>
           @if (m.retired) {
             <span data-testid="pool-member-retired">(retired)</span>
           }
@@ -39,11 +76,14 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
       }
     </ul>
     <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="'Add a member to ' + pool().name">
-      <label [for]="'pool-member-select-' + pool().id">Person</label>
+      <label [for]="'pool-member-select-' + pool().id">Person or pool</label>
       <select [id]="'pool-member-select-' + pool().id" data-testid="pool-member-select" formControlName="personId">
-        <option value="">Choose a person</option>
+        <option value="">Choose a person or pool</option>
         @for (p of people(); track p.id) {
           <option [value]="'' + p.id">{{ p.name }}</option>
+        }
+        @for (p of pools(); track p.id) {
+          <option [value]="'pool:' + p.id">pool:{{ p.name }}</option>
         }
       </select>
       <label [for]="'pool-member-share-' + pool().id">Share %</label>
@@ -58,26 +98,19 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 export class PoolRow {
   private readonly session = inject(Session);
   private readonly store = inject(Pools);
-  private readonly sheetPot = inject(SheetPot);
 
   readonly pool = input.required<PoolView>();
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
+  /** The sheet's pools. */
+  readonly pools = input.required<PoolView[]>();
+  /** Each member's cut, with two decimals, by member key; null for an unbalanced pool or no pot. */
+  readonly cuts = input.required<ReadonlyMap<string, string> | null>();
 
-  private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
-  protected readonly members = computed(() => this.pool().members.map((m) => {
-    const person = this.peopleById().get(m.personId);
-    return { personId: m.personId, share: m.share, name: person?.name ?? '', retired: person?.retired ?? false };
-  }));
-  private readonly totalCents = computed(() => this.members().reduce((t, m) => (m.retired ? t : t + cents(m.share)), 0));
-  protected readonly total = computed(() => money(this.totalCents()));
-  protected readonly balanced = computed(() => this.totalCents() === 10000);
-  /** Each member's cut of the pot, with two decimals, by person; null for an unbalanced pool or no pot. */
-  protected readonly cuts = computed(() => {
-    const pot = this.sheetPot.pot();
-    if (pot === null || !this.balanced()) return null;
-    return new Map(cutsOf(BigInt(cents(pot)), this.members()).map(([id, cut]) => [id, money(Number(cut))]));
-  });
+  private readonly poolsById = computed(() => new Map(this.pools().map((p) => [p.id, p])));
+  protected readonly members = computed(() => membersOf(this.pool(), this.people(), this.poolsById()));
+  protected readonly total = computed(() => money(totalCents(this.members())));
+  protected readonly balanced = computed(() => totalCents(this.members()) === 10000);
 
   protected readonly personId = new FormControl('', { nonNullable: true });
   protected readonly share = new FormControl('', { nonNullable: true });
@@ -98,11 +131,17 @@ export class PoolRow {
     const { personId, share } = this.form.getRawValue();
     const typed = share.trim();
     if (personId === '') {
-      this.error.set('Choose a person.');
+      this.error.set('Choose a person or pool.');
       return;
     }
-    if (this.pool().members.some((m) => String(m.personId) === personId)) {
+    const memberPoolId = personId.startsWith(POOL_VALUE) ? Number(personId.slice(POOL_VALUE.length)) : null;
+    if (memberPoolId === null && this.pool().members.some((m) => String(m.personId) === personId)) {
       this.error.set('That person is already in the pool.');
+      return;
+    }
+    const refusal = memberPoolId === null ? '' : this.poolRefusal(memberPoolId);
+    if (refusal) {
+      this.error.set(refusal);
       return;
     }
     if (!SHARE.test(typed) || cents(typed) <= 0 || cents(typed) > 10000) {
@@ -111,19 +150,75 @@ export class PoolRow {
     }
     this.saving.set(true);
     try {
-      await this.store.addMember(sheet.id, pool.id, Number(personId), typed);
+      await this.store.addMember(sheet.id, pool.id,
+        memberPoolId === null ? { personId: Number(personId) } : { poolId: memberPoolId }, typed);
       if (this.session.sheet()?.id === sheet.id) this.form.reset({ personId: '', share: '' }, { emitEvent: false });
     } catch (e) {
       if (this.session.sheet()?.id !== sheet.id) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       this.error.set(status === 403 ? 'Your role may not change a pool on this sheet.'
-        : status === 409 ? 'That person is already in the pool.'
+        : status === 409 ? (memberPoolId === null ? 'That person is already in the pool.' : 'That pool cannot be added to this pool.')
         : status === 422 ? 'Type a share of more than 0.00 and at most 100.00, with up to two decimals.'
         : 'The member could not be added.');
     } finally {
       this.saving.set(false);
     }
   }
+
+  /** Why the pool may not be added as a member of this one, or blank. */
+  private poolRefusal(memberPoolId: number): string {
+    const pool = this.pool();
+    const member = this.poolsById().get(memberPoolId);
+    if (!member) return 'Choose a pool of the sheet.';
+    if (member.id === pool.id) return 'A pool cannot be a member of itself.';
+    const parents = parentsOf(this.pools());
+    const parent = parents.get(member.id);
+    if (parent) return `The pool ${member.name} is already a member of the pool ${parent.name}.`;
+    let above = 1;
+    for (let p = parents.get(pool.id); p; p = parents.get(p.id)) {
+      if (p.id === member.id) return `The pool ${member.name} contains the pool ${pool.name}.`;
+      if (++above > MAX_DEPTH) break;
+    }
+    if (above + depthOf(member, this.poolsById()) > MAX_DEPTH) return `A chain of pools may be at most ${MAX_DEPTH} deep.`;
+    return '';
+  }
+}
+
+/** The pool's members as the screens show them. */
+function membersOf(pool: PoolView, people: readonly PersonView[], poolsById: ReadonlyMap<number, PoolView>): MemberRow[] {
+  const peopleById = new Map(people.map((p) => [p.id, p]));
+  return pool.members.map((m) => {
+    const person = m.personId !== null ? peopleById.get(m.personId) : undefined;
+    const name = m.personId !== null ? (person?.name ?? '') : `pool:${poolsById.get(m.poolId ?? -1)?.name ?? ''}`;
+    return { key: memberKey(m, poolsById), share: m.share, name, retired: person?.retired ?? false };
+  });
+}
+
+/** The members' shares added up, in cents; a retired member's counts as 0. */
+function totalCents(members: readonly MemberRow[]): number {
+  return members.reduce((t, m) => (m.retired ? t : t + cents(m.share)), 0);
+}
+
+/** Each pool's cuts by member key, by pool id: null for an unbalanced pool or one with no pot. A pool that
+ *  is a member of none has the sheet's pot; one that is a member of another has its cut there. */
+function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null): Map<number, Map<string, bigint> | null> {
+  const poolsById = new Map(pools.map((p) => [p.id, p]));
+  const parents = parentsOf(pools);
+  const out = new Map<number, Map<string, bigint> | null>();
+  const cutsFor = (pool: PoolView, depth: number): Map<string, bigint> | null => {
+    if (out.has(pool.id)) return out.get(pool.id) ?? null;
+    out.set(pool.id, null);
+    let potCents: bigint | null = null;
+    const parent = parents.get(pool.id);
+    if (!parent) potCents = pot === null ? null : BigInt(cents(pot));
+    else if (depth <= pools.length) potCents = cutsFor(parent, depth + 1)?.get(`pool-${pool.name}`) ?? null;
+    const members = membersOf(pool, people, poolsById);
+    const result = potCents === null || totalCents(members) !== 10000 ? null : new Map(cutsOf(potCents, members));
+    out.set(pool.id, result);
+    return result;
+  };
+  pools.forEach((p) => cutsFor(p, 0));
+  return out;
 }
 
 /** A whole number of cents divided by 10000, rounded half to even. */
@@ -136,7 +231,7 @@ function divideHalfEven(value: bigint, by: bigint): bigint {
 /** The cuts of a pot (in cents) among members in the order they were added, by person: each the pot times
  *  their share over 100, half to even (a retired member's 0); the remainder to the largest share, the
  *  earliest added on a tie. */
-function cutsOf(potCents: bigint, members: readonly { personId: number; share: string; retired: boolean }[]): [number, bigint][] {
+function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigint][] {
   const shares = members.map((m) => (m.retired ? 0 : cents(m.share)));
   const cuts = shares.map((share) => divideHalfEven(potCents * BigInt(share), 10000n));
   let largest = 0;
@@ -144,7 +239,7 @@ function cutsOf(potCents: bigint, members: readonly { personId: number; share: s
     if (share > shares[largest]) largest = i;
   });
   if (cuts.length > 0) cuts[largest] += potCents - cuts.reduce((t, c) => t + c, 0n);
-  return members.map((m, i) => [m.personId, cuts[i]]);
+  return members.map((m, i) => [m.key, cuts[i]]);
 }
 
 // The sheet's pools, with a form to add one.
@@ -164,7 +259,7 @@ function cutsOf(potCents: bigint, members: readonly { personId: number; share: s
       </form>
       <div role="list" aria-label="Pools">
         @for (p of store.pools(); track p.id) {
-          <app-pool-row [pool]="p" [people]="people()" />
+          <app-pool-row [pool]="p" [people]="people()" [pools]="store.pools()" [cuts]="cuts().get(p.id) ?? null" />
         }
       </div>
     </section>
@@ -173,9 +268,14 @@ function cutsOf(potCents: bigint, members: readonly { personId: number; share: s
 export class PoolsList {
   private readonly session = inject(Session);
   protected readonly store = inject(Pools);
+  private readonly sheetPot = inject(SheetPot);
 
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
+
+  /** Each pool's cuts, with two decimals, by member key, by pool id. */
+  protected readonly cuts = computed(() => new Map([...allCuts(this.store.pools(), this.people(), this.sheetPot.pot())]
+    .map(([id, cuts]) => [id, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))])));
 
   protected readonly name = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ name: this.name });
