@@ -95,11 +95,11 @@ public class ClaimService {
     }
 
     /** What is due on the claim now at its person's grade's rate in force on the claim's date, rounded
-     *  half up; null when no rate of the grade applies by then. */
+     *  half to even; null when no rate of the grade applies by then. */
     private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
         Rate rate = rates.inForce(sheetId, person.getGrade(), claim.getDate());
         return rate == null ? null
-                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
     }
 
     private void recordChange(String event, String user, Person person, Claim claim) {

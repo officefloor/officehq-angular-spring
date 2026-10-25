@@ -1,8 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { RateView, dueCents, rateInForce } from '../rates/rates-api';
-import { ClaimAction, ClaimView, ClaimsApi, cents, money } from './claims-api';
+import { RateView } from '../rates/rates-api';
+import { ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -89,9 +89,8 @@ export class PersonClaims {
   /** What is due on the claim: the figure fixed when it was settled, else at the person's grade's
    *  rate in force on the claim's date, or n/a when the claim is dated before every rate of the grade. */
   protected due(claim: ClaimView): string {
-    if (claim.settledDue !== null) return claim.settledDue;
-    const rate = rateInForce(this.rates(), claim.date);
-    return rate === null ? 'n/a' : money(dueCents(cents(claim.amount), rate.pct));
+    const due = claimDueCents(claim, this.rates());
+    return due === null ? 'n/a' : money(due);
   }
 
   protected fieldId(field: string): string {

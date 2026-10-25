@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 export type ClaimAction = 'open' | 'settle' | 'void';
@@ -40,6 +41,14 @@ export function cents(amount: string): number {
 /** Cents as the screen shows an amount: two decimals. */
 export function money(total: number): string {
   return (total / 100).toFixed(2);
+}
+
+/** What is due on the claim, in cents: the figure fixed when it was settled, else at the rate of
+ *  `gradeRates` (its person's grade's rates) in force on the claim's date; null when there is none. */
+export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[]): number | null {
+  if (claim.settledDue !== null) return cents(claim.settledDue);
+  const rate = rateInForce(gradeRates, claim.date);
+  return rate === null ? null : dueCents(cents(claim.amount), rate.pct);
 }
 
 // The claims on a sheet, as the store holds them.

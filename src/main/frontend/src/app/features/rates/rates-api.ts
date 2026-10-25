@@ -28,12 +28,16 @@ export function sameRate(a: RateView, b: RateView): boolean {
 }
 
 /** What is due on an amount of `amountCents` at a rate of `pct` percent, in whole cents: the
- *  amount times the rate, divided by 100, rounded half up (a half rounds away from zero). */
+ *  amount times the rate, divided by 100, rounded half to even (a half rounds to the even cent). */
 export function dueCents(amountCents: number, pct: string): number {
   // Hundredths of a percent, so the product is exact; cents x basis points / 10000 = due cents.
   const product = BigInt(amountCents) * BigInt(Math.round(Number(pct) * 100));
   const sign = product < 0n ? -1n : 1n;
-  return Number((sign * product + 5000n) / 10000n * sign);
+  const magnitude = sign * product;
+  let whole = magnitude / 10000n;
+  const rest = magnitude % 10000n;
+  if (rest > 5000n || (rest === 5000n && whole % 2n === 1n)) whole += 1n;
+  return Number(whole * sign);
 }
 
 // The sheet's rates per grade, as the store holds them.

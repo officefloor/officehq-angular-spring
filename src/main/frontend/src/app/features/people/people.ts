@@ -2,10 +2,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, cents, counts, money } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, cents, claimDueCents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
-import { RateView, RatesApi, dueCents, rateInForce, sameRate } from '../rates/rates-api';
+import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { GRADES, Grade, PeopleApi, PersonView } from './people-api';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
@@ -100,7 +100,7 @@ export class People {
     for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
     return by;
   });
-  /** Everyone's due-total added up, skipping the people whose grade has no rate. */
+  /** Everyone's due-total added up, skipping the people whose due-total is n/a. */
   protected readonly sheetDueTotal = computed(() => {
     let total = 0;
     for (const p of this.people()) total += this.dueCentsOf(p) ?? 0;
@@ -157,13 +157,23 @@ export class People {
     return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
   }
 
-  /** What the person has claimed times their grade's rate in force today, in cents; null when none is. */
+  /** The sum of the figures due on the person's open and settled claims, in cents; null (n/a) when no
+   *  rate of their grade is in force today and none of their settled claims keeps a figure. */
   private dueCentsOf(person: PersonView): number | null {
-    const pct = this.rateOf(person.grade);
-    return pct === null ? null : dueCents(this.centsByPerson().get(person.id) ?? 0, pct);
+    const gradeRates = this.ratesOf(person.grade);
+    let total = 0;
+    let keptFigure = false;
+    for (const c of this.claimsOf(person.id)) {
+      if (!counts(c)) continue;
+      const due = claimDueCents(c, gradeRates);
+      if (due !== null) total += due;
+      if (c.settledDue !== null) keptFigure = true;
+    }
+    return this.rateOf(person.grade) === null && !keptFigure ? null : total;
   }
 
-  /** The person's due-total with two decimals, or n/a when no rate of their grade is in force today. */
+  /** The person's due-total with two decimals, or n/a when no rate of their grade is in force today
+   *  and no settled claim keeps a figure. */
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);
