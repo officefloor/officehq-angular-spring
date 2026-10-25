@@ -9,6 +9,7 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { Templates, TemplatesApi } from '../templates/templates-api';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitView, claimOwedCents, isDeferred, isOverdue, money } from './claims-api';
@@ -47,6 +48,15 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
+      <label [for]="fieldId('template')">Template</label>
+      <select #template [id]="fieldId('template')" data-testid="claim-template-select" (change)="error.set('')">
+        <option value="">Choose a template</option>
+        @for (t of templates.templates(); track t.id) {
+          <option [value]="t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" [disabled]="saving()" (click)="addFromTemplate(template.value)"
+        [attr.aria-label]="'Add a draft claim for ' + personName() + ' from the chosen template'">Add from template</button>
       @if (error()) {
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
       }
@@ -171,6 +181,8 @@ export class PersonClaims {
   private readonly sheetGrace = inject(SheetGrace);
   private readonly policyDate = inject(SheetPolicyDate);
   protected readonly voidReasons = inject(VoidReasons);
+  protected readonly templates = inject(Templates);
+  private readonly templatesApi = inject(TemplatesApi);
   /** The void reason chosen on each claim's row, by claim. */
   private readonly chosenVoidReasons = signal<ReadonlyMap<number, string>>(new Map());
 
@@ -671,6 +683,34 @@ export class PersonClaims {
       this.claimError.set({ id: claim.id, message });
     } finally {
       this.inlineSaving.delete(claim.id);
+    }
+  }
+
+  /** Add a draft claim with the template's amount and note as the store holds them now, and no date,
+   *  by every rule of the claim form; a refusal is shown on the form. */
+  protected async addFromTemplate(template: string): Promise<void> {
+    if (this.saving()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.error.set('');
+    this.claimError.set(null);
+    if (template === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    this.saving.set(true);
+    try {
+      const claim = await this.templatesApi.addClaim(sheet.id, this.personId(), template);
+      if (this.session.sheet()?.id === sheet.id) this.added.emit(claim);
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.error.set(status === 409 ? 'A claim whose due-by is inside a closed period cannot be added or changed.'
+        : status === 404 ? 'That template is no longer on the sheet.'
+        : status === 403 ? 'Your role may not add a claim on this sheet.'
+        : 'The claim could not be added from the template.');
+    } finally {
+      this.saving.set(false);
     }
   }
 
