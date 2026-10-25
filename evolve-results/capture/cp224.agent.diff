@@ -1,0 +1,315 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 72c54223..d4e6019a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -60,8 +60,9 @@ import { FigurePipe } from '../../core/figure.pipe';
+ // the remainder to the first named. The row shows each patron as "<name> <share>", sorted by name, and
+ // their backing: over their patrons, the figures of the patron's SETTLED claims dated within the 90 days
+ // up to and including the sheet's today, each at its frozen figure, added up, times the patron's share
+-// divided by 100; the sum rounded half to even (0.00 with none). A person's due-total is at most the sheet's cap: when the
+-// sum of their figures is above it, the row shows the cap and the difference as their excess; every
++// divided by 100; the sum rounded half to even (0.00 with none). A person's due-total is at most the sheet's cap less
++// their cut total (not below 0.00): when the sum of their figures is above that, the row shows it and the difference
++// as their excess; every
+ // total of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+ // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+ // figure when three or more people have one (a due-total of n/a is no figure).
+@@ -2265,19 +2266,26 @@ export class People {
+     return due === null ? null : money(due);
+   }
+ 
+-  /** How far the sum of the person's figures is above the sheet's cap; 0.00 when it is not, or when
+-   *  their due-total is n/a. */
++  /** How far the sum of the person's figures is above what the cap leaves them (see {@link capLeftOf});
++   *  0.00 when it is not, when there is no cap, or when their due-total is n/a. */
+   protected excessOf(person: Person): string {
+     const sum = this.sumCentsOf(person);
+-    const cap = this.cap();
+-    return money(sum === null || cap === null ? 0 : Math.max(0, sum - cap));
++    const left = this.capLeftOf(person);
++    return money(sum === null || left === null ? 0 : Math.max(0, sum - left));
+   }
+ 
+   /** The person's due-total in cents, capped; null when it is n/a. */
+   private dueCentsOf(person: Person): number | null {
+     const sum = this.sumCentsOf(person);
++    const left = this.capLeftOf(person);
++    return sum === null || left === null ? sum : Math.min(sum, left);
++  }
++
++  /** The most the person's due-total can be, in cents: the sheet's cap less their cut total, not below 0;
++   *  null when there is no cap. */
++  private capLeftOf(person: Person): number | null {
+     const cap = this.cap();
+-    return sum === null || cap === null ? sum : Math.min(sum, cap);
++    return cap === null ? null : Math.max(0, cap - (this.cutCents().get(person.id) ?? 0));
+   }
+ 
+   /** The sum of the person's figures in cents, before the cap; null when it is n/a. */
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index 3987b78b..0f2b9fbe 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.pool.SheetPoolRepository;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -38,9 +39,11 @@ public class CrewService {
+     private final SheetPoolRepository pools;
+     private final PersonRepository people;
+     private final Audit audit;
++    private final RollupService rollup;
+ 
+     public CrewService(SheetRepository sheets, SheetCrewRepository crews, SheetCrewMemberRepository members,
+-            SheetPoolRepository pools, PersonRepository people, Audit audit) {
++            SheetPoolRepository pools, PersonRepository people, Audit audit, RollupService rollup) {
++        this.rollup = rollup;
+         this.sheets = sheets;
+         this.crews = crews;
+         this.members = members;
+@@ -82,8 +85,10 @@ public class CrewService {
+         if (crews.existsBySheetIdAndName(sheetId, name) || pools.existsBySheetIdAndName(sheetId, name)) {
+             throw new CrewTakenException();
+         }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetCrew added = crews.saveAndFlush(new SheetCrew(sheetId, name, lead.getId()));
+         audit.change("CREW_ADDED", sheetId, by, "name=" + name, "lead=" + lead.getName());
++        rollup.recordSince(sheetId, by, before);
+         return added;
+     }
+ 
+@@ -96,8 +101,10 @@ public class CrewService {
+                 || members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
+             throw new CrewMemberTakenException();
+         }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetCrewMember added = members.saveAndFlush(new SheetCrewMember(crew.getId(), person.getId()));
+         audit.change("CREW_MEMBER_ADDED", sheetId, by, "crew=" + crew.getName(), "name=" + person.getName());
++        rollup.recordSince(sheetId, by, before);
+         return added;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index c2c29f49..fca1988b 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -24,9 +24,11 @@ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.context.annotation.Lazy;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -96,10 +98,13 @@ public class PoolService {
+     private final PeriodRepository periods;
+     private final SheetHistory history;
+     private final Audit audit;
++    private final RollupService rollup;
+ 
++    /** The rollup is lazy: it works out the cut totals through this service. */
+     public PoolService(SheetRepository sheets, SheetPoolRepository pools, SheetPoolMemberRepository members,
+             SheetCrewRepository crews, SheetCrewMemberRepository crewMembers, PersonRepository people,
+-            PeriodRepository periods, SheetHistory history, Audit audit) {
++            PeriodRepository periods, SheetHistory history, Audit audit, @Lazy RollupService rollup) {
++        this.rollup = rollup;
+         this.sheets = sheets;
+         this.pools = pools;
+         this.members = members;
+@@ -179,6 +184,19 @@ public class PoolService {
+         return cuts;
+     }
+ 
++    /** Each person's cut total now, by person id: their cuts across every pool they are a member of, added up
++     * (a person with no cut is left out). */
++    @Transactional(readOnly = true)
++    public Map<Long, BigDecimal> cutTotalsNow(String sheetId) {
++        Map<Long, BigDecimal> totals = new HashMap<>();
++        for (Pooled pool : pools(basisNow(sheetId))) {
++            for (Member m : pool.members()) {
++                if (m.personId() != null && m.cut() != null) totals.merge(m.personId(), m.cut(), BigDecimal::add);
++            }
++        }
++        return totals;
++    }
++
+     /** What the pools are worked out from now: the sheet's pot, today, people, pools and crews as they stand. */
+     private Basis basisNow(String sheetId) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+@@ -395,10 +413,12 @@ public class PoolService {
+         LocalDate toDate = dateOf(to);
+         datesCheck(fromDate, toDate);
+         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) throw new PoolMemberTakenException();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetPoolMember added = members.saveAndFlush(new SheetPoolMember(pool.getId(), person.getId(), amount)
+                 .dated(fromDate, toDate));
+         audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
+                 "name=" + person.getName(), "share=" + amount.toPlainString()));
++        rollup.recordSince(sheetId, by, before);
+         return added;
+     }
+ 
+@@ -428,10 +448,12 @@ public class PoolService {
+         }
+         if (above.containsKey(member.getId())) throw new PoolNestedException();
+         if (depth - 1 + height(member.getId(), below) > DEPTH) throw new PoolDepthException();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         SheetPoolMember added = members.saveAndFlush(SheetPoolMember.ofPool(pool.getId(), member.getId(), amount)
+                 .dated(fromDate, toDate));
+         audit.change("POOL_MEMBER_ADDED", sheetId, by, datedFields(fromDate, toDate, "pool=" + pool.getName(),
+                 "name=" + member.getName(), "share=" + amount.toPlainString()));
++        rollup.recordSince(sheetId, by, before);
+         return added;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index a4b672c6..22b6a6c2 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimShareRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateChain;
+ import net.officefloor.hq.app.rate.RateRepository;
+@@ -34,7 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * claims that are not corrections, leaving out the OPEN ones deferred on the sheet's today, and the OPEN and PENDING
+  * ones once their retirement date is reached on the sheet's today that no statement binds; a hold leaves them in)
+  * and their due-total (the sum of what is due on the claims that count live as each shows it, n/a when none has a figure and no rate of
+- * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today when it has one; of a
++ * their grade is in force on the sheet's today, and at most the sheet's cap in force on its today less their cut total
++ * (their cuts across every pool, see {@link PoolService}), not below 0.00, when it has one; of a
+  * shared claim each holder counts their part (see {@link ClaimShare#partOf}) and its own person the rest) and their
+  * overdue-total (the sum of what is due on those that are OPEN or PENDING and past their due-by on the
+  * sheet's today, as each shows it) — and the sheet's totals of them (the due-total and overdue-total
+@@ -58,9 +60,11 @@ public class RollupService {
+     private final SheetRepository sheets;
+     private final DatedSettings dated;
+     private final Audit audit;
++    private final PoolService pools;
+ 
+     public RollupService(PersonRepository people, ClaimRepository claims, ClaimShareRepository shares,
+-            RateChain rates, SheetRepository sheets, DatedSettings dated, Audit audit) {
++            RateChain rates, SheetRepository sheets, DatedSettings dated, Audit audit, PoolService pools) {
++        this.pools = pools;
+         this.shares = shares;
+         this.dated = dated;
+         this.people = people;
+@@ -129,7 +133,7 @@ public class RollupService {
+                 due = due.add(part);
+                 any = true;
+             }
+-            due = cappedOf(due, cap);
++            due = cappedOf(due, cap, basis.cutOf(person.getId()));
+             boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
+             claimedTotal = claimedTotal.add(claimed);
+             overdueFigures.add(overdue);
+@@ -226,9 +230,10 @@ public class RollupService {
+                 && !claim.isDeferredOn(today) && basis.overdueFrom(claim).isBefore(today);
+     }
+ 
+-    /** A due-total as shown: at most {@code cap}, when there is one. */
+-    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap) {
+-        return cap == null ? due : due.min(cap);
++    /** A due-total as shown: at most {@code cap} less the person's cut total {@code cut}, not below 0.00, when
++     * there is a cap. */
++    public static BigDecimal cappedOf(BigDecimal due, BigDecimal cap, BigDecimal cut) {
++        return cap == null ? due : due.min(cap.subtract(cut).max(zero()));
+     }
+ 
+     /** Whether the claim counts in the live totals on the sheet's {@code today}: OPEN, PENDING or
+@@ -282,6 +287,11 @@ public class RollupService {
+         /** The cap in force on the sheet's today; null when there is none. */
+         BigDecimal cap();
+ 
++        /** The person's cut total: their cuts across every pool they are a member of, added up; 0.00 by default. */
++        default BigDecimal cutOf(Long personId) {
++            return zero();
++        }
++
+         /** The person's claim with the number. */
+         Optional<Claim> claimNumbered(Long personId, String number);
+ 
+@@ -313,6 +323,8 @@ public class RollupService {
+     /** The sheet as it stands. */
+     public Basis live(String sheetId) {
+         return new Basis() {
++            private Map<Long, BigDecimal> cuts;
++
+             private Sheet sheet() {
+                 return sheets.findById(sheetId).orElse(null);
+             }
+@@ -354,6 +366,12 @@ public class RollupService {
+                 return sheet() == null ? null : dated.cap(sheetId);
+             }
+ 
++            @Override
++            public BigDecimal cutOf(Long personId) {
++                if (cuts == null) cuts = pools.cutTotalsNow(sheetId);
++                return cuts.getOrDefault(personId, zero());
++            }
++
+             @Override
+             public Optional<Claim> claimNumbered(Long personId, String number) {
+                 return claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, number);
+@@ -420,6 +438,11 @@ public class RollupService {
+                 return base.cap();
+             }
+ 
++            @Override
++            public BigDecimal cutOf(Long personId) {
++                return base.cutOf(personId);
++            }
++
+             @Override
+             public Optional<Claim> claimNumbered(Long personId, String number) {
+                 return base.claimNumbered(personId, number);
+@@ -448,7 +471,7 @@ public class RollupService {
+     }
+ 
+     /** The person's due-total on {@code basis} from those of {@code theirs} that count on its today (see
+-     * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap; null (n/a)
++     * {@link #countsLive}): the sum of what is due on them as each shows it, at most the cap less their cut total; null (n/a)
+      * when none has a figure and no rate of their grade is in force on its today. */
+     public BigDecimal dueTotalOf(List<Claim> theirs, Person person, Basis basis) {
+         LocalDate today = basis.today();
+@@ -462,7 +485,7 @@ public class RollupService {
+             any = true;
+         }
+         boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
+-        return any || rated ? cappedOf(due, basis.cap()) : null;
++        return any || rated ? cappedOf(due, basis.cap(), basis.cutOf(person.getId())) : null;
+     }
+ 
+     /** Whether the claim shows the figure fixed when it was settled at a rate: it is SETTLED, or was
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 0be8a417..a31a1772 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -666,13 +666,15 @@ public class SettingsService {
+         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPot();
+     }
+ 
+-    /** Set the sheet's pot; null for none. The balanced pools' cuts follow it. */
++    /** Set the sheet's pot; null for none. The balanced pools' cuts follow it, and so the due-totals under a cap. */
+     @Transactional
+     public Sheet setPot(String sheetId, String by, BigDecimal pot) {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         sheet.setPot(pot);
+         sheets.flush();
+         audit.change("SETTING_CHANGED", sheetId, by, "key=pot", "value=" + (pot == null ? "" : pot.toPlainString()));
++        rollup.recordSince(sheetId, by, before);
+         return sheet;
+     }
+ 
