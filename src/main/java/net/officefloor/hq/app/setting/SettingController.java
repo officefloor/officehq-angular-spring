@@ -86,6 +86,11 @@ public class SettingController {
             LocalDate from) {
     }
 
+    /** A grade's own proof threshold as entered; none means the sheet's. */
+    public record GradeProofThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
+    }
+
     /** The note threshold as entered; none means no threshold. */
     public record NoteThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
             LocalDate from) {
@@ -241,6 +246,18 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ProofThresholdForm form) {
         String id = sheetId.trim();
         service.setProofThreshold(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
+    }
+
+    /** Set a grade's own proof threshold, or clear it to use the sheet's. */
+    @PutMapping("/settings/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Valid GradeProofThresholdForm form) {
+        String id = sheetId.trim();
+        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        service.setGradeProofThreshold(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
 

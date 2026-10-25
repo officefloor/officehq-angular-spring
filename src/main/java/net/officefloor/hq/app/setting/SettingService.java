@@ -67,7 +67,8 @@ public class SettingService implements ActingFor {
     public static final String CAP = "cap";
 
     /** The key of the proof threshold: a claim whose due is above it cannot be settled or approved
-     *  without a proof; no value means none. */
+     *  without a proof; no value means none. A grade may set its own under proof-threshold-<grade>, dated;
+     *  a claim whose person's grade on its date has none in force then uses the sheet's. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
 
     /** The key of the note threshold: a claim whose due is above it cannot be opened with an empty note;
@@ -417,6 +418,28 @@ public class SettingService implements ActingFor {
     @Transactional(readOnly = true)
     public BigDecimal proofThreshold(String sheetId, LocalDate date) {
         return dated(sheetId).proofThresholdOn(date);
+    }
+
+    /** The proof threshold of a grade in force on the date: its own when set then, else the sheet's; null
+     *  when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String sheetId, Grade grade, LocalDate date) {
+        return dated(sheetId).proofThresholdOn(grade, date);
+    }
+
+    /** The key of a grade's own proof threshold. */
+    public static String proofThresholdKey(Grade grade) {
+        return PROOF_THRESHOLD + "-" + grade.name();
+    }
+
+    /** Record a grade's own proof threshold, kept to two decimals, from a date; null clears it from then,
+     *  leaving the sheet's. */
+    @Transactional
+    public BigDecimal setGradeProofThreshold(String sheetId, String user, Grade grade, BigDecimal threshold,
+            LocalDate from) {
+        BigDecimal value = threshold == null ? null : threshold.setScale(2);
+        record(sheetId, user, proofThresholdKey(grade), value == null ? "" : value.toPlainString(), from);
+        return value;
     }
 
     /** Record the sheet's proof threshold, kept to two decimals, from a date; null clears it from then. */

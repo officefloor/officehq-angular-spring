@@ -55,7 +55,7 @@ export interface SettingsView {
   proofThreshold: string | null;
   /** The due above which a claim needs a note to be opened, with two decimals, or null when there is none. */
   noteThreshold: string | null;
-  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold,
+  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>,
    *  note-threshold) take
    *  from their from-dates, in date order. */
   dated: Partial<Record<string, DatedValue[]>>;
@@ -96,6 +96,11 @@ export class SettingsApi {
   /** Record the proof threshold from a date (null: the sheet's today); null clears it from then, leaving none. */
   setProofThreshold(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }));
+  }
+
+  /** Record a grade's own proof threshold from a date (null: the sheet's today); null clears it from then, leaving the sheet's. */
+  setGradeProofThreshold(sheetId: string, grade: Grade, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold/${grade}`, { value, from }));
   }
 
   /** Record the note threshold from a date (null: the sheet's today); null clears it from then, leaving none. */

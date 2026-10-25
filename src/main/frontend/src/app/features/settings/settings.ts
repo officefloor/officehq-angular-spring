@@ -43,11 +43,12 @@ function settled(control: AbstractControl): void {
 // (a claim dated before it rounds half up, on or after it half to even; blank: the sheet's today) and period
 // numbering from (once the sheet's today reaches it, a claim opened is numbered within its period; blank: off) and the cap
 // (the most a person's due-total can be; blank: no cap) and the proof threshold (a claim whose due is above
-// the one in force on its date needs a proof to be settled or approved; blank: none), and the roles it assigns user names, with one form for each.
+// the one in force on its date needs a proof to be settled or approved; blank: none) and each grade's own proof
+// threshold (a claim whose person's grade on its date has one in force then uses it instead; blank: the sheet's), and the roles it assigns user names, with one form for each.
 // A steward can delegate the steward role to a user from a date (blank: the sheet's today) to a date, inclusive;
 // while the sheet's today is inside the range the user acts as a steward.
 // The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the late
-// percent, each grade's grace, the cap and the proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
+// percent, each grade's grace, the cap, the proof threshold and each grade's proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
 // the sheet's today.
 // The permission matrix names, for each of open, settle, void, reassign, close and reopen, the roles that
@@ -113,6 +114,13 @@ function settled(control: AbstractControl): void {
         <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
         <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold of grade {{ g }} (blank: the sheet's)</label>
+          <input [id]="'setting-proof-threshold-' + g" [attr.data-testid]="'setting-proof-threshold-' + g" [formControl]="gradeProofThresholdForm.controls[g]" inputmode="decimal" />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold of grade {{ g }} from (yyyy-mm-dd; blank: the sheet's today)</label>
+          <input [id]="'setting-proof-threshold-' + g + '-from'" [attr.data-testid]="'setting-proof-threshold-' + g + '-from'" [formControl]="gradeProofThresholdFromForm.controls[g]" />
+          <p>Proof threshold of grade {{ g }} now: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ now('proof-threshold-' + g) ?? '' }}</span></p>
+        }
         <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank: none)</label>
         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" />
         <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
@@ -269,6 +277,18 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   } satisfies Record<Grade, FormControl<string>>);
+  /** Each grade's own proof threshold, a field per grade; part of the settings form. */
+  protected readonly gradeProofThresholdForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  } satisfies Record<Grade, FormControl<string>>);
+  /** The date each grade's proof threshold is recorded from, a field per grade; blank: the sheet's today. */
+  protected readonly gradeProofThresholdFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  } satisfies Record<Grade, FormControl<string>>);
   /** The roles that may take each action, a field per action; part of the settings form. */
   protected readonly permissionsForm = new FormGroup({
     open: new FormControl('', { nonNullable: true }),
@@ -300,6 +320,8 @@ export class Settings {
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeGraceForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.gradeGraceFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+    this.gradeProofThresholdForm.valueChanges.subscribe(() => this.settingsError.set(''));
+    this.gradeProofThresholdFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     this.delegateForm.valueChanges.subscribe(() => this.delegateError.set(''));
@@ -320,6 +342,10 @@ export class Settings {
       this.gradeGraceForm.markAsUntouched();
       this.gradeGraceFromForm.markAsPristine();
       this.gradeGraceFromForm.markAsUntouched();
+      this.gradeProofThresholdForm.markAsPristine();
+      this.gradeProofThresholdForm.markAsUntouched();
+      this.gradeProofThresholdFromForm.markAsPristine();
+      this.gradeProofThresholdFromForm.markAsUntouched();
       this.permissionsForm.markAsPristine();
       this.permissionsForm.markAsUntouched();
       if (sheet) void this.reload(sheet.id);
@@ -352,6 +378,7 @@ export class Settings {
       { label: 'note threshold', control: noteThresholdFrom },
       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
       ...GRADES.map((g) => ({ label: `grace of grade ${g}`, control: this.gradeGraceFromForm.controls[g] })),
+      ...GRADES.map((g) => ({ label: `proof threshold of grade ${g}`, control: this.gradeProofThresholdFromForm.controls[g] })),
     ];
     for (const { label, control } of froms) {
       const from = control.value.trim();
@@ -420,6 +447,14 @@ export class Settings {
     if (dirty(proofThreshold, proofThresholdFrom) && proofThresholdValue !== '' && !MONEY.test(proofThresholdValue)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
+    }
+    const gradeProofThresholdValues = GRADES.map((g) => ({ grade: g, control: this.gradeProofThresholdForm.controls[g],
+      from: this.gradeProofThresholdFromForm.controls[g], value: this.gradeProofThresholdForm.controls[g].value.trim() }));
+    for (const { grade, control, from, value } of gradeProofThresholdValues) {
+      if (dirty(control, from) && value !== '' && !MONEY.test(value)) {
+        this.settingsError.set(`Type the proof threshold of grade ${grade} as 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
+        return;
+      }
     }
     if (dirty(noteThreshold, noteThresholdFrom) && noteThresholdValue !== '' && !MONEY.test(noteThresholdValue)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
@@ -502,6 +537,13 @@ export class Settings {
           fromOf(proofThresholdFrom));
         settled(proofThreshold);
         settled(proofThresholdFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      for (const { grade, control, from, value } of gradeProofThresholdValues) {
+        if (!dirty(control, from)) continue;
+        const settings = await this.api.setGradeProofThreshold(sheet.id, grade, value === '' ? null : value, fromOf(from));
+        settled(control);
+        settled(from);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
       if (dirty(noteThreshold, noteThresholdFrom)) {

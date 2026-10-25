@@ -142,8 +142,9 @@ public class ClaimService {
         return claims.saveAndFlush(claim);
     }
 
-    /** Once the sheet's holidays are changed, every due-by on the sheet is worked out again: the terms-th
-     *  business day after the date it counts from, with the terms the claim was fixed with. */
+    /** Once the sheet's holidays are changed, every due-by on the sheet but a draft's is worked out again:
+     *  the terms-th business day after the date it counts from, with the terms the claim was fixed with. A
+     *  draft keeps the due-by it was added with. */
     @EventListener
     @Transactional
     public void moveDueBys(HolidaysChanged change) {
@@ -151,6 +152,7 @@ public class ClaimService {
         Set<LocalDate> days = holidays.dates(sheetId);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (claim.getStatus() == ClaimStatus.DRAFT) continue;
             if (claim.moveDueBy(BusinessDays.after(claim.getDueFrom(), claim.getTerms(), days))) {
                 claims.save(claim);
             }
@@ -183,7 +185,9 @@ public class ClaimService {
 
     /** Change a draft claim's amount, date and note; a blank date takes the sheet's today. A claim that
      *  is no longer a draft is refused: to change an open claim, void it and add a new one. A claim
-     *  another user's editor locks is refused; saving releases the user's own lock. */
+     *  another user's editor locks is refused; saving releases the user's own lock. A new date whose
+     *  due-by, as a claim added on it would be fixed, falls inside a closed period is refused; the
+     *  claim's own due-by stays as it was fixed. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tags) {
@@ -193,7 +197,11 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseUnlessDraft(claim);
         refuseIfLocked(claim, user);
-        refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
+        Person person = person(sheetId, claim.getPersonId());
+        refuseIfRetired(person, dated);
+        if (!dated.equals(claim.getDate())) {
+            refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
+        }
         refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
         String reference = refOf(ref);
         refuseIfRefUsed(sheetId, reference, claim.getId());
@@ -258,7 +266,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
-        if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, claim, dueNow);
+        if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, person, claim, dueNow);
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, due(sheetId, person, claim));
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
@@ -497,7 +505,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal dueNow = due(sheetId, person, claim);
-        refuseIfUnproven(sheetId, claim, dueNow);
+        refuseIfUnproven(sheetId, person, claim, dueNow);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(dueNow);
@@ -625,11 +633,12 @@ public class ClaimService {
                 .filter((p) -> p.contains(date)).findFirst().orElse(null);
     }
 
-    /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold
-     *  in force on the claim's date (a due of n/a, or no threshold, needs none). */
-    private void refuseIfUnproven(String sheetId, Claim claim, BigDecimal due) {
+    /** Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force
+     *  on the claim's date: its person's grade's then when one is set, else the sheet's (a due of n/a, or
+     *  no threshold, needs none). */
+    private void refuseIfUnproven(String sheetId, Person person, Claim claim, BigDecimal due) {
         if (due == null || claim.getProofs() > 0) return;
-        BigDecimal threshold = settings.proofThreshold(sheetId, claim.getDate());
+        BigDecimal threshold = settings.proofThreshold(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
