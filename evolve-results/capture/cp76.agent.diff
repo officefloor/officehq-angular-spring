@@ -1,0 +1,40 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 0ce7f49d..4da8f71f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -131,6 +131,14 @@ public class Rollup {
+         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+     }
+ 
++    /** Audit, once the transaction commits, each person's due-total as it stood in the snapshot, in the
++     *  order they were added. */
++    public void recordSnapshot(String user, Snapshot before) {
++        String prefix = " sheet=" + before.sheetId() + " by=" + user;
++        before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix + " name="
++                + figures.name() + " due-total=" + text(figures.dueTotal())));
++    }
++
+     /** Audit, once the transaction commits, the figures that moved since the snapshot was taken. */
+     public void recordChanges(String user, Snapshot before) {
+         Snapshot after = snapshot(before.sheetId());
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 23313e5c..91c8de9d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -48,12 +48,14 @@ public class SheetService {
+         return load(id).getToday();
+     }
+ 
+-    /** Change the sheet's today; it has no audit line of its own, only what it sets off (such as the
+-     *  periods it closes) and then the figures it moves. */
++    /** Change the sheet's today; it has no audit line of its own: first a snapshot of each person's
++     *  due-total on the day being left, then what it sets off (such as the periods it closes) and then
++     *  the figures it moves. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id);
+         Rollup.Snapshot before = rollup.snapshot(id);
++        rollup.recordSnapshot(user, before);
+         sheet.setToday(today);
+         Sheet saved = sheets.saveAndFlush(sheet);
+         events.publishEvent(new TodayChanged(id, user, today));
