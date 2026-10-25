@@ -1,0 +1,64 @@
+{
+  "checkpoint": 31,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp31_summary",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c647bc08b0fe59b3f5664c012905097c9641c2f8",
+  "reset_sha": "",
+  "preagent_sha": "7597ee82b85d043a37f8caa39237f22d4c8786cc",
+  "prev_sha": "7597ee82b85d043a37f8caa39237f22d4c8786cc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7732939999999998,
+    "input_tokens": 36,
+    "output_tokens": 7763,
+    "cache_read_tokens": 804770,
+    "cache_creation_tokens": 57117,
+    "num_turns": 19,
+    "duration_ms": 445806,
+    "duration_api_ms": 97121,
+    "model": "claude-opus-5-5",
+    "session_id": "15c22bfb-f8c0-4b19-be0b-1396a398ae62",
+    "stop_reason": "success",
+    "result_text": "The summary panel is in place and `bin/e2e` passes all 4 tests. I ran it twice and both runs passed.\n\n**The panel** (`features/summary/summary.ts`) is a new component that sits under the sheet totals in the people section.\n- **Per grade (A, B, C):** the number of people whose grade today is that grade, leaving out retired people. Next to it is their due-totals added up, skipping anyone whose due-total shows n/a.\n- **Per period:** the same due-total the period's own row shows, including the fixed total of a closed period.\n- **Per status (DRAFT, OPEN, PENDING, SETTLED, VOID):** how many of the sheet's claims have that status. This includes claims of retired people, because the test expects them counted. The app has no PENDING status, so that count is always 0.\n\nAll the figures are worked out in `people.ts` from the same data and functions the people list, period rows and totals already use, so they agree with the list. No server or database changes were needed.\n\n**One other change.** The first run failed on an audit line in \"summary scenario 1\". The test saves a person edit that changes nothing, and the test treats the save as done straight away because the row already shows the right values. It then closes a period, and that request reached the server before the save. So the server recorded the two changes in the wrong order. To fix it I added `core/in-order-changes.interceptor.ts`. It makes the browser wait for each write request to be answered before sending the next one, so the server records changes in the order the user made them. Reads are not held back. This affects every write in the app: a write now always waits for the one before it to finish.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7732939999999998,
+        "num_turns": 19,
+        "duration_ms": 445806,
+        "duration_api_ms": 97121,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp31.agent.jsonl",
+  "agent_diff_file": "cp31.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

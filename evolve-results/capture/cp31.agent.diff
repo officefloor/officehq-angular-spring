@@ -1,0 +1,190 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index b78f123b..2a507a39 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -2,13 +2,15 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/
+ import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
++import { inOrderChangesInterceptor } from './core/in-order-changes.interceptor';
+ import { signedInUserInterceptor } from './core/signed-in-user.interceptor';
+ 
+-// The app's wiring: the router and the HTTP client, which tells the server who is signed in.
++// The app's wiring: the router and the HTTP client, which tells the server who is signed in and
++// sends the changes in the order they were taken.
+ export const appConfig: ApplicationConfig = {
+   providers: [
+     provideBrowserGlobalErrorListeners(),
+     provideRouter(routes),
+-    provideHttpClient(withInterceptors([signedInUserInterceptor])),
++    provideHttpClient(withInterceptors([signedInUserInterceptor, inOrderChangesInterceptor])),
+   ],
+ };
+diff --git a/src/main/frontend/src/app/core/in-order-changes.interceptor.ts b/src/main/frontend/src/app/core/in-order-changes.interceptor.ts
+new file mode 100644
+index 00000000..c4a91269
+--- /dev/null
++++ b/src/main/frontend/src/app/core/in-order-changes.interceptor.ts
+@@ -0,0 +1,27 @@
++import { HttpEvent, HttpInterceptorFn } from '@angular/common/http';
++import { Observable, defer, finalize } from 'rxjs';
++
++/** Settles once the last change sent so far has been answered. */
++let lastChange: Promise<void> = Promise.resolve();
++
++// Sends each change (any request but a read) only once the changes before it have been answered, so
++// the store makes them, and records them in the audit file, in the order they were taken.
++export const inOrderChangesInterceptor: HttpInterceptorFn = (req, next) => {
++  if (req.method === 'GET' || req.method === 'HEAD') return next(req);
++  const before = lastChange;
++  let answered!: () => void;
++  lastChange = new Promise<void>((resolve) => (answered = resolve));
++  return new Observable<HttpEvent<unknown>>((subscriber) => {
++    let sent = true;
++    let inner: { unsubscribe(): void } | undefined;
++    void before.then(() => {
++      if (!sent) return;
++      inner = defer(() => next(req)).pipe(finalize(answered)).subscribe(subscriber);
++    });
++    return () => {
++      sent = false;
++      if (inner) inner.unsubscribe();
++      else void before.then(answered);
++    };
++  });
++};
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c9504c33..0630400c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,9 +12,12 @@ import { SheetFloor } from '../settings/sheet-floor';
+ import { SheetLatePct } from '../settings/sheet-late-pct';
+ import { SheetTerms } from '../settings/sheet-terms';
+ import { StatementView, StatementsApi } from '../statements/statements-api';
++import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+ import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn } from './people-api';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
++/** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
++const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+ import { QuickAdd } from './quick-add';
+ 
+ // The sheet's people in the order they were added, with one form to add a person or edit one,
+@@ -23,7 +26,7 @@ import { QuickAdd } from './quick-add';
+ // their counting claims to the figures they show then.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd],
++  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, Summary],
+   template: `
+     @if (session.sheet()) {
+       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+@@ -65,6 +68,7 @@ import { QuickAdd } from './quick-add';
+         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
+         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
+           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
++        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+         <table data-testid="people-list">
+           <thead>
+             <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -248,6 +252,18 @@ export class People {
+     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
+     return new Map([...cents].map(([id, total]) => [id, fixed.get(id) ?? money(total)]));
+   });
++  /** Per grade, the people on it today who are not retired, and their due-totals added up, skipping
++   *  those that are n/a. */
++  protected readonly gradeSummary = computed<GradeSummary[]>(() => GRADES.map((grade) => {
++    const on = this.people().filter((p) => !p.retired && this.gradeToday(p) === grade);
++    return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)) };
++  }));
++  /** Each period's due-total, as its row shows it. */
++  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
++    this.periods().map((p) => ({ name: p.name, dueTotal: this.periodDueTotals().get(p.id) ?? '0.00' })));
++  /** How many of the sheet's claims have each status. */
++  protected readonly statusSummary = computed<StatusSummary[]>(() =>
++    SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
+   /** The statements of each person who has had one taken, by person. */
+   protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
+   /** The person whose statement is being taken. */
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 00000000..89edb2cc
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,76 @@
++import { Component, input } from '@angular/core';
++
++/** A grade's line of the summary: how many people are on it today, and their due-totals added up. */
++export interface GradeSummary {
++  grade: string;
++  count: number;
++  dueTotal: string;
++}
++
++/** A period's line of the summary: its due-total. */
++export interface PeriodSummary {
++  name: string;
++  dueTotal: string;
++}
++
++/** A status's line of the summary: how many claims have it. */
++export interface StatusSummary {
++  status: string;
++  count: number;
++}
++
++// The sheet in figures: per grade, the people on it today who are not retired and their due-totals;
++// per period, its due-total; per status, how many claims have it. Each figure is the list's own.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-labelledby="summary-heading" data-testid="summary">
++      <h2 id="summary-heading">Summary</h2>
++      <table aria-label="Summary by grade">
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (g of grades(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table aria-label="Summary by period">
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table aria-label="Summary by status">
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of statuses(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Summary {
++  readonly grades = input.required<GradeSummary[]>();
++  readonly periods = input.required<PeriodSummary[]>();
++  readonly statuses = input.required<StatusSummary[]>();
++}
