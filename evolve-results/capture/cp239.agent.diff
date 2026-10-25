@@ -1,0 +1,71 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cd7d6d0f..6fb5bcd9 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -122,7 +122,7 @@ import { FigurePipe } from '../../core/figure.pipe';
+     <app-duplicates />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-grades />
+-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
++    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" [fiscalStartMonth]="fiscalStartMonth()" (added)="periodAdded($event)" (closed)="periodClosed($event)" (reopened)="periodClosed($event)" (locked)="periodClosed($event)" (reloaded)="periods.set($event)" />
+     <app-dashboard [counts]="dashboard()" />
+     <app-summary
+       [people]="summaryPeople()"
+@@ -1281,6 +1281,19 @@ export class People {
+     }
+     return Object.fromEntries(Object.entries(sums).map(([name, sum]) => [name, money(sum)]));
+   });
++  /** Each period's count of claims, by name: the claims whose due-by falls in it, VOID and DELETED ones left out. */
++  protected readonly periodClaimCounts = computed(() => {
++    const counts: Record<string, number> = {};
++    for (const p of this.periods()) counts[p.name] = 0;
++    for (const person of this.people()) {
++      for (const c of this.claimsOf(person.id)) {
++        if (c.status === 'VOID' || c.status === 'DELETED') continue;
++        const period = periodOn(this.periods(), c.dueBy);
++        if (period !== null) counts[period.name] += 1;
++      }
++    }
++    return counts;
++  });
+   /** Each period's classic due-total, by name: while it is open, what is due on the claims whose
+    *  due-by falls in it that count by their status now (OPEN, SETTLED and PENDING), as each claim
+    *  shows it; once it is closed, the figure fixed then. */
+diff --git a/src/main/frontend/src/app/features/people/periods.ts b/src/main/frontend/src/app/features/people/periods.ts
+index fb54ac46..5e2a8f67 100644
+--- a/src/main/frontend/src/app/features/people/periods.ts
++++ b/src/main/frontend/src/app/features/people/periods.ts
+@@ -11,7 +11,7 @@ const YEAR = /^\d{4}$/;
+ // The periods of the sheet, by from-date, each with the fiscal year its from-date falls in, the due-total of the counting claims dated in
+ // it (fixed once it is closed or soft-closed), its cap on each person's open claims, whether it is closed (soft for a soft close), the buttons
+ // that close, soft-close and reopen it, whether a steward has locked it (a locked period cannot be reopened) and the buttons that
+-// lock and unlock it, and the
++// lock and unlock it, the count of its claims (VOID and DELETED ones left out), and the
+ // form that adds a period. Monthly periods are generated between two dates, or for a fiscal year; quarterly ones for a calendar year.
+ @Component({
+   selector: 'app-periods',
+@@ -148,6 +148,7 @@ const YEAR = /^\d{4}$/;
+               <th scope="col">Due</th>
+               <th scope="col">Closed</th>
+               <th scope="col">Locked</th>
++              <th scope="col">Claims</th>
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+@@ -162,6 +163,7 @@ const YEAR = /^\d{4}$/;
+                 <td data-testid="period-due-total">{{ (dueTotals()[p.name] ?? '0.00') | figure }}</td>
+                 <td data-testid="period-closed">{{ (p.closed ? (p.soft ? 'soft' : 'yes') : 'no') | figure }}</td>
+                 <td data-testid="period-locked">{{ (p.locked ? 'yes' : 'no') | figure }}</td>
++                <td data-testid="period-claims-count">{{ (claimCounts()[p.name] ?? 0) | figure }}</td>
+                 <td>
+                   @if (!p.closed || p.soft) {
+                     <button
+@@ -255,6 +257,8 @@ export class Periods {
+   readonly periods = input.required<Period[]>();
+   /** Each period's due-total, by name: the sum of the people's figures for it. */
+   readonly dueTotals = input.required<Record<string, string>>();
++  /** Each period's count of claims, by name: those whose due-by falls in it, VOID and DELETED ones left out. */
++  readonly claimCounts = input.required<Record<string, number>>();
+   /** The month (1 to 12) the sheet's fiscal year starts in. */
+   readonly fiscalStartMonth = input.required<number>();
+   /** A period was added. */
