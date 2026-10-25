@@ -213,6 +213,12 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));
   }
 
+  /** Move a draft, open or pending claim to another person, as their newest claim: refused (403) to
+   *  all but a steward, and refused when its status does not allow it. */
+  reassign(sheetId: string, id: number, personId: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }));
+  }
+
   /** Open the claims of these ids together in list order; each that cannot be opened is left as it is. */
   openSelected(sheetId: string, ids: readonly number[]): Promise<BulkOpenView> {
     return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheetId)}/claims/open`, { ids }));

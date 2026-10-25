@@ -144,9 +144,10 @@ import { QuickAdd } from './quick-add';
                 </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
-                    [rates]="rates()" [grades]="p.grades" [periods]="periods()"
+                    [people]="people()" [rates]="rates()" [grades]="p.grades" [periods]="periods()"
                     [selected]="selectedClaims()" (selectedChange)="selectClaim($event.id, $event.on)"
-                    (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)" />
+                    (added)="claimAdded($event)" (saved)="claimSaved($event)" (changed)="claimSaved($event)"
+                    (reassigned)="claimReassigned($event)" />
                 </td>
                 <td>
                   <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -566,6 +567,11 @@ export class People {
 
   protected claimAdded(claim: ClaimView): void {
     this.claims.update((list) => [claim, ...list]);
+  }
+
+  /** A claim moved to another person: listed first, as their newest claim, whatever its date. */
+  protected claimReassigned(claim: ClaimView): void {
+    this.claims.update((list) => [claim, ...list.filter((c) => c.id !== claim.id)]);
   }
 
   /** A quick-add's claim, and its person when the quick-add added them. */

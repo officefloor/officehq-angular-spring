@@ -53,7 +53,7 @@ public class BulkOpenService {
         Map<Long, Integer> personOrder = new HashMap<>();
         List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
-        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        return claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
                 .map(Claim::getId)

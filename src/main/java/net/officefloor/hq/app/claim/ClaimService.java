@@ -49,10 +49,10 @@ public class ClaimService {
         this.audit = audit;
     }
 
-    /** The sheet's claims, newest first. */
+    /** The sheet's claims, newest first by their place in the list. */
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
     /** Add a claim to a person; a claim with no date is dated the sheet's today. */
@@ -65,7 +65,10 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrects));
+        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects);
+        // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
+        claim.setListed(claims.lastListed(sheetId) + 1);
+        claim = claims.saveAndFlush(claim);
         recordChange("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(user, before);
         return claim;
@@ -130,6 +133,38 @@ public class ClaimService {
         } else {
             recordChange(event, user, person, saved, number, "");
         }
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
+     *  keeps its number and date and loses any figure a statement bound it to (it is live again until
+     *  its new person's next statement). Refused unless the user is a steward of the sheet, and for a
+     *  settled or voided claim, a claim dated inside a closed period, a move to the claim's own person,
+     *  or to a person retired by the claim's date. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward moves a claim to another person.");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be moved to another person.");
+        }
+        Person from = person(sheetId, claim.getPersonId());
+        Person to = person(sheetId, toPersonId);
+        if (from.getId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
+        }
+        refuseIfRetired(to, claim.getDate());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_REASSIGNED", user, to, saved, saved.getNumber(),
+                " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(user, before);
         return saved;
     }

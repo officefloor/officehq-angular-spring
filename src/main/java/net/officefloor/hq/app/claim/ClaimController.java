@@ -138,6 +138,17 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId.trim(), SignedInUser.name(user), id, form.reason().trim()));
     }
 
+    /** The person a claim is moved to. */
+    public record ReassignForm(@NotNull Long personId) {
+    }
+
+    /** Move a draft, open or pending claim to another person, as their newest claim; a steward's change. */
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ReassignForm form) {
+        return ClaimView.of(service.reassign(sheetId.trim(), SignedInUser.name(user), id, form.personId()));
+    }
+
     /** Void a draft or open (or pending) claim. */
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,

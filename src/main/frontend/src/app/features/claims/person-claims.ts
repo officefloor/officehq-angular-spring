@@ -66,6 +66,17 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to">
+            <option value="">Choose a person</option>
+            @for (o of people(); track o.id) {
+              @if (o.id !== personId()) {
+                <option [value]="o.id">{{ o.name }}</option>
+              }
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
+            [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
           <button type="button" data-testid="claim-edit" (click)="edit(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editingId() === c.id) {
@@ -91,6 +102,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
+  /** Everyone on the sheet, whom a claim can be moved to. */
+  readonly people = input.required<readonly { id: number; name: string }[]>();
   /** The sheet's rates, whatever their grades and from-dates. */
   readonly rates = input.required<RateView[]>();
   /** The person's grades, each from its from-date. */
@@ -105,6 +118,8 @@ export class PersonClaims {
   readonly saved = output<ClaimView>();
   /** A claim whose status changed. */
   readonly changed = output<ClaimView>();
+  /** A claim moved to another person. */
+  readonly reassigned = output<ClaimView>();
 
   protected readonly amount = new FormControl('', { nonNullable: true });
   protected readonly date = new FormControl('', { nonNullable: true });
@@ -198,6 +213,34 @@ export class PersonClaims {
           : periodOf(this.periods(), claim.date)?.closed
             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
             : `This claim cannot be ${PAST[action]} from its status.`;
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Move a draft, open or pending claim to the chosen person; only a steward may. */
+  protected async reassign(claim: ClaimView, to: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    if (to === '') {
+      this.claimError.set({ id: claim.id, message: 'Choose the person to move this claim to.' });
+      return;
+    }
+    try {
+      const moved = await this.api.reassign(sheet.id, claim.id, Number(to));
+      if (this.session.sheet()?.id === sheet.id) {
+        if (this.editingId() === claim.id) this.reset();
+        this.reassigned.emit(moved);
+      }
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+        const message = forbidden
+          ? 'Only a steward can move a claim to another person.'
+          : periodOf(this.periods(), claim.date)?.closed
+          ? 'This claim is dated inside a closed period, so it cannot be moved.'
+          : 'This claim cannot be moved to that person; a settled or voided claim cannot move.';
         this.claimError.set({ id: claim.id, message });
       }
     }

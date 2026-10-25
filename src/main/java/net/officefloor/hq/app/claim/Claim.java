@@ -64,6 +64,11 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The claim's place in the sheet's list, which is newest first: the sheet's next place when it is
+     *  added, and again when it is moved to another person. */
+    @Column(name = "listed", nullable = false)
+    private long listed;
+
     protected Claim() {
     }
 
@@ -83,6 +88,22 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public long getListed() {
+        return listed;
+    }
+
+    public void setListed(long listed) {
+        this.listed = listed;
+    }
+
+    /** Move the claim to another person, as their newest claim at the place given: it keeps its number
+     *  and date, and loses any figure a statement bound it to, its due live again. */
+    public void moveTo(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
+        unbind();
     }
 
     public BigDecimal getAmount() {

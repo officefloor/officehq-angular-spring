@@ -13,6 +13,13 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    /** The sheet's claims as the screen lists them, newest first by their place in the list. */
+    List<Claim> findBySheetIdOrderByListedDesc(String sheetId);
+
+    /** The last place given in the sheet's list of claims; 0 when it has none. */
+    @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
+    long lastListed(@Param("sheetId") String sheetId);
+
     /** The person's claims, locked until the transaction ends, so a statement binds them all at one moment. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.sheetId = :sheetId and c.personId = :personId order by c.id desc")
