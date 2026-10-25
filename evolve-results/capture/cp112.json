@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "73ec574b730ca559237901c6e9297c93902afa59",
+  "reset_sha": "",
+  "preagent_sha": "be9743091865c28d0dddae5641e4deefecebf6e5",
+  "prev_sha": "be9743091865c28d0dddae5641e4deefecebf6e5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0008527999999999,
+    "input_tokens": 48,
+    "output_tokens": 12960,
+    "cache_read_tokens": 1160024,
+    "cache_creation_tokens": 63682,
+    "num_turns": 25,
+    "duration_ms": 292022,
+    "duration_api_ms": 153700,
+    "model": "claude-opus-5-5",
+    "session_id": "4b19c204-80a6-4203-b15c-ed02886603f7",
+    "stop_reason": "success",
+    "result_text": "A name or alias can now only be used once across a sheet's whole tree, and `bin/e2e` passes all 4 tests.\n\n**What's refused now:** adding a person, renaming, adding an alias and the quick-add bar are all refused, with the usual error, when the name is already used as a name or alias on any ancestor, descendant or descendant's descendant (counting only sheets that exist). The paste box needed no change: it only adds claims to people already on the sheet, so it can't bring in a new name. There is no people import in the app yet; a future one should use the same check.\n\n**People who already clash:** they are left as they are, and the people table has a new \"Clashing\" column (`person-clashing`) showing yes or no. Any edit through the person form is refused while their name, or any of their aliases, is used elsewhere in the tree. One consequence: a person whose clash is in an alias can never be edited, because a rename doesn't fix the alias and the app can't remove aliases.\n\n**How it's built:** a new `person/NameTree.java` works out a sheet's tree and the names used on the other sheets in it. It's called from `PersonService` (add, rename, alias) and the clashing flag is added to every person returned to the screen. No database change was needed.\n\n**Decisions for you:**\n- **Transfer is also checked.** The request didn't mention it, but moving a person to a sheet whose tree already uses their name or an alias is now refused. It's a small block in `TransferService.java` if you'd rather not have it.\n- **Undoing a transfer is not checked,** so it can still bring a clashing name back to the original sheet.\n- **Not race-safe across sheets.** The database still only enforces unique names within one sheet, so two users adding the same name to different sheets of a tree at the same moment could both succeed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0008527999999999,
+        "num_turns": 25,
+        "duration_ms": 292022,
+        "duration_api_ms": 153700,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
