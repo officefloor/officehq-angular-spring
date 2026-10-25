@@ -1,0 +1,380 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ca574ec5..574bffba 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -537,6 +537,7 @@ export class People {
+    *  its date, in cents; null (n/a) when no rate of their grade in force today is in force today and
+    *  none of their claims keeps a figure. */
+   private dueCentsOf(person: PersonView): number | null {
++    const today = this.session.sheet()?.today;
+     const gradeToday = this.gradeToday(person);
+     let total = 0;
+     let keptFigure = false;
+@@ -548,12 +549,15 @@ export class People {
+       if (keepsFigure(c)) keptFigure = true;
+       // A live figure at a grade other than today's is not undone by today's grade having no rate.
+       if (due !== null && grade !== gradeToday) keptFigure = true;
++      // Nor is a live figure on a claim dated by today undone by its rate having ended since.
++      if (due !== null && today !== undefined && c.date <= today) keptFigure = true;
+     }
+     return this.rateOf(gradeToday) === null && !keptFigure ? null : total;
+   }
+ 
+   /** The person's due-total with two decimals, or n/a when no rate of their grade in force today is in
+-   *  force today and no claim keeps a figure (settled, bound by a statement, or at another grade). */
++   *  force today and no claim keeps a figure (settled, bound by a statement, at another grade, or dated by
++   *  today). */
+   protected personDueTotal(person: PersonView): string {
+     const due = this.dueCentsOf(person);
+     return due === null ? 'n/a' : money(due);
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index 34d74e55..39ca2798 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -9,17 +9,19 @@ export interface RateView {
+   pct: string;
+   /** The date the rate is in force from (yyyy-mm-dd), or null when it applies from the beginning of time. */
+   from: string | null;
++  /** The last date the rate is in force (yyyy-mm-dd), or null when it runs until the grade's next rate. */
++  to: string | null;
+ }
+ 
+ /** Of one grade's rates, the one in force on a date: the one with the latest from-date on or before
+- *  it, or null when the date is before every one of them. */
++ *  it, or null when the date is before every one of them or after that one's to-date. */
+ export function rateInForce(rates: readonly RateView[], date: string): RateView | null {
+   let inForce: RateView | null = null;
+   for (const r of rates) {
+     if (r.from !== null && r.from > date) continue;
+     if (inForce === null || (inForce.from ?? '') < (r.from ?? '')) inForce = r;
+   }
+-  return inForce;
++  return inForce !== null && inForce.to !== null && inForce.to < date ? null : inForce;
+ }
+ 
+ /** Whether two rates are the same grade's rate for the same from-date. */
+@@ -55,8 +57,9 @@ export class RatesApi {
+     return firstValueFrom(this.http.get<RateView[]>(this.url(sheetId)));
+   }
+ 
+-  /** Set the grade's rate from a from-date (null: from the beginning of time), replacing the one it had for it. */
+-  set(sheetId: string, grade: Grade, pct: string, from: string | null): Promise<RateView> {
+-    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from }));
++  /** Set the grade's rate from a from-date (null: from the beginning of time) through a to-date
++   *  (null: until the grade's next rate), replacing the one it had for that from-date. */
++  set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
++    return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 8bf9b2ef..4751af83 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -7,8 +7,8 @@ import { RateView, RatesApi, rateInForce } from './rates-api';
+ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+-// The sheet's rate in force today for each grade, and every rate with its from-date, with one form
+-// to set a grade's rate from a from-date.
++// The sheet's rate in force today for each grade, and every rate with its from-date and to-date,
++// with one form to set a grade's rate from a from-date through a to-date.
+ @Component({
+   selector: 'app-rates',
+   imports: [ReactiveFormsModule],
+@@ -26,6 +26,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
+         <label for="rate-form-from">From (blank: from the start)</label>
+         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
++        <label for="rate-form-to">To (blank: until the next rate)</label>
++        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
+         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
+         @if (error()) {
+           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+@@ -46,13 +48,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </table>
+       <table data-testid="rates-list" aria-label="All rates">
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+         </thead>
+         <tbody>
+           @for (r of rates(); track r.grade + (r.from ?? 'start')) {
+             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+               <th scope="row">{{ r.grade }}</th>
+               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
++              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">{{ r.pct }}</td>
+             </tr>
+           }
+@@ -73,7 +76,8 @@ export class Rates {
+   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
+   protected readonly pct = new FormControl('', { nonNullable: true });
+   protected readonly from = new FormControl('', { nonNullable: true });
+-  protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from });
++  protected readonly to = new FormControl('', { nonNullable: true });
++  protected readonly form = new FormGroup({ grade: this.grade, pct: this.pct, from: this.from, to: this.to });
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
+ 
+@@ -101,7 +105,7 @@ export class Rates {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     this.error.set('');
+-    const { grade, pct, from } = this.form.getRawValue();
++    const { grade, pct, from, to } = this.form.getRawValue();
+     if (!GRADES.includes(grade)) {
+       this.error.set('Choose a grade of A, B or C.');
+       return;
+@@ -114,9 +118,18 @@ export class Rates {
+       this.error.set('Type a from-date as yyyy-mm-dd, or leave it blank.');
+       return;
+     }
++    if (to.trim() !== '' && !DATE.test(to.trim())) {
++      this.error.set('Type a to-date as yyyy-mm-dd, or leave it blank.');
++      return;
++    }
++    if (from.trim() !== '' && to.trim() !== '' && to.trim() < from.trim()) {
++      this.error.set('The to-date cannot be before the from-date.');
++      return;
++    }
+     this.saving.set(true);
+     try {
+-      const rate = await this.api.set(sheet.id, grade, pct.trim(), from.trim() === '' ? null : from.trim());
++      const rate = await this.api.set(sheet.id, grade, pct.trim(), from.trim() === '' ? null : from.trim(),
++        to.trim() === '' ? null : to.trim());
+       if (this.session.sheet()?.id === sheet.id) this.saved.emit(rate);
+     } catch {
+       this.error.set('The rate could not be set.');
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 2448772a..5b82605a 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -13,7 +13,8 @@ import java.time.LocalDate;
+ import net.officefloor.hq.app.person.Grade;
+ 
+ /** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
+- *  (or from the beginning of time, when it has none) until the grade's next rate. */
++ *  (or from the beginning of time, when it has none) until the grade's next rate, and no later than
++ *  its to-date when it has one. */
+ @Entity
+ @Table(name = "rate")
+ public class Rate {
+@@ -32,16 +33,20 @@ public class Rate {
+     @Column(name = "from_date")
+     private LocalDate from;
+ 
++    @Column(name = "to_date")
++    private LocalDate to;
++
+     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal pct;
+ 
+     protected Rate() {
+     }
+ 
+-    public Rate(String sheetId, Grade grade, LocalDate from, BigDecimal pct) {
++    public Rate(String sheetId, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
+         this.sheetId = sheetId;
+         this.grade = grade;
+         this.from = from;
++        this.to = to;
+         setPct(pct);
+     }
+ 
+@@ -62,6 +67,15 @@ public class Rate {
+         return from;
+     }
+ 
++    /** The last date the rate is in force, or null when it runs until the grade's next rate. */
++    public LocalDate getTo() {
++        return to;
++    }
++
++    public void setTo(LocalDate to) {
++        this.to = to;
++    }
++
+     public BigDecimal getPct() {
+         return pct;
+     }
+@@ -75,4 +89,19 @@ public class Rate {
+     public boolean appliesBy(LocalDate date) {
+         return from == null || !from.isAfter(date);
+     }
++
++    /** Whether the rate's to-date has passed by this date. */
++    public boolean endedBy(LocalDate date) {
++        return to != null && to.isBefore(date);
++    }
++
++    /** Of one grade's rates (from the start first, then by from-date), the one in force on the date:
++     *  the one with the latest from-date on or before it, unless its to-date has passed; null when none is. */
++    public static Rate inForce(Iterable<Rate> gradeRates, LocalDate date) {
++        Rate inForce = null;
++        for (Rate rate : gradeRates) {
++            if (rate.appliesBy(date)) inForce = rate;
++        }
++        return inForce == null || inForce.endedBy(date) ? null : inForce;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 2b65f00f..c99d0bfc 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -26,16 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
+ public class RateController {
+ 
+     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
+-     *  rate applies from the beginning of time. */
+-    public record RateView(Grade grade, String pct, LocalDate from) {
++     *  rate applies from the beginning of time; no to-date, until the grade's next rate. */
++    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to) {
+         static RateView of(Rate rate) {
+-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom());
++            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo());
+         }
+     }
+ 
+-    /** A rate's percent and from-date, as entered on the form; no from-date means from the beginning of time. */
++    /** A rate's percent, from-date and to-date, as entered on the form; no from-date means from the
++     *  beginning of time, no to-date until the grade's next rate. */
+     public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal pct,
+-            LocalDate from) {
++            LocalDate from, LocalDate to) {
+     }
+ 
+     private final RateService service;
+@@ -50,10 +51,10 @@ public class RateController {
+         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+     }
+ 
+-    /** Set the rate for a grade from a from-date, replacing the one it had for that from-date. */
++    /** Set the rate for a grade from a from-date through a to-date, replacing the one it had for that from-date. */
+     @PutMapping("/{grade}")
+     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RateForm form) {
+-        return RateView.of(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.pct()));
++        return RateView.of(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.to(), form.pct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 08ab6d62..9825a001 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -35,28 +35,29 @@ public class RateService {
+     }
+ 
+     /** The grade's rate in force on a date: the one with the latest from-date on or before it, or
+-     *  null when the date is before every rate the grade has. */
++     *  null when the date is before every rate the grade has or after that rate's to-date. */
+     @Transactional(readOnly = true)
+     public Rate inForce(String sheetId, Grade grade, LocalDate date) {
+-        Rate inForce = null;
+-        for (Rate rate : rates.findForGrade(sheetId, grade)) {
+-            if (rate.appliesBy(date)) inForce = rate;
+-        }
+-        return inForce;
++        return Rate.inForce(rates.findForGrade(sheetId, grade), date);
+     }
+ 
+-    /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time),
+-     *  replacing the rate it had for that from-date. */
++    /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time) through
++     *  a to-date (none: until the grade's next rate), replacing the rate it had for that from-date. A
++     *  to-date before the from-date is refused. */
+     @Transactional
+-    public Rate set(String sheetId, String user, Grade grade, LocalDate from, BigDecimal pct) {
++    public Rate set(String sheetId, String user, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
++        if (from != null && to != null && to.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
++        }
+         sheets.load(sheetId);
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+         Rate rate = (from == null ? rates.findFromStart(sheetId, grade) : rates.findFrom(sheetId, grade, from))
+                 .orElse(null);
+         if (rate == null) {
+-            rate = new Rate(sheetId, grade, from, pct);
++            rate = new Rate(sheetId, grade, from, to, pct);
+         } else {
+             rate.setPct(pct);
++            rate.setTo(to);
+         }
+         Rate saved;
+         try {
+@@ -66,7 +67,8 @@ public class RateService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The rate was changed by someone else.");
+         }
+         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + saved.getGrade()
+-                + " rate=" + saved.getPct().toPlainString() + (from == null ? "" : " from=" + from));
++                + " rate=" + saved.getPct().toPlainString() + (from == null ? "" : " from=" + from)
++                + (to == null ? "" : " to=" + to));
+         rollup.recordChanges(user, before);
+         return saved;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 0330074e..c094d3f7 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -102,10 +102,12 @@ public class Rollup {
+                 }
+                 // A live figure at a grade other than today's is not undone by today's grade having no rate.
+                 if (figure != null && grade != gradeToday) keptFigure = true;
++                // Nor is a live figure on a claim dated by today undone by its rate having ended since.
++                if (figure != null && today != null && !claim.getDate().isAfter(today)) keptFigure = true;
+             }
+             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
+             BigDecimal personDue = (today == null
+-                    || inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
++                    || Rate.inForce(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
+                             ? null : due;
+             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
+             claimedTotal = claimedTotal.add(claimed);
+@@ -143,7 +145,7 @@ public class Rollup {
+     private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
+         if (claim.getSettledDue() != null) return claim.getSettledDue();
+         if (claim.isBound()) return claim.getStatedDue();
+-        Rate rate = inForce(gradeRates, claim.getDate());
++        Rate rate = Rate.inForce(gradeRates, claim.getDate());
+         if (rate == null) return null;
+         BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
+         return claim.isCorrection() ? due : due.max(floor);
+@@ -158,15 +160,6 @@ public class Rollup {
+         return null;
+     }
+ 
+-    /** Of the grade's rates (from the start first, then by from-date), the one in force on the date. */
+-    private static Rate inForce(List<Rate> gradeRates, LocalDate date) {
+-        Rate inForce = null;
+-        for (Rate rate : gradeRates) {
+-            if (rate.appliesBy(date)) inForce = rate;
+-        }
+-        return inForce;
+-    }
+-
+     private static boolean same(BigDecimal a, BigDecimal b) {
+         return a == null || b == null ? Objects.equals(a, b) : a.compareTo(b) == 0;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 6596fc32..98673db8 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -88,6 +88,8 @@ public class StatementService {
+             if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) keptFigure = true;
+             // A live figure at a grade other than today's is not undone by today's grade having no rate.
+             if (figure != null && person.gradeOn(claim.getDate()) != person.gradeOn(today)) keptFigure = true;
++            // Nor is a live figure on a claim dated by today undone by its rate having ended since.
++            if (figure != null && !claim.getDate().isAfter(today)) keptFigure = true;
+             claim.bind(figure);
+         }
+         // As the screen shows it: n/a when no rate of the grade in force today is in force today and no
+diff --git a/src/main/resources/db/migration/V29__rate_to_date.sql b/src/main/resources/db/migration/V29__rate_to_date.sql
+new file mode 100644
+index 00000000..66264c59
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__rate_to_date.sql
+@@ -0,0 +1,5 @@
++-- A rate can carry a to-date: it is in force through that date and no longer. A claim dated after
++-- the to-date of the rate that would apply to it (the latest from-date on or before the claim's
++-- date) has no rate. A to-date is never before the rate's from-date.
++ALTER TABLE rate ADD COLUMN to_date DATE;
++ALTER TABLE rate ADD CONSTRAINT rate_to_not_before_from CHECK (to_date IS NULL OR from_date IS NULL OR to_date >= from_date);
