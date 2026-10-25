@@ -1,0 +1,335 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index fecd718c..f5af23be 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -6,6 +6,8 @@ export interface SheetView {
+   id: string;
+   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the real clock. */
+   today: string;
++  /** An archived sheet stays visible, and every change on it is refused. */
++  archived: boolean;
+ }
+ 
+ // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the
+@@ -46,4 +48,14 @@ export class Session {
+     );
+     if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
+   }
++
++  /** Archive the active sheet; the store's answer replaces what the screen holds. */
++  async archive(): Promise<void> {
++    const current = this.sheetState();
++    if (!current) throw new Error('No sheet is loaded.');
++    const sheet = await firstValueFrom(
++      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(current.id)}/archive`, null),
++    );
++    if (this.sheetState()?.id === sheet.id) this.sheetState.set(sheet);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/session/sheet-today.ts b/src/main/frontend/src/app/features/session/sheet-today.ts
+index 44d43f51..639094ce 100644
+--- a/src/main/frontend/src/app/features/session/sheet-today.ts
++++ b/src/main/frontend/src/app/features/session/sheet-today.ts
+@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ 
+ // The active sheet's today, shown and changeable. Every date decision and default date in the app
+-// uses it, never the real clock.
++// uses it, never the real clock. A steward can archive the sheet here too.
+ @Component({
+   selector: 'app-sheet-today',
+   imports: [ReactiveFormsModule],
+@@ -14,6 +14,8 @@ import { Session } from '../../core/session';
+         <label for="sheet-today-input">Change today</label>
+         <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
+         <button type="submit" data-testid="sheet-today-save" [disabled]="saving()">Set today</button>
++        <span>Archived: <strong data-testid="sheet-archived">{{ sheet.archived ? 'yes' : 'no' }}</strong></span>
++        <button type="button" data-testid="sheet-archive" [disabled]="saving()" (click)="archive()">Archive sheet</button>
+         @if (error()) {
+           <p role="alert" data-testid="sheet-error">{{ error() }}</p>
+         }
+@@ -57,4 +59,17 @@ export class SheetToday {
+       this.saving.set(false);
+     }
+   }
++
++  protected async archive(): Promise<void> {
++    if (this.saving()) return;
++    this.error.set('');
++    this.saving.set(true);
++    try {
++      await this.session.archive();
++    } catch {
++      this.error.set('The sheet could not be archived.');
++    } finally {
++      this.saving.set(false);
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ArchiveGuard.java b/src/main/java/net/officefloor/hq/app/ArchiveGuard.java
+new file mode 100644
+index 00000000..a0b95554
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ArchiveGuard.java
+@@ -0,0 +1,43 @@
++package net.officefloor.hq.app;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Refuses every change asked for on an archived sheet: any request on a sheet other than reading it
++ * (a GET, or loading the sheet) is refused before it reaches its controller, so it writes nothing.
++ * As for a viewer, the bulk changes are let through and answered with every selected claim refused
++ * (see {@code BulkChangeService}).
++ */
++@Component
++public class ArchiveGuard implements HandlerInterceptor {
++
++    private final SheetRepository sheets;
++
++    public ArchiveGuard(SheetRepository sheets) {
++        this.sheets = sheets;
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (HttpMethod.GET.matches(request.getMethod())) return true;
++        String path = request.getRequestURI().substring(request.getContextPath().length());
++        if (!path.startsWith(ViewerGuard.SHEETS)) return true;
++        String rest = path.substring(ViewerGuard.SHEETS.length());
++        int slash = rest.indexOf('/');
++        if (slash < 0 || ViewerGuard.LET_THROUGH.contains(rest.substring(slash + 1))) return true;
++        String sheetId = URLDecoder.decode(rest.substring(0, slash), StandardCharsets.UTF_8).trim();
++        if (sheets.isArchived(sheetId)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is archived: nothing on it can be changed.");
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/SpaConfig.java b/src/main/java/net/officefloor/hq/app/SpaConfig.java
+index 0e8e9a0a..012dc48d 100644
+--- a/src/main/java/net/officefloor/hq/app/SpaConfig.java
++++ b/src/main/java/net/officefloor/hq/app/SpaConfig.java
+@@ -18,14 +18,17 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
+ public class SpaConfig implements WebMvcConfigurer {
+ 
+     private final ViewerGuard viewerGuard;
++    private final ArchiveGuard archiveGuard;
+ 
+-    public SpaConfig(ViewerGuard viewerGuard) {
++    public SpaConfig(ViewerGuard viewerGuard, ArchiveGuard archiveGuard) {
+         this.viewerGuard = viewerGuard;
++        this.archiveGuard = archiveGuard;
+     }
+ 
+     @Override
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(viewerGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
++        registry.addInterceptor(archiveGuard).addPathPatterns(ViewerGuard.SHEETS + "**");
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/officefloor/hq/app/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+index 76487f13..4b630c85 100644
+--- a/src/main/java/net/officefloor/hq/app/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/ViewerGuard.java
+@@ -25,7 +25,7 @@ public class ViewerGuard implements HandlerInterceptor {
+     /** The path of a sheet's requests; the sheet id is the segment after it. */
+     public static final String SHEETS = "/api/sheets/";
+ 
+-    private static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
++    static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle");
+ 
+     private final SettingService settings;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+index 2c98251c..1a9e3c21 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+@@ -28,13 +29,15 @@ public class BulkChangeService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SettingService settings;
++    private final SheetRepository sheets;
+ 
+     public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people,
+-            SettingService settings) {
++            SettingService settings, SheetRepository sheets) {
+         this.service = service;
+         this.claims = claims;
+         this.people = people;
+         this.settings = settings;
++        this.sheets = sheets;
+     }
+ 
+     /** Open the claims of these ids in list order: people in the order they were added, each person's
+@@ -54,6 +57,9 @@ public class BulkChangeService {
+         if (settings.roleOf(sheetId, user) == Role.VIEWER) {
+             return new Result(List.of(), selected.size()); // a viewer changes nothing: each is refused
+         }
++        if (sheets.isArchived(sheetId)) {
++            return new Result(List.of(), selected.size()); // an archived sheet changes nothing: each is refused
++        }
+         List<Long> ordered = inListOrder(sheetId, selected);
+         List<Claim> changed = new ArrayList<>();
+         int refused = selected.size() - ordered.size();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index afe44c08..584b829c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -26,6 +26,10 @@ public class Sheet {
+     @Column(name = "claim_numbers_used", nullable = false)
+     private int claimNumbersUsed;
+ 
++    /** An archived sheet stays visible, and every change on it is refused. */
++    @Column(name = "archived", nullable = false)
++    private boolean archived;
++
+     protected Sheet() {
+     }
+ 
+@@ -50,4 +54,12 @@ public class Sheet {
+     public void setToday(LocalDate today) {
+         this.today = today;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void archive() {
++        this.archived = true;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index d327693e..b247ef02 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** What the screen shows of a sheet. */
+-    public record SheetView(String id, LocalDate today) {
++    public record SheetView(String id, LocalDate today, boolean archived) {
+         static SheetView of(Sheet sheet) {
+-            return new SheetView(sheet.getId(), sheet.getToday());
++            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+         }
+     }
+ 
+@@ -49,4 +49,11 @@ public class SheetController {
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TodayChange change) {
+         return SheetView.of(service.setToday(id.trim(), SignedInUser.name(user), change.today()));
+     }
++
++    /** Archive the sheet; a steward only. */
++    @PostMapping("/{id}/archive")
++    public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
++        return SheetView.of(service.archive(id.trim(), SignedInUser.name(user)));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index ede2f9ac..220ab8b6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -41,4 +41,8 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select s from Sheet s where s.id = :id")
+     Optional<Sheet> findForUpdate(@Param("id") String id);
++
++    /** Whether the sheet is archived; false for a sheet never loaded. */
++    @Query("select count(s) > 0 from Sheet s where s.id = :id and s.archived = true")
++    boolean isArchived(@Param("id") String id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 02a1a09b..23313e5c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,11 +2,17 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.Instant;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
++import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+ public class SheetService {
+@@ -14,11 +20,17 @@ public class SheetService {
+     private final SheetRepository sheets;
+     private final Rollup rollup;
+     private final ApplicationEventPublisher events;
++    private final Audit audit;
++    // The settings read the sheet's today, so they are looked up when needed rather than injected.
++    private final ObjectProvider<SettingService> settings;
+ 
+-    public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events) {
++    public SheetService(SheetRepository sheets, Rollup rollup, ApplicationEventPublisher events, Audit audit,
++            ObjectProvider<SettingService> settings) {
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.events = events;
++        this.audit = audit;
++        this.settings = settings;
+     }
+ 
+     /** The sheet with this id, as the store holds it now; a sheet never loaded before starts empty. */
+@@ -49,6 +61,24 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Archive the sheet: it stays visible, and every change on it is refused from then on (see
++     *  {@code ArchiveGuard}). Refused to anyone but a steward of the sheet, and when it is archived. */
++    @Transactional
++    public Sheet archive(String id, String user) {
++        load(id);
++        Sheet sheet = sheets.findForUpdate(id).orElseThrow();
++        if (settings.getObject().roleOf(id, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can archive the sheet.");
++        }
++        if (sheet.isArchived()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is already archived.");
++        }
++        sheet.archive();
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
++        return saved;
++    }
++
+     /**
+      * The sheet's next claim number: 1 for its first opened claim, then 2, and so on. The sheet stays
+      * locked until the transaction ends, so two claims opened at once never share a number.
+diff --git a/src/main/resources/db/migration/V38__sheet_archived.sql b/src/main/resources/db/migration/V38__sheet_archived.sql
+new file mode 100644
+index 00000000..a1b4fe36
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__sheet_archived.sql
+@@ -0,0 +1,2 @@
++-- A steward may archive a sheet: it stays visible, and every change on it is refused.
++ALTER TABLE sheet ADD COLUMN archived BOOLEAN DEFAULT FALSE NOT NULL;
