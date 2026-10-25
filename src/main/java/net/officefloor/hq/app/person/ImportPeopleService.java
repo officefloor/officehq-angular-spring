@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,18 +17,27 @@ public class ImportPeopleService {
     private record Line(int number, String name, Grade grade, Integer terms, String contact) {
     }
 
-    private final PersonService service;
-
-    public ImportPeopleService(PersonService service) {
-        this.service = service;
+    /** What an import did: the people of its lines, in order, and how many it added and how many it updated. */
+    public record Result(List<Person> people, int added, int updated) {
     }
 
-    /** Add a person per pasted line of name,grade,terms,contact, in order, each as the person form would.
-     *  Every line is read first with the form's rules; one change: when any line is refused, nothing is
-     *  added and nothing is written. Blank lines are skipped; a paste with no lines is refused, as is one
-     *  repeating a name or a contact of an earlier line, compared as the form compares them. */
+    private final PersonService service;
+    private final PersonRepository repository;
+
+    public ImportPeopleService(PersonService service, PersonRepository repository) {
+        this.service = service;
+        this.repository = repository;
+    }
+
+    /** Add or update a person per pasted line of name,grade,terms,contact, in order, each as the person
+     *  form would. A line whose name matches a person on the sheet, by name or alias as names are compared,
+     *  updates them: their grade from the sheet's today, and their terms and contact when the line gives
+     *  them. Other lines add a person. Every line is read first with the form's rules; one change: when any
+     *  line is refused, nothing is imported and nothing is written. Blank lines are skipped; a paste with
+     *  no lines is refused, as is one repeating a name or a contact of an earlier line, compared as the
+     *  form compares them, or naming the same person as an earlier line. */
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
@@ -48,15 +58,30 @@ public class ImportPeopleService {
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Paste at least one line.");
         }
-        List<Person> added = new ArrayList<>();
+        List<Person> people = new ArrayList<>();
+        Set<Long> updatedIds = new HashSet<>();
+        int added = 0;
         for (Line line : lines) {
+            Optional<Person> match = repository.findByNameOrAlias(sheetId, Person.keyOf(line.name()));
             try {
-                added.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                if (match.isPresent()) {
+                    Person person = match.get();
+                    if (!updatedIds.add(person.getId())) {
+                        throw refused(line.number(), "'" + person.getName() + "' is named by an earlier line");
+                    }
+                    people.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
+                            line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
+                            line.contact().isEmpty() ? person.getContact() : line.contact()));
+                } else {
+                    people.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                    added++;
+                }
             } catch (ResponseStatusException e) {
+                if (e.getReason() != null && e.getReason().startsWith("Line ")) throw e;
                 throw new ResponseStatusException(e.getStatusCode(), "Line " + line.number() + ": " + e.getReason());
             }
         }
-        return added;
+        return new Result(people, added, updatedIds.size());
     }
 
     /** A line of name,grade,terms,contact; the terms and contact may be blank or absent. */

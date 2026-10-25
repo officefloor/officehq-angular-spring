@@ -101,9 +101,10 @@ export interface QuickAddView {
   claim: ClaimView;
 }
 
-/** What an import added: how many people, and the people, in the order of their lines. */
+/** What an import did: how many people it added and updated, and the people, in the order of their lines. */
 export interface ImportView {
   added: number;
+  updated: number;
   people: PersonView[];
 }
 

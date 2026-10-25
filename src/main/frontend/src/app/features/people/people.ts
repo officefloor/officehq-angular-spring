@@ -1160,9 +1160,14 @@ export class People {
     this.claimAdded(added.claim);
   }
 
-  /** An import's people, in the order of their lines. */
+  /** An import's people, in the order of their lines: those it updated replace their rows, the rest are added. */
   protected imported(people: PersonView[]): void {
-    this.people.update((list) => [...list, ...people]);
+    const changed = new Map(people.map((p) => [p.id, p]));
+    this.people.update((list) => {
+      const kept = list.map((p) => changed.get(p.id) ?? p);
+      const known = new Set(list.map((p) => p.id));
+      return [...kept, ...people.filter((p) => !known.has(p.id))];
+    });
   }
 
   /** A paste's claims, in the order of their lines: the last line's claim is the newest. */

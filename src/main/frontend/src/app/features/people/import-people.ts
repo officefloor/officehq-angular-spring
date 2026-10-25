@@ -4,8 +4,9 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { PeopleApi, PersonView } from './people-api';
 
-// A box that takes lines of name,grade,terms,contact and adds a person per line, in order, as the person
-// form would; every line is checked first, and when any is refused no one is added.
+// A box that takes lines of name,grade,terms,contact and, per line in order, updates the person on the sheet
+// it names (by name or alias) or else adds a person, as the person form would; every line is checked first,
+// and when any is refused no one is imported.
 @Component({
   selector: 'app-import-people',
   imports: [ReactiveFormsModule],
@@ -14,8 +15,9 @@ import { PeopleApi, PersonView } from './people-api';
       <label for="import-people">Import people, one per line: name,grade,terms,contact</label>
       <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
       <button type="submit" data-testid="import-submit" [disabled]="saving()">Import people</button>
-      @if (count() !== null) {
-        <p>Added: <strong data-testid="import-added">{{ count() }}</strong></p>
+      @if (count(); as c) {
+        <p>Added: <strong data-testid="import-added">{{ c.added }}</strong>,
+          updated: <strong data-testid="import-updated">{{ c.updated }}</strong></p>
       }
       @if (error()) {
         <p role="alert" data-testid="import-error">{{ error() }}</p>
@@ -34,7 +36,7 @@ export class ImportPeople {
   });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
-  protected readonly count = signal<number | null>(null);
+  protected readonly count = signal<{ added: number; updated: number } | null>(null);
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -62,7 +64,7 @@ export class ImportPeople {
     try {
       const result = await this.api.importPeople(sheet.id, text);
       if (this.session.sheet()?.id === sheet.id) {
-        this.count.set(result.added);
+        this.count.set({ added: result.added, updated: result.updated });
         this.added.emit(result.people);
       }
     } catch (e) {
