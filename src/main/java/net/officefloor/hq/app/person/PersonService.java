@@ -186,13 +186,16 @@ public class PersonService {
         return person;
     }
 
-    /** Gives the person {@code grade} from the sheet's today, saved from {@code version} exactly as the
-     * person form saves it, keeping their name, terms, contact and tags. */
+    /** Gives the person {@code grade} from the sheet's today, saved from {@code version} as the person
+     * form saves it, keeping their name, terms, contact and tags; the grade is dated from today even when
+     * it is the one they have today, unless that grade is retired, which stays with them undated. */
     @Transactional
     public Person grade(String sheetId, String user, long personId, long version, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        return update(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
-                person.getContact());
+        LocalDate today = sheetService.today(sheetId);
+        boolean keptRetired = Objects.equals(grade, person.gradeOn(today)) && grades.isRetired(sheetId, grade);
+        return update(sheetId, user, personId, version, person.getName(), grade, keptRetired ? null : today,
+                person.getTerms(), person.getContact());
     }
 
     /** Swaps the person with the one above them in the list ({@code up}) or below; refused for the

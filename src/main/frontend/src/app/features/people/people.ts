@@ -774,6 +774,11 @@ import { FigurePipe } from '../../core/figure.pipe';
                   >
                     Unretire
                   </button>
+                  <ul class="timeline">
+                    @for (line of timelineOf(p); track $index) {
+                      <li data-testid="person-timeline-line">{{ (line) | figure }}</li>
+                    }
+                  </ul>
                   <ul class="retirements">
                     @for (r of p.retirements; track $index) {
                       <li data-testid="person-retirement-line">{{ (r.from) | figure }} to {{ (r.to) | figure }}</li>
@@ -1733,6 +1738,31 @@ export class People {
           sum + (claimShownCents(c, this.rates(), person.grades, this.floors(), this.lateness(), this.roundingOf(person.id)) ?? 0),
         0,
       );
+  }
+
+  /** The person's timeline: one line per dated thing about them, by date, and on one date their
+   *  grade change, then their claims (by their lines), holds, retirements and unretirements. */
+  protected timelineOf(person: Person): string[] {
+    const entries: { date: string; kind: number; order: number; line: string }[] = [];
+    const byLine = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    for (const g of person.grades) {
+      if (g.from !== null) entries.push({ date: g.from, kind: 0, order: 0, line: `${g.from} grade ${g.grade}` });
+    }
+    for (const c of this.claimsOf(person.id)) {
+      entries.push({ date: c.date, kind: 1, order: 0, line: `${c.date} claim ${c.amount} ${c.status}` });
+    }
+    person.holds.forEach((h, i) =>
+      entries.push({ date: h.from, kind: 2, order: i, line: `${h.from} hold${h.to ? ' to ' + h.to : ''}` }),
+    );
+    const retirements = [...person.retirements];
+    if (person.retiredFrom !== null) retirements.push({ from: person.retiredFrom, to: '' });
+    retirements.forEach((r, i) => {
+      entries.push({ date: r.from, kind: 3, order: i, line: `${r.from} retired` });
+      if (r.to) entries.push({ date: r.to, kind: 4, order: i, line: `${r.to} unretired` });
+    });
+    return entries
+      .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || a.order - b.order || byLine(a.line, b.line))
+      .map((e) => e.line);
   }
 
   protected claimsOf(personId: number): Claim[] {

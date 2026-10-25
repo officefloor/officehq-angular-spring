@@ -1546,6 +1546,9 @@ export class Claims {
       this.saved.emit(claim);
       this.reset();
     } catch (e) {
+      // An amount its lines fix can never be saved from the editor: it closes, its lock released, so
+      // the form is back to adding, the refusal still showing.
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 417) this.cancel();
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'A claim dated in a closed period cannot be changed.'
