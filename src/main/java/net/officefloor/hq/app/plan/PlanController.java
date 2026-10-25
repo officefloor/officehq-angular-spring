@@ -34,14 +34,16 @@ public class PlanController {
     /** A plan: its id, its person, its amount (as text with two decimals), start, interval in days (null
      * for a monthly plan), day of the month (null for one every N days), end, and how many claims it has
      * made so far, and its next dates: the first five plan dates after the sheet's today and on or before
-     * the end, comma and space separated (empty when there are none). */
+     * the end and not skipped by a pause, comma and space separated (empty when there are none), and
+     * whether it is paused now. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates) {
+            LocalDate end, int generated, String nextDates, boolean paused) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(),
                     p.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), p.getStart(), p.getEvery(),
                     p.getDay(), p.getEnd(), p.getGenerated(),
-                    p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")));
+                    p.nextDates(today, 5).stream().map(LocalDate::toString).collect(Collectors.joining(", ")),
+                    p.isPaused());
         }
     }
 
@@ -102,6 +104,20 @@ public class PlanController {
         return PlanView.of(service.add(sheet, user.trim(), request.personId(), request.amountValue(),
                 date(request.start()), request.everyValue(), request.dayValue(), date(request.end())),
                 service.today(sheet));
+    }
+
+    @PostMapping("/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String sheet = sheetId.trim();
+        return PlanView.of(service.pause(sheet, user.trim(), planId), service.today(sheet));
+    }
+
+    @PostMapping("/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String sheet = sheetId.trim();
+        return PlanView.of(service.resume(sheet, user.trim(), planId), service.today(sheet));
     }
 
     @PostMapping("/generate")

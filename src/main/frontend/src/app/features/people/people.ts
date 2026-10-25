@@ -631,7 +631,7 @@ import { FigurePipe } from '../../core/figure.pipe';
                   />
                 </td>
                 <td>
-                  <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" />
+                  <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" (changed)="planChanged($event)" />
                 </td>
                 <td>
                   <button
@@ -2667,6 +2667,10 @@ export class People {
 
   protected planAdded(plan: Plan): void {
     this.plans.update((list) => [...list.filter((pl) => pl.id !== plan.id), plan]);
+  }
+
+  protected planChanged(plan: Plan): void {
+    this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
   }
 
   /** Make the DRAFT claims every plan on the sheet is due. Shows how many were made; the old count is

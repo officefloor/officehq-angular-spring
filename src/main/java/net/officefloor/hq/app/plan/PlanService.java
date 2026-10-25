@@ -82,6 +82,29 @@ public class PlanService {
         return plan;
     }
 
+    /** Pause the plan from the sheet's today; refused when it is already paused. Records PLAN_PAUSED. */
+    @Transactional
+    public Plan pause(String sheetId, String user, long planId) {
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
+        plan.pause(sheets.today(sheetId));
+        return changed(sheetId, user, plan, "PLAN_PAUSED");
+    }
+
+    /** Resume the plan on the sheet's today; refused when it is not paused. Records PLAN_RESUMED. */
+    @Transactional
+    public Plan resume(String sheetId, String user, long planId) {
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId).orElseThrow(PlanNotFoundException::new);
+        plan.resume(sheets.today(sheetId));
+        return changed(sheetId, user, plan, "PLAN_RESUMED");
+    }
+
+    private Plan changed(String sheetId, String user, Plan plan, String event) {
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        Plan saved = plans.saveAndFlush(plan);
+        audit.change(event, sheetId, user, "name=" + person.getName(), "start=" + plan.getStart());
+        return saved;
+    }
+
     /** Make the claims every plan on the sheet is due, in the order the plans were added and, within a
      * plan, by date; the claims made, in the order they were made. Not one change: each claim is. */
     public List<Claim> generate(String sheetId, String user) {

@@ -7,7 +7,8 @@ import { Claim } from './claims.service';
 /** A person's plan: a claim of `amount` on every plan date (the start, then every `every` days; or,
  *  monthly, `day` of every month from the start's month, the month's last day when it is shorter, those
  *  before the start left out) up to the end, how many claims it has made so far, and its next dates (the
- *  first five plan dates after the sheet's today and on or before the end, comma and space separated). */
+ *  first five plan dates after the sheet's today and on or before the end and not skipped by a pause,
+ *  comma and space separated), and whether it is paused now. */
 export interface Plan {
   id: number;
   personId: number;
@@ -18,6 +19,7 @@ export interface Plan {
   end: string;
   generated: number;
   nextDates: string;
+  paused: boolean;
 }
 
 /** A plan asked: amount, start and end as typed, and either the interval in whole days or the day of
@@ -53,6 +55,20 @@ export class PlansService {
   add(sheet: string, personId: number, fields: PlanFields): Promise<Plan> {
     return firstValueFrom(
       this.http.post<Plan>(this.url(sheet), { personId, ...fields }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Pause the plan from the sheet's today. Refused (409) when it is already paused. */
+  pause(sheet: string, planId: number): Promise<Plan> {
+    return firstValueFrom(
+      this.http.post<Plan>(`${this.url(sheet)}/${planId}/pause`, null, { headers: this.session.headers() }),
+    );
+  }
+
+  /** Resume the plan on the sheet's today. Refused (409) when it is not paused. */
+  resume(sheet: string, planId: number): Promise<Plan> {
+    return firstValueFrom(
+      this.http.post<Plan>(`${this.url(sheet)}/${planId}/resume`, null, { headers: this.session.headers() }),
     );
   }
 

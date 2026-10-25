@@ -9,7 +9,8 @@ const EVERY = /^\d{1,5}$/;
 const DAY = /^\d{1,2}$/;
 
 // A person's plans, one line each in the order they were added with how many claims each has made so
-// far and its next dates, and the form on the row that adds one: an amount, a start date, either every N days (a whole
+// far, its next dates and whether it is paused, with buttons that pause and resume it (a plan date on or
+// after a pause and before its resume is skipped), and the form on the row that adds one: an amount, a start date, either every N days (a whole
 // number, at least 1) or monthly on a day of the month (1 to 31), and an end date not before the start.
 @Component({
   selector: 'app-plans',
@@ -24,7 +25,13 @@ const DAY = /^\d{1,2}$/;
             @if (pl.day !== null) { monthly on day {{ (pl.day) | figure }} } @else { every {{ (pl.every) | figure }} days }
             to {{ (pl.end) | figure }}, made
             <span data-testid="plan-generated">{{ (pl.generated) | figure }}</span>, next
-            <span data-testid="plan-next-dates">{{ (pl.nextDates) | figure }}</span>
+            <span data-testid="plan-next-dates">{{ (pl.nextDates) | figure }}</span>, paused
+            <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="plan-pause" (click)="pause(pl, true)">Pause</button>
+            <button type="button" data-testid="plan-resume" (click)="pause(pl, false)">Resume</button>
+            @if (planError()?.id === pl.id) {
+              <p role="alert" class="error" data-testid="plan-error">{{ (planError()?.message) | figure }}</p>
+            }
           </li>
         }
       </ul>
@@ -71,6 +78,7 @@ export class Plans {
   readonly personName = input.required<string>();
   readonly plans = input<Plan[]>([]);
   readonly added = output<Plan>();
+  readonly changed = output<Plan>();
 
   protected readonly amount = signal('');
   protected readonly start = signal('');
@@ -78,16 +86,40 @@ export class Plans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The refused pause or resume, on the plan it was asked of. */
+  protected readonly planError = signal<{ id: number; message: string } | null>(null);
   private saving = false;
+  private pausing = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Pause (true) or resume (false) the plan; refused when it is already paused, or already running. */
+  protected async pause(plan: Plan, on: boolean): Promise<void> {
+    if (this.pausing) return;
+    this.planError.set(null);
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.pausing = true;
+    try {
+      const changed = await (on ? this.service.pause(sheet, plan.id) : this.service.resume(sheet, plan.id));
+      if (this.session.sheetId() !== sheet) return;
+      this.changed.emit(changed);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.planError.set({ id: plan.id, message: on ? 'That plan could not be paused.' : 'That plan could not be resumed.' });
+    } finally {
+      this.pausing = false;
+    }
   }
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
     if (this.saving) return;
     this.error.set(null);
+    this.planError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const fields = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), day: this.day().trim(), end: this.end().trim() };
