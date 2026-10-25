@@ -1,0 +1,715 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 76dce75d..60111004 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -142,6 +142,8 @@ export class PersonClaims {
+       if (this.session.sheet()?.id === sheet.id) {
+         const message = e instanceof HttpErrorResponse && e.status === 403
+           ? 'You opened this claim, so someone else must settle it.'
++          : e instanceof HttpErrorResponse && e.status === 422
++            ? 'This claim\'s due is above the clerk limit, so only a steward can settle it.'
+           : periodOf(this.periods(), claim.date)?.closed
+             ? `This claim is dated inside a closed period, so it cannot be ${PAST[action]}.`
+             : `This claim cannot be ${PAST[action]} from its status.`;
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index dcd0ddcc..336614c2 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { People } from '../people/people';
++import { Settings } from '../settings/settings';
+ import { SheetPicker } from '../session/sheet-picker';
+ import { SheetToday } from '../session/sheet-today';
+ import { SignIn } from '../session/sign-in';
+@@ -8,7 +9,7 @@ import { SignIn } from '../session/sign-in';
+ // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [SignIn, SheetPicker, SheetToday, People],
++  imports: [SignIn, SheetPicker, SheetToday, Settings, People],
+   template: `
+     @if (session.user(); as user) {
+       <header>
+@@ -16,6 +17,9 @@ import { SignIn } from '../session/sign-in';
+       </header>
+       <app-sheet-picker />
+       <app-sheet-today />
++      @if (session.sheet()) {
++        <app-settings />
++      }
+       <app-people />
+       @if (!session.sheet()) {
+         <p data-testid="home-empty">Load a sheet to begin.</p>
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+new file mode 100644
+index 00000000..93453ed9
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -0,0 +1,43 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** The roles a sheet can assign a user name; any name not assigned one is a clerk. */
++export const ROLES = ['clerk', 'steward'] as const;
++export type Role = (typeof ROLES)[number];
++
++export interface RoleView {
++  user: string;
++  role: Role;
++}
++
++export interface SettingsView {
++  /** The highest due a clerk may settle, with two decimals, or null when there is no limit. */
++  clerkLimit: string | null;
++  /** The roles the sheet has assigned, by user name. */
++  roles: RoleView[];
++}
++
++// The sheet's settings and the roles it assigns user names, as the store holds them.
++@Injectable({ providedIn: 'root' })
++export class SettingsApi {
++  private readonly http = inject(HttpClient);
++
++  private url(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}`;
++  }
++
++  get(sheetId: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.get<SettingsView>(`${this.url(sheetId)}/settings`));
++  }
++
++  /** Set the clerk limit; null clears it, leaving no limit. */
++  setClerkLimit(sheetId: string, value: string | null): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit`, { value }));
++  }
++
++  /** Assign a user name a role on the sheet. */
++  setRole(sheetId: string, user: string, role: Role): Promise<RoleView> {
++    return firstValueFrom(this.http.put<RoleView>(`${this.url(sheetId)}/roles`, { user, role }));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+new file mode 100644
+index 00000000..be4c02cc
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -0,0 +1,154 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { ROLES, Role, RoleView, SettingsApi } from './settings-api';
++
++const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
++
++// The sheet's settings, with the clerk limit (the highest due a clerk may settle), and the roles it
++// assigns user names, with one form for each.
++@Component({
++  selector: 'app-settings',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="settings-heading">
++      <h2 id="settings-heading">Settings</h2>
++      <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the settings">
++        <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
++        <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
++        <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
++        <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
++        @if (settingsError()) {
++          <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
++        }
++      </form>
++      <h3 id="roles-heading">Roles</h3>
++      <form [formGroup]="roleForm" (ngSubmit)="saveRole()" aria-label="Assign a role">
++        <label for="role-form-user">User</label>
++        <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
++        <label for="role-form-role">Role (clerk or steward)</label>
++        <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
++        <datalist id="role-options">
++          @for (r of roles; track r) {
++            <option [value]="r"></option>
++          }
++        </datalist>
++        <button type="submit" data-testid="role-form-submit" [disabled]="savingRole()">Assign role</button>
++        @if (roleError()) {
++          <p role="alert" data-testid="role-form-error">{{ roleError() }}</p>
++        }
++      </form>
++      <table data-testid="roles-list" aria-labelledby="roles-heading">
++        <thead>
++          <tr><th scope="col">User</th><th scope="col">Role</th></tr>
++        </thead>
++        <tbody>
++          @for (r of assigned(); track r.user) {
++            <tr [attr.data-testid]="'role-row-' + r.user">
++              <th scope="row" data-testid="role-user">{{ r.user }}</th>
++              <td data-testid="role-value">{{ r.role }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Settings {
++  private readonly session = inject(Session);
++  private readonly api = inject(SettingsApi);
++
++  protected readonly roles = ROLES;
++  protected readonly clerkLimit = signal<string | null>(null);
++  protected readonly assigned = signal<RoleView[]>([]);
++
++  protected readonly settingsForm = new FormGroup({ clerkLimit: new FormControl('', { nonNullable: true }) });
++  protected readonly roleForm = new FormGroup({
++    user: new FormControl('', { nonNullable: true }),
++    role: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly savingSettings = signal(false);
++  protected readonly savingRole = signal(false);
++  protected readonly settingsError = signal('');
++  protected readonly roleError = signal('');
++
++  constructor() {
++    this.settingsForm.valueChanges.subscribe(() => this.settingsError.set(''));
++    this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
++    // Each load of a sheet re-reads its settings from the store and starts the forms afresh.
++    effect(() => {
++      const sheet = this.session.loaded();
++      this.settingsError.set('');
++      this.roleError.set('');
++      this.clerkLimit.set(null);
++      this.assigned.set([]);
++      if (sheet) void this.reload(sheet.id);
++    });
++  }
++
++  private async reload(sheetId: string): Promise<void> {
++    try {
++      const settings = await this.api.get(sheetId);
++      if (this.session.sheet()?.id === sheetId) {
++        this.clerkLimit.set(settings.clerkLimit);
++        this.assigned.set(settings.roles);
++      }
++    } catch {
++      this.settingsError.set('The settings could not be loaded.');
++    }
++  }
++
++  protected async saveSettings(): Promise<void> {
++    // A second submit before the first has answered is ignored, so it stores one change, not two.
++    if (this.savingSettings()) return;
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.settingsError.set('');
++    const limit = this.settingsForm.getRawValue().clerkLimit.trim();
++    if (limit !== '' && !MONEY.test(limit)) {
++      this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
++      return;
++    }
++    this.savingSettings.set(true);
++    try {
++      const settings = await this.api.setClerkLimit(sheet.id, limit === '' ? null : limit);
++      if (this.session.sheet()?.id === sheet.id) {
++        this.clerkLimit.set(settings.clerkLimit);
++        this.assigned.set(settings.roles);
++      }
++    } catch {
++      this.settingsError.set('The settings could not be saved.');
++    } finally {
++      this.savingSettings.set(false);
++    }
++  }
++
++  protected async saveRole(): Promise<void> {
++    if (this.savingRole()) return;
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.roleError.set('');
++    const user = this.roleForm.getRawValue().user.trim();
++    const role = this.roleForm.getRawValue().role.trim();
++    if (user === '') {
++      this.roleError.set('Type the user name to assign a role to.');
++      return;
++    }
++    if (!ROLES.includes(role as Role)) {
++      this.roleError.set('Choose a role of clerk or steward.');
++      return;
++    }
++    this.savingRole.set(true);
++    try {
++      const saved = await this.api.setRole(sheet.id, user, role as Role);
++      if (this.session.sheet()?.id === sheet.id) {
++        this.assigned.update((list) =>
++          [...list.filter((r) => r.user !== saved.user), saved].sort((a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0)));
++      }
++    } catch {
++      this.roleError.set('The role could not be assigned.');
++    } finally {
++      this.savingRole.set(false);
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e38fb5b8..d90c39a1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -12,6 +12,8 @@ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateService;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+@@ -28,17 +30,20 @@ public class ClaimService {
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final PeriodRepository periods;
++    private final SettingService settings;
+     private final Rollup rollup;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
+-            SheetRepository sheetRows, PeriodRepository periods, Rollup rollup, Audit audit) {
++            SheetRepository sheetRows, PeriodRepository periods, SettingService settings, Rollup rollup,
++            Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.rates = rates;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+         this.periods = periods;
++        this.settings = settings;
+         this.rollup = rollup;
+         this.audit = audit;
+     }
+@@ -86,7 +91,8 @@ public class ClaimService {
+     }
+ 
+     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
+-     *  by the user who opened the claim. */
++     *  by the user who opened the claim, and settling by a clerk a claim whose due is above the
++     *  sheet's clerk limit (a due of n/a is within any limit; a steward settles anything). */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+@@ -101,6 +107,7 @@ public class ClaimService {
+                     "The user who opened a claim cannot settle it.");
+         }
+         Person person = person(sheetId, claim.getPersonId());
++        if (next == ClaimStatus.SETTLED) refuseIfAboveClerkLimit(sheetId, user, figure(sheetId, person, claim));
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheets.nextClaimNumber(sheetId)) : claim.getNumber();
+         claim.setStatus(next);
+@@ -123,6 +130,16 @@ public class ClaimService {
+     private static final Map<ClaimStatus, String> EVENTS = Map.of(
+             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
+ 
++    /** Refuse a clerk's settling of a claim whose due is above the sheet's clerk limit. */
++    private void refuseIfAboveClerkLimit(String sheetId, String user, BigDecimal due) {
++        if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return;
++        BigDecimal limit = settings.clerkLimit(sheetId);
++        if (limit != null && due.compareTo(limit) > 0) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString() + ".");
++        }
++    }
++
+     /** Refuse a change to a claim dated inside a closed period. The sheet is locked first, as closing
+      *  a period locks it, so a claim cannot change in a period while it is being closed. */
+     private void refuseIfClosed(String sheetId, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Role.java b/src/main/java/net/officefloor/hq/app/setting/Role.java
+new file mode 100644
+index 00000000..5485885f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/Role.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.setting;
++
++import java.util.Arrays;
++import java.util.Optional;
++
++/** The role a sheet gives a user name: a clerk (the default for any name) or a steward. */
++public enum Role {
++    CLERK, STEWARD;
++
++    /** The role's name as it is typed, shown and stored. */
++    public String label() {
++        return name().toLowerCase();
++    }
++
++    /** The role with this typed name, if there is one. */
++    public static Optional<Role> of(String label) {
++        return Arrays.stream(values()).filter((r) -> r.label().equals(label)).findFirst();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+new file mode 100644
+index 00000000..247be58c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -0,0 +1,82 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class SettingController {
++
++    /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
++     *  when there is no limit. */
++    public record SettingsView(String clerkLimit, List<RoleView> roles) {
++    }
++
++    /** A role the sheet assigns a user name. */
++    public record RoleView(String user, String role) {
++        static RoleView of(SheetRole role) {
++            return new RoleView(role.getUserName(), role.getRole().label());
++        }
++    }
++
++    /** The clerk limit as entered; none means no limit. */
++    public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
++    }
++
++    /** A role to assign a user name, as entered on the form. */
++    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull String role) {
++    }
++
++    private final SettingService service;
++
++    public SettingController(SettingService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/settings")
++    public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        String id = sheetId.trim();
++        return view(service.clerkLimit(id), service.roles(id));
++    }
++
++    /** Set the sheet's clerk limit, or clear it. */
++    @PutMapping("/settings/clerk-limit")
++    public SettingsView setClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClerkLimitForm form) {
++        String id = sheetId.trim();
++        BigDecimal limit = service.setClerkLimit(id, SignedInUser.name(user), form.value());
++        return view(limit, service.roles(id));
++    }
++
++    /** Assign a user name a role on the sheet. */
++    @PutMapping("/roles")
++    public RoleView setRole(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RoleForm form) {
++        Role role = Role.of(form.role().trim())
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such role."));
++        return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.name(user), form.user().trim(), role));
++    }
++
++    private static SettingsView view(BigDecimal limit, List<SheetRole> roles) {
++        return new SettingsView(limit == null ? null : limit.toPlainString(),
++                roles.stream().map(RoleView::of).toList());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+new file mode 100644
+index 00000000..906710e4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -0,0 +1,98 @@
++package net.officefloor.hq.app.setting;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The sheet's settings (such as the clerk limit) and the roles it assigns user names. */
++@Service
++public class SettingService {
++
++    /** The key of the clerk limit: the highest due a clerk may settle; no value means no limit. */
++    public static final String CLERK_LIMIT = "clerk-limit";
++
++    private final SheetSettingRepository settings;
++    private final SheetRoleRepository roles;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public SettingService(SheetSettingRepository settings, SheetRoleRepository roles, SheetService sheets,
++            Audit audit) {
++        this.settings = settings;
++        this.roles = roles;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** The sheet's clerk limit with two decimals, or null when there is no limit. */
++    @Transactional(readOnly = true)
++    public BigDecimal clerkLimit(String sheetId) {
++        return settings.findBySheetIdAndKey(sheetId, CLERK_LIMIT).map((s) -> new BigDecimal(s.getValue()))
++                .orElse(null);
++    }
++
++    /** Set the sheet's clerk limit, kept to two decimals; null clears it, leaving no limit. */
++    @Transactional
++    public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit) {
++        sheets.load(sheetId);
++        BigDecimal value = limit == null ? null : limit.setScale(2);
++        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, CLERK_LIMIT).orElse(null);
++        try {
++            if (value == null) {
++                if (setting != null) {
++                    settings.delete(setting);
++                    settings.flush();
++                }
++            } else if (setting == null) {
++                settings.saveAndFlush(new SheetSetting(sheetId, CLERK_LIMIT, value.toPlainString()));
++            } else {
++                setting.setValue(value.toPlainString());
++                settings.saveAndFlush(setting);
++            }
++        } catch (DataIntegrityViolationException raced) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
++        }
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + CLERK_LIMIT
++                + " value=" + (value == null ? "" : value.toPlainString()));
++        return value;
++    }
++
++    /** The roles the sheet has assigned, by user name; any other name is a clerk. */
++    @Transactional(readOnly = true)
++    public List<SheetRole> roles(String sheetId) {
++        return roles.findBySheetIdOrderByUserNameAsc(sheetId);
++    }
++
++    /** The role the sheet gives a user name: a clerk unless it was assigned another. */
++    @Transactional(readOnly = true)
++    public Role roleOf(String sheetId, String user) {
++        return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
++    }
++
++    /** Assign a user name a role on the sheet, replacing the one it had. */
++    @Transactional
++    public SheetRole setRole(String sheetId, String user, String userName, Role role) {
++        sheets.load(sheetId);
++        SheetRole assigned = roles.findBySheetIdAndUserName(sheetId, userName).orElse(null);
++        if (assigned == null) {
++            assigned = new SheetRole(sheetId, userName, role);
++        } else {
++            assigned.setRole(role);
++        }
++        SheetRole saved;
++        try {
++            saved = roles.saveAndFlush(assigned);
++        } catch (DataIntegrityViolationException raced) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The role was changed by someone else.");
++        }
++        audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user + " user=" + userName
++                + " role=" + role.label());
++        return saved;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetRole.java b/src/main/java/net/officefloor/hq/app/setting/SheetRole.java
+new file mode 100644
+index 00000000..6f9f2925
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetRole.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.IdClass;
++import jakarta.persistence.Table;
++import java.io.Serializable;
++
++/** The role a sheet assigns one user name. */
++@Entity
++@Table(name = "sheet_role")
++@IdClass(SheetRole.Key.class)
++public class SheetRole {
++
++    public record Key(String sheetId, String userName) implements Serializable {
++        public Key() {
++            this(null, null);
++        }
++    }
++
++    @Id
++    @Column(name = "sheet_id")
++    private String sheetId;
++
++    @Id
++    @Column(name = "user_name")
++    private String userName;
++
++    @Column(name = "role", nullable = false)
++    private String role;
++
++    protected SheetRole() {
++    }
++
++    public SheetRole(String sheetId, String userName, Role role) {
++        this.sheetId = sheetId;
++        this.userName = userName;
++        setRole(role);
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public Role getRole() {
++        return Role.of(role).orElse(Role.CLERK);
++    }
++
++    public void setRole(Role role) {
++        this.role = role.label();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetRoleRepository.java b/src/main/java/net/officefloor/hq/app/setting/SheetRoleRepository.java
+new file mode 100644
+index 00000000..b71471c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetRoleRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.setting;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetRoleRepository extends JpaRepository<SheetRole, SheetRole.Key> {
++
++    /** The sheet's assigned roles, by user name. */
++    List<SheetRole> findBySheetIdOrderByUserNameAsc(String sheetId);
++
++    Optional<SheetRole> findBySheetIdAndUserName(String sheetId, String userName);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetSetting.java b/src/main/java/net/officefloor/hq/app/setting/SheetSetting.java
+new file mode 100644
+index 00000000..4216bbef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetSetting.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.IdClass;
++import jakarta.persistence.Table;
++import java.io.Serializable;
++
++/** One of the sheet's settings: its value by key. */
++@Entity
++@Table(name = "sheet_setting")
++@IdClass(SheetSetting.Key.class)
++public class SheetSetting {
++
++    public record Key(String sheetId, String key) implements Serializable {
++        public Key() {
++            this(null, null);
++        }
++    }
++
++    @Id
++    @Column(name = "sheet_id")
++    private String sheetId;
++
++    @Id
++    @Column(name = "setting_key")
++    private String key;
++
++    @Column(name = "setting_value", nullable = false)
++    private String value;
++
++    protected SheetSetting() {
++    }
++
++    public SheetSetting(String sheetId, String key, String value) {
++        this.sheetId = sheetId;
++        this.key = key;
++        this.value = value;
++    }
++
++    public String getKey() {
++        return key;
++    }
++
++    public String getValue() {
++        return value;
++    }
++
++    public void setValue(String value) {
++        this.value = value;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetSettingRepository.java b/src/main/java/net/officefloor/hq/app/setting/SheetSettingRepository.java
+new file mode 100644
+index 00000000..04ccdd17
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetSettingRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.setting;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetSettingRepository extends JpaRepository<SheetSetting, SheetSetting.Key> {
++
++    List<SheetSetting> findBySheetId(String sheetId);
++
++    Optional<SheetSetting> findBySheetIdAndKey(String sheetId, String key);
++}
+diff --git a/src/main/resources/db/migration/V19__setting_role.sql b/src/main/resources/db/migration/V19__setting_role.sql
+new file mode 100644
+index 00000000..53d99ca8
+--- /dev/null
++++ b/src/main/resources/db/migration/V19__setting_role.sql
+@@ -0,0 +1,14 @@
++-- The sheet's settings by key: a setting with no row has no value (the clerk limit: no limit).
++CREATE TABLE sheet_setting (
++    sheet_id      VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    setting_key   VARCHAR(100) NOT NULL,
++    setting_value VARCHAR(200) NOT NULL,
++    PRIMARY KEY (sheet_id, setting_key)
++);
++-- The role the sheet assigns a user name; a name with no row is a clerk.
++CREATE TABLE sheet_role (
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(200) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward')),
++    PRIMARY KEY (sheet_id, user_name)
++);
