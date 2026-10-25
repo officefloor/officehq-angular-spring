@@ -83,6 +83,10 @@ public class SettingService implements ActingFor {
      *  sheet's today; no value means off. Not dated. */
     public static final String ENTRY_DATE = "entry-date";
 
+    /** The key of the pot: the amount each balanced pool shares out among its members by their shares; no
+     *  value means none. Not dated. */
+    public static final String POT = "pot";
+
     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 
@@ -375,6 +379,39 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + GRACE_DAYS
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
+    }
+
+    /** The sheet's pot, with two decimals, or null when it is blank (none). */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, POT).map((s) -> new BigDecimal(s.getValue()).setScale(2))
+                .orElse(null);
+    }
+
+    /** Set the sheet's pot, kept to two decimals; null clears it, leaving no pot. */
+    @Transactional
+    public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
+        BigDecimal value = pot == null ? null : pot.setScale(2);
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, POT).orElse(null);
+        try {
+            if (value == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, POT, value.toPlainString()));
+            } else {
+                setting.setValue(value.toPlainString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
+                + " value=" + (value == null ? "" : value.toPlainString()));
+        return value;
     }
 
     /** The cap in force on the sheet's today, with two decimals, or null when there is no cap. */

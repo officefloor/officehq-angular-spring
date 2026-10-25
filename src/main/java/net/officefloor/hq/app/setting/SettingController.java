@@ -42,13 +42,14 @@ public class SettingController {
      *  and the note threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off);
-     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then). Each of these figures is the one in force on the
+     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
      *  delegations are the stewards' delegations of their role, in the order they were made. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
-            Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate) {
+            Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate,
+            String pot) {
     }
 
     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
@@ -132,6 +133,10 @@ public class SettingController {
 
     /** The grace days as entered: whole days; none means off. */
     public record GraceDaysForm(@Min(0) @Max(36500) Integer value) {
+    }
+
+    /** The pot as entered; none means no pot. */
+    public record PotForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     /** The roles that may take an action as entered, comma separated; blank keeps the standing rule. */
@@ -288,6 +293,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's pot, or clear it: what a balanced pool shares out among its members. */
+    @PutMapping("/settings/pot")
+    public SettingsView setPot(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PotForm form) {
+        String id = sheetId.trim();
+        service.setPot(id, SignedInUser.name(user), form.value());
+        return view(id);
+    }
+
     /** Set the roles that may take an action, or clear them to keep the standing rule. */
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -334,7 +348,8 @@ public class SettingController {
                 gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
                 service.permissions(sheetId), service.graceDays(sheetId),
                 service.delegations(sheetId).stream().map(DelegationView::of).toList(),
-                text(dated.noteThresholdOn(today)), service.entryDate(sheetId));
+                text(dated.noteThresholdOn(today)), service.entryDate(sheetId),
+                text(service.pot(sheetId)));
     }
 
     private static String text(BigDecimal value) {

@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { PersonView } from '../people/people-api';
+import { SheetPot } from '../settings/sheet-pot';
 import { Pools, PoolView } from './pools-api';
 
 /** A share percent as typed: up to two decimals. */
@@ -11,6 +12,10 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
 // One pool: its members with their shares, its total share and whether it is balanced, and a form
 // to add a member. A retired member's share counts as 0.00 toward the total.
+// With a pot set, each member of a balanced pool shows a cut: the pot times their share divided by 100,
+// rounded half to even to two decimals (a retired member cuts 0.00); the pot less the cuts added up goes
+// to the member with the largest share, the earliest added on a tie, so the cuts total exactly the pot.
+// An unbalanced pool, or no pot, shows no cut.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule],
@@ -26,6 +31,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
         <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
+          <span data-testid="pool-cut" aria-label="Cut">{{ cuts()?.get(m.personId) ?? '' }}</span>
           @if (m.retired) {
             <span data-testid="pool-member-retired">(retired)</span>
           }
@@ -52,6 +58,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 export class PoolRow {
   private readonly session = inject(Session);
   private readonly store = inject(Pools);
+  private readonly sheetPot = inject(SheetPot);
 
   readonly pool = input.required<PoolView>();
   /** Everyone on the sheet, retired or not. */
@@ -65,6 +72,12 @@ export class PoolRow {
   private readonly totalCents = computed(() => this.members().reduce((t, m) => (m.retired ? t : t + cents(m.share)), 0));
   protected readonly total = computed(() => money(this.totalCents()));
   protected readonly balanced = computed(() => this.totalCents() === 10000);
+  /** Each member's cut of the pot, with two decimals, by person; null for an unbalanced pool or no pot. */
+  protected readonly cuts = computed(() => {
+    const pot = this.sheetPot.pot();
+    if (pot === null || !this.balanced()) return null;
+    return new Map(cutsOf(BigInt(cents(pot)), this.members()).map(([id, cut]) => [id, money(Number(cut))]));
+  });
 
   protected readonly personId = new FormControl('', { nonNullable: true });
   protected readonly share = new FormControl('', { nonNullable: true });
@@ -111,6 +124,27 @@ export class PoolRow {
       this.saving.set(false);
     }
   }
+}
+
+/** A whole number of cents divided by 10000, rounded half to even. */
+function divideHalfEven(value: bigint, by: bigint): bigint {
+  const quotient = value / by;
+  const twice = 2n * (value % by);
+  return twice > by || (twice === by && quotient % 2n !== 0n) ? quotient + 1n : quotient;
+}
+
+/** The cuts of a pot (in cents) among members in the order they were added, by person: each the pot times
+ *  their share over 100, half to even (a retired member's 0); the remainder to the largest share, the
+ *  earliest added on a tie. */
+function cutsOf(potCents: bigint, members: readonly { personId: number; share: string; retired: boolean }[]): [number, bigint][] {
+  const shares = members.map((m) => (m.retired ? 0 : cents(m.share)));
+  const cuts = shares.map((share) => divideHalfEven(potCents * BigInt(share), 10000n));
+  let largest = 0;
+  shares.forEach((share, i) => {
+    if (share > shares[largest]) largest = i;
+  });
+  if (cuts.length > 0) cuts[largest] += potCents - cuts.reduce((t, c) => t + c, 0n);
+  return members.map((m, i) => [m.personId, cuts[i]]);
 }
 
 // The sheet's pools, with a form to add one.
