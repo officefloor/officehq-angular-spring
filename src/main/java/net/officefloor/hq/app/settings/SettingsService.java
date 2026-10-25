@@ -470,6 +470,22 @@ public class SettingsService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreHigh();
     }
 
+    /** Whether the sheet's score log is on. */
+    @Transactional(readOnly = true)
+    public boolean scoreLog(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).isScoreLog();
+    }
+
+    /** Turn the sheet's score log on or off. */
+    @Transactional
+    public Sheet setScoreLog(String sheetId, String by, boolean on) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreLog(on);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=score-log", "value=" + (on ? "on" : ""));
+        return sheet;
+    }
+
     /** Set the sheet's mid score threshold; null clears it. */
     @Transactional
     public Sheet setScoreMid(String sheetId, String by, Integer score) {

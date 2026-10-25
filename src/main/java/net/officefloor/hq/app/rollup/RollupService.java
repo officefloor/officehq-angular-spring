@@ -115,6 +115,36 @@ public class RollupService {
         return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
     }
 
+    /** Each person's score on the sheet as it stands, by person, in list order: their settled-total (what is due
+     * on their counting SETTLED claims, as each shows it, before the cap) divided by 100, minus 5 for every
+     * counting claim of theirs that is overdue, rounded half to even to a whole number. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Map<Long, Score> scores(String sheetId) {
+        Basis basis = live(sheetId);
+        LocalDate today = basis.today();
+        List<Claim> all = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        Map<Long, Score> scores = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            BigDecimal settled = zero();
+            int overdue = 0;
+            for (Claim claim : all) {
+                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) continue;
+                if (isOverdue(claim, basis)) overdue++;
+                if (claim.getStatus().isOpen()) continue;
+                BigDecimal figure = shownOf(claim, person, basis);
+                if (figure != null) settled = settled.add(figure);
+            }
+            BigDecimal score = settled.movePointLeft(2).subtract(BigDecimal.valueOf(5L * overdue))
+                    .setScale(0, RoundingMode.HALF_EVEN);
+            scores.put(person.getId(), new Score(person.getName(), score.toPlainString()));
+        }
+        return scores;
+    }
+
+    /** A person's score, as shown. */
+    public record Score(String name, String score) {
+    }
+
     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
     static BigDecimal trimmedSum(List<BigDecimal> figures) {
         BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);

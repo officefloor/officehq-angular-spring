@@ -90,7 +90,8 @@ public class SheetService {
     /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
      * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
      * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
-     * A change to another date first records a SNAPSHOT line per person, in list order, with their due-total on the day being left,
+     * A change to another date first records, while the sheet's score log is on, a SCORE line per person, in list
+     * order, with their score on the day being left (see {@link RollupService#scores}); then a SNAPSHOT line per person, in list order, with their due-total on the day being left,
      * and keeps each as one of the person's snapshots. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -98,6 +99,10 @@ public class SheetService {
         RollupService.Snapshot before = rollup.snapshot(id);
         LocalDate left = sheet.getToday();
         if (!today.equals(sheet.getToday())) {
+            if (sheet.isScoreLog()) {
+                rollup.scores(id).values().forEach(score ->
+                        audit.change("SCORE", id, user, "name=" + score.name(), "score=" + score.score()));
+            }
             before.people().forEach((personId, figures) -> {
                 audit.change("SNAPSHOT", id, user, "name=" + figures.name(), "due-total=" + figures.dueTotal());
                 snapshots.save(new PersonSnapshot(id, personId, left, figures.dueTotal()));

@@ -97,6 +97,8 @@ export interface SheetSettings {
   scoreMid?: number | null;
   /** The score at or above which a person is HIGH; null when not set. */
   scoreHigh?: number | null;
+  /** Whether changing the sheet's today logs each person's score on the day being left. */
+  scoreLog?: boolean;
   /** How many days a claim may stay in REVIEW from its review day before it is late; null when none. */
   reviewSla: number | null;
   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
@@ -317,6 +319,13 @@ export class SettingsService {
   setScoreHigh(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/score-high`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** 'on' turns the score log on; a null value turns it off. */
+  setScoreLog(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/score-log`, { value }, { headers: this.session.headers() }),
     );
   }
 

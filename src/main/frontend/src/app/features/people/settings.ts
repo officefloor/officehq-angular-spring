@@ -435,6 +435,20 @@ const STANDING: Record<PermAction, string> = {
             (not set)
           }
         </span>
+        <label for="setting-score-log">Score log (on, or blank for off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLogInput()"
+          (input)="scoreLogInput.set(value($event)); scoreLogChanged = true; settingsError.set(null)"
+          (keydown)="scoreLogChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-score-log-current">{{ scoreLog() ? 'on' : '' }}</span>
+          @if (!scoreLog()) {
+            (off)
+          }
+        </span>
         <label for="setting-proof-kinds">Proof kinds (comma separated: receipt, photo)</label>
         <input
           id="setting-proof-kinds"
@@ -715,6 +729,8 @@ export class Settings {
   protected readonly escalateAfter = signal<string | null>(null);
   protected readonly scoreMid = signal<string | null>(null);
   protected readonly scoreHigh = signal<string | null>(null);
+  /** Whether changing the sheet's today logs each person's score. */
+  protected readonly scoreLog = signal(false);
   /** The proof kinds as set, comma separated; null when none are listed. */
   protected readonly proofKinds = signal<string | null>(null);
   /** The default grade as set; null when it is A. */
@@ -752,6 +768,7 @@ export class Settings {
   protected readonly escalateAfterInput = signal('');
   protected readonly scoreMidInput = signal('');
   protected readonly scoreHighInput = signal('');
+  protected readonly scoreLogInput = signal('');
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
@@ -796,6 +813,7 @@ export class Settings {
   protected escalateAfterChanged = false;
   protected scoreMidChanged = false;
   protected scoreHighChanged = false;
+  protected scoreLogChanged = false;
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected reviewSlaChanged = false;
@@ -888,6 +906,9 @@ export class Settings {
       this.scoreHighInput.set('');
       this.scoreMidChanged = false;
       this.scoreHighChanged = false;
+      this.scoreLog.set(false);
+      this.scoreLogInput.set('');
+      this.scoreLogChanged = false;
       this.proofKinds.set(null);
       this.proofKindsInput.set('');
       this.proofKindsChanged = false;
@@ -1050,6 +1071,8 @@ export class Settings {
     const saveScoreMid = this.scoreMidChanged || scoreMid !== (this.scoreMid() ?? '');
     const scoreHigh = this.scoreHighInput().trim();
     const saveScoreHigh = this.scoreHighChanged || scoreHigh !== (this.scoreHigh() ?? '');
+    const scoreLog = this.scoreLogInput().trim();
+    const saveScoreLog = this.scoreLogChanged || scoreLog !== (this.scoreLog() ? 'on' : '');
     const proofKinds = this.proofKindsInput().trim();
     const saveProofKinds = this.proofKindsChanged || proofKinds !== (this.proofKinds() ?? '');
     const defaultGrade = this.defaultGradeInput().trim();
@@ -1185,6 +1208,10 @@ export class Settings {
     }
     if (saveScoreHigh && scoreHigh !== '' && !SCORE.test(scoreHigh)) {
       this.settingsError.set('Type the HIGH score threshold as a whole number, or leave it blank to clear it.');
+      return;
+    }
+    if (saveScoreLog && scoreLog !== '' && scoreLog !== 'on') {
+      this.settingsError.set('Type on to turn the score log on, or leave it blank to turn it off.');
       return;
     }
     if (saveProofKinds && proofKinds !== '' && !PROOF_KINDS_LIST.test(proofKinds)) {
@@ -1389,6 +1416,12 @@ export class Settings {
         this.show(settings);
         this.scoreThresholdsSaved.emit({ mid: settings.scoreMid ?? null, high: settings.scoreHigh ?? null });
       }
+      if (saveScoreLog) {
+        const settings = await this.service.setScoreLog(sheet, scoreLog || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.scoreLogInput().trim() === scoreLog) this.scoreLogChanged = false;
+        this.show(settings);
+      }
       if (saveProofKinds) {
         const settings = await this.service.setProofKinds(sheet, proofKinds || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1466,6 +1499,7 @@ export class Settings {
       if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
       if (!this.scoreMidChanged) this.scoreMidInput.set(this.scoreMid() ?? '');
       if (!this.scoreHighChanged) this.scoreHighInput.set(this.scoreHigh() ?? '');
+      if (!this.scoreLogChanged) this.scoreLogInput.set(this.scoreLog() ? 'on' : '');
       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
       if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
@@ -1546,6 +1580,7 @@ export class Settings {
         if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
         if (!this.scoreMidChanged) this.scoreMidInput.set(this.scoreMid() ?? '');
         if (!this.scoreHighChanged) this.scoreHighInput.set(this.scoreHigh() ?? '');
+        if (!this.scoreLogChanged) this.scoreLogInput.set(this.scoreLog() ? 'on' : '');
         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
         if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
@@ -1630,6 +1665,7 @@ export class Settings {
     this.escalateAfter.set(settings.escalateAfter == null ? null : String(settings.escalateAfter));
     this.scoreMid.set(settings.scoreMid == null ? null : String(settings.scoreMid));
     this.scoreHigh.set(settings.scoreHigh == null ? null : String(settings.scoreHigh));
+    this.scoreLog.set(settings.scoreLog ?? false);
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
     this.proofKinds.set(settings.proofKinds ?? null);
     this.defaultGrade.set(settings.defaultGrade ?? null);

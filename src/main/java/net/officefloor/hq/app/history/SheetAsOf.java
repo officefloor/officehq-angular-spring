@@ -160,6 +160,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getScoreHigh();
     }
 
+    /** Whether the score log was on then; off before the sheet was made. */
+    public boolean scoreLog() {
+        return sheet != null && sheet.isScoreLog();
+    }
+
     /** The escalation gap then; null when it was off. */
     public Integer escalateAfter() {
         return sheet == null ? null : sheet.getEscalateAfter();
