@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 056dded2..f89f53f8 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -83,6 +83,13 @@ export interface BulkOpenView {
+   claims: ClaimView[];
+ }
+ 
++export interface BulkSettleView {
++  /** Claims settled, those left pending included. */
++  settled: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ export interface ClaimForm {
+   amount: string;
+   /** null takes the sheet's today. */
+@@ -217,4 +224,8 @@ export class ClaimsApi {
+   openSelected(sheetId: string, ids: readonly number[]): Promise<BulkOpenView> {
+     return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheetId)}/claims/open`, { ids }));
+   }
++
++  settleSelected(sheetId: string, ids: readonly number[]): Promise<BulkSettleView> {
++    return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheetId)}/claims/settle`, { ids }));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4d5c2d5a..bc79a6d3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -85,6 +85,17 @@ import { QuickAdd } from './quick-add';
+         @if (bulkError()) {
+           <p role="alert" data-testid="bulk-open-error">{{ bulkError() }}</p>
+         }
++        <p>
++          <button type="button" data-testid="bulk-settle" (click)="settleSelected()" [disabled]="bulkSettling()">
++            Settle selected claims</button>
++          @if (bulkSettleResult(); as r) {
++            Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
++            refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
++          }
++        </p>
++        @if (bulkSettleError()) {
++          <p role="alert" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
++        }
+         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+         <table data-testid="people-list">
+           <thead>
+@@ -303,13 +314,18 @@ export class People {
+   protected readonly stating = signal<number | null>(null);
+   /** The refusal of the last action taken on a person's row, shown on that row. */
+   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+-  /** The ids of the claims selected to open together. */
++  /** The ids of the claims selected to open or settle together. */
+   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+   /** Whether the selected claims are being opened. */
+   protected readonly bulkOpening = signal(false);
+   /** How many the last bulk open opened and refused; cleared while the next one runs. */
+   protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
+   protected readonly bulkError = signal('');
++  /** Whether the selected claims are being settled. */
++  protected readonly bulkSettling = signal(false);
++  /** How many the last bulk settle settled and refused; cleared while the next one runs. */
++  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly bulkSettleError = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private readonly editingVersion = signal(0);
+@@ -334,6 +350,8 @@ export class People {
+       this.selectedClaims.set(new Set());
+       this.bulkResult.set(null);
+       this.bulkError.set('');
++      this.bulkSettleResult.set(null);
++      this.bulkSettleError.set('');
+       if (sheet) void this.reload(sheet.id);
+     });
+   }
+@@ -659,6 +677,27 @@ export class People {
+     }
+   }
+ 
++  /** Settle the selected claims together, in list order; one left pending counts as settled, each
++   *  that cannot be settled is left as it is. */
++  protected async settleSelected(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet || this.bulkSettling()) return;
++    this.bulkSettleResult.set(null);
++    this.bulkSettleError.set('');
++    this.bulkSettling.set(true);
++    try {
++      const result = await this.claimsApi.settleSelected(sheet.id, [...this.selectedClaims()]);
++      if (this.session.sheet()?.id !== sheet.id) return;
++      for (const claim of result.claims) this.claimSaved(claim);
++      this.selectedClaims.set(new Set());
++      this.bulkSettleResult.set({ settled: result.settled, refused: result.refused });
++    } catch {
++      if (this.session.sheet()?.id === sheet.id) this.bulkSettleError.set('The selected claims could not be settled.');
++    } finally {
++      this.bulkSettling.set(false);
++    }
++  }
++
+   protected claimSaved(claim: ClaimView): void {
+     this.claims.update((list) => list.map((c) => (c.id === claim.id ? claim : c)));
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+similarity index 59%
+rename from src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+rename to src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+index 689c6350..2ac6d8c0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkChangeService.java
+@@ -13,20 +13,20 @@ import net.officefloor.hq.app.person.PersonRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** Opens selected claims together. Each is opened on its own, as its open button would, so one that
+- *  cannot be opened is left as it is and the others still open. */
++/** Opens or settles selected claims together. Each is changed on its own, as its own button would,
++ *  so one that cannot be changed is left as it is and the others still change. */
+ @Service
+-public class BulkOpenService {
++public class BulkChangeService {
+ 
+-    /** What a bulk open did: the claims it opened, in the order it opened them, and how many it refused. */
+-    public record Result(List<Claim> opened, int refused) {
++    /** What a bulk change did: the claims it changed, in the order it changed them, and how many it refused. */
++    public record Result(List<Claim> changed, int refused) {
+     }
+ 
+     private final ClaimService service;
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+ 
+-    public BulkOpenService(ClaimService service, ClaimRepository claims, PersonRepository people) {
++    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people) {
+         this.service = service;
+         this.claims = claims;
+         this.people = people;
+@@ -35,18 +35,28 @@ public class BulkOpenService {
+     /** Open the claims of these ids in list order: people in the order they were added, each person's
+      *  claims newest first. So their numbers follow that order. An id not of the sheet is refused. */
+     public Result open(String sheetId, String user, Collection<Long> ids) {
++        return change(sheetId, user, ids, ClaimStatus.OPEN);
++    }
++
++    /** Settle the claims of these ids in list order, each by the rules of settling one: a claim left
++     *  PENDING counts as settled, one that cannot be settled is refused. An id not of the sheet is refused. */
++    public Result settle(String sheetId, String user, Collection<Long> ids) {
++        return change(sheetId, user, ids, ClaimStatus.SETTLED);
++    }
++
++    private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
+         Set<Long> selected = new LinkedHashSet<>(ids);
+         List<Long> ordered = inListOrder(sheetId, selected);
+-        List<Claim> opened = new ArrayList<>();
++        List<Claim> changed = new ArrayList<>();
+         int refused = selected.size() - ordered.size();
+         for (long id : ordered) {
+             try {
+-                opened.add(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
+-            } catch (ResponseStatusException notOpened) {
++                changed.add(service.changeStatus(sheetId, user, id, next));
++            } catch (ResponseStatusException notChanged) {
+                 refused++;
+             }
+         }
+-        return new Result(opened, refused);
++        return new Result(changed, refused);
+     }
+ 
+     private List<Long> inListOrder(String sheetId, Set<Long> ids) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 9a57cb27..bc2ca7e5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -68,7 +68,7 @@ public class ClaimController {
+         return form.corrects() == null || form.corrects().isBlank() ? null : form.corrects().trim();
+     }
+ 
+-    /** The claims selected to open together. */
++    /** The claims selected to open or settle together. */
+     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+     }
+ 
+@@ -76,12 +76,16 @@ public class ClaimController {
+     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
+     }
+ 
++    /** What a bulk settle did: the claims it settled (or left pending), and how many were settled and refused. */
++    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService service;
+-    private final BulkOpenService bulkOpen;
++    private final BulkChangeService bulk;
+ 
+-    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
++    public ClaimController(ClaimService service, BulkChangeService bulk) {
+         this.service = service;
+-        this.bulkOpen = bulkOpen;
++        this.bulk = bulk;
+     }
+ 
+     /** The sheet's claims, newest first. */
+@@ -118,9 +122,19 @@ public class ClaimController {
+     @PostMapping("/claims/open")
+     public BulkOpenView openSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
+-        BulkOpenService.Result result = bulkOpen.open(sheetId.trim(), SignedInUser.name(user), form.ids());
+-        return new BulkOpenView(result.opened().size(), result.refused(),
+-                result.opened().stream().map(ClaimView::of).toList());
++        BulkChangeService.Result result = bulk.open(sheetId.trim(), SignedInUser.name(user), form.ids());
++        return new BulkOpenView(result.changed().size(), result.refused(),
++                result.changed().stream().map(ClaimView::of).toList());
++    }
++
++    /** Settle the selected claims together in list order; one left pending counts as settled, each
++     *  that cannot be settled is left as it is. */
++    @PostMapping("/claims/settle")
++    public BulkSettleView settleSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
++        BulkChangeService.Result result = bulk.settle(sheetId.trim(), SignedInUser.name(user), form.ids());
++        return new BulkSettleView(result.changed().size(), result.refused(),
++                result.changed().stream().map(ClaimView::of).toList());
+     }
+ 
+     /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. */

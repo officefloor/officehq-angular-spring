@@ -1,0 +1,64 @@
+{
+  "checkpoint": 45,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp45_bulk-settle",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be settled together with one button, each in list order (people as added,\nnewest claim first within a person) by exactly the rules of settling one claim, by the signed-in\nuser: a claim that goes to PENDING counts as settled by the button, a claim that cannot be settled\nis left as it is. Show how many were settled and how many were refused. Each claim that went\nthrough writes its own lines as a single settle would.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be settled together with one button, each in list order (people as added,\nnewest claim first within a person) by exactly the rules of settling one claim, by the signed-in\nuser: a claim that goes to PENDING counts as settled by the button, a claim that cannot be settled\nis left as it is. Show how many were settled and how many were refused. Each claim that went\nthrough writes its own lines as a single settle would.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0bae5ae0abe0f76f7424128e2cbb51f92b4de3a9",
+  "reset_sha": "",
+  "preagent_sha": "23420b92b92c9b4aa123bbe21225e4cacbac2098",
+  "prev_sha": "23420b92b92c9b4aa123bbe21225e4cacbac2098",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5653282000000001,
+    "input_tokens": 6,
+    "output_tokens": 681,
+    "cache_read_tokens": 104299,
+    "cache_creation_tokens": 2775,
+    "num_turns": 2,
+    "duration_ms": 12141,
+    "duration_api_ms": 90094,
+    "model": "claude-opus-5-5",
+    "session_id": "30657fb3-fc3f-4ca1-b93d-7c986c54f06c",
+    "stop_reason": "success",
+    "result_text": "You can now settle all the selected claims with one button, and all 4 acceptance tests pass when I run `bin/e2e`.\n\n**How it works:**\n- **Order:** claims are settled in list order, people in the order they were added and newest claim first within each person. The order you tick them in doesn't matter.\n- **Same rules as one claim:** each claim goes through the same code as the single \"settle\" action, as the signed-in user. A claim that ends up PENDING (a clerk settling above the clerk limit) counts as settled.\n- **Refusals:** a claim that can't be settled is left as it is and counted as refused; the others still go through. An id that isn't on this sheet also counts as refused.\n- **Audit:** each claim that goes through writes the same lines a single settle writes (`CLAIM_SETTLED`, or `CLAIM_PENDING` when it's held for a steward).\n\n**Server:** there's a new endpoint, `POST /claims/settle`. The existing bulk-open service already did \"change each selected claim in list order, count the refusals\", so I renamed it from `BulkOpenService` to `BulkChangeService` and gave it both `open` and `settle`. Bulk open behaves exactly as before. `ClaimController` has the new endpoint, which returns how many were settled, how many were refused, and the updated claims.\n\n**Screen:** in `people.ts`, a \"Settle selected claims\" button sits beside \"Open selected claims\". It shows the settled and refused counts, which are cleared while a new press runs. If the whole request fails, it shows its own error. The selection is cleared after a successful run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5653282000000001,
+        "num_turns": 2,
+        "duration_ms": 12141,
+        "duration_api_ms": 90094,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp45.agent.jsonl",
+  "agent_diff_file": "cp45.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
