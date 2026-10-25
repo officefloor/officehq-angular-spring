@@ -7,11 +7,12 @@ import { SheetAsOf } from '../session/sheet-as-of';
 import { SheetPicker } from '../session/sheet-picker';
 import { SheetToday } from '../session/sheet-today';
 import { SignIn } from '../session/sign-in';
+import { VoidReasonsList } from '../void-reasons/void-reasons';
 
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [SignIn, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, People],
+  imports: [SignIn, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, VoidReasonsList, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -23,6 +24,7 @@ import { SignIn } from '../session/sign-in';
       @if (session.sheet()) {
         <app-settings />
         <app-holidays />
+        <app-void-reasons />
       }
       <app-people />
       @if (!session.sheet()) {

@@ -93,6 +93,8 @@ export interface ClaimView {
   ref: string | null;
   /** The claim's tags, lower-cased and sorted; empty when it has none. */
   tags: string[];
+  /** The reason the claim was voided with, or null. */
+  voidReason: string | null;
 }
 
 /** What splitting a claim did: the claim split, with the rest of its amount, and the claim split off it. */
@@ -304,7 +306,7 @@ export class ClaimsApi {
    *  approving is refused (403) to the user who opened the claim; approving and rejecting (with a
    *  reason) a PENDING claim, and re-settling a SETTLED one, are refused (403) to all but a steward. */
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
-    const body = action === 'reject' ? { reason: reason ?? '' } : {};
+    const body = action === 'reject' || action === 'void' ? { reason: reason ?? '' } : {};
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));
   }
 

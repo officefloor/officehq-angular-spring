@@ -125,6 +125,10 @@ public class Claim {
     @Column(name = "tags")
     private String tags;
 
+    /** The reason the claim was voided with; none when it is not void or was voided with none. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** The claim's status log, oldest first: a line for each status it has had. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -223,6 +227,15 @@ public class Claim {
     /** The claim's tags, sorted; empty when it has none. */
     public List<String> getTags() {
         return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** The reason the claim was voided with, or null. */
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     /** Give the claim its tags, each lower-cased and sorted, or (empty) none. */

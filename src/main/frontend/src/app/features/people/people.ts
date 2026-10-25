@@ -16,7 +16,8 @@ import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { SheetHeader } from '../summary/sheet-header';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -140,7 +141,7 @@ import { PasteClaims } from '../claims/paste-claims';
         @if (bulkGradeError()) {
           <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
         }
-        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
             <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -256,6 +257,7 @@ import { PasteClaims } from '../claims/paste-claims';
 })
 export class People {
   protected readonly session = inject(Session);
+  private readonly voidReasons = inject(VoidReasons);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
@@ -476,6 +478,9 @@ export class People {
   /** How many of the sheet's claims have each status. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
+  protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
+    this.voidReasons.reasons().map(({ reason }) => ({
+      reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length })));
   /** The statements of each person who has had one taken, by person. */
   protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
   /** The person whose statement is being taken. */

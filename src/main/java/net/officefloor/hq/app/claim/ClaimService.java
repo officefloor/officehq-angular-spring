@@ -26,6 +26,7 @@ import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.TodayChanged;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -47,12 +48,14 @@ public class ClaimService {
     private final Rollup rollup;
     private final Audit audit;
     private final SheetTagRepository sheetTags;
+    private final VoidReasonService voidReasons;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonWatchRepository watches,
             RateService rates, SheetService sheets, SheetRepository sheetRows, PeriodRepository periods,
             SettingService settings, HolidayService holidays, Rollup rollup, Audit audit,
-            SheetTagRepository sheetTags) {
+            SheetTagRepository sheetTags, VoidReasonService voidReasons) {
         this.claims = claims;
+        this.voidReasons = voidReasons;
         this.sheetTags = sheetTags;
         this.people = people;
         this.watches = watches;
@@ -214,6 +217,17 @@ public class ClaimService {
      *  steward settles anything). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+        return changeStatus(sheetId, user, id, next, null);
+    }
+
+    /** Void a claim, as {@link #changeStatus}; while the sheet has void reasons, a void without one of
+     *  them is refused. The reason is kept on the claim and ends its audit line. */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, long id, String reason) {
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -235,6 +249,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it.");
         }
+        String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonToVoid(sheetId, reason) : null;
         Person person = person(sheetId, claim.getPersonId());
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
@@ -248,6 +263,7 @@ public class ClaimService {
         // A voided claim keeps its number, which is never given to another claim.
         claim.setNumber(number);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow);
+        if (next == ClaimStatus.VOID) claim.setVoidReason(voidReason);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
@@ -255,9 +271,10 @@ public class ClaimService {
             recordChange(event, user, person, saved, number, " due=" + text(saved.getSettledDue()));
             notifyWatchers(user, person, saved);
         } else if (voidingSettled) {
-            recordChange(event, user, person, saved, number, " reversed=" + text(saved.getSettledDue()));
+            recordChange(event, user, person, saved, number, " reversed=" + text(saved.getSettledDue())
+                    + reasonField(voidReason));
         } else {
-            recordChange(event, user, person, saved, number, "");
+            recordChange(event, user, person, saved, number, reasonField(voidReason));
         }
         rollup.recordChanges(user, before);
         return saved;
@@ -693,6 +710,11 @@ public class ClaimService {
                 : null;
         return Rounding.of(Rounding.dateOf(claim, corrected),
                 Rounding.policyDate(settings.policyDate(sheetId), today));
+    }
+
+    /** The audit field of the reason a claim was voided with; blank when there is none. */
+    private static String reasonField(String voidReason) {
+        return voidReason == null ? "" : " reason=" + voidReason;
     }
 
     /** Log the status the claim has just taken, with its due as worked out now. */

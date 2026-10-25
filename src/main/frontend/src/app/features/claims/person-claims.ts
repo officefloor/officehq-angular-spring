@@ -9,6 +9,7 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitView, claimOwedCents, isDeferred, isOverdue, money } from './claims-api';
 
@@ -93,7 +94,17 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #rejectReason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
-          <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+          @if (voidReasons.reasons().length > 0) {
+            <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+            <select #voidReason [id]="'claim-void-reason-' + c.id" data-testid="claim-void-reason"
+              (change)="chooseVoidReason(c.id, voidReason.value)">
+              <option value="">Choose a reason</option>
+              @for (r of voidReasons.reasons(); track r.id) {
+                <option [value]="r.reason">{{ r.reason }}</option>
+              }
+            </select>
+          }
+          <button type="button" data-testid="claim-void" (click)="act(c, 'void', voidReasonOf(c.id))"
             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input #deferDate type="date" [id]="'claim-defer-date-' + c.id" data-testid="claim-defer-date" />
@@ -148,6 +159,9 @@ export class PersonClaims {
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
   private readonly policyDate = inject(SheetPolicyDate);
+  protected readonly voidReasons = inject(VoidReasons);
+  /** The void reason chosen on each claim's row, by claim. */
+  private readonly chosenVoidReasons = signal<ReadonlyMap<number, string>>(new Map());
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -353,6 +367,17 @@ export class PersonClaims {
     }
   }
 
+  protected chooseVoidReason(claimId: number, reason: string): void {
+    this.chosenVoidReasons.update((chosen) => new Map(chosen).set(claimId, reason));
+    if (this.claimError()?.id === claimId) this.claimError.set(null);
+  }
+
+  /** The void reason chosen on the claim's row, or blank; none while the sheet's list is empty. */
+  protected voidReasonOf(claimId: number): string {
+    const reason = this.chosenVoidReasons().get(claimId) ?? '';
+    return this.voidReasons.reasons().some((r) => r.reason === reason) ? reason : '';
+  }
+
   /** Open, settle, void, approve, reject (for a reason) or re-settle a claim; the store refuses a change its
    *  status does not allow. A clerk's settling above the clerk limit leaves the claim PENDING. */
   protected async act(claim: ClaimView, action: ClaimAction, reason = ''): Promise<void> {
@@ -361,6 +386,10 @@ export class PersonClaims {
     this.claimError.set(null);
     if (action === 'reject' && reason.trim() === '') {
       this.claimError.set({ id: claim.id, message: 'Type a reason to reject this claim.' });
+      return;
+    }
+    if (action === 'void' && reason === '' && this.voidReasons.reasons().length > 0) {
+      this.claimError.set({ id: claim.id, message: 'Choose a void reason to void this claim.' });
       return;
     }
     try {
@@ -379,6 +408,8 @@ export class PersonClaims {
           ? 'You opened this claim, so someone else must settle it.'
           : forbidden
           ? `Your role may not ${action} a claim on this sheet.`
+          : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
+            ? 'Choose a void reason from the sheet\'s list to void this claim.'
           : periodOf(this.periods(), claim.dueBy)?.closed
             ? `This claim's due-by is inside a closed period, so it cannot be ${PAST[action]}.`
           : action === 'settle' && this.deferred(claim)
