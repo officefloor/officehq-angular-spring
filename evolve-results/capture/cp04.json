@@ -1,0 +1,68 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp04_name-uniqueness",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    3
+  ],
+  "replaced_tests": [
+    "cp03_people.spec.ts::people"
+  ],
+  "request": {
+    "spec": "A person's name must be unique on the sheet, comparing without regard to case and ignoring\nspaces before and after the name. Names are stored with those surrounding spaces removed and\nshown that way. Adding or editing a person to a name already in use is refused with an error on\nthe form, and nothing is saved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's name must be unique on the sheet, comparing without regard to case and ignoring\nspaces before and after the name. Names are stored with those surrounding spaces removed and\nshown that way. Adding or editing a person to a name already in use is refused with an error on\nthe form, and nothing is saved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "34845179dc9c95e83323bd3e88bfbdf77e5efcdd",
+  "reset_sha": "",
+  "preagent_sha": "9716a5cf2750ff8b47b20819feaf175d7bbe154e",
+  "prev_sha": "9716a5cf2750ff8b47b20819feaf175d7bbe154e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2653036,
+    "input_tokens": 10,
+    "output_tokens": 3378,
+    "cache_read_tokens": 111798,
+    "cache_creation_tokens": 21918,
+    "num_turns": 5,
+    "duration_ms": 109448,
+    "duration_api_ms": 30518,
+    "model": "claude-opus-5-5",
+    "session_id": "edac6061-902b-40b8-973d-3066df575e7b",
+    "stop_reason": "success",
+    "result_text": "Person names are now unique on each sheet, compared without regard to case and ignoring spaces before and after. The acceptance test passes under `bin/e2e`.\n\n- **Stored data:** the new migration `V4__person_name_unique.sql` trims any existing names. It adds a `name_key` column holding the trimmed, lower-cased name, with a unique index on sheet plus `name_key`. The database itself therefore refuses a duplicate name.\n- **Server:**\n  - `Person.setName` saves the trimmed name and fills `name_key`.\n  - `PersonService` checks for a clash before adding or editing a person; an edit ignores the person's own row.\n  - A clash is refused with a 409 status and nothing is saved.\n  - If two users take the same name at the same moment, the unique index catches it and the user gets the same 409.\n- **Front end:** the people form sends the trimmed name. On a 409 it shows \"That name is already in use on the sheet.\" in `person-form-error`, and the edit form stays open. Other failures still show the old messages.\n\nThe migration's unique index would fail if a sheet already held two people whose names differ only in case or surrounding spaces. That can't happen here: the database is in-memory and starts empty on every run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2653036,
+        "num_turns": 5,
+        "duration_ms": 109448,
+        "duration_api_ms": 30518,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
