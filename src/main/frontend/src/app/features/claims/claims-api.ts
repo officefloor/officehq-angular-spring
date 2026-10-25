@@ -83,6 +83,12 @@ export interface BulkOpenView {
   claims: ClaimView[];
 }
 
+/** What a paste added: how many claims, and the claims, in the order of their lines. */
+export interface PasteView {
+  added: number;
+  claims: ClaimView[];
+}
+
 export interface BulkSettleView {
   /** Claims settled, those left pending included. */
   settled: number;
@@ -227,5 +233,11 @@ export class ClaimsApi {
 
   settleSelected(sheetId: string, ids: readonly number[]): Promise<BulkSettleView> {
     return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheetId)}/claims/settle`, { ids }));
+  }
+
+  /** Add a draft claim per line of name,amount,date,note, in order; refused as a whole, adding
+   *  nothing, when any line is refused. */
+  paste(sheetId: string, text: string): Promise<PasteView> {
+    return firstValueFrom(this.http.post<PasteView>(`${this.url(sheetId)}/claims/paste`, { text }));
   }
 }

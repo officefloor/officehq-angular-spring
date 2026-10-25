@@ -22,6 +22,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 import { QuickAdd } from './quick-add';
+import { PasteClaims } from '../claims/paste-claims';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
 // each with their claims and what they have claimed and is due, the sheet's claimed-total and
@@ -29,7 +30,7 @@ import { QuickAdd } from './quick-add';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, Summary, SheetHeader],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, Summary, SheetHeader],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)" />
@@ -64,6 +65,7 @@ import { QuickAdd } from './quick-add';
           }
         </form>
         <app-quick-add (added)="quickAdded($event)" />
+        <app-paste-claims (added)="pasted($event)" />
         <label>
           <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
             (change)="showRetired.set($any($event.target).checked)" />
@@ -667,6 +669,11 @@ export class People {
   protected quickAdded(added: QuickAddView): void {
     if (!this.people().some((p) => p.id === added.person.id)) this.people.update((list) => [...list, added.person]);
     this.claimAdded(added.claim);
+  }
+
+  /** A paste's claims, in the order of their lines: the last line's claim is the newest. */
+  protected pasted(claims: ClaimView[]): void {
+    this.claims.update((list) => [...[...claims].reverse(), ...list]);
   }
 
   protected selectClaim(id: number, on: boolean): void {
