@@ -102,6 +102,11 @@ function settled(control: AbstractControl): void {
         <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
         <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+        <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank: none)</label>
+        <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" />
+        <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
+        <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" />
+        <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
         <label for="setting-grace-days">Grace days (days after an open period's to-date before a change of today closes it; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
         <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
@@ -198,6 +203,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly cap = computed(() => this.now('cap'));
   protected readonly proofThreshold = computed(() => this.now('proof-threshold'));
+  protected readonly noteThreshold = computed(() => this.now('note-threshold'));
   protected readonly graceDays = signal<number | null>(null);
   protected readonly assigned = signal<RoleView[]>([]);
   protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
@@ -218,6 +224,8 @@ export class Settings {
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    noteThreshold: new FormControl('', { nonNullable: true }),
+    noteThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's own terms, a field per grade; part of the settings form. */
@@ -270,7 +278,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [] });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [] });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -299,12 +307,14 @@ export class Settings {
     if (!sheet) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
-      periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom, graceDays } = this.settingsForm.controls;
+      periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
+      noteThreshold, noteThresholdFrom, graceDays } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
       { label: 'terms', control: termsFrom }, { label: 'late percent', control: latePctFrom },
       { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
+      { label: 'note threshold', control: noteThresholdFrom },
       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
     ];
     for (const { label, control } of froms) {
@@ -324,6 +334,7 @@ export class Settings {
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
+    const noteThresholdValue = noteThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
@@ -363,6 +374,10 @@ export class Settings {
     }
     if (dirty(proofThreshold, proofThresholdFrom) && proofThresholdValue !== '' && !MONEY.test(proofThresholdValue)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (dirty(noteThreshold, noteThresholdFrom) && noteThresholdValue !== '' && !MONEY.test(noteThresholdValue)) {
+      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (changed(graceDays) && graceDaysValue !== '' && (!DAYS.test(graceDaysValue) || Number(graceDaysValue) > 36500)) {
@@ -431,6 +446,13 @@ export class Settings {
           fromOf(proofThresholdFrom));
         settled(proofThreshold);
         settled(proofThresholdFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      if (dirty(noteThreshold, noteThresholdFrom)) {
+        const settings = await this.api.setNoteThreshold(sheet.id, noteThresholdValue === '' ? null : noteThresholdValue,
+          fromOf(noteThresholdFrom));
+        settled(noteThreshold);
+        settled(noteThresholdFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
       if (changed(graceDays)) {

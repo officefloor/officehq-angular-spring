@@ -38,7 +38,8 @@ public class SettingController {
      *  it is due by; the late percent has two decimals; the policy date is null when blank (the sheet's
      *  today then); period numbering from is null when blank (sheet-wide numbering); grade terms are
      *  the terms each grade set for itself, by grade, a grade without its own using the sheet's; the cap
-     *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none;
+     *  has two decimals, or is null when there is no cap; so has the proof threshold, null when there is none,
+     *  and the note threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
@@ -46,7 +47,7 @@ public class SettingController {
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
-            Integer graceDays, List<DelegationView> delegations) {
+            Integer graceDays, List<DelegationView> delegations, String noteThreshold) {
     }
 
     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
@@ -81,6 +82,11 @@ public class SettingController {
 
     /** The proof threshold as entered; none means no threshold. */
     public record ProofThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
+    }
+
+    /** The note threshold as entered; none means no threshold. */
+    public record NoteThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
             LocalDate from) {
     }
 
@@ -217,6 +223,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's note threshold, or clear it. */
+    @PutMapping("/settings/note-threshold")
+    public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid NoteThresholdForm form) {
+        String id = sheetId.trim();
+        service.setNoteThreshold(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
+    }
+
     /** Set the sheet's grace days, or clear them to turn the closing of periods off. */
     @PutMapping("/settings/grace-days")
     public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -271,7 +286,8 @@ public class SettingController {
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.periodNumberingFrom(sheetId),
                 gradeTerms, text(dated.capOn(today)), history, text(dated.proofThresholdOn(today)),
                 service.permissions(sheetId), service.graceDays(sheetId),
-                service.delegations(sheetId).stream().map(DelegationView::of).toList());
+                service.delegations(sheetId).stream().map(DelegationView::of).toList(),
+                text(dated.noteThresholdOn(today)));
     }
 
     private static String text(BigDecimal value) {

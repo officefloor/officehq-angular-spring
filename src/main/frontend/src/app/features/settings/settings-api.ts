@@ -53,7 +53,10 @@ export interface SettingsView {
   cap: string | null;
   /** The due above which a claim needs a proof to be settled or approved, with two decimals, or null when there is none. */
   proofThreshold: string | null;
-  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold) take
+  /** The due above which a claim needs a note to be opened, with two decimals, or null when there is none. */
+  noteThreshold: string | null;
+  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold,
+   *  note-threshold) take
    *  from their from-dates, in date order. */
   dated: Partial<Record<string, DatedValue[]>>;
   /** By action, the roles that may take it as the sheet set them, comma separated; blank keeps the standing rule. */
@@ -90,6 +93,11 @@ export class SettingsApi {
   /** Record the proof threshold from a date (null: the sheet's today); null clears it from then, leaving none. */
   setProofThreshold(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }));
+  }
+
+  /** Record the note threshold from a date (null: the sheet's today); null clears it from then, leaving none. */
+  setNoteThreshold(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/note-threshold`, { value, from }));
   }
 
   /** Record the floor from a date (null: the sheet's today). */

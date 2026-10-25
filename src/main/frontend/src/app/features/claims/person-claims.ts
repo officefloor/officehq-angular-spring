@@ -343,6 +343,8 @@ export class PersonClaims {
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
             ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+          : action === 'open' && claim.status === 'DRAFT' && claim.note.trim() === ''
+            ? 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.'
           : action === 'void' && claim.status === 'SETTLED'
             ? 'A settled claim can only be voided within 7 days of its settlement.'
             : `This claim cannot be ${PAST[action]} from its status.`;

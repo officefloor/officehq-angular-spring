@@ -195,6 +195,7 @@ public class ClaimService {
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, claim, dueNow);
+        if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, due(sheetId, person, claim));
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
@@ -517,6 +518,18 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
                             + "; add a proof before it is settled.");
+        }
+    }
+
+    /** Refuse opening a claim with an empty note whose due is above the sheet's note threshold in force
+     *  on the claim's date (a due of n/a, or no threshold, needs none). */
+    private void refuseIfUnnoted(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null || (claim.getNote() != null && !claim.getNote().isBlank())) return;
+        BigDecimal threshold = settings.noteThreshold(sheetId, claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's due is above the note threshold of " + threshold.toPlainString()
+                            + "; add a note before it is opened.");
         }
     }
 
