@@ -12,9 +12,12 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { StatementView, StatementsApi } from '../statements/statements-api';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 import { QuickAdd } from './quick-add';
 
 // The sheet's people in the order they were added, with one form to add a person or edit one,
@@ -23,7 +26,7 @@ import { QuickAdd } from './quick-add';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, Summary],
   template: `
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
@@ -65,6 +68,7 @@ import { QuickAdd } from './quick-add';
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() }}</strong></p>
         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) }}</strong></p>
+        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
             <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -248,6 +252,18 @@ export class People {
     const fixed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
     return new Map([...cents].map(([id, total]) => [id, fixed.get(id) ?? money(total)]));
   });
+  /** Per grade, the people on it today who are not retired, and their due-totals added up, skipping
+   *  those that are n/a. */
+  protected readonly gradeSummary = computed<GradeSummary[]>(() => GRADES.map((grade) => {
+    const on = this.people().filter((p) => !p.retired && this.gradeToday(p) === grade);
+    return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)) };
+  }));
+  /** Each period's due-total, as its row shows it. */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
+    this.periods().map((p) => ({ name: p.name, dueTotal: this.periodDueTotals().get(p.id) ?? '0.00' })));
+  /** How many of the sheet's claims have each status. */
+  protected readonly statusSummary = computed<StatusSummary[]>(() =>
+    SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
   /** The statements of each person who has had one taken, by person. */
   protected readonly statements = signal<ReadonlyMap<number, StatementView>>(new Map());
   /** The person whose statement is being taken. */
