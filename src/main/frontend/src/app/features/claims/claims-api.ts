@@ -67,6 +67,41 @@ export function claimDueCents(claim: ClaimView, gradeRates: readonly RateView[],
   return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate.pct), floorCents);
 }
 
+/** Days since 1970-01-01 of a yyyy-mm-dd date, worked out from the calendar, not a clock. */
+function epochDay(date: string): number {
+  const [y0, m, d] = date.split('-').map(Number);
+  const y = m <= 2 ? y0 - 1 : y0;
+  const era = Math.floor(y / 400);
+  const yoe = y - era * 400;
+  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return era * 146097 + doe - 719468;
+}
+
+/** The yyyy-mm-dd date of days since 1970-01-01. */
+function dateOf(epoch: number): string {
+  const z = epoch + 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** The date the claim is due by: its date plus the sheet's terms in days. */
+export function dueBy(claim: ClaimView, terms: number): string {
+  return dateOf(epochDay(claim.date) + terms);
+}
+
+/** Whether the claim is overdue: open, with its due-by before the sheet's today. */
+export function isOverdue(claim: ClaimView, terms: number, today: string | undefined): boolean {
+  return claim.status === 'OPEN' && today !== undefined && dueBy(claim, terms) < today;
+}
+
 // The claims on a sheet, as the store holds them.
 @Injectable({ providedIn: 'root' })
 export class ClaimsApi {

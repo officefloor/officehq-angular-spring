@@ -24,6 +24,12 @@ public class SettingService {
     /** The floor of a sheet that has not set one. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
 
+    /** The key of the terms: the days after a claim's date it is due by; the sheet starts at {@link #DEFAULT_TERMS}. */
+    public static final String TERMS = "terms";
+
+    /** The terms of a sheet that has not set them, in days. */
+    public static final int DEFAULT_TERMS = 14;
+
     private final SheetSettingRepository settings;
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -72,6 +78,33 @@ public class SettingService {
                 + " value=" + value.toPlainString());
         rollup.recordChanges(user, before);
         return value;
+    }
+
+    /** The sheet's terms in days: the ones it set, else {@link #DEFAULT_TERMS}. */
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, TERMS).map((s) -> Integer.parseInt(s.getValue()))
+                .orElse(DEFAULT_TERMS);
+    }
+
+    /** Set the sheet's terms, in days. */
+    @Transactional
+    public int setTerms(String sheetId, String user, int days) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, TERMS).orElse(null);
+        try {
+            if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, TERMS, Integer.toString(days)));
+            } else {
+                setting.setValue(Integer.toString(days));
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + TERMS
+                + " value=" + days);
+        return days;
     }
 
     /** The sheet's clerk limit with two decimals, or null when there is no limit. */

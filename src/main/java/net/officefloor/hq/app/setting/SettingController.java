@@ -2,6 +2,8 @@ package net.officefloor.hq.app.setting;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,8 +28,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class SettingController {
 
     /** What the screen shows of the sheet's settings; the clerk limit has two decimals, or is null
-     *  when there is no limit; the floor has two decimals. */
-    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {
+     *  when there is no limit; the floor has two decimals; the terms are the days after a claim's date
+     *  it is due by. */
+    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {
     }
 
     /** A role the sheet assigns a user name. */
@@ -45,6 +48,10 @@ public class SettingController {
     public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
+    /** The terms as entered: whole days. */
+    public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value) {
+    }
+
     /** A role to assign a user name, as entered on the form. */
     public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull String role) {
     }
@@ -58,7 +65,7 @@ public class SettingController {
     @GetMapping("/settings")
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
-        return view(service.clerkLimit(id), service.floor(id), service.roles(id));
+        return view(id, service.clerkLimit(id), service.floor(id));
     }
 
     /** Set the sheet's clerk limit, or clear it. */
@@ -67,7 +74,7 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ClerkLimitForm form) {
         String id = sheetId.trim();
         BigDecimal limit = service.setClerkLimit(id, SignedInUser.name(user), form.value());
-        return view(limit, service.floor(id), service.roles(id));
+        return view(id, limit, service.floor(id));
     }
 
     /** Set the sheet's floor: the least a claim's live due can be. */
@@ -76,7 +83,16 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FloorForm form) {
         String id = sheetId.trim();
         BigDecimal floor = service.setFloor(id, SignedInUser.name(user), form.value());
-        return view(service.clerkLimit(id), floor, service.roles(id));
+        return view(id, service.clerkLimit(id), floor);
+    }
+
+    /** Set the sheet's terms: the days after a claim's date it is due by. */
+    @PutMapping("/settings/terms")
+    public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TermsForm form) {
+        String id = sheetId.trim();
+        service.setTerms(id, SignedInUser.name(user), form.value());
+        return view(id, service.clerkLimit(id), service.floor(id));
     }
 
     /** Assign a user name a role on the sheet. */
@@ -88,8 +104,8 @@ public class SettingController {
         return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.name(user), form.user().trim(), role));
     }
 
-    private static SettingsView view(BigDecimal limit, BigDecimal floor, List<SheetRole> roles) {
+    private SettingsView view(String sheetId, BigDecimal limit, BigDecimal floor) {
         return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                roles.stream().map(RoleView::of).toList());
+                service.terms(sheetId), service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 }

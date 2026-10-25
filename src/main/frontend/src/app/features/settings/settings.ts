@@ -3,11 +3,13 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
+import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
+const DAYS = /^\d{1,5}$/;
 
 // The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
-// least a claim's live due can be), and the roles it assigns user names, with one form for each.
+// least a claim's live due can be) and the terms (the days after a claim's date it is due by), and the roles it assigns user names, with one form for each.
 // Saving the settings stores each setting whose field was changed since the last save.
 @Component({
   selector: 'app-settings',
@@ -22,6 +24,9 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
         <label for="setting-floor">Floor (the least a claim's live due can be)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <p>Floor now: <span data-testid="setting-floor-current">{{ floor() }}</span></p>
+        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        <p>Terms now: <span data-testid="setting-terms-current">{{ terms() }}</span></p>
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -63,15 +68,18 @@ export class Settings {
   private readonly session = inject(Session);
   private readonly api = inject(SettingsApi);
   private readonly sheetFloor = inject(SheetFloor);
+  private readonly sheetTerms = inject(SheetTerms);
 
   protected readonly roles = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly floor = signal((DEFAULT_FLOOR_CENTS / 100).toFixed(2));
+  protected readonly terms = signal(DEFAULT_TERMS);
   protected readonly assigned = signal<RoleView[]>([]);
 
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
+    terms: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -90,7 +98,7 @@ export class Settings {
       const sheet = this.session.loaded();
       this.settingsError.set('');
       this.roleError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), roles: [] });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, roles: [] });
       this.settingsForm.markAsPristine();
       if (sheet) void this.reload(sheet.id);
     });
@@ -111,15 +119,20 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.settingsError.set('');
-    const { clerkLimit, floor } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
+    const termsValue = terms.value.trim();
     if (clerkLimit.dirty && limit !== '' && !MONEY.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (floor.dirty && !MONEY.test(floorValue)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (terms.dirty && (!DAYS.test(termsValue) || Number(termsValue) > 36500)) {
+      this.settingsError.set('Type terms as a whole number of days, from 0 to 36500.');
       return;
     }
     this.savingSettings.set(true);
@@ -134,6 +147,11 @@ export class Settings {
         floor.markAsPristine();
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (terms.dirty) {
+        const settings = await this.api.setTerms(sheet.id, Number(termsValue));
+        terms.markAsPristine();
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -141,11 +159,13 @@ export class Settings {
     }
   }
 
-  /** Show the settings as the store answered them, and share the floor with the screens showing due. */
+  /** Show the settings as the store answered them, and share the floor and terms with the screens showing them. */
   private show(settings: SettingsView): void {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
     this.sheetFloor.cents.set(Math.round(Number(settings.floor) * 100));
+    this.terms.set(settings.terms);
+    this.sheetTerms.days.set(settings.terms);
     this.assigned.set(settings.roles);
   }
 

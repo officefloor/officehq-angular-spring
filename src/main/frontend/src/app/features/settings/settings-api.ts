@@ -16,6 +16,8 @@ export interface SettingsView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, with two decimals. */
   floor: string;
+  /** The days after a claim's date it is due by. */
+  terms: number;
   /** The roles the sheet has assigned, by user name. */
   roles: RoleView[];
 }
@@ -41,6 +43,11 @@ export class SettingsApi {
   /** Set the floor. */
   setFloor(sheetId: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value }));
+  }
+
+  /** Set the terms, in days. */
+  setTerms(sheetId: string, value: number): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value }));
   }
 
   /** Assign a user name a role on the sheet. */

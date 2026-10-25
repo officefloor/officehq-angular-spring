@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 import { PeriodView, periodOf } from '../periods/periods-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimDueCents, money } from './claims-api';
+import { SheetTerms } from '../settings/sheet-terms';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, claimDueCents, dueBy, isOverdue, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
@@ -42,6 +43,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ dueBy(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -65,6 +68,7 @@ export class PersonClaims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
+  private readonly terms = inject(SheetTerms);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -104,6 +108,16 @@ export class PersonClaims {
   protected due(claim: ClaimView): string {
     const due = claimDueCents(claim, this.rates(), this.floor.cents());
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** The date the claim is due by: its date plus the sheet's terms. */
+  protected dueBy(claim: ClaimView): string {
+    return dueBy(claim, this.terms.days());
+  }
+
+  /** Whether the claim is open and its due-by is before the sheet's today. */
+  protected overdue(claim: ClaimView): boolean {
+    return isOverdue(claim, this.terms.days(), this.session.sheet()?.today);
   }
 
   /** The name of the period whose dates contain the claim's date, or blank when none does. */
