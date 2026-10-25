@@ -59,6 +59,12 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
+    /** The terms a claim of the person dated on the date is due by: the person's own, else those of their
+     *  grade in force on the date, else the sheet's in force on the date. */
+    private int termsOf(String sheetId, Person person, LocalDate date) {
+        return person.getTerms() != null ? person.getTerms() : settings.terms(sheetId, person.gradeOn(date), date);
+    }
+
     /** Add a claim to a person; a claim with no date is dated the sheet's today. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
@@ -69,9 +75,9 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         refuseIfNotCorrecting(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        // The due-by is fixed now, from the terms of the person's grade in force on the claim's date.
+        // The due-by is fixed now, from the terms in force on the claim's date.
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note), corrects,
-                settings.terms(sheetId, person.gradeOn(dated), dated));
+                termsOf(sheetId, person, dated));
         // The sheet is locked (refuseIfClosed), so no other claim takes the same place.
         claim.setListed(claims.lastListed(sheetId) + 1);
         claim = claims.saveAndFlush(claim);
@@ -204,9 +210,8 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = nextNumber(sheetId, claim);
-        // The due-by is fixed now, from the terms of the person's grade in force on the claim's date.
-        Claim split = claim.splitOff(part, number, user,
-                settings.terms(sheetId, person.gradeOn(claim.getDate()), claim.getDate()));
+        // The due-by is fixed now, from the terms in force on the claim's date.
+        Claim split = claim.splitOff(part, number, user, termsOf(sheetId, person, claim.getDate()));
         split.setListed(claims.lastListed(sheetId) + 1);
         Claim saved = claims.saveAndFlush(claim);
         split = claims.saveAndFlush(split);

@@ -53,6 +53,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private Set<PersonHold> holds = new LinkedHashSet<>();
 
+    /** The person's own terms, in days; null when they have none and use their grade's, else the sheet's. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -158,6 +162,14 @@ public class Person {
     /** Put a hold on the person from a date to a date (none: no end). */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new PersonHold(from, to));
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public long getVersion() {

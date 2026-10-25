@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
@@ -41,7 +42,7 @@ public class PersonController {
      *  user watches them. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds,
-            List<Long> patronIds, boolean watched) {
+            List<Long> patronIds, boolean watched, Integer terms) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched) {
             return of(person, List.of(), today, watched);
@@ -54,18 +55,23 @@ public class PersonController {
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
                     person.getVersion(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
-                    watched);
+                    watched, person.getTerms());
         }
     }
 
-    /** A person's fields, as entered on the form; a new person's grade applies from the beginning of time. */
-    public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade) {
+    /** A person's own terms as entered: whole days, blank for none. */
+    static final String TERMS = "\\s*\\d{0,5}\\s*";
+
+    /** A person's fields, as entered on the form; a new person's grade applies from the beginning of time,
+     *  their terms are whole days, blank for none. */
+    public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade,
+            @Pattern(regexp = TERMS) String terms) {
     }
 
     /** A person's fields as edited, with the version of the person the editor loaded; the grade is
      *  given from the from-date, none meaning the sheet's today. */
     public record PersonEdit(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, LocalDate gradeFrom,
-            @NotNull Long version) {
+            @Pattern(regexp = TERMS) String terms, @NotNull Long version) {
     }
 
     /** The person named as a patron. */
@@ -112,7 +118,8 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonForm form) {
-        Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade());
+        Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade(),
+                termsOf(form.terms()));
         return PersonView.of(added, sheets.today(added.getSheetId()), false);
     }
 
@@ -121,7 +128,7 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
-                form.name(), form.grade(), form.gradeFrom()), user);
+                form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms())), user);
     }
 
     /** Retire a person from a date. */
@@ -150,6 +157,11 @@ public class PersonController {
     public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid WatchForm form) {
         return view(service.watch(sheetId.trim(), SignedInUser.name(user), id, form.on()), user);
+    }
+
+    /** The terms as entered, in days; null when left blank. */
+    private static Integer termsOf(String terms) {
+        return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
     }
 
     private PersonView view(Person person, String user) {

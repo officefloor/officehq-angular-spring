@@ -54,6 +54,10 @@ import { PasteClaims } from '../claims/paste-claims';
               aria-describedby="person-form-grade-from-hint" />
             <span id="person-form-grade-from-hint">Blank: the sheet's today</span>
           }
+          <label for="person-form-terms">Terms (days)</label>
+          <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms"
+            aria-describedby="person-form-terms-hint" />
+          <span id="person-form-terms-hint">Blank: none</span>
           <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
             {{ editingId() === null ? 'Add person' : 'Save person' }}
           </button>
@@ -101,13 +105,14 @@ import { PasteClaims } from '../claims/paste-claims';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
               <tr [attr.data-testid]="'person-row-' + p.id">
                 <td data-testid="person-name">{{ p.name }}</td>
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
                 <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
                 @for (q of periods(); track q.id) {
@@ -218,7 +223,10 @@ export class People {
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   /** The date an edit gives the grade from; blank means the sheet's today. */
   protected readonly gradeFrom = new FormControl('', { nonNullable: true });
-  protected readonly form = new FormGroup({ name: this.name, grade: this.grade, gradeFrom: this.gradeFrom });
+  /** The person's own terms, in whole days; blank means none. */
+  protected readonly terms = new FormControl('', { nonNullable: true });
+  protected readonly form = new FormGroup({ name: this.name, grade: this.grade, gradeFrom: this.gradeFrom,
+    terms: this.terms });
 
   /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
@@ -778,7 +786,7 @@ export class People {
   private reset(): void {
     this.editingId.set(null);
     this.error.set('');
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
   }
 
   protected edit(person: PersonView): void {
@@ -788,7 +796,8 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.error.set('');
-    this.form.setValue({ name: person.name, grade: this.gradeToday(person), gradeFrom: '' }, { emitEvent: false });
+    this.form.setValue({ name: person.name, grade: this.gradeToday(person), gradeFrom: '',
+      terms: termsText(person) }, { emitEvent: false });
   }
 
   protected cancel(): void {
@@ -805,7 +814,8 @@ export class People {
       const current = people.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion.set(current.version);
-        this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '' }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '',
+          terms: termsText(current) }, { emitEvent: false });
       }
     } finally {
       this.error.set('Someone else has saved this person since you opened it; the form now shows their changes.');
@@ -833,15 +843,22 @@ export class People {
       this.error.set('Type the grade\'s from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
+    const terms = value.terms.trim();
+    if (!/^\d{0,5}$/.test(terms)) {
+      // A refused edit closes the editor, saving nothing, so the form is ready to add a person again.
+      if (id !== null) this.reset();
+      this.error.set('Type the terms as a whole number of days, or leave them blank for none.');
+      return;
+    }
     this.saving.set(true);
     const editor = this.editorsOpened;
     try {
       if (id === null) {
-        const added = await this.api.add(sheet.id, { name: value.name.trim(), grade: value.grade });
+        const added = await this.api.add(sheet.id, { name: value.name.trim(), grade: value.grade, terms });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
         const saved = await this.api.update(sheet.id, id,
-          { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom,
+          { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom, terms,
             version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -862,6 +879,11 @@ export class People {
       this.saving.set(false);
     }
   }
+}
+
+/** The person's own terms as the form shows them: blank when they have none. */
+function termsText(person: PersonView): string {
+  return person.terms === null ? '' : String(person.terms);
 }
 
 /** The sum of the figures, leaving out the single highest and the single lowest when there are three or more. */

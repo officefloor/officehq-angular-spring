@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -129,14 +130,16 @@ public class PersonService {
 
     /** Add a person to the sheet. */
     @Transactional
-    public Person add(String sheetId, String user, String name, Grade grade) {
+    public Person add(String sheetId, String user, String name, Grade grade, Integer terms) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Person person = save(new Person(sheetId, name, grade));
-        recordChange("PERSON_ADDED", user, person);
+        Person fresh = new Person(sheetId, name, grade);
+        fresh.setTerms(terms);
+        Person person = save(fresh);
+        recordChange("PERSON_ADDED", user, person, terms == null ? "" : " terms=" + terms);
         rollup.recordChanges(user, before);
         return person;
     }
@@ -146,7 +149,7 @@ public class PersonService {
      *  the editor loaded this version of them. */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -156,10 +159,12 @@ public class PersonService {
             throw nameInUse();
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
+        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId));
+        person.setTerms(terms);
         Person saved = save(person);
-        recordChange("PERSON_EDITED", user, saved);
+        recordChange("PERSON_EDITED", user, saved, termsChanged ? " terms=" + (terms == null ? "" : terms) : "");
         rollup.recordChanges(user, before);
         return saved;
     }
@@ -198,10 +203,11 @@ public class PersonService {
         return saved;
     }
 
-    /** The person's audit line, with the grade in force on the sheet's today. */
-    private void recordChange(String event, String user, Person person) {
+    /** The person's audit line, with the grade in force on the sheet's today, then the fields given. */
+    private void recordChange(String event, String user, Person person, String fields) {
         audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.gradeOn(sheets.today(person.getSheetId())));
+                + " name=" + person.getName() + " grade=" + person.gradeOn(sheets.today(person.getSheetId()))
+                + fields);
     }
 
     private Person save(Person person) {
