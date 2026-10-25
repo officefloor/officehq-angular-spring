@@ -76,6 +76,10 @@ import { PersonPlans } from '../plans/person-plans';
           <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact"
             aria-describedby="person-form-contact-hint" />
           <span id="person-form-contact-hint">Blank: none</span>
+          <label for="person-form-tags">Tags</label>
+          <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags"
+            aria-describedby="person-form-tags-hint" />
+          <span id="person-form-tags-hint">Comma separated; blank: none</span>
           <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
             {{ editingId() === null ? 'Add person' : 'Save person' }}
           </button>
@@ -213,7 +217,7 @@ import { PersonPlans } from '../plans/person-plans';
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -240,6 +244,7 @@ import { PersonPlans } from '../plans/person-plans';
                 <td data-testid="person-grade">{{ gradeToday(p) }}</td>
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+                <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
                 <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
                 <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
                 <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
@@ -397,8 +402,10 @@ export class People {
   protected readonly terms = new FormControl('', { nonNullable: true });
   /** The person's contact; blank means none. */
   protected readonly contact = new FormControl('', { nonNullable: true });
+  /** The person's tags, comma separated; blank means none. */
+  protected readonly tags = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ name: this.name, grade: this.grade, gradeFrom: this.gradeFrom,
-    terms: this.terms, contact: this.contact });
+    terms: this.terms, contact: this.contact, tags: this.tags });
 
   /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
@@ -516,18 +523,21 @@ export class People {
   });
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly sheetTags = signal<string[]>([]);
-  /** For every tag ever used on the sheet (those the store keeps and those claims carry now), sorted: the
-   *  figures of the claims that count which carry it added up, skipping those that are n/a; a claim with
-   *  several tags counts in each. */
+  /** For every tag ever used on the sheet (those the store keeps and those claims and people carry now),
+   *  sorted: the figures of the claims that count which carry it, or whose person carries it, added up
+   *  once each, skipping those that are n/a; a claim with several tags counts in each. */
   protected readonly tagTotals = computed(() => {
     const totals = new Map<string, number>(this.sheetTags().map((t) => [t, 0]));
     const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const p of this.people()) for (const t of p.tags) if (!totals.has(t)) totals.set(t, 0);
     for (const c of this.claims()) {
       for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
       const person = byId.get(c.personId);
-      if (person === undefined || c.tags.length === 0 || !this.countsLive(c)) continue;
+      if (person === undefined) continue;
+      const tags = new Set([...c.tags, ...person.tags]);
+      if (tags.size === 0 || !this.countsLive(c)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
-      for (const t of c.tags) totals.set(t, totals.get(t)! + due);
+      for (const t of tags) totals.set(t, totals.get(t)! + due);
     }
     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([tag, total]) => ({ tag, dueTotal: money(total) }));
@@ -1461,7 +1471,7 @@ export class People {
   private reset(): void {
     this.editingId.set(null);
     this.error.set('');
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
   }
 
   protected edit(person: PersonView): void {
@@ -1472,7 +1482,7 @@ export class People {
     this.editingVersion.set(person.version);
     this.error.set('');
     this.form.setValue({ name: person.name, grade: this.gradeToday(person), gradeFrom: '',
-      terms: termsText(person), contact: person.contact ?? '' }, { emitEvent: false });
+      terms: termsText(person), contact: person.contact ?? '', tags: person.tags.join(', ') }, { emitEvent: false });
   }
 
   protected cancel(): void {
@@ -1490,7 +1500,7 @@ export class People {
       if (current && this.editingId() === id) {
         this.editingVersion.set(current.version);
         this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '',
-          terms: termsText(current), contact: current.contact ?? '' }, { emitEvent: false });
+          terms: termsText(current), contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
       }
     } finally {
       this.error.set('Someone else has saved this person since you opened it; the form now shows their changes.');
@@ -1546,12 +1556,13 @@ export class People {
     try {
       if (id === null) {
         const added = await this.api.add(sheet.id,
-          { name: value.name.trim(), grade: value.grade, terms, contact: value.contact });
+          { name: value.name.trim(), grade: value.grade, terms, contact: value.contact,
+            tags: value.tags });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
         const saved = await this.api.update(sheet.id, id,
           { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom, terms,
-            contact: value.contact, version: this.editingVersion() });
+            contact: value.contact, tags: value.tags, version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
           // An editor opened on the person while this save ran edits the version it stored.

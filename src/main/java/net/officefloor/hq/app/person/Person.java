@@ -79,6 +79,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags, lower-cased, sorted and comma separated; none when they have none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The person's place in the list, lowest first; null until they are moved, when their id is their place. */
     @Column(name = "position")
     private Long position;
@@ -115,6 +119,7 @@ public class Person {
         for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         getAliases().forEach(copy::addAlias);
         return copy;
     }
@@ -137,6 +142,7 @@ public class Person {
         for (PersonHold h : getHolds()) copy.holds.add(new PersonHold(h.getFrom(), h.getTo(), h.getMadeOn()));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         getAliases().forEach(copy::addAlias);
         return copy;
     }
@@ -311,6 +317,16 @@ public class Person {
     /** Stores the contact trimmed and lower-cased; a blank contact is none. */
     public void setContact(String contact) {
         this.contact = contactOf(contact);
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the person their tags, each lower-cased and sorted, or (empty) none. */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
     }
 
     /** A contact as stored: without surrounding spaces, lower-cased; null when blank or none. */

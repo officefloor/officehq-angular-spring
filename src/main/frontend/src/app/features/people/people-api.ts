@@ -76,6 +76,8 @@ export interface PersonView {
   clashing: boolean;
   /** The sheet the person was transferred from, or null when they were added on this sheet. */
   origin: string | null;
+  /** The person's tags, lower-cased and sorted; empty when they have none. */
+  tags: string[];
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
@@ -85,6 +87,8 @@ export interface PersonForm {
   grade: Grade;
   terms: string;
   contact: string;
+  /** The person's tags, comma separated as typed; the store trims, lower-cases and sorts them, dropping repeats. */
+  tags: string;
 }
 
 /** An edited person's fields: the grade is given from `gradeFrom`, null meaning the sheet's today. */

@@ -48,7 +48,7 @@ public class PersonController {
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
             List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing,
-            String origin) {
+            String origin, List<String> tags) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
             return of(person, List.of(), today, watched, clashing);
@@ -65,7 +65,7 @@ public class PersonController {
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheetId());
+                    person.getOriginSheetId(), person.getTags());
         }
     }
 
@@ -73,15 +73,16 @@ public class PersonController {
     static final String TERMS = "\\s*\\d{0,5}\\s*";
 
     /** A person's fields, as entered on the form; a new person's grade applies from the beginning of time,
-     *  their terms are whole days, blank for none; a blank contact is none. */
+     *  their terms are whole days, blank for none; a blank contact is none; tags are comma separated. */
     public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade,
-            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact) {
+            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
     }
 
     /** A person's fields as edited, with the version of the person the editor loaded; the grade is
      *  given from the from-date, none meaning the sheet's today. */
     public record PersonEdit(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, LocalDate gradeFrom,
-            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact, @NotNull Long version) {
+            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact, @Size(max = 1000) String tags,
+            @NotNull Long version) {
     }
 
     /** The person named as a patron. */
@@ -177,7 +178,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonForm form) {
         Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade(),
-                termsOf(form.terms()), form.contact());
+                termsOf(form.terms()), form.contact(), form.tags());
         return PersonView.of(added, sheets.today(added.getSheetId()), false, service.isClashing(added));
     }
 
@@ -196,7 +197,8 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
-                form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.contact()), user);
+                form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.contact(),
+                form.tags()), user);
     }
 
     /** Give the selected people a grade together, each in list order as the person form would. */

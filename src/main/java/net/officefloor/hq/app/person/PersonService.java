@@ -11,6 +11,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.SheetTag;
+import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,9 +34,11 @@ public class PersonService {
     private final NameTree tree;
     private final Rollup rollup;
     private final Audit audit;
+    private final SheetTagRepository sheetTags;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit) {
+            PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit,
+            SheetTagRepository sheetTags) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -42,6 +47,7 @@ public class PersonService {
         this.tree = tree;
         this.rollup = rollup;
         this.audit = audit;
+        this.sheetTags = sheetTags;
     }
 
     /** The sheet's people in list order. */
@@ -158,6 +164,14 @@ public class PersonService {
      *  the same contact. */
     @Transactional
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add a person to the sheet with a contact and tags (comma separated; blank or null: none), as
+     *  {@link #add(String, String, String, Grade, Integer, String)}. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact,
+            String tags) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
@@ -174,6 +188,9 @@ public class PersonService {
         Person fresh = new Person(sheetId, name, grade, sheets.today(sheetId));
         fresh.setTerms(terms);
         fresh.setContact(contactKey);
+        List<String> tagged = ClaimService.tagsOf(tags);
+        fresh.setTags(tagged);
+        useTags(sheetId, tagged);
         Person person = save(fresh);
         recordChange("PERSON_ADDED", user, person, (terms == null ? "" : " terms=" + terms)
                 + (contactKey == null ? "" : " contact=" + contactKey));
@@ -190,6 +207,17 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact,
+                String.join(",", person.getTags()));
+    }
+
+    /** Edit a person as {@link #update(String, String, long, long, String, Grade, LocalDate, Integer, String)},
+     *  giving them the tags (comma separated; blank or null: none). */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -215,6 +243,9 @@ public class PersonService {
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId));
         person.setTerms(terms);
         person.setContact(contactKey);
+        List<String> tagged = ClaimService.tagsOf(tags);
+        person.setTags(tagged);
+        useTags(sheetId, tagged);
         Person saved = save(person);
         recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
                 + (contactChanged ? " contact=" + (contactKey == null ? "" : contactKey) : ""));
@@ -349,6 +380,13 @@ public class PersonService {
     private static ResponseStatusException changedMeanwhile() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                 "Someone else has saved this person since it was opened.");
+    }
+
+    /** Keep the tags as used on the sheet. */
+    private void useTags(String sheetId, List<String> tagged) {
+        for (String tag : tagged) {
+            if (!sheetTags.existsBySheetIdAndName(sheetId, tag)) sheetTags.save(new SheetTag(sheetId, tag));
+        }
     }
 
     private static ResponseStatusException contactInUse() {

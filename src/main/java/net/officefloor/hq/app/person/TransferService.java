@@ -132,6 +132,7 @@ public class TransferService {
         // A merge drops the arriving person's contact.
         if (match != null) copy.setContact(null);
         Person arrived = people.saveAndFlush(copy);
+        claimService.useTags(toSheetId, arrived.getTags());
 
         // The claims that had a number take the other sheet's next, in the order they were opened.
         List<Claim> theirs = claims.findForMove(sheetId, from.getId());
