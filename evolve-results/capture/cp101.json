@@ -1,0 +1,64 @@
+{
+  "checkpoint": 101,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp101_audit-viewer",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5ff9e66017871446d806f96e3bde8f376f3bd0cc",
+  "reset_sha": "",
+  "preagent_sha": "ce060f28470d987b875022f761b8073032f4debe",
+  "prev_sha": "ce060f28470d987b875022f761b8073032f4debe",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45379539999999996,
+    "input_tokens": 24,
+    "output_tokens": 5909,
+    "cache_read_tokens": 362357,
+    "cache_creation_tokens": 32881,
+    "num_turns": 13,
+    "duration_ms": 235430,
+    "duration_api_ms": 74725,
+    "model": "claude-opus-5-5",
+    "session_id": "049c38ff-b795-4815-9af0-00b3259adff9",
+    "stop_reason": "success",
+    "result_text": "The screen now has an audit viewer, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does:** you type a name (or leave it blank) in `audit-filter` and press `audit-show`. Each `audit-line` shows one line exactly as the audit file holds it, newest first. Only lines for the loaded sheet are listed.\n- **Blank filter:** every line for the sheet.\n- **A name:** only lines with `name=<name>` or `person=<name>`. Names are matched the same way the app compares people's names: surrounding spaces and case are ignored, so \" ada \" matches `Ada`.\n- **Read-only:** it reads the existing file and writes nothing new to it.\n\n**Changes:**\n- **Server:** `Audit.java` has a new `lines(sheetId, name)` method that reads the file and filters it. A new `AuditController` serves this at `GET /api/sheets/{id}/audit?name=\u2026`. No stored data or schema changes were needed.\n- **Front end:** a new `features/audit/` component (`audit-viewer.ts` plus `audit-api.ts`), placed on the home screen beside the other per-sheet sections. Each press clears the old list before the new one appears, and loading a sheet resets the viewer. If the read fails, it shows an `audit-error` message.\n\n**Limitation:** a name's value ends where the next ` key=` field starts. A name that itself contains something like \" x=\" would be cut short and not match.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45379539999999996,
+        "num_turns": 13,
+        "duration_ms": 235430,
+        "duration_api_ms": 74725,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp101.agent.jsonl",
+  "agent_diff_file": "cp101.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
