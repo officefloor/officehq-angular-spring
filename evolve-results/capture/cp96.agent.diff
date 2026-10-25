@@ -1,0 +1,83 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index be83e3f1..df89ac46 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -40,7 +40,8 @@ public class Claim {
+     private LocalDate date;
+ 
+     /** The date the claim is due by: the {@link #terms}-th business day after {@link #dueFrom}, past
+-     *  the sheet's holidays now, worked out again whenever they change unless it is a draft. */
++     *  the sheet's holidays; a holiday added on or before it works it out again from the claim's date,
++     *  unless the claim is SETTLED or VOID. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4ce1fc16..607c9ae7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -144,9 +144,9 @@ public class ClaimService {
+         return claims.saveAndFlush(claim);
+     }
+ 
+-    /** Once the sheet's holidays are changed, every due-by on the sheet but a draft's is worked out again:
+-     *  the terms-th business day after the date it counts from, with the terms the claim was fixed with. A
+-     *  draft keeps the due-by it was added with. */
++    /** Once a holiday is added to the sheet, the due-by of every claim neither SETTLED nor VOID whose
++     *  due-by is on or after the holiday is worked out again: the terms-th business day after the claim's
++     *  date, with the terms the claim was fixed with, past the holidays now. */
+     @EventListener
+     @Transactional
+     public void moveDueBys(HolidaysChanged change) {
+@@ -154,8 +154,9 @@ public class ClaimService {
+         Set<LocalDate> days = holidays.dates(sheetId);
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+-            if (claim.getStatus() == ClaimStatus.DRAFT) continue;
+-            if (claim.moveDueBy(BusinessDays.after(claim.getDueFrom(), claim.getTerms(), days))) {
++            if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
++            if (claim.getDueBy().isBefore(change.date())) continue;
++            if (claim.moveDueBy(BusinessDays.after(claim.getDate(), claim.getTerms(), days))) {
+                 claims.save(claim);
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index d053f6a6..ebfde50b 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -38,8 +38,8 @@ public class HolidayService {
+         return holidays.findBySheetIdOrderByDateAsc(sheetId);
+     }
+ 
+-    /** Add a holiday to the sheet, refused when the date is already one. Every due-by on the sheet is
+-     *  then worked out again, past the holidays now. */
++    /** Add a holiday to the sheet, refused when the date is already one. Every due-by on or after it of
++     *  a claim neither SETTLED nor VOID is then worked out again, past the holidays now. */
+     @Transactional
+     public Holiday add(String sheetId, String user, LocalDate date) {
+         sheets.load(sheetId);
+@@ -52,7 +52,7 @@ public class HolidayService {
+             throw alreadyHoliday(date);
+         }
+         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + saved.getDate());
+-        events.publishEvent(new HolidaysChanged(sheetId, user));
++        events.publishEvent(new HolidaysChanged(sheetId, user, saved.getDate()));
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidaysChanged.java b/src/main/java/net/officefloor/hq/app/holiday/HolidaysChanged.java
+index 74530665..812a6235 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidaysChanged.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidaysChanged.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.holiday;
+ 
+-/** The sheet's holidays were changed: published once the change is stored, within its transaction, so
+- *  every due-by on the sheet is worked out again from the holidays now. */
+-public record HolidaysChanged(String sheetId, String user) {
++import java.time.LocalDate;
++
++/** The sheet's holidays were changed by adding the holiday on the date: published once the change is
++ *  stored, within its transaction, so the due-bys it reaches are worked out again from the holidays now. */
++public record HolidaysChanged(String sheetId, String user, LocalDate date) {
+ }
