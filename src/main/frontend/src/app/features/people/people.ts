@@ -530,7 +530,8 @@ export class People {
     return { count, cents: trimmedSum(figures) };
   });
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */
-  private readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.sheetPot.pot()));
+  private readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.sheetPot.pot(),
+    this.session.sheet()?.today));
   /** The person's cut total, with two decimals. */
   protected personCutTotal(p: PersonView): string {
     return money(this.cutTotals().get(p.id) ?? 0);

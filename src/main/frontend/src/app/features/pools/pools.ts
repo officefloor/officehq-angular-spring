@@ -3,7 +3,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
-import { PersonView } from '../people/people-api';
+import { PersonView, heldOn } from '../people/people-api';
 import { SheetPot } from '../settings/sheet-pot';
 import { PoolMemberView, Pools, PoolView } from './pools-api';
 
@@ -20,6 +20,8 @@ interface MemberRow {
   name: string;
   share: string;
   retired: boolean;
+  /** Whether the member is a person with a hold in force on the sheet's today. */
+  held: boolean;
 }
 
 /** The member's key: the person's id, or pool-<name> for a pool. */
@@ -49,8 +51,11 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
 // One pool: its members (people and other pools) with their shares, its total share and whether it is
 // balanced, and a form to add a member. A retired member's share counts as 0.00 toward the total.
 // With a pot, each member of a balanced pool shows a cut: the pot times their share divided by 100,
-// rounded half to even to two decimals (a retired member cuts 0.00); the pot less the cuts added up goes
-// to the member with the largest share, the earliest added on a tie, so the cuts total exactly the pot.
+// rounded half to even to two decimals (a retired member cuts 0.00). A person with a hold in force on the
+// sheet's today cuts 0.00, and their share is spread over the members with a cut in proportion to their
+// shares: each cuts the pot times their share over the shares of the members with a cut added up. The pot
+// less the cuts added up goes to the member with a cut with the largest share, the earliest added on a
+// tie, so the cuts total exactly the pot. A hold changes neither the total share nor the balance.
 // A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
 // there as its pot. An unbalanced pool, or no pot, shows no cut.
 @Component({
@@ -185,12 +190,14 @@ export class PoolRow {
 }
 
 /** The pool's members as the screens show them. */
-function membersOf(pool: PoolView, people: readonly PersonView[], poolsById: ReadonlyMap<number, PoolView>): MemberRow[] {
+function membersOf(pool: PoolView, people: readonly PersonView[], poolsById: ReadonlyMap<number, PoolView>,
+    today?: string): MemberRow[] {
   const peopleById = new Map(people.map((p) => [p.id, p]));
   return pool.members.map((m) => {
     const person = m.personId !== null ? peopleById.get(m.personId) : undefined;
     const name = m.personId !== null ? (person?.name ?? '') : `pool:${poolsById.get(m.poolId ?? -1)?.name ?? ''}`;
-    return { key: memberKey(m, poolsById), share: m.share, name, retired: person?.retired ?? false };
+    const held = person !== undefined && today !== undefined && heldOn(person.holds, today);
+    return { key: memberKey(m, poolsById), share: m.share, name, retired: person?.retired ?? false, held };
   });
 }
 
@@ -201,7 +208,8 @@ function totalCents(members: readonly MemberRow[]): number {
 
 /** Each pool's cuts by member key, by pool id: null for an unbalanced pool or one with no pot. A pool that
  *  is a member of none has the sheet's pot; one that is a member of another has its cut there. */
-function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null): Map<number, Map<string, bigint> | null> {
+function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null,
+    today: string | undefined): Map<number, Map<string, bigint> | null> {
   const poolsById = new Map(pools.map((p) => [p.id, p]));
   const parents = parentsOf(pools);
   const out = new Map<number, Map<string, bigint> | null>();
@@ -212,7 +220,7 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
     const parent = parents.get(pool.id);
     if (!parent) potCents = pot === null ? null : BigInt(cents(pot));
     else if (depth <= pools.length) potCents = cutsFor(parent, depth + 1)?.get(`pool-${pool.name}`) ?? null;
-    const members = membersOf(pool, people, poolsById);
+    const members = membersOf(pool, people, poolsById, today);
     const result = potCents === null || totalCents(members) !== 10000 ? null : new Map(cutsOf(potCents, members));
     out.set(pool.id, result);
     return result;
@@ -223,8 +231,9 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
 
 /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of added
  *  up; a pool that shows no cuts adds nothing. */
-export function personCutTotals(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null): Map<number, number> {
-  const cuts = allCuts(pools, people, pot);
+export function personCutTotals(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null,
+    today: string | undefined): Map<number, number> {
+  const cuts = allCuts(pools, people, pot, today);
   const totals = new Map<number, number>();
   for (const pool of pools) {
     const poolCuts = cuts.get(pool.id);
@@ -237,7 +246,7 @@ export function personCutTotals(pools: readonly PoolView[], people: readonly Per
   return totals;
 }
 
-/** A whole number of cents divided by 10000, rounded half to even. */
+/** A whole number divided by another, rounded half to even. */
 function divideHalfEven(value: bigint, by: bigint): bigint {
   const quotient = value / by;
   const twice = 2n * (value % by);
@@ -245,16 +254,18 @@ function divideHalfEven(value: bigint, by: bigint): bigint {
 }
 
 /** The cuts of a pot (in cents) among members in the order they were added, by person: each the pot times
- *  their share over 100, half to even (a retired member's 0); the remainder to the largest share, the
- *  earliest added on a tie. */
+ *  their share over the shares of the members with a cut added up, half to even (a retired or held
+ *  member's 0); the remainder to the largest share with a cut, the earliest added on a tie. With no
+ *  member with a cut, every cut is 0. */
 function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigint][] {
-  const shares = members.map((m) => (m.retired ? 0 : cents(m.share)));
-  const cuts = shares.map((share) => divideHalfEven(potCents * BigInt(share), 10000n));
+  const shares = members.map((m) => (m.retired || m.held ? 0 : cents(m.share)));
+  const total = BigInt(shares.reduce((t, share) => t + share, 0));
+  const cuts = shares.map((share) => (total === 0n ? 0n : divideHalfEven(potCents * BigInt(share), total)));
   let largest = 0;
   shares.forEach((share, i) => {
     if (share > shares[largest]) largest = i;
   });
-  if (cuts.length > 0) cuts[largest] += potCents - cuts.reduce((t, c) => t + c, 0n);
+  if (total > 0n) cuts[largest] += potCents - cuts.reduce((t, c) => t + c, 0n);
   return members.map((m, i) => [m.key, cuts[i]]);
 }
 
@@ -290,7 +301,8 @@ export class PoolsList {
   readonly people = input.required<PersonView[]>();
 
   /** Each pool's cuts, with two decimals, by member key, by pool id. */
-  protected readonly cuts = computed(() => new Map([...allCuts(this.store.pools(), this.people(), this.sheetPot.pot())]
+  protected readonly cuts = computed(() => new Map([...allCuts(this.store.pools(), this.people(), this.sheetPot.pot(),
+    this.session.sheet()?.today)]
     .map(([id, cuts]) => [id, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))])));
 
   protected readonly name = new FormControl('', { nonNullable: true });

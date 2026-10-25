@@ -530,7 +530,8 @@ public class ClaimService {
      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
      *  role to reassign (by default, a steward), and for a
      *  settled or voided claim, a claim dated inside a closed period, a move to the claim's own person,
-     *  or to a person retired by the claim's date. */
+     *  to a person retired by the claim's date, or to a person by whose terms a claim added on its date
+     *  would be due inside a closed period (the claim's own due-by stays as it was fixed). */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
         return reassign(sheetId, user, id, toPersonId, false);
@@ -555,6 +556,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
         }
         refuseIfRetired(to, claim.getDate());
+        if (!from.getId().equals(to.getId())) {
+            refuseIfClosed(sheetId, holidays.dueBy(sheetId, claim.getDate(), termsOf(sheetId, to, claim.getDate())));
+        }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));
         // Moved to another person, a numbered claim takes the next number; its old one is not reused.
