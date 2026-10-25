@@ -393,6 +393,20 @@ const STANDING: Record<PermAction, string> = {
             (none)
           }
         </span>
+        <label for="setting-default-grade">Default grade (A, B or C; blank for A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGradeInput()"
+          (input)="defaultGradeInput.set(value($event)); defaultGradeChanged = true; settingsError.set(null)"
+          (keydown)="defaultGradeChanged = true"
+        />
+        <span>
+          In force: <span data-testid="setting-default-grade-current">{{ (defaultGrade() ?? '') | figure }}</span>
+          @if (defaultGrade() === null) {
+            (A)
+          }
+        </span>
         <label for="setting-review-sla">Review SLA (days)</label>
         <input
           id="setting-review-sla"
@@ -640,6 +654,8 @@ export class Settings {
   protected readonly escalateAfter = signal<string | null>(null);
   /** The proof kinds as set, comma separated; null when none are listed. */
   protected readonly proofKinds = signal<string | null>(null);
+  /** The default grade as set; null when it is A. */
+  protected readonly defaultGrade = signal<string | null>(null);
   /** The review SLA as set, as text; null when there is none. */
   protected readonly reviewSla = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
@@ -671,6 +687,7 @@ export class Settings {
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfterInput = signal('');
   protected readonly proofKindsInput = signal('');
+  protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -710,6 +727,7 @@ export class Settings {
   protected graceDaysChanged = false;
   protected escalateAfterChanged = false;
   protected proofKindsChanged = false;
+  protected defaultGradeChanged = false;
   protected reviewSlaChanged = false;
   protected potChanged = false;
   protected alertThresholdChanged = false;
@@ -793,6 +811,9 @@ export class Settings {
       this.proofKinds.set(null);
       this.proofKindsInput.set('');
       this.proofKindsChanged = false;
+      this.defaultGrade.set(null);
+      this.defaultGradeInput.set('');
+      this.defaultGradeChanged = false;
       this.pot.set(null);
       this.potInput.set('');
       this.potChanged = false;
@@ -931,6 +952,8 @@ export class Settings {
     const saveReviewSla = this.reviewSlaChanged || reviewSla !== (this.reviewSla() ?? '');
     const proofKinds = this.proofKindsInput().trim();
     const saveProofKinds = this.proofKindsChanged || proofKinds !== (this.proofKinds() ?? '');
+    const defaultGrade = this.defaultGradeInput().trim();
+    const saveDefaultGrade = this.defaultGradeChanged || defaultGrade !== (this.defaultGrade() ?? '');
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthChanged || fiscalStartMonth !== this.fiscalStartMonth();
     const pot = this.potInput().trim();
@@ -1049,6 +1072,10 @@ export class Settings {
     }
     if (saveProofKinds && proofKinds !== '' && !PROOF_KINDS_LIST.test(proofKinds)) {
       this.settingsError.set('Type the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
+      return;
+    }
+    if (saveDefaultGrade && defaultGrade !== '' && !GRADES.includes(defaultGrade as Grade)) {
+      this.settingsError.set('Type the default grade as one of A, B or C, or leave it blank for A.');
       return;
     }
     if (saveReviewSla && reviewSla !== '' && !TERMS.test(reviewSla)) {
@@ -1227,6 +1254,12 @@ export class Settings {
         if (this.proofKindsInput().trim() === proofKinds) this.proofKindsChanged = false;
         this.show(settings);
       }
+      if (saveDefaultGrade) {
+        const settings = await this.service.setDefaultGrade(sheet, defaultGrade || null);
+        if (this.session.sheetId() !== sheet) return;
+        if (this.defaultGradeInput().trim() === defaultGrade) this.defaultGradeChanged = false;
+        this.show(settings);
+      }
       if (saveReviewSla) {
         const settings = await this.service.setReviewSla(sheet, reviewSla || null);
         if (this.session.sheetId() !== sheet) return;
@@ -1290,6 +1323,7 @@ export class Settings {
       if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
       if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
       if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
+      if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
       if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
       if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
       if (!this.potChanged) this.potInput.set(this.pot() ?? '');
@@ -1366,6 +1400,7 @@ export class Settings {
         if (!this.graceDaysChanged) this.graceDaysInput.set(this.graceDays() ?? '');
         if (!this.escalateAfterChanged) this.escalateAfterInput.set(this.escalateAfter() ?? '');
         if (!this.proofKindsChanged) this.proofKindsInput.set(this.proofKinds() ?? '');
+        if (!this.defaultGradeChanged) this.defaultGradeInput.set(this.defaultGrade() ?? '');
         if (!this.reviewSlaChanged) this.reviewSlaInput.set(this.reviewSla() ?? '');
         if (!this.fiscalStartMonthChanged) this.fiscalStartMonthInput.set(this.fiscalStartMonth());
         if (!this.potChanged) this.potInput.set(settings.pot ?? '');
@@ -1436,6 +1471,7 @@ export class Settings {
     this.escalateAfter.set(settings.escalateAfter == null ? null : String(settings.escalateAfter));
     this.reviewSla.set(settings.reviewSla == null ? null : String(settings.reviewSla));
     this.proofKinds.set(settings.proofKinds ?? null);
+    this.defaultGrade.set(settings.defaultGrade ?? null);
     this.entryDate.set(settings.entryDate ?? null);
     this.pot.set(settings.pot ?? null);
     this.alertThreshold.set(settings.alertThreshold ?? null);

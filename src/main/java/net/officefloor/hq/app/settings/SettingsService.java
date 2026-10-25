@@ -449,6 +449,31 @@ public class SettingsService {
         return sheet;
     }
 
+    /** The grade a person added by the quick-add bar, or by an import line with a blank grade, is given. */
+    public static final String DEFAULT_GRADE = "A";
+
+    /** The sheet's default grade as set; null when it is A. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getDefaultGrade();
+    }
+
+    /** The grade a person added by the quick-add bar, or by an import line with a blank grade, is given. */
+    @Transactional(readOnly = true)
+    public String defaultGradeInForce(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getDefaultGrade).orElse(DEFAULT_GRADE);
+    }
+
+    /** Set the sheet's default grade; null makes it A. It changes no one already on the sheet. */
+    @Transactional
+    public Sheet setDefaultGrade(String sheetId, String by, String grade) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setDefaultGrade(grade);
+        sheets.flush();
+        audit.change("SETTING_CHANGED", sheetId, by, "key=default-grade", "value=" + (grade == null ? "" : grade));
+        return sheet;
+    }
+
     /** The sheet's review SLA in days; null when there is none. */
     @Transactional(readOnly = true)
     public Integer reviewSla(String sheetId) {

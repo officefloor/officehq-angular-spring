@@ -48,6 +48,11 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The grade a person added by the quick-add bar, or by an import line with a blank grade, is given;
+     * null when it is A. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** How many days a claim may stay in REVIEW from its review day before it is late; null when there is none. */
     @Column(name = "review_sla")
     private Integer reviewSla;
@@ -98,7 +103,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under the id {@code id}, started by {@code createdBy} at {@code createdAt}: its
-     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, fiscal start month, entry date, pot, alert threshold and parent) come
+     * today and its settings (policy date, period numbering, grace days, escalation gap, proof kinds, default grade, fiscal start month, entry date, pot, alert threshold and parent) come
      * with it, and this sheet is its source; it is not archived and has had no settle batch. */
     public Sheet clonedTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
@@ -107,6 +112,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
         copy.proofKinds = proofKinds;
+        copy.defaultGrade = defaultGrade;
         copy.reviewSla = reviewSla;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.entryDate = entryDate;
@@ -178,6 +184,14 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public Integer getEscalateAfter() {

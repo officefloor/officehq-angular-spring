@@ -207,7 +207,7 @@ import { FigurePipe } from '../../core/figure.pipe';
       </form>
 
       <form (submit)="importPeople($event)" aria-label="Import people" data-testid="import-form">
-        <label for="import-people">People to import, one per line: name,grade,terms,contact (terms and contact may be left out)</label>
+        <label for="import-people">People to import, one per line: name,grade,terms,contact (terms and contact may be left out; a blank grade is the default grade)</label>
         <textarea
           id="import-people"
           data-testid="import-people"

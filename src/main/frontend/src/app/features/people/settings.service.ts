@@ -88,6 +88,9 @@ export interface SheetSettings {
   /** The proof kinds a claim above the proof threshold needs a proof of each of before it is settled
    *  or approved, comma separated; null when none are listed. */
   proofKinds: string | null;
+  /** The grade a person added by the quick-add bar, or by an import line with a blank grade, is
+   *  given; null when it is A. */
+  defaultGrade: string | null;
   /** The due above which a claim with an empty note cannot be opened, with two decimals; null when
    *  there is none. */
   noteThreshold: string | null;
@@ -290,6 +293,13 @@ export class SettingsService {
   setProofKinds(sheet: string, value: string | null): Promise<SheetSettings> {
     return firstValueFrom(
       this.http.put<SheetSettings>(`${this.url(sheet)}/settings/proof-kinds`, { value }, { headers: this.session.headers() }),
+    );
+  }
+
+  /** One of the grades; a null value makes it A. Refused (400) when it is any other value. */
+  setDefaultGrade(sheet: string, value: string | null): Promise<SheetSettings> {
+    return firstValueFrom(
+      this.http.put<SheetSettings>(`${this.url(sheet)}/settings/default-grade`, { value }, { headers: this.session.headers() }),
     );
   }
 

@@ -160,6 +160,11 @@ public class SheetAsOf implements RollupService.Basis {
         return sheet == null ? null : sheet.getProofKinds();
     }
 
+    /** The default grade as set then; null when it was A. */
+    public String defaultGrade() {
+        return sheet == null ? null : sheet.getDefaultGrade();
+    }
+
     /** The review SLA then; null when there was none. */
     public Integer reviewSla() {
         return sheet == null ? null : sheet.getReviewSla();

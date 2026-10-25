@@ -5,11 +5,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Takes a pasted line of {@code name,grade,terms,contact} per person, in order; terms and contact may
- * be blank or left out. A line whose name matches a person on the sheet (by name or alias, as names are
+ * be blank or left out, and a blank grade is the sheet's default grade. A line whose name matches a person on the sheet (by name or alias, as names are
  * compared) updates that person through {@link PersonService#update} exactly as the person form saves
  * them: their grade from the sheet's today, and their terms and contact when the line gives them. Any
  * other line adds a person through {@link PersonService#add} exactly as the person form adds them. Every
@@ -31,11 +32,13 @@ public class PersonImportService {
     private final PersonService service;
     private final PersonRepository people;
     private final PersonTree tree;
+    private final SettingsService settings;
 
-    public PersonImportService(PersonService service, PersonRepository people, PersonTree tree) {
+    public PersonImportService(PersonService service, PersonRepository people, PersonTree tree, SettingsService settings) {
         this.service = service;
         this.people = people;
         this.tree = tree;
+        this.settings = settings;
     }
 
     /** A line to import: {@code match} is the person on the sheet it updates, null when it adds. */
@@ -52,12 +55,13 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        String defaultGrade = settings.defaultGradeInForce(sheetId);
         for (String raw : text.split("\\r?\\n")) {
             if (raw.isBlank()) continue;
             String[] fields = raw.split(",", -1);
             if (fields.length < 2 || fields.length > 4) throw new PersonImportException();
             String name = fields[0].trim();
-            String grade = fields[1].trim();
+            String grade = fields[1].isBlank() ? defaultGrade : fields[1].trim();
             String terms = fields.length > 2 ? fields[2] : "";
             String contact = fields.length > 3 ? Person.contactOf(fields[3]) : null;
             if (name.isEmpty() || name.length() > MAX || !GRADE.matcher(grade).matches()
