@@ -1,0 +1,244 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 1fb04ac4..0807a227 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -120,6 +120,12 @@ export interface BulkRetired {
+   people: Person[];
+ }
+ 
++/** How a bulk hold went: how many people it held, and those people as saved. */
++export interface BulkHeld {
++  held: number;
++  people: Person[];
++}
++
+ export interface PersonFields {
+   name: string;
+   grade: Grade;
+@@ -264,6 +270,16 @@ export class PeopleService {
+     );
+   }
+ 
++  /** Put each of the people on a hold from `from` (the sheet's today when null) to `to` (no end when
++   *  null), in list order, each as the row's hold would. */
++  bulkHold(sheet: string, personIds: number[], from: string | null, to: string | null): Promise<BulkHeld> {
++    return firstValueFrom(
++      this.http.post<BulkHeld>(`${this.url(sheet)}/bulk-hold`, { personIds, from, to }, {
++        headers: this.session.headers(),
++      }),
++    );
++  }
++
+   /** Swap the person with the one above (`up`) or below them in the list; refused (409) for the
+    *  top person moving up and the bottom one moving down. */
+   move(sheet: string, id: number, direction: 'up' | 'down'): Promise<Person> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 355fd7e4..61a8d6e7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -454,6 +454,32 @@ import { FigurePipe } from '../../core/figure.pipe';
+         }
+       </p>
+ 
++      <p>
++        <label for="bulk-hold-from">Hold selected people from</label>
++        <input
++          id="bulk-hold-from"
++          data-testid="bulk-hold-from"
++          placeholder="YYYY-MM-DD"
++          [value]="bulkHoldFrom()"
++          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set(null)"
++        />
++        <label for="bulk-hold-to">To</label>
++        <input
++          id="bulk-hold-to"
++          data-testid="bulk-hold-to"
++          placeholder="YYYY-MM-DD"
++          [value]="bulkHoldTo()"
++          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set(null)"
++        />
++        <button type="button" data-testid="bulk-hold" (click)="bulkHold()">Hold selected people</button>
++        @if (bulkHeld() !== null) {
++          Held <span data-testid="bulk-held">{{ (bulkHeld()) | figure }}</span>
++        }
++        @if (bulkHoldError(); as message) {
++          <span role="alert" class="error" data-testid="person-error">{{ (message) | figure }}</span>
++        }
++      </p>
++
+       @if (people().length === 0) {
+         <p data-testid="home-empty">Nothing here yet.</p>
+       } @else {
+@@ -1540,6 +1566,14 @@ export class People {
+   protected readonly bulkRetireError = signal<string | null>(null);
+   /** A bulk retire is waiting for its answer; another meanwhile is ignored. */
+   private bulkRetiring = false;
++  /** The dates a bulk hold holds from (blank for the sheet's today) and to (blank for no end). */
++  protected readonly bulkHoldFrom = signal('');
++  protected readonly bulkHoldTo = signal('');
++  /** How many people the last bulk hold held; null before one, and while one runs. */
++  protected readonly bulkHeld = signal<number | null>(null);
++  protected readonly bulkHoldError = signal<string | null>(null);
++  /** A bulk hold is waiting for its answer; another meanwhile is ignored. */
++  private bulkHolding = false;
+   /** The read of the sheet last loaded (as of the date set, when one is); done once it is shown. */
+   private reading: Promise<void> = Promise.resolve();
+   /** The sheet load {@link reading} was started for. */
+@@ -1589,6 +1623,10 @@ export class People {
+       this.bulkRetireFrom.set('');
+       this.bulkRetired.set(null);
+       this.bulkRetireError.set(null);
++      this.bulkHoldFrom.set('');
++      this.bulkHoldTo.set('');
++      this.bulkHeld.set(null);
++      this.bulkHoldError.set(null);
+       this.retireDates.set({});
+       this.inlineGrades.set({});
+       this.statementAsOfs.set({});
+@@ -2624,6 +2662,7 @@ export class People {
+   protected selectPerson(id: number, selected: boolean): void {
+     this.bulkGradeError.set(null);
+     this.bulkRetireError.set(null);
++    this.bulkHoldError.set(null);
+     this.clearRowError(id);
+     this.selectedPeople.update((ids) => {
+       const next = new Set(ids);
+@@ -2683,6 +2722,35 @@ export class People {
+     }
+   }
+ 
++  /** Put the selected people on a hold from the chosen from-date (the sheet's today when blank) to the
++   *  chosen to-date (no end when blank), in list order, each as the row's hold would. Shows how many
++   *  were held; the old count is gone while it runs. */
++  protected async bulkHold(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet || this.bulkHolding) return;
++    this.bulkHeld.set(null);
++    this.bulkHoldError.set(null);
++    const from = this.bulkHoldFrom().trim();
++    const to = this.bulkHoldTo().trim();
++    const date = /^\d{4}-\d{2}-\d{2}$/;
++    if ((from !== '' && !date.test(from)) || (to !== '' && !date.test(to))) {
++      this.bulkHoldError.set('Type a date as YYYY-MM-DD.');
++      return;
++    }
++    this.bulkHolding = true;
++    try {
++      const result = await this.service.bulkHold(sheet, [...this.selectedPeople()], from || null, to || null);
++      if (this.session.sheetId() !== sheet) return;
++      for (const p of result.people) this.put(p);
++      this.selectedPeople.set(new Set());
++      this.bulkHeld.set(result.held);
++    } catch {
++      if (this.session.sheetId() === sheet) this.bulkHoldError.set('The selected people could not be held.');
++    } finally {
++      this.bulkHolding = false;
++    }
++  }
++
+   /** Put an added claim first, or a saved one in its place. */
+   /** Show the claim as saved; one new, or moved to another person, is listed first (newest). */
+   protected claimSaved(claim: Claim): void {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonBulkService.java b/src/main/java/net/officefloor/hq/app/person/PersonBulkService.java
+index 5b3ed186..24f0bb8a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonBulkService.java
+@@ -16,7 +16,8 @@ import org.springframework.stereotype.Service;
+  * {@link PersonService#update}, exactly as the person form saves them (keeping their name and terms),
+  * so each records its own PERSON_EDITED and rollup lines; a bulk retire retires each through
+  * {@link PersonService#retire}, exactly as the row's retire does, recording its PERSON_RETIRED and rollup
+- * lines. A viewer's bulk change, or one on an archived sheet, goes through with nothing done: no one is
++ * lines; a bulk hold holds each through {@link PersonService#hold}, exactly as the row's hold does,
++ * recording its PERSON_HELD and rollup lines. A viewer's bulk change, or one on an archived sheet, goes through with nothing done: no one is
+  * changed. */
+ @Service
+ public class PersonBulkService {
+@@ -75,4 +76,25 @@ public class PersonBulkService {
+         }
+         return changed;
+     }
++
++    /** Puts each of the people on a hold from {@code from} (the sheet's today when left out) to
++     * {@code to} (no end when left out), in list order; those not on the sheet, or whose hold is
++     * refused, are left out. The people it held. */
++    public List<Person> hold(String sheetId, String user, Collection<Long> personIds, LocalDate from, LocalDate to) {
++        Set<Long> asked = Set.copyOf(personIds);
++        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
++        if (sheets.findById(sheetId).map(Sheet::isArchived).orElse(false)) return List.of();
++        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> asked.contains(p.getId()))
++                .toList();
++        List<Person> changed = new ArrayList<>();
++        for (Person person : listed) {
++            try {
++                changed.add(service.hold(sheetId, user, person.getId(), from, to));
++            } catch (PersonHoldException | PersonNotFoundException | ObjectOptimisticLockingFailureException e) {
++                // Left as it is.
++            }
++        }
++        return changed;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d2c9d99d..d8e7e1d1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -185,6 +185,16 @@ public class PersonController {
+     public record BulkRetireView(int retired, List<PersonView> people) {
+     }
+ 
++    /** The people {@code personIds} to hold together, from {@code from} (the sheet's today when left
++     * out) to {@code to} (no end when left out). */
++    public record BulkHoldRequest(@NotNull @Size(max = 1000) List<@NotNull Long> personIds, LocalDate from,
++            LocalDate to) {
++    }
++
++    /** How a bulk hold went: how many people it held, and those people. */
++    public record BulkHoldView(int held, List<PersonView> people) {
++    }
++
+     /** The pasted lines of {@code name,grade,terms,contact}. */
+     public record ImportRequest(@NotNull @Size(max = 200_000) String text) {
+     }
+@@ -367,6 +377,15 @@ public class PersonController {
+         return new BulkRetireView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
+     }
+ 
++    @PostMapping("/bulk-hold")
++    public BulkHoldView bulkHold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkHoldRequest request) {
++        List<Person> changed = bulk.hold(sheetId.trim(), user.trim(), request.personIds(), request.from(),
++                request.to());
++        return new BulkHoldView(changed.size(), changed.stream().map(p -> view(sheetId, p)).toList());
++    }
++
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+index 1edcf0d2..d132fbba 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+@@ -28,7 +28,7 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*",
+-                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/plans/generate",
++                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/people/bulk-hold", "/api/sheets/*/plans/generate",
+                         "/api/sheets/*/periods/generate");
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java b/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
+index e53b47ef..c8e7827c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetArchivedGuard.java
+@@ -27,7 +27,7 @@ public class SheetArchivedGuard implements WebMvcConfigurer, HandlerInterceptor
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/locale", "/api/sheets/*/columns", "/api/sheets/*/claims/bulk-*",
+-                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
++                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire", "/api/sheets/*/people/bulk-hold");
+     }
+ 
+     @Override
