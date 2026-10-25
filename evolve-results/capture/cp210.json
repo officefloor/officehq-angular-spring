@@ -1,0 +1,64 @@
+{
+  "checkpoint": 210,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp210_score-bands",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a23d4beb7d8b8984d06191a8c2ab90072560625c",
+  "reset_sha": "",
+  "preagent_sha": "7f6b8785933864c583ace9794ddf1bc76657637c",
+  "prev_sha": "7f6b8785933864c583ace9794ddf1bc76657637c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1177688,
+    "input_tokens": 60,
+    "output_tokens": 16028,
+    "cache_read_tokens": 1494284,
+    "cache_creation_tokens": 62264,
+    "num_turns": 30,
+    "duration_ms": 708808,
+    "duration_api_ms": 199709,
+    "model": "claude-opus-5-5",
+    "session_id": "d7cb614b-0ac7-4831-9ec3-4371d7fcf7a2",
+    "stop_reason": "success",
+    "result_text": "Three of the four tests pass. **Scenario 2 still fails**, at a plan check unrelated to bands. I couldn't make it pass without changing how existing features behave, so I left it alone.\n\n**Why scenario 2 fails:** Ben is retired on 2026-02-10, and the test then checks that his row is gone (`person-row-<ben>` count 0, lines 879 and 1075). At line 1275 it expects his payment plan row (`plan-row-<id>` \u2192 `plan-generated` = \"0\") to be visible. In this app a person's plans are drawn inside their row (`people.ts:641`), and retired people are left out of the list unless \"Show retired\" is on. So that plan row can't appear while the test also expects his row to be hidden. The band checks in that scenario, including Ada's blank band at line 1111, pass before it gets there. Making it pass would mean showing plans of hidden people somewhere else, which is a change to the plans/retirement design and outside this request. Tell me if you want that.\n\n**What I added:**\n- **Stored data:** migration `V110__sheet_score_bands.sql` adds `score_mid` and `score_high` as integer columns on `sheet`, blank by default. They are also copied when a sheet is cloned and included in the as-of view.\n- **Server:**\n  - New endpoints `PUT /settings/score-mid` and `/settings/score-high` accept a whole number or blank (blank clears it).\n  - Each save writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=score-mid value=\u2026` (or `key=score-high`) to the audit file.\n  - `SettingsView` gets `scoreMid` and `scoreHigh` added at the end.\n- **Front end:**\n  - The settings form has two new inputs, `setting-score-mid` and `setting-score-high`, each with its in-force value (`\u2026-current`). A value that isn't a whole number shows `settings-error`.\n  - Each person row now has a `person-band` cell: HIGH at or above the high threshold, MID at or above the mid one, otherwise LOW, and blank while either threshold is unset.\n  - I also added the missing \"Score\" column header along with a new \"Band\" header, so the header row lines up with the cells.\n\nNegative thresholds are allowed, since scores can go below zero (\u22125 per overdue claim).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1177688,
+        "num_turns": 30,
+        "duration_ms": 708808,
+        "duration_api_ms": 199709,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp210.agent.jsonl",
+  "agent_diff_file": "cp210.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
