@@ -12,7 +12,8 @@ public enum Action {
     VOID(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
     REASSIGN(EnumSet.of(Role.STEWARD)),
     CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
-    REOPEN(EnumSet.of(Role.STEWARD));
+    REOPEN(EnumSet.of(Role.STEWARD)),
+    TODAY(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED));
 
     private final Set<Role> standing;
 

@@ -22,6 +22,7 @@ const STANDING: Record<PermAction, string> = {
   reassign: 'steward',
   close: 'clerk and steward',
   reopen: 'steward',
+  today: 'clerk and steward',
 };
 
 // The sheet's settings: its clerk limit (the most a clerk may settle a claim for; blank for no
@@ -35,7 +36,7 @@ const STANDING: Record<PermAction, string> = {
 // a claim settled is numbered within its period; blank for off), its grace days (when the sheet's today
 // is changed, an open period whose to-date plus them is before it is closed; blank for off), its fiscal start month (the month, 1 to 12, its fiscal year starts in), its entry date (a claim
 // added without a date is dated it in place of the sheet's today; blank for off), its permission matrix (for each of open,
-// settle, void, reassign, close and reopen, the roles that may take it as a comma separated list; blank
+// settle, void, reassign, close, reopen and changing the sheet's today, the roles that may take it as a comma separated list; blank
 // for the standing rule) and the role each user name has been given (any other name is a clerk).
 // Each grade's grace days (a claim of a person of that grade on its date, dated on or after the
 // grace's from-date, is overdue only once its due-by plus them is past, and its late charge counts from
@@ -1760,5 +1761,5 @@ function blankGrades(): Record<Grade, string> {
 }
 
 function blankPerms(): Record<PermAction, string> {
-  return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
+  return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '', today: '' };
 }

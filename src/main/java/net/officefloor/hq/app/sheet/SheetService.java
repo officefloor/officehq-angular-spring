@@ -16,6 +16,7 @@ import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonSnapshot;
 import net.officefloor.hq.app.person.PersonSnapshotRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Action;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -87,7 +88,7 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::numbersByPeriod).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today, releasing every claim's lock (see {@code ClaimService#lock}) and closing
+    /** Change the sheet's today, by a role the permission matrix allows (anyone but a viewer by default), releasing every claim's lock (see {@code ClaimService#lock}) and closing
      * the open periods its grace days have passed (see {@link PeriodService#closeOverdue}), kept in the
      * sheet's history as made on the day being left; the figures it moves are recorded as {@code user}'s change.
      * A change to another date first records, while the sheet's score log is on, a SCORE line per person, in list
@@ -96,6 +97,7 @@ public class SheetService {
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        if (!settings.allowed(id, user, Action.TODAY)) throw new SheetNotStewardException();
         RollupService.Snapshot before = rollup.snapshot(id);
         LocalDate left = sheet.getToday();
         if (!today.equals(sheet.getToday())) {

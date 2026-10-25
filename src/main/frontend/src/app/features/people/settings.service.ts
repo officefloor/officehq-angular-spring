@@ -147,7 +147,7 @@ export function fiscalYearOf(date: string, startMonth: number): string {
 }
 
 /** The actions the permission matrix decides who may take. */
-export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
 // The settings of a sheet (its roles, its clerk limit, its floor, its cap, its terms, its grades' own terms, its late percent, its policy date, its period numbering from, its grace days, its fiscal start month, its entry date, its pot, its alert threshold, its parent and its rounding mode), read from and written to the server.
