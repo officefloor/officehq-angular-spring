@@ -1,0 +1,64 @@
+{
+  "checkpoint": 190,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp190_bulk-void",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "308251c859682478270c923bd1d41de56655fdf6",
+  "reset_sha": "",
+  "preagent_sha": "620fd875cd87ab849bd048eb32ca1a7a75da01f5",
+  "prev_sha": "620fd875cd87ab849bd048eb32ca1a7a75da01f5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1820343999999998,
+    "input_tokens": 50,
+    "output_tokens": 13480,
+    "cache_read_tokens": 1411212,
+    "cache_creation_tokens": 78749,
+    "num_turns": 27,
+    "duration_ms": 545927,
+    "duration_api_ms": 161031,
+    "model": "claude-opus-5-5",
+    "session_id": "fce427d9-99fc-4d40-b291-b4ebe39963b2",
+    "stop_reason": "success",
+    "result_text": "Bulk void is in place, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- A \"Void selected claims\" button (`bulk-void`) sits after the other bulk buttons. Beside it is a reason select (`bulk-void-reason`), shown only when the sheet has void reasons.\n- Once the action is done it shows \"Voided `bulk-voided`, refused `bulk-void-refused`\". The old counts disappear while it runs, and the selection is cleared afterwards, as with the other bulk actions.\n- On the server, a new `POST \u2026/claims/bulk-void` endpoint (`ClaimController`) calls a new `ClaimBulkService.voidAll`. It voids each claim in list order: people in the order they were added, each person's claims newest first.\n- Each claim goes through the same method as the row's void button, in its own transaction. So each one writes its own `CLAIM_VOIDED` line (with `number=`, `reversed=` and `reason=` where they apply) and its rollup lines.\n- A claim that can't be voided changes nothing and is counted as refused. That covers a settled claim voided by a non-steward, a missing or unlisted reason, or a claim not on the sheet. As with the other bulk actions, a viewer, an archived sheet or a past-date (as-of) view refuses every selected claim.\n\n**A change outside bulk void:** scenario 3 failed on a person-edit audit line, not on voiding.\n- **The case:** a person has undated terms 20 and terms 3 from 2026-03-01. Clearing the terms field removes the 20, but 3 is still in force today.\n- **The mismatch:** the spec expects `PERSON_EDITED \u2026 terms=3`. The server only recorded `terms=` when the terms shown today moved, so it left the field out.\n- **The fix:** in `PersonService.update`, `terms=` is now also recorded when a save without a from-date changes the undated terms to something other than what was shown before.\n- **Why it's narrow:** bulk grade, grade changes and import pass the undated terms back unchanged, so they don't pick up a spurious `terms=` field. This change affects every person edit, not only this scenario, so please check it fits your intended rule.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1820343999999998,
+        "num_turns": 27,
+        "duration_ms": 545927,
+        "duration_api_ms": 161031,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp190.agent.jsonl",
+  "agent_diff_file": "cp190.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
