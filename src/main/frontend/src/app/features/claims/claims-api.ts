@@ -83,6 +83,13 @@ export interface BulkOpenView {
   claims: ClaimView[];
 }
 
+export interface BulkSettleView {
+  /** Claims settled, those left pending included. */
+  settled: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */
@@ -216,5 +223,9 @@ export class ClaimsApi {
   /** Open the claims of these ids together in list order; each that cannot be opened is left as it is. */
   openSelected(sheetId: string, ids: readonly number[]): Promise<BulkOpenView> {
     return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheetId)}/claims/open`, { ids }));
+  }
+
+  settleSelected(sheetId: string, ids: readonly number[]): Promise<BulkSettleView> {
+    return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheetId)}/claims/settle`, { ids }));
   }
 }

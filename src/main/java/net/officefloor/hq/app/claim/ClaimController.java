@@ -68,7 +68,7 @@ public class ClaimController {
         return form.corrects() == null || form.corrects().isBlank() ? null : form.corrects().trim();
     }
 
-    /** The claims selected to open together. */
+    /** The claims selected to open or settle together. */
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
     }
 
@@ -76,12 +76,16 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
-    private final ClaimService service;
-    private final BulkOpenService bulkOpen;
+    /** What a bulk settle did: the claims it settled (or left pending), and how many were settled and refused. */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    }
 
-    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
+    private final ClaimService service;
+    private final BulkChangeService bulk;
+
+    public ClaimController(ClaimService service, BulkChangeService bulk) {
         this.service = service;
-        this.bulkOpen = bulkOpen;
+        this.bulk = bulk;
     }
 
     /** The sheet's claims, newest first. */
@@ -118,9 +122,19 @@ public class ClaimController {
     @PostMapping("/claims/open")
     public BulkOpenView openSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
-        BulkOpenService.Result result = bulkOpen.open(sheetId.trim(), SignedInUser.name(user), form.ids());
-        return new BulkOpenView(result.opened().size(), result.refused(),
-                result.opened().stream().map(ClaimView::of).toList());
+        BulkChangeService.Result result = bulk.open(sheetId.trim(), SignedInUser.name(user), form.ids());
+        return new BulkOpenView(result.changed().size(), result.refused(),
+                result.changed().stream().map(ClaimView::of).toList());
+    }
+
+    /** Settle the selected claims together in list order; one left pending counts as settled, each
+     *  that cannot be settled is left as it is. */
+    @PostMapping("/claims/settle")
+    public BulkSettleView settleSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkOpenForm form) {
+        BulkChangeService.Result result = bulk.settle(sheetId.trim(), SignedInUser.name(user), form.ids());
+        return new BulkSettleView(result.changed().size(), result.refused(),
+                result.changed().stream().map(ClaimView::of).toList());
     }
 
     /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. */

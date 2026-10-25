@@ -13,20 +13,20 @@ import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Opens selected claims together. Each is opened on its own, as its open button would, so one that
- *  cannot be opened is left as it is and the others still open. */
+/** Opens or settles selected claims together. Each is changed on its own, as its own button would,
+ *  so one that cannot be changed is left as it is and the others still change. */
 @Service
-public class BulkOpenService {
+public class BulkChangeService {
 
-    /** What a bulk open did: the claims it opened, in the order it opened them, and how many it refused. */
-    public record Result(List<Claim> opened, int refused) {
+    /** What a bulk change did: the claims it changed, in the order it changed them, and how many it refused. */
+    public record Result(List<Claim> changed, int refused) {
     }
 
     private final ClaimService service;
     private final ClaimRepository claims;
     private final PersonRepository people;
 
-    public BulkOpenService(ClaimService service, ClaimRepository claims, PersonRepository people) {
+    public BulkChangeService(ClaimService service, ClaimRepository claims, PersonRepository people) {
         this.service = service;
         this.claims = claims;
         this.people = people;
@@ -35,18 +35,28 @@ public class BulkOpenService {
     /** Open the claims of these ids in list order: people in the order they were added, each person's
      *  claims newest first. So their numbers follow that order. An id not of the sheet is refused. */
     public Result open(String sheetId, String user, Collection<Long> ids) {
+        return change(sheetId, user, ids, ClaimStatus.OPEN);
+    }
+
+    /** Settle the claims of these ids in list order, each by the rules of settling one: a claim left
+     *  PENDING counts as settled, one that cannot be settled is refused. An id not of the sheet is refused. */
+    public Result settle(String sheetId, String user, Collection<Long> ids) {
+        return change(sheetId, user, ids, ClaimStatus.SETTLED);
+    }
+
+    private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {
         Set<Long> selected = new LinkedHashSet<>(ids);
         List<Long> ordered = inListOrder(sheetId, selected);
-        List<Claim> opened = new ArrayList<>();
+        List<Claim> changed = new ArrayList<>();
         int refused = selected.size() - ordered.size();
         for (long id : ordered) {
             try {
-                opened.add(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
-            } catch (ResponseStatusException notOpened) {
+                changed.add(service.changeStatus(sheetId, user, id, next));
+            } catch (ResponseStatusException notChanged) {
                 refused++;
             }
         }
-        return new Result(opened, refused);
+        return new Result(changed, refused);
     }
 
     private List<Long> inListOrder(String sheetId, Set<Long> ids) {

@@ -85,6 +85,17 @@ import { QuickAdd } from './quick-add';
         @if (bulkError()) {
           <p role="alert" data-testid="bulk-open-error">{{ bulkError() }}</p>
         }
+        <p>
+          <button type="button" data-testid="bulk-settle" (click)="settleSelected()" [disabled]="bulkSettling()">
+            Settle selected claims</button>
+          @if (bulkSettleResult(); as r) {
+            Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+            refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+          }
+        </p>
+        @if (bulkSettleError()) {
+          <p role="alert" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
+        }
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
         <table data-testid="people-list">
           <thead>
@@ -303,13 +314,18 @@ export class People {
   protected readonly stating = signal<number | null>(null);
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
-  /** The ids of the claims selected to open together. */
+  /** The ids of the claims selected to open or settle together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** Whether the selected claims are being opened. */
   protected readonly bulkOpening = signal(false);
   /** How many the last bulk open opened and refused; cleared while the next one runs. */
   protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkError = signal('');
+  /** Whether the selected claims are being settled. */
+  protected readonly bulkSettling = signal(false);
+  /** How many the last bulk settle settled and refused; cleared while the next one runs. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -334,6 +350,8 @@ export class People {
       this.selectedClaims.set(new Set());
       this.bulkResult.set(null);
       this.bulkError.set('');
+      this.bulkSettleResult.set(null);
+      this.bulkSettleError.set('');
       if (sheet) void this.reload(sheet.id);
     });
   }
@@ -656,6 +674,27 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) this.bulkError.set('The selected claims could not be opened.');
     } finally {
       this.bulkOpening.set(false);
+    }
+  }
+
+  /** Settle the selected claims together, in list order; one left pending counts as settled, each
+   *  that cannot be settled is left as it is. */
+  protected async settleSelected(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.bulkSettling()) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set('');
+    this.bulkSettling.set(true);
+    try {
+      const result = await this.claimsApi.settleSelected(sheet.id, [...this.selectedClaims()]);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      for (const claim of result.claims) this.claimSaved(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkSettleResult.set({ settled: result.settled, refused: result.refused });
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.bulkSettleError.set('The selected claims could not be settled.');
+    } finally {
+      this.bulkSettling.set(false);
     }
   }
 
