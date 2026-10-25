@@ -167,6 +167,12 @@ export interface DescendantFigures {
 export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {},
   dueFigures: [], overdueFigures: [], nameKeys: [] };
 
+/** A sheet's own due-totals per grade, with two decimals. */
+export interface GradeDueTotals {
+  exists: boolean;
+  dueTotals: Partial<Record<string, string>>;
+}
+
 // The people kept on a sheet, read from and written to the server.
 @Injectable({ providedIn: 'root' })
 export class PeopleService {
@@ -184,6 +190,16 @@ export class PeopleService {
   descendants(sheet: string): Promise<DescendantFigures> {
     return firstValueFrom(
       this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
+  /** The sheet's own due-totals per grade as its summary shows them; `exists` false, with none, when the
+   *  sheet has never been loaded. */
+  gradeDueTotals(sheet: string): Promise<GradeDueTotals> {
+    return firstValueFrom(
+      this.http.get<GradeDueTotals>(`/api/sheets/${encodeURIComponent(sheet)}/grade-due-totals`, {
         headers: this.session.headers(),
       }),
     );

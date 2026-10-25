@@ -1,9 +1,10 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, cents, money } from './claims.service';
-import { GRADES, Grade } from './people.service';
+import { GRADES, Grade, PeopleService } from './people.service';
 import { Period } from './periods.service';
 import { VoidReasonsService } from './void-reasons.service';
 import { FigurePipe } from '../../core/figure.pipe';
+import { Session } from '../../core/session';
 
 /** The statuses the summary counts claims by. */
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
@@ -22,6 +23,8 @@ export interface SummaryPerson {
 // per period, its due-total and its change from the period before it by start date; per tag ever used, its due-total;
 // per calendar month any claim is dated in, its due-total; per status, how many of the sheet's claims have it;
 // per reason on the sheet's void reasons, how many VOID claims were voided with it.
+// A comparison with another sheet, by id: per grade, this sheet's due-total and the other's (no lines
+// when the other sheet does not exist).
 @Component({
   selector: 'app-summary',
   imports: [FigurePipe],
@@ -144,6 +147,36 @@ export interface SummaryPerson {
           </tr>
         </tbody>
       </table>
+      <form (submit)="compare($event)" aria-label="Compare sheets" data-testid="compare-form">
+        <label for="compare-sheet">Compare with sheet</label>
+        <input
+          id="compare-sheet"
+          data-testid="compare-sheet"
+          [value]="compareId()"
+          (input)="compareId.set(value($event))"
+        />
+        <button type="submit" data-testid="compare">Compare</button>
+      </form>
+      @if (compareLines().length > 0) {
+        <table aria-label="Sheet comparison">
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              <th scope="col">This sheet</th>
+              <th scope="col">{{ compared() }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (l of compareLines(); track l.grade) {
+              <tr data-testid="compare-line">
+                <th scope="row">{{ (l.grade) | figure }}</th>
+                <td> {{ (l.mine) | figure }}</td>
+                <td> {{ (l.theirs) | figure }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       @if (byVoidReason().length > 0) {
         <table>
           <thead>
@@ -180,6 +213,24 @@ export interface SummaryPerson {
 })
 export class Summary {
   private readonly voidReasons = inject(VoidReasonsService);
+  private readonly peopleService = inject(PeopleService);
+  private readonly session = inject(Session);
+
+  /** The other sheet's id, as typed. */
+  protected readonly compareId = signal('');
+  /** The id of the sheet last compared with. */
+  protected readonly compared = signal('');
+  /** The other sheet's due-totals per grade, as last read; null when there is none to show. */
+  private readonly otherDueTotals = signal<Partial<Record<string, string>> | null>(null);
+  /** Counts the comparisons asked for, so only the latest one's answer is shown. */
+  private comparing = 0;
+
+  /** Per grade of this sheet: its due-total and the other sheet's (0.00 for a grade it has no one on). */
+  protected readonly compareLines = computed(() => {
+    const other = this.otherDueTotals();
+    if (other === null) return [];
+    return this.byGrade().map((g) => ({ grade: g.grade, mine: g.dueTotal, theirs: other[g.grade] ?? '0.00' }));
+  });
 
   /** Everyone on the sheet. */
   readonly people = input.required<SummaryPerson[]>();
@@ -197,6 +248,28 @@ export class Summary {
   readonly tagDueTotals = input.required<{ tag: string; dueTotal: string }[]>();
   /** Each calendar month any claim is dated in, sorted, with its due-total. */
   readonly monthDueTotals = input.required<{ month: string; dueTotal: string }[]>();
+
+  protected value(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  /** Compare this sheet with the one typed: read the other sheet's due-totals per grade. */
+  protected async compare(event: Event): Promise<void> {
+    event.preventDefault();
+    const id = this.compareId().trim();
+    const run = ++this.comparing;
+    this.otherDueTotals.set(null);
+    const sheet = this.session.sheetId();
+    if (id === '' || sheet === null) return;
+    try {
+      const found = await this.peopleService.gradeDueTotals(id);
+      if (run !== this.comparing) return;
+      this.compared.set(id);
+      this.otherDueTotals.set(found.exists ? found.dueTotals : null);
+    } catch {
+      if (run === this.comparing) this.otherDueTotals.set(null);
+    }
+  }
 
   protected readonly byGrade = computed(() =>
     GRADES.map((grade) => {

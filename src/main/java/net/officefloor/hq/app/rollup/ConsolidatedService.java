@@ -207,6 +207,23 @@ public class ConsolidatedService {
         sum.add(rollup.snapshot(sheet.people(), sheet.claims(), sheet), sheet.people(), sheet.claims(), sheet.today());
     }
 
+    /** A sheet's own due-totals per grade as its summary shows them: the due-totals of the people on the
+     * grade on its today (retired people left out, a due-total of n/a skipped); {@code exists} false, and
+     * no grades, when the sheet has never been loaded. */
+    public record GradeDueTotals(boolean exists, Map<String, String> dueTotals) {
+    }
+
+    /** The sheet's own due-totals per grade, as they stand (see {@link GradeDueTotals}). */
+    @Transactional(readOnly = true)
+    public GradeDueTotals gradeDueTotalsOf(String sheetId) {
+        return sheets.findById(sheetId).map(sheet -> {
+            Sum sum = new Sum();
+            sum.add(rollup.snapshot(sheet.getId()), people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId()),
+                    List.of(), sheet.getToday());
+            return new GradeDueTotals(true, sum.figures().gradeDueTotals());
+        }).orElseGet(() -> new GradeDueTotals(false, Map.of()));
+    }
+
     /** The figures of the sheet's descendants as they stand, added up. */
     @Transactional(readOnly = true)
     public Figures descendantsOf(String sheetId) {

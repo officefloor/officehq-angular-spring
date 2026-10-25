@@ -68,6 +68,13 @@ public class SheetController {
         return asOf == null ? consolidated.descendantsOf(id.trim()) : consolidated.consolidatedAsOf(id.trim(), asOf);
     }
 
+    /** The sheet's own due-totals per grade, as its summary shows them; none when the sheet does not
+     * exist (see {@link ConsolidatedService#gradeDueTotalsOf}). */
+    @GetMapping("/{id}/grade-due-totals")
+    public ConsolidatedService.GradeDueTotals gradeDueTotals(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return consolidated.gradeDueTotalsOf(id.trim());
+    }
+
     /** The people of the sheet and the other sheets of its tree whose name or an alias contains
      * {@code q} (see {@link ConsolidatedService#search}). */
     @GetMapping("/{id}/search")
