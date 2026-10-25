@@ -13,7 +13,7 @@ import { Period, PeriodsService, periodOn } from './periods.service';
 import { Rates } from './rates';
 import { Graces, Lateness, Rate, RatesService, Rounding, claimShownCents, overdueFrom, rateOn } from './rates.service';
 import { Settings } from './settings';
-import { Dated, SettingsService, inForce } from './settings.service';
+import { Dated, RoleGiven, SettingsService, inForce } from './settings.service';
 import { Statement, StatementsService } from './statements.service';
 import { STATUSES, Summary, SummaryPerson } from './summary';
 import { Dashboard, DashboardCounts, NO_DASHBOARD } from './dashboard';
@@ -1006,9 +1006,12 @@ export class People {
    *  opened, kept across sheet loads. Only what the screen shows is reordered. */
   protected readonly sortKey = signal<SortKey>('added');
   /** The people listed: everyone, or only those not retired unless "show retired" is on, in the
-   *  chosen order; people with equal keys keep their list order. */
+   *  chosen order; people with equal keys keep their list order. A restricted user is listed only the
+   *  people they may see (see {@link visibleIds}). */
   protected readonly shownPeople = computed(() => {
-    const listed = this.showRetired() ? this.people() : this.people().filter((p) => !p.retired);
+    const visible = this.visibleIds();
+    const people = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
+    const listed = this.showRetired() ? people : people.filter((p) => !p.retired);
     const key = this.sortKey();
     if (key === 'added') return listed;
     const keyed = listed.map((p, i) => ({ p, i, k: this.sortValueOf(p, key) }));
@@ -1346,6 +1349,24 @@ export class People {
     const due = this.dueCentsById();
     return money(led.reduce((sum, c) => sum + crewDueCents(c, due), 0));
   });
+  /** The ids of the people a restricted user may see listed: the person with their name and the leads
+   *  and members of every crew that person leads or belongs to; none when there is no such person.
+   *  Null when the user is not restricted, who sees everyone. */
+  private readonly visibleIds = computed<Set<number> | null>(() => {
+    const user = this.session.user();
+    if (user === null || this.roles().find((r) => r.user === user)?.role !== 'restricted') return null;
+    const me = this.me();
+    const ids = new Set<number>();
+    if (!me) return ids;
+    ids.add(me.id);
+    for (const crew of this.crewsService.crews()) {
+      const crewIds = [...(crew.lead ? [crew.lead.personId] : []), ...crew.members.map((m) => m.personId)];
+      if (crewIds.includes(me.id)) crewIds.forEach((id) => ids.add(id));
+    }
+    return ids;
+  });
+  /** The roles given on the sheet, as read when it was loaded. */
+  private readonly roles = signal<RoleGiven[]>([]);
   /** The person on the sheet who has the signed-in user's name, or else has it as an alias (as names are
    *  compared); null when there is none. */
   private readonly me = computed(() => {
@@ -2836,6 +2857,7 @@ export class People {
         this.service.dashboard(sheet).catch(() => NO_DASHBOARD),
       ]);
       if (this.sheet() === sheet) {
+        this.roles.set(settings.roles);
         this.floors.set(settings.floors);
         this.caps.set(settings.caps);
         this.latePcts.set(settings.latePcts);

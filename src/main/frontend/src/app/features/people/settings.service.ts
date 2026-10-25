@@ -4,10 +4,11 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Grade } from './people.service';
 
-/** A user's role on a sheet: every name is a clerk unless made a steward or a viewer, who may change nothing. */
-export type Role = 'clerk' | 'steward' | 'viewer';
+/** A user's role on a sheet: every name is a clerk unless made a steward, a viewer, who may change nothing,
+ *  or restricted, a clerk whose people list shows only their crews' people and themselves. */
+export type Role = 'clerk' | 'steward' | 'viewer' | 'restricted';
 
-export const ROLES: readonly Role[] = ['clerk', 'steward', 'viewer'];
+export const ROLES: readonly Role[] = ['clerk', 'steward', 'viewer', 'restricted'];
 
 export interface RoleGiven {
   user: string;

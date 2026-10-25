@@ -7,11 +7,11 @@ import java.util.Set;
 /** An action the sheet's permission matrix decides who may take, with the roles that may take it when
  * the matrix leaves it blank. */
 public enum Action {
-    OPEN(EnumSet.of(Role.CLERK, Role.STEWARD)),
-    SETTLE(EnumSet.of(Role.CLERK, Role.STEWARD)),
-    VOID(EnumSet.of(Role.CLERK, Role.STEWARD)),
+    OPEN(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
+    SETTLE(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
+    VOID(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
     REASSIGN(EnumSet.of(Role.STEWARD)),
-    CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD)),
+    CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD, Role.RESTRICTED)),
     REOPEN(EnumSet.of(Role.STEWARD));
 
     private final Set<Role> standing;
