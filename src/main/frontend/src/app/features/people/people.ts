@@ -858,6 +858,11 @@ import { FigurePipe } from '../../core/figure.pipe';
         due on them <span data-testid="rollup-overdue-total">{{ (money(overdueTotal().cents)) | figure }}</span>
       </p>
       <p>
+        Due aged 0–30 days: <span data-testid="rollup-aged-0-30">{{ (money(agedTotal()[0])) | figure }}</span>,
+        31–60 days: <span data-testid="rollup-aged-31-60">{{ (money(agedTotal()[1])) | figure }}</span>,
+        61+ days: <span data-testid="rollup-aged-61">{{ (money(agedTotal()[2])) | figure }}</span>
+      </p>
+      <p>
         Cut in total: <span data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</span>
       </p>
     </section>
@@ -1233,6 +1238,16 @@ export class People {
       settled: each.reduce((sum, s) => sum + s.settled, 0),
       open: each.reduce((sum, s) => sum + s.open, 0),
     };
+  });
+  /** What is due on everyone's counting OPEN and PENDING claims, in cents, by age: the people's age
+   *  buckets (0 to 30, 31 to 60, 61 or more days) each simply added up (not trimmed). */
+  protected readonly agedTotal = computed(() => {
+    const total: [number, number, number] = [0, 0, 0];
+    for (const p of this.people()) {
+      const aged = this.agedOf(p);
+      for (let i = 0; i < 3; i++) total[i] += aged[i];
+    }
+    return total;
   });
   /** How many of everyone's counting claims are overdue, and what is due on them, in cents (trimmed). */
   protected readonly overdueTotal = computed(() => {
@@ -1676,10 +1691,10 @@ export class People {
     }
   }
 
-  /** The person's statements still standing, by date, oldest first; those of a day keep their order
-   *  among the person's statements (those a merge or a transfer brought over before their own). */
+  /** The person's statements still standing, in the order they were taken (those a merge or a
+   *  transfer brought over before their own). */
   protected statementLinesOf(personId: number): Statement[] {
-    return [...this.statementsOf(personId)].sort((a, b) => a.date.localeCompare(b.date));
+    return this.statementsOf(personId);
   }
 
   protected snapshotLinesOf(personId: number): string[] {
