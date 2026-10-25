@@ -933,6 +933,14 @@ import { FigurePipe } from '../../core/figure.pipe';
                   </button>
                   <button
                     type="button"
+                    data-testid="person-merge-undo"
+                    [attr.aria-label]="'Undo the last merge into ' + p.name"
+                    (click)="mergeUndo(p)"
+                  >
+                    Undo merge
+                  </button>
+                  <button
+                    type="button"
                     data-testid="person-transfer-undo"
                     [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
                     (click)="transferUndo(p)"
@@ -2021,6 +2029,24 @@ export class People {
       this.rowErrors.update((errors) => ({
         ...errors,
         [person.id]: 'That person cannot be transferred to that sheet.',
+      }));
+    }
+  }
+
+  /** Undo the last merge into the person, then re-read the sheet: the person merged away is back. */
+  protected async mergeUndo(person: Person): Promise<void> {
+    this.clearRowError(person.id);
+    const sheet = this.sheet();
+    if (!sheet) return;
+    try {
+      await this.service.mergeUndo(sheet, person.id);
+      if (this.sheet() !== sheet) return;
+      await Promise.all([this.read(sheet), this.poolsService.refresh(sheet), this.crewsService.refresh(sheet)]);
+    } catch {
+      if (this.sheet() !== sheet) return;
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [person.id]: 'That merge cannot be undone.',
       }));
     }
   }

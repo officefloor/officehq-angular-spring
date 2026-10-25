@@ -368,6 +368,18 @@ export class PeopleService {
     );
   }
 
+  /** Undo the last merge into the person: the person merged away is back at the end of the list with
+   *  the claims that came from them and their own aliases; refused (409) when there is no merge to
+   *  undo, unless the signed-in user is the steward who made it, and it is still the sheet's today it
+   *  was made on. */
+  mergeUndo(sheet: string, id: number): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheet)}/${id}/merge-undo`, null, {
+        headers: this.session.headers(),
+      }),
+    );
+  }
+
   /** Undo the transfer that brought the person to this sheet: they go back to the sheet they came
    *  from; refused (409) unless the signed-in user is a steward, the person arrived by transfer, and
    *  it is still the sheet's today they arrived on. */

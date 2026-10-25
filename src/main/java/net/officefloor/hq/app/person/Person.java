@@ -196,6 +196,29 @@ public class Person {
         return copy;
     }
 
+    /** Gives this person, restored under the id of one merged away, what {@code merged} had when the
+     * merge was made: every grade (with its from-date), terms, tags, flag, approver, retirements and where
+     * they came from, and the aliases {@code aliases}; their holds and contact, dropped by the merge, are
+     * not given back. */
+    public void restoreFrom(Person merged, List<String> aliases) {
+        grades.clear();
+        merged.grades.forEach(g -> grades.add(new PersonGrade(g.getGrade(), g.getFrom())));
+        retiredFrom = merged.retiredFrom;
+        retirements.clear();
+        merged.retirements.forEach(r -> retirements.add(new PersonRetirement(r.getFrom(), r.getTo())));
+        terms = merged.terms;
+        datedTerms.clear();
+        merged.datedTerms.forEach(t -> datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom())));
+        tags = merged.tags;
+        originSheetId = merged.originSheetId;
+        arrivedOn = merged.arrivedOn;
+        flagReason = merged.flagReason;
+        flagUntil = merged.flagUntil;
+        approver = merged.approver;
+        this.aliases.clear();
+        aliases.forEach(this::addAlias);
+    }
+
     /** The grades the person has been given, by from-date (the one with none first). */
     public List<PersonGrade> getGrades() {
         return grades.stream()
@@ -300,6 +323,11 @@ public class Person {
     /** Gives the person the alias {@code alias}, kept without the spaces around it. */
     public void addAlias(String alias) {
         aliases.add(new PersonAlias(alias));
+    }
+
+    /** Takes the alias {@code alias} (as names are compared) from the person; false when they have none. */
+    public boolean removeAlias(String alias) {
+        return aliases.remove(new PersonAlias(alias));
     }
 
     public LocalDate getRetiredFrom() {
