@@ -121,12 +121,16 @@ public class ClaimService {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         refuseIfClosed(sheetId, claim.getDate());
-        if (!claim.getStatus().canBecome(next)) {
+        boolean voidingSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (voidingSettled) {
+            refuseUnlessSettledVoidable(sheetId, user, claim);
+        } else if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        } else {
+            settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(next),
+                    "Your role may not " + ACTIONS.get(next) + " a claim on this sheet.");
         }
-        settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(next),
-                "Your role may not " + ACTIONS.get(next) + " a claim on this sheet.");
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then.");
@@ -153,6 +157,8 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             recordChange(event, user, person, saved, number, " due=" + text(saved.getSettledDue()));
             notifyWatchers(user, person, saved);
+        } else if (voidingSettled) {
+            recordChange(event, user, person, saved, number, " reversed=" + text(saved.getSettledDue()));
         } else {
             recordChange(event, user, person, saved, number, "");
         }
@@ -359,6 +365,23 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim.");
         }
         return claim;
+    }
+
+    /** How many days after its settlement a steward may still void a SETTLED claim. */
+    private static final int VOID_SETTLED_DAYS = 7;
+
+    /** Refuse voiding a SETTLED claim unless the user is a steward of the sheet and the sheet's today is
+     *  within {@value #VOID_SETTLED_DAYS} days of the claim's settlement, as its status log records it. */
+    private void refuseUnlessSettledVoidable(String sheetId, String user, Claim claim) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward voids a settled claim.");
+        }
+        LocalDate settledOn = claim.settledOn();
+        LocalDate today = sheets.today(sheetId);
+        if (settledOn == null || today == null || today.isAfter(settledOn.plusDays(VOID_SETTLED_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A settled claim can only be voided within " + VOID_SETTLED_DAYS + " days of its settlement.");
+        }
     }
 
     /** The permission matrix's action for each status a claim is moved to by opening, settling or voiding it. */

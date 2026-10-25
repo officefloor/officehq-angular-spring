@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
-/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID.
+/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID, and a steward
+ *  may void a SETTLED one within 7 days of its settlement.
  *  A clerk's settling above the clerk limit leaves an OPEN claim PENDING, which a steward approves
  *  (SETTLED) or rejects (OPEN again); a PENDING claim is otherwise handled as an OPEN one. */
 public enum ClaimStatus {

@@ -175,6 +175,13 @@ public class Claim {
         return then;
     }
 
+    /** The day the claim was last settled, as its log records it; null when it never was. */
+    public LocalDate settledOn() {
+        LocalDate on = null;
+        for (ClaimLogLine line : log) if (line.getStatus() == ClaimStatus.SETTLED) on = line.getOn();
+        return on;
+    }
+
     /** Log the claim's status now: who gave it, the sheet's today and its due (null: n/a) then. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));

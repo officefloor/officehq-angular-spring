@@ -231,6 +231,8 @@ export class PersonClaims {
           ? `Only a steward who did not open this claim can ${action} it.`
           : forbidden && action === 'resettle'
           ? 'Only a steward can re-settle this claim.'
+          : forbidden && action === 'void' && claim.status === 'SETTLED'
+          ? 'Only a steward can void a settled claim.'
           : forbidden && action === 'settle' && claim.openedBy === this.session.user()
           ? 'You opened this claim, so someone else must settle it.'
           : forbidden
@@ -241,6 +243,8 @@ export class PersonClaims {
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
             ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+          : action === 'void' && claim.status === 'SETTLED'
+            ? 'A settled claim can only be voided within 7 days of its settlement.'
             : `This claim cannot be ${PAST[action]} from its status.`;
         this.claimError.set({ id: claim.id, message });
       }
