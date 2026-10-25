@@ -85,7 +85,7 @@ public class StatementService {
                 continue;
             }
             counting++;
-            // The statement binds the figure; the due-total it records carries the late charge on top.
+            // The statement binds the rate figure, before late charge and floor; the due-total it records is the due.
             BigDecimal figure = claimService.figure(sheetId, person, claim);
             BigDecimal due = claimService.due(sheetId, person, claim);
             if (due != null) total = total.add(due);

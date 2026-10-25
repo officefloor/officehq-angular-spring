@@ -105,9 +105,9 @@ public class Rollup {
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
-                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()),
-                        values.floorOn(claim.getDate()), rounding);
-                BigDecimal owed = LateCharge.dueOf(claim, figure, today, values::latePctOn, rounding);
+                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding);
+                BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,
+                        values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
                 if (owed != null && isOverdue(claim, today)) overdue = overdue.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
@@ -163,15 +163,14 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  (unless PENDING), else the live due at the grade's rate in force on its date, rounded as the claim rounds, at least
-     *  the floor unless a correction; null when that is n/a. */
-    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
+     *  (unless PENDING), else the rate figure at the grade's rate in force on its date, rounded as the claim rounds,
+     *  before any late charge and floor; null when that is n/a. */
+    private static BigDecimal figure(Claim claim, List<Rate> gradeRates, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
         Rate rate = Rate.inForce(gradeRates, claim.getDate());
         if (rate == null) return null;
-        BigDecimal due = claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
-        return claim.isCorrection() ? due : due.max(floor);
+        return claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
     }
 
     /** Of the person's claims, the one a correction corrects by number; null for any other claim. */
