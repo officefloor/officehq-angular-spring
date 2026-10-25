@@ -1,0 +1,64 @@
+{
+  "checkpoint": 115,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp115_nested-pools",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool member may be another pool, chosen from the member select as pool:<name>, with a share\nlike a person's. A pool can be a member of at most one pool, cannot contain itself through any\nchain, and a chain of pools is at most three deep; each is refused with an error on the pool. A\npool that is a member of another has no pot of its own: its pot is its cut in the pool above (so an\nunbalanced pool above, or none, leaves it with no cuts). The sheet's pot is the pot of a pool that\nis a member of none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool member may be another pool, chosen from the member select as pool:<name>, with a share\nlike a person's. A pool can be a member of at most one pool, cannot contain itself through any\nchain, and a chain of pools is at most three deep; each is refused with an error on the pool. A\npool that is a member of another has no pot of its own: its pot is its cut in the pool above (so an\nunbalanced pool above, or none, leaves it with no cuts). The sheet's pot is the pot of a pool that\nis a member of none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "36f672c7e567a40c6cf153d835bed6a5576f994a",
+  "reset_sha": "",
+  "preagent_sha": "a312ad693f68af63c596e7de87754a8e4ee9594f",
+  "prev_sha": "a312ad693f68af63c596e7de87754a8e4ee9594f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1937906,
+    "input_tokens": 48,
+    "output_tokens": 18894,
+    "cache_read_tokens": 1263313,
+    "cache_creation_tokens": 70382,
+    "num_turns": 25,
+    "duration_ms": 618845,
+    "duration_api_ms": 166668,
+    "model": "claude-opus-5-5",
+    "session_id": "1a29451e-14b2-49cd-bddb-e0aa5120017f",
+    "stop_reason": "success",
+    "result_text": "A pool can now be a member of another pool, and all 4 tests in `bin/e2e` pass.\n\n**What it does now**\n- The member select on each pool lists the sheet's pools as `pool:<name>` after the people. A pool member takes a share like a person and is logged as `POOL_MEMBER_ADDED \u2026 pool=Top name=Mid share=30.00`.\n- These are refused with an error on the pool: a pool added to itself, a pool that is already in another pool, a pool that would contain itself through a chain, and anything that makes a chain more than three pools deep. The server enforces these rules and the screen checks them before sending.\n- **Cuts:** a pool that is in no other pool gets the sheet's pot. A pool inside another gets its cut in the pool above as its pot. If the pool above is unbalanced or has no cut, the pools below show no cuts.\n\n**Changes**\n- **Stored data:** a new migration, `V59__pool_member_pool.sql`. Each `pool_member` row now points to either a person or a pool, never both. A database rule stops a pool being a member of more than one pool.\n- **Server:** `PoolService.addMemberPool` holds the rules above. The member form takes either `personId` or `poolId`, and each member in the pool list says which kind it is. Merging or moving a person no longer fails on a member that is a pool.\n- **Front end:** `pools.ts` works out the cuts across the whole chain of pools. Member rows use the test IDs `pool-member-<pool>-<personId>` and `pool-member-<pool>-pool-<name>`.\n\n**One change outside the pool code:** scenario 3 failed when it showed the sheet \"as of\" an earlier date. That view saves and restores each table's rows, and picks a table's rows through its first link to a table that belongs to the sheet. `pool_member` now has two links to `pool`, and it was picking the pool-member link, which is empty for person members. I changed `asof/SheetHistory.java` to prefer a link that is never empty. For tables that didn't have this problem, nothing changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1937906,
+        "num_turns": 25,
+        "duration_ms": 618845,
+        "duration_api_ms": 166668,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp115.agent.jsonl",
+  "agent_diff_file": "cp115.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
