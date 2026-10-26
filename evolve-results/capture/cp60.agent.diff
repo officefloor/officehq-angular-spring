@@ -1,0 +1,110 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dccd1b27..43ae84ac 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
+-import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa } from '../rates/rates';
++import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ import { Header } from '../header/header';
+ import { Summary, SummaryPerson } from '../summary/summary';
+@@ -506,7 +506,8 @@ export class People {
+     for (const [id, list] of lists) by.set(id, sumSkippingNa(list));
+     return by;
+   });
+-  protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
++  // The sheet's due-total: trimmed of the highest and lowest person's figure when three or more have one.
++  protected readonly dueTotal = computed(() => trimmedSum([...this.dueBy().values()]));
+   // The claims counted live that are overdue: open and due by a date before the sheet's today.
+   protected readonly overdueClaims = computed(() => {
+     const today = this.session.sheetToday();
+@@ -530,7 +531,11 @@ export class People {
+     }
+     return by;
+   });
+-  protected readonly overdueTotal = computed(() => sumSkippingNa([...this.overdueTotalBy().values()]));
++  // The sheet's overdue-total: every person has a figure (0.00 with nothing overdue), trimmed like the due-total.
++  protected readonly overdueTotal = computed(() => {
++    const by = this.overdueTotalBy();
++    return trimmedSum(this.people().map((p) => by.get(p.id) ?? '0.00'));
++  });
+ 
+   constructor() {
+     // Re-read the people from the store each time a sheet is loaded.
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 75e0d561..976a3321 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -76,6 +76,21 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
+   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));
+ }
+ 
++/**
++ * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
++ * single lowest are left out.
++ */
++export function trimmedSum(values: readonly (string | null)[]): string {
++  const figures = values.filter((v): v is string => v !== null).map(cents);
++  let sum = figures.reduce((total, c) => total + c, 0n);
++  if (figures.length >= 3) {
++    const max = figures.reduce((a, b) => (b > a ? b : a));
++    const min = figures.reduce((a, b) => (b < a ? b : a));
++    sum -= max + min;
++  }
++  return formatCents(sum);
++}
++
+ /**
+  * The percent of the rate in force on the date among one grade's rates: the one with the latest
+  * from-date on or before it, a rate with no from-date applying from the beginning of time;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 53b67e1f..657b76c8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+@@ -73,8 +74,8 @@ public class RollupService {
+         }
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = ZERO;
+-        BigDecimal dueTotal = ZERO;
+-        BigDecimal overdueSum = ZERO;
++        List<BigDecimal> dues = new ArrayList<>();
++        List<BigDecimal> overdues = new ArrayList<>();
+         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it;
+             // nor does one deferred on the sheet's today
+@@ -116,12 +117,21 @@ public class RollupService {
+             }
+             figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue));
+             claimedTotal = claimedTotal.add(claimed);
+-            overdueSum = overdueSum.add(overdue);
++            overdues.add(overdue);
+             if (due != null) {
+-                dueTotal = dueTotal.add(due);
++                dues.add(due);
+             }
+         }
+-        return new Snapshot(figures, claimedTotal, dueTotal, overdueSum);
++        return new Snapshot(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
++    }
++
++    /** The sheet-total of the people's figures: with three or more, the single highest and lowest are left out. */
++    static BigDecimal trimmedSum(List<BigDecimal> figures) {
++        BigDecimal sum = figures.stream().reduce(ZERO, BigDecimal::add);
++        if (figures.size() >= 3) {
++            sum = sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
++        }
++        return sum;
+     }
+ 
+     /**
