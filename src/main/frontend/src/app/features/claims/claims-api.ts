@@ -406,6 +406,13 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<SplitView>(`${this.url(sheetId)}/claims/${id}/split`, { amount }));
   }
 
+  /** Part-settle an OPEN claim: split the amount off it and settle the new claim at once (PENDING above a
+   *  clerk's limit); refused whole when the split or the settle would be, the four-eyes and proof rules
+   *  judged on the claim split. */
+  settlePart(sheetId: string, id: number, amount: string): Promise<SplitView> {
+    return firstValueFrom(this.http.post<SplitView>(`${this.url(sheetId)}/claims/${id}/settle-part`, { amount }));
+  }
+
   /** Raise a claim's proofs count by one, of the kind given (null: none chosen, a receipt): refused for a
    *  SETTLED or VOID claim, and a claim dated inside a closed period. */
   addProof(sheetId: string, id: number, kind: ProofKind | null = null): Promise<ClaimView> {

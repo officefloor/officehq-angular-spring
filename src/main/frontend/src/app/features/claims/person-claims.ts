@@ -199,6 +199,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
           <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
             [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
+          <input #settlePartAmount [id]="'claim-settle-part-amount-' + c.id" data-testid="claim-settle-part-amount" inputmode="decimal" />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c, settlePartAmount.value)"
+            [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to">
             <option value="">Choose a person</option>
@@ -790,6 +794,39 @@ export class PersonClaims {
           : this.deferred(claim)
           ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be split.`
           : 'The amount split off must be more than 0.00 and less than the claim\'s amount.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Split an amount off an OPEN claim and settle the new claim at once; the store refuses the whole when
+   *  the split or the settle would be refused, judging the four-eyes and proof rules on this claim. */
+  protected async settlePart(claim: ClaimView, amount: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const part = amount.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(part) || Number(part) <= 0) {
+      this.claimError.set({ id: claim.id, message: 'Type an amount to settle, more than 0.00 and less than the claim\'s.' });
+      return;
+    }
+    try {
+      const split = await this.api.settlePart(sheet.id, claim.id, part);
+      if (this.session.sheet()?.id === sheet.id) this.split.emit(split);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+        const message = forbidden && claim.openedBy === this.session.user()
+          ? 'You opened this claim, so someone else must settle part of it.'
+          : forbidden && claim.editedBy === this.session.user()
+          ? 'You last edited this claim, so someone else must settle part of it.'
+          : forbidden
+          ? 'Your role may not settle a claim on this sheet.'
+          : claim.status !== 'OPEN'
+          ? 'Only an OPEN claim can be part-settled.'
+          : this.deferred(claim)
+          ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be part-settled.`
+          : 'This part cannot be settled: check the amount, and that the claim has the proofs it needs.';
         this.claimError.set({ id: claim.id, message });
       }
     }
