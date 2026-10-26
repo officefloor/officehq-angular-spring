@@ -1,0 +1,236 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8ee8a9fc..dad7d9da 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -58,6 +58,18 @@ export function counts(c: Claim): boolean {
+   return isOpen(c) || c.status === 'SETTLED';
+ }
+ 
++/**
++ * The status the claim had at the end of the day, as its log records it: the last line logged on or before it (a
++ * line with no date counts as before any day); null when the claim was added after it. A claim with no log has its
++ * status now.
++ */
++export function statusAtEndOf(c: Pick<Claim, 'status' | 'log'>, day: string): ClaimStatus | null {
++  if (c.log.length === 0) return c.status;
++  let then: ClaimStatus | null = null;
++  for (const line of c.log) if (line.on === null || line.on <= day) then = line.status;
++  return then;
++}
++
+ /** Whether the claim is open: OPEN or PENDING. An open claim goes overdue and bears the late charge. */
+ export function isOpen(c: Claim): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 74424990..6adeaec4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -374,11 +374,17 @@ export class People {
+   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
+   // dated within one of their person's holds that no statement binds, and the deferred ones.
+   protected readonly liveClaims = computed(() => {
++    const leftOut = this.leftOut();
++    return this.claims().filter((c) => counts(c) && !leftOut(c));
++  });
++  // Whether the live rules leave the claim out whatever its status: deferred, or open, dated within one of its
++  // person's holds and bound by no statement.
++  private readonly leftOut = computed(() => {
+     const today = this.session.sheetToday();
+     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
+     const held = (c: Claim) =>
+       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+-    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && held(c)));
++    return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && held(c));
+   });
+   protected readonly liveBy = computed(() => {
+     const by = new Map<number, Claim[]>();
+@@ -428,16 +434,26 @@ export class People {
+     for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
+     return by;
+   });
+-  // Every claim counted live: its person, its date and the figure it totals, for the periods' due-totals.
++  // Every claim the live rules do not leave out: its person, its date, the figure it totals and its log, for the
++  // periods' due-totals, which count it by its status at each period's end.
+   protected readonly countedFigures = computed<DatedFigure[]>(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+     const rates = this.rates.rates();
+     const floor = this.settings.floor();
+     const late = this.settings.lateness();
+-    return this.liveClaims().map((c) => {
+-      const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
+-      return { personId: c.personId, date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
+-    });
++    const leftOut = this.leftOut();
++    return this.claims()
++      .filter((c) => !leftOut(c))
++      .map((c) => {
++        const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
++        return {
++          personId: c.personId,
++          date: c.date,
++          figure: dueOf(c, rates.get(grade) ?? [], floor, late),
++          status: c.status,
++          log: c.log,
++        };
++      });
+   });
+   // Each person's due-total for each period, by person id then period id: a closed period's figure fixed for them
+   // when it closed, else their counted claims' figures dated in it, skipping n/a.
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 81a64ebd..228d6c31 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
+ import { sumSkippingNa } from '../rates/rates';
+ 
+ export interface PeriodView {
+@@ -17,11 +18,22 @@ export interface PeriodView {
+   closedPersonTotals: Record<string, string>;
+ }
+ 
+-/** A counted claim's person, date and the figure it totals (null for n/a). */
++/**
++ * A claim the live rules do not leave out (deferred or held): its person, date, the figure it totals now (null for
++ * n/a), and its status and log, which decide whether it counted at the end of a period.
++ */
+ export interface DatedFigure {
+   personId: number;
+   date: string;
+   figure: string | null;
++  status: ClaimStatus;
++  log: ClaimLogLine[];
++}
++
++/** Whether the claim counted at the end of the day: its status then is open, pending or settled. */
++function countedAtEndOf(f: DatedFigure, day: string): boolean {
++  const then = statusAtEndOf(f, day);
++  return then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
+ }
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+@@ -38,7 +50,8 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
+ 
+ /**
+  * The person's due-total for each period, by period id: a closed one's figure fixed for them when it was closed
+- * (0.00 for a person added since), else the figures of their counted claims dated in it, skipping n/a.
++ * (0.00 for a person added since), else the figures now of their claims dated in it that counted at the end of its
++ * last day, skipping n/a.
+  */
+ export function personPeriodDueTotals(
+   periods: readonly PeriodView[],
+@@ -50,7 +63,7 @@ export function personPeriodDueTotals(
+   for (const f of figures) {
+     if (f.personId !== personId) continue;
+     const p = periodOn(periods, f.date);
+-    if (p) by.get(p.id)?.push(f.figure);
++    if (p && countedAtEndOf(f, p.to)) by.get(p.id)?.push(f.figure);
+   }
+   return new Map(
+     periods.map((p) => [
+@@ -186,7 +199,7 @@ export class Periods {
+   private readonly session = inject(Session);
+   protected readonly store = inject(PeriodStore);
+ 
+-  // The counted claims of the sheet: each one's date and figure.
++  // The claims of the sheet the live rules do not leave out: each one's date, figure and log.
+   readonly figures = input<readonly DatedFigure[]>([]);
+ 
+   protected readonly name = signal('');
+@@ -198,8 +211,8 @@ export class Periods {
+   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
+   private submitting = false;
+ 
+-  // Each period's due-total: a closed one's fixed total, else the figures of the counted claims dated in it,
+-  // skipping n/a.
++  // Each period's due-total: a closed one's fixed total, else the figures of the claims dated in it that counted at
++  // the end of its last day, skipping n/a.
+   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
+ 
+   protected async close(p: PeriodView): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index e598bc35..136974e0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -303,6 +303,24 @@ public class Claim {
+         return log;
+     }
+ 
++    /**
++     * The status the claim had at the end of the day, as its log records it: the last line logged on or before it (a
++     * line with no date counts as before any day); null when the claim was added after it. A claim with no log has
++     * its status now.
++     */
++    public ClaimStatus statusAtEndOf(LocalDate day) {
++        if (log.isEmpty()) {
++            return status;
++        }
++        ClaimStatus then = null;
++        for (ClaimLogEntry e : log) {
++            if (e.getOn() == null || !e.getOn().isAfter(day)) {
++                then = e.getStatus();
++            }
++        }
++        return then;
++    }
++
+     /** Logs the status the claim now has: by the user, on the sheet's today, at the due computed now. */
+     public void logStatus(String by, LocalDate on, BigDecimal due) {
+         log.add(new ClaimLogEntry(status, by, on, due));
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 8a5d7293..e9d3b2d4 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -81,8 +81,8 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Closes the period, fixing each person's due-total for it now (the figures of their counted claims dated in
+-     * it, skipping n/a) and its own, the sum of those.
++     * Closes the period, fixing each person's due-total for it now (the figures of their claims dated in it that
++     * counted at the end of its last day, skipping n/a) and its own, the sum of those.
+      * Refused when it is already closed.
+      */
+     @Transactional
+@@ -103,7 +103,7 @@ public class PeriodService {
+         }
+         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(c.getPersonId());
+-            if (person == null || !person.countsLive(c, today) || !period.contains(c.getDate())) {
++            if (person == null || !person.countsAtEndOf(c, period.getTo(), today) || !period.contains(c.getDate())) {
+                 continue;
+             }
+             BigDecimal figure = claimService.due(sheetId, person, c);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 999768c8..f0d3c2ce 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -17,6 +17,7 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Objects;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ 
+ /**
+  * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
+@@ -134,6 +135,17 @@ public class Person {
+                 && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+     }
+ 
++    /**
++     * Whether the claim counts toward the person's figure for a period ending on the day: one whose status at the end
++     * of that day counts, left out as the live rules say when deferred on the sheet's today or held.
++     */
++    public boolean countsAtEndOf(Claim claim, LocalDate end, LocalDate today) {
++        ClaimStatus then = claim.statusAtEndOf(end);
++        return then != null && then.counts() && !claim.isDeferredOn(today)
++                && !(claim.getStatus().isOpen() && !claim.isBound()
++                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
++    }
++
+     /** The version of the person as stored, raised on each save. */
+     public long getVersion() {
+         return version;
