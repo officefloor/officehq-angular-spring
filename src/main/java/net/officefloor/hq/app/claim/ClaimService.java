@@ -616,7 +616,7 @@ public class ClaimService {
         return saved;
     }
 
-    /** Approve a PENDING claim: it is SETTLED, its due (its live figure and any late charge) frozen
+    /** Approve a PENDING claim: it is SETTLED, its due (its figure, bound or live, and any late charge) frozen
      *  now. Refused unless the user is a steward of the sheet other than the one who opened or last
      *  edited it. */
     @Transactional
@@ -703,7 +703,7 @@ public class ClaimService {
         return saved;
     }
 
-    /** Reject a PENDING claim for a reason: it is OPEN again, bound again by its person's last
+    /** Reject a PENDING claim for a reason: it is OPEN again, still bound by its person's last
      *  statement if that statement bound it. Refused unless the user is a steward of the sheet. */
     @Transactional
     public Claim reject(String sheetId, String user, long id, String reason) {
@@ -918,7 +918,7 @@ public class ClaimService {
     }
 
     /** The figure under the claim's due, before any late charge and floor: the due fixed when it was settled, else the figure
-     *  its person's last statement bound it to (unless it is PENDING, which no statement binds), else its live due;
+     *  its person's last statement bound it to (a PENDING claim included), else its live due;
      *  null when that is n/a. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();

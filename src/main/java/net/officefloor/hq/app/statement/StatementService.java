@@ -166,7 +166,7 @@ public class StatementService {
         ClaimStatus status = claim.statusAsOf(asOf);
         if (status == null) return null;
         BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAsOf(asOf) : null;
-        ClaimBinding binding = status == ClaimStatus.PENDING ? null : claim.bindingAsOf(asOf);
+        ClaimBinding binding = claim.bindingAsOf(asOf);
         boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
                 && asOf.isBefore(claim.getDeferredUntil());
         boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred

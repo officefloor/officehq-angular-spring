@@ -251,8 +251,8 @@ public class Rollup {
                         && (claim.isBound() || !person.isLeftOut(claim.getDate(), today)));
     }
 
-    /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  (unless PENDING), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's) of the
+    /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due
+     *  (PENDING included), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's) of the
      *  versions that apply to the claim, rounded as the claim rounds,
      *  before any late charge and floor; null when that is n/a. */
     private static BigDecimal figure(Claim claim, List<List<Rate>> gradeRates, RoundingMode rounding) {

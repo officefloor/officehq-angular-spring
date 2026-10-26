@@ -458,10 +458,10 @@ public class Claim {
         return stated;
     }
 
-    /** Whether the claim is bound to its stated figure now: stated, and not PENDING, as no statement
-     *  binds a PENDING claim (its binding holds again should it be rejected). */
+    /** Whether the claim is bound to its stated figure now: stated (a PENDING claim included, like any
+     *  other claim that counts). */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
     public LocalDate getDeferredUntil() {

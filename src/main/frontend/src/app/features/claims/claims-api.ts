@@ -27,10 +27,10 @@ export function isOpen(claim: ClaimView): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
-/** Whether the claim is bound to the figure its person's last statement stated: no statement binds
- *  a PENDING claim, which shows its live figure. */
+/** Whether the claim is bound to the figure its person's last statement stated (a PENDING claim
+ *  included, like any other claim that counts). */
 export function isBound(claim: ClaimView): boolean {
-  return claim.stated && claim.status !== 'PENDING';
+  return claim.stated;
 }
 
 /** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date.
@@ -217,7 +217,7 @@ export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], pol
 }
 
 /** The figure under the claim's due, in cents: the due fixed when it was settled, else the figure its
- *  person's last statement bound it to (unless PENDING), else at the rate of `gradeRates` (its person's grade's rates)
+ *  person's last statement bound it to (PENDING included), else at the rate of `gradeRates` (its person's grade's rates)
  *  in force on the claim's date, of the versions that apply to the claim, rounded half up when `halfUp` (else half to even); no floor is applied to it.
  *  Null when there is none. */
 export function claimFigureCents(claim: ClaimView, gradeRates: readonly RateView[], halfUp = false): number | null {
