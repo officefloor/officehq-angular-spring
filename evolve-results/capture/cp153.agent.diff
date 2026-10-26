@@ -1,0 +1,196 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index 002d4eb4..9a43b9f7 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -13,6 +13,8 @@ export interface RateView {
+   to: string | null;
+   /** How many parents up the rate's sheet is: 0 for the sheet's own rate, 1 for its parent's, and so on. */
+   level: number;
++  /** How many versions the rate has had; the percent is the newest's, the one in force. */
++  version: number;
+ }
+ 
+ /** Of one grade's rates on one sheet, the one in force on a date: the one with the latest from-date on
+@@ -84,7 +86,7 @@ export class RatesApi {
+   }
+ 
+   /** Set the grade's rate from a from-date (null: from the beginning of time) through a to-date
+-   *  (null: until the grade's next rate), replacing the one it had for that from-date. */
++   *  (null: until the grade's next rate); setting one it already has for that from-date adds a new version. */
+   set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
+     return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
+   }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 6578e92f..ffd60471 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -80,7 +80,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </table>
+       <table data-testid="rates-list" aria-label="All rates">
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+         </thead>
+         <tbody>
+           @for (r of ownRates(); track r.grade + (r.from ?? 'start')) {
+@@ -89,6 +89,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">{{ r.pct }}</td>
++              <td data-testid="rate-version">{{ r.version }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 51950ada..efaa6018 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -40,6 +40,10 @@ public class Rate {
+     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal pct;
+ 
++    /** How many versions the rate has had: 1 when first set, one more each time it is set again. */
++    @Column(name = "version", nullable = false)
++    private int version = 1;
++
+     protected Rate() {
+     }
+ 
+@@ -86,6 +90,19 @@ public class Rate {
+         this.pct = pct.setScale(2);
+     }
+ 
++    /** How many versions the rate has had; the one it holds is the newest. */
++    public int getVersion() {
++        return version;
++    }
++
++    /** Set the rate again: the value it held stays as an older version (its change), and this becomes
++     *  the newest version, the one in force. */
++    public void newVersion(BigDecimal pct, LocalDate to) {
++        setPct(pct);
++        setTo(to);
++        version++;
++    }
++
+     /** Whether the rate is in force on or before this date. */
+     public boolean appliesBy(LocalDate date) {
+         return from == null || !from.isAfter(date);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChange.java b/src/main/java/net/officefloor/hq/app/rate/RateChange.java
+index 1c3c1c55..5cd529ea 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChange.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChange.java
+@@ -42,6 +42,10 @@ public class RateChange {
+     @Column(name = "made_on")
+     private LocalDate madeOn;
+ 
++    /** The version of the rate this change made; null when made before versions were kept. */
++    @Column(name = "version")
++    private Integer version;
++
+     protected RateChange() {
+     }
+ 
+@@ -52,6 +56,7 @@ public class RateChange {
+         this.to = rate.getTo();
+         this.pct = rate.getPct();
+         this.madeOn = madeOn;
++        this.version = rate.getVersion();
+     }
+ 
+     public Grade getGrade() {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 0ece9c26..6eee1e93 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -30,14 +30,16 @@ public class RateController {
+ 
+     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
+      *  rate applies from the beginning of time; no to-date, until the grade's next rate. Level is how many
+-     *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. */
+-    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level) {
++     *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. Version is how
++     *  many versions the rate has had; the percent is the newest's. */
++    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level, int version) {
+         static RateView of(Rate rate) {
+             return of(0, rate);
+         }
+ 
+         static RateView of(int level, Rate rate) {
+-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level);
++            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level,
++                    rate.getVersion());
+         }
+     }
+ 
+@@ -95,7 +97,8 @@ public class RateController {
+         return service.listInherited(sheetId.trim()).stream().map((r) -> RateView.of(r.level(), r.rate())).toList();
+     }
+ 
+-    /** Set the rate for a grade from a from-date through a to-date, replacing the one it had for that from-date. */
++    /** Set the rate for a grade from a from-date through a to-date, adding a new version when it
++     *  already has one for that from-date. */
+     @PutMapping("/{grade}")
+     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RateForm form) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 1d0f222b..5ae7a3cf 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -98,7 +98,8 @@ public class RateService {
+     }
+ 
+     /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time) through
+-     *  a to-date (none: until the grade's next rate), replacing the rate it had for that from-date. A
++     *  a to-date (none: until the grade's next rate). When the grade already has a rate for that from-date, the
++     *  value it held is kept as an older version and the new one becomes its newest version, the one in force. A
+      *  to-date before the from-date is refused. */
+     @Transactional
+     public Rate set(String sheetId, String user, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
+@@ -112,8 +113,7 @@ public class RateService {
+         if (rate == null) {
+             rate = new Rate(sheetId, grade, from, to, pct);
+         } else {
+-            rate.setPct(pct);
+-            rate.setTo(to);
++            rate.newVersion(pct, to);
+         }
+         Rate saved;
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 38c5b83f..ca6af335 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -43,8 +43,8 @@ public class CloneService {
+         COPIED.put("sheet_setting_dated", "setting_key, from_date, setting_value");
+         COPIED.put("setting_change", "setting_key, from_date, setting_value, made_on");
+         COPIED.put("sheet_role", "user_name, role");
+-        COPIED.put("rate", "grade, pct, from_date, to_date");
+-        COPIED.put("rate_change", "grade, from_date, to_date, pct, made_on");
++        COPIED.put("rate", "grade, pct, from_date, to_date, version");
++        COPIED.put("rate_change", "grade, from_date, to_date, pct, made_on, version");
+         COPIED.put("holiday", "holiday_date");
+         COPIED.put("void_reason", "reason");
+         COPIED.put("claim_template", "name, amount, note");
+diff --git a/src/main/resources/db/migration/V72__rate_versions.sql b/src/main/resources/db/migration/V72__rate_versions.sql
+new file mode 100644
+index 00000000..32e03426
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__rate_versions.sql
+@@ -0,0 +1,16 @@
++-- A rate is kept as versions: setting a rate for a grade and from-date that already has one keeps the
++-- value it replaces as an older version (its rate_change row) and adds a new one. The rate row holds the
++-- newest version, which is the one in force, and how many versions it has had (version: 1 for the first).
++-- Each rate_change row carries the version number it made.
++ALTER TABLE rate_change ADD COLUMN version INT;
++UPDATE rate_change c SET version = (
++    SELECT COUNT(*) FROM rate_change o
++    WHERE o.sheet_id = c.sheet_id AND o.grade = c.grade
++      AND COALESCE(o.from_date, DATE '0001-01-01') = COALESCE(c.from_date, DATE '0001-01-01')
++      AND o.id <= c.id);
++
++ALTER TABLE rate ADD COLUMN version INT DEFAULT 1 NOT NULL;
++UPDATE rate r SET version = (
++    SELECT GREATEST(COUNT(*), 1) FROM rate_change c
++    WHERE c.sheet_id = r.sheet_id AND c.grade = r.grade
++      AND COALESCE(c.from_date, DATE '0001-01-01') = r.from_key);
