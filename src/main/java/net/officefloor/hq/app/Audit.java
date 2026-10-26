@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.person.Person;
@@ -123,6 +124,22 @@ public class Audit {
             if (Person.keyOf(about.group(1)).equals(key)) return true;
         }
         return false;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's records, one line
+     * "<user> <EVENT> <count>", sorted by user then event.
+     */
+    public List<String> activity(String sheetId) {
+        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
+        for (String line : lines(sheetId, null)) {
+            Matcher head = HEAD.matcher(line);
+            if (!head.find()) continue;
+            counts.computeIfAbsent(head.group(3), (user) -> new TreeMap<>()).merge(head.group(1), 1, Integer::sum);
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, count) -> found.add(user + " " + event + " " + count)));
+        return found;
     }
 
     /** A record's field: its value runs up to the next field or the end. */

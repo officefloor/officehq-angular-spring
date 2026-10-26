@@ -13,4 +13,9 @@ export class AuditApi {
       this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params: { name } }),
     );
   }
+
+  /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event. */
+  activity(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/activity`));
+  }
 }

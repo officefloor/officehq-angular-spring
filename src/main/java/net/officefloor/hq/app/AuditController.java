@@ -71,6 +71,12 @@ public class AuditController {
         return all;
     }
 
+    /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event. */
+    @GetMapping("/activity")
+    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return audit.activity(sheetId.trim());
+    }
+
     /** The sheet's descendants: the sheets naming it as their parent, then theirs, and so on; by id. */
     private TreeSet<String> descendantsOf(String sheetId) {
         TreeSet<String> found = new TreeSet<>();

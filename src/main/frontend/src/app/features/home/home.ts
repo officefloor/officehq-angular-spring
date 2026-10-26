@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
+import { Activity } from '../audit/activity';
 import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
@@ -17,7 +18,7 @@ import { NotesList } from '../notes/notes';
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
+  imports: [AuditViewer, Activity, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -35,6 +36,7 @@ import { NotesList } from '../notes/notes';
         <app-notes />
         <app-templates />
         <app-audit-viewer />
+        <app-activity />
       }
       <app-people />
       @if (!session.sheet()) {
