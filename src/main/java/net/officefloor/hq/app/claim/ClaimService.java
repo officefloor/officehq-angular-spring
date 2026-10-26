@@ -77,6 +77,17 @@ public class ClaimService {
     @Transactional
     public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(by, sheetId, personId, amount, date, note, corrects, null);
+    }
+
+    /**
+     * Adds a claim as {@link #add(String, String, Long, BigDecimal, LocalDate, String, String)} does, carrying the
+     * external reference (stripped; blank for none). Refused too when the reference is already used on the sheet,
+     * comparing without regard to case.
+     */
+    @Transactional
+    public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         LocalDate on = dateOrEntryDate(sheetId, date);
         Person person = person(sheetId, personId);
         LocalDate dueBy = holidays.dueBy(sheetId, on, termsFor(sheetId, person, on));
@@ -84,7 +95,9 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseAfterRetirement(person, on);
         String corrected = correctedNumber(sheetId, personId, amount, corrects);
+        String reference = refOf(sheetId, ref, null);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
+        claim.setRef(reference);
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setDueBy(dueBy);
@@ -92,7 +105,8 @@ public class ClaimService {
                 dueBy, dueBy));
         logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
-        audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
+        audit.recordOnCommit(record("CLAIM_ADDED", by, person, added)
+                + (added.getRef() != null ? " ref=" + added.getRef() : ""));
         if (added.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", by, person, added));
         }
@@ -106,7 +120,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         LocalDate on = dateOrToday(sheetId, date);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -117,12 +131,14 @@ public class ClaimService {
         refuseInClosedPeriod(sheetId, claim.getDueBy());
         refuseAfterRetirement(person(sheetId, claim.getPersonId()), on);
         String corrected = correctedNumber(sheetId, claim.getPersonId(), amount, corrects);
+        String reference = refOf(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(scaled(amount));
         claim.setCorrects(corrected);
         claim.setDate(on);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setNote(noteOf(note));
+        claim.setRef(reference);
         // the save closes the editor, which releases the claim
         claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
@@ -781,6 +797,22 @@ public class ClaimService {
 
     private static BigDecimal scaled(BigDecimal amount) {
         return amount.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    /**
+     * The external reference a claim is to carry: stripped, or null when blank. Refused when another claim of the
+     * sheet than the one excluded (null for none) carries it, comparing without regard to case.
+     */
+    private String refOf(String sheetId, String ref, Long excluded) {
+        String stripped = ref == null ? "" : ref.strip();
+        if (stripped.isEmpty()) {
+            return null;
+        }
+        if (claims.refInUse(sheetId, stripped, excluded)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The reference " + stripped + " is already used on the sheet.");
+        }
+        return stripped;
     }
 
     private static String noteOf(String note) {

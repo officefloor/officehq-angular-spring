@@ -368,6 +368,7 @@ interface StatementView {
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsBy().get(p.id) ?? []"
+                  [sheetClaims]="claims()"
                   [grades]="p.grades"
                   [retiredFrom]="p.retiredFrom"
                   [people]="people()"

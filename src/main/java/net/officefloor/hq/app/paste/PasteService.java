@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
@@ -14,12 +17,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Adds a draft claim for each pasted line of name,amount,date,note, all of them or none. */
+/**
+ * Adds a draft claim for each pasted line of name,amount,date,note, all of them or none. A note ending in
+ * " #reference" gives the claim that external reference, and the note is what comes before it.
+ */
 @Service
 public class PasteService {
 
     /** A pasted line read into the claim form's fields, for a person on the sheet. */
-    private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
+    private record Line(Person person, BigDecimal amount, LocalDate date, String note, String ref) {
     }
 
     private final PersonRepository people;
@@ -37,20 +43,25 @@ public class PasteService {
     @Transactional
     public List<Claim> paste(String by, String sheetId, String text) {
         List<Line> lines = new ArrayList<>();
+        Set<String> refs = new HashSet<>();
         int n = 0;
         for (String raw : text.split("\\r?\\n")) {
             n++;
             if (raw.isBlank()) {
                 continue;
             }
-            lines.add(read(sheetId, n, raw));
+            Line line = read(sheetId, n, raw);
+            if (line.ref() != null && !line.ref().isEmpty() && !refs.add(line.ref().toLowerCase(Locale.ROOT))) {
+                throw refused("Line " + n + " repeats the reference " + line.ref() + ".");
+            }
+            lines.add(line);
         }
         if (lines.isEmpty()) {
             throw refused("Paste at least one line of name,amount,date,note.");
         }
         List<Claim> added = new ArrayList<>();
         for (Line l : lines) {
-            added.add(claims.add(by, sheetId, l.person().getId(), l.amount(), l.date(), l.note(), null));
+            added.add(claims.add(by, sheetId, l.person().getId(), l.amount(), l.date(), l.note(), null, l.ref()));
         }
         return added;
     }
@@ -85,11 +96,20 @@ public class PasteService {
                 throw refused("Line " + n + " has a date that is not yyyy-mm-dd.");
             }
         }
-        String note = f.length > 3 ? f[3] : "";
+        String note = f.length > 3 ? f[3].strip() : "";
+        String ref = null;
+        int hash = note.lastIndexOf(" #");
+        if (hash >= 0) {
+            ref = note.substring(hash + 2).strip();
+            note = note.substring(0, hash).strip();
+        }
         if (note.length() > 500) {
             throw refused("Line " + n + " has a note longer than 500 characters.");
         }
-        return new Line(person, amount, date, note);
+        if (ref != null && ref.length() > 140) {
+            throw refused("Line " + n + " has a reference longer than 140 characters.");
+        }
+        return new Line(person, amount, date, note, ref);
     }
 
     private static ResponseStatusException refused(String reason) {

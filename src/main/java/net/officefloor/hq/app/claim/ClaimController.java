@@ -35,15 +35,15 @@ public class ClaimController {
      * the date of the claim it corrects. Deferred-until is the date it was deferred until, or null; it is deferred
      * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
-     * was soft-closed.
+     * was soft-closed. Ref is its external reference, or null.
      */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
-                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
+                    c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry());
@@ -60,10 +60,12 @@ public class ClaimController {
 
     /**
      * A claim's fields as the form submits them; a missing date takes the sheet's today. A negative amount is a
-     * correction, and corrects names the number of the settled claim it corrects.
+     * correction, and corrects names the number of the settled claim it corrects. Ref is its external reference;
+     * blank for none.
      */
     public record ClaimForm(@NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount, LocalDate date,
-            @Size(max = 500) String note, @Size(max = 140) String corrects) {
+            @Size(max = 500) String note, @Size(max = 140) String corrects,
+            @Size(max = 140) String ref) {
     }
 
     /** The claims a bulk action is to change, by id. */
@@ -95,7 +97,7 @@ public class ClaimController {
             @PathVariable Long personId, @Valid @RequestBody ClaimForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.add(user, sheetId, personId, form.amount(), form.date(), form.note(),
-                form.corrects()));
+                form.corrects(), form.ref()));
     }
 
     @PutMapping("/claims/{id}")
@@ -104,7 +106,7 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody ClaimForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.update(user, sheetId, id, form.amount(), form.date(), form.note(),
-                form.corrects()));
+                form.corrects(), form.ref()));
     }
 
     /** Opens the user's editor on the claim, holding it for them until it is saved or cancelled. */

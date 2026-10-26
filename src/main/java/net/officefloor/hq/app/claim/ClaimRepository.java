@@ -44,6 +44,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     void retireNumber(@Param("sheetId") String sheetId, @Param("sequence") String sequence,
             @Param("place") Long place);
 
+    /** Whether a claim of the sheet other than the one excluded (null for none) carries the reference, in any case. */
+    @Query("SELECT COUNT(c) > 0 FROM Claim c WHERE c.sheetId = :sheetId AND LOWER(c.ref) = LOWER(:ref)"
+            + " AND (:excluded IS NULL OR c.id <> :excluded)")
+    boolean refInUse(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("excluded") Long excluded);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The claim, locked until the transaction ends, so two status changes to it never interleave. */

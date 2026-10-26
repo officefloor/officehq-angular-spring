@@ -12,6 +12,8 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  // The claim's external reference, unique on the sheet without regard to case; null for a claim with none.
+  ref: string | null;
   status: ClaimStatus;
   // Given when the claim is opened: the sheet's next (1, 2, ...) or, while the sheet numbers by period, its
   // period's next (P1-1; X-1 for no period); null for a claim never opened.
@@ -248,6 +250,13 @@ export function claimedTotal(claims: readonly Claim[]): string {
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-ref-' + personId()">Reference</label>
+      <input
+        [id]="'claim-ref-' + personId()"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -260,7 +269,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -280,6 +289,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
+            <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
             <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
@@ -425,6 +435,8 @@ export class Claims {
   readonly retiredFrom = input<string | null>(null);
   // Every person on the sheet, whom a steward can move a claim to.
   readonly people = input<readonly { id: number; name: string }[]>([]);
+  // Every claim on the sheet, whose references a claim's own must not repeat.
+  readonly sheetClaims = input<readonly Claim[]>([]);
   readonly saved = output<Claim>();
   // The claims selected for a bulk action, by id; a checkbox's change is reported, not kept here.
   readonly selected = input<ReadonlySet<number>>(new Set());
@@ -434,6 +446,7 @@ export class Claims {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  protected readonly ref = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
@@ -592,7 +605,7 @@ export class Claims {
       this.setRowError(c.id, `${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
-    const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null };
+    const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null, ref: c.ref };
     try {
       const saved = await firstValueFrom(
         this.http.put<Claim>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`, form),
@@ -630,6 +643,7 @@ export class Claims {
     this.date.set(c.date);
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
+    this.ref.set(c.ref ?? '');
     this.error.set(null);
   }
 
@@ -904,6 +918,7 @@ export class Claims {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -948,7 +963,13 @@ export class Claims {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
-    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? corrects : null };
+    const ref = this.ref().trim();
+    const refKey = ref.toLowerCase();
+    if (ref && this.sheetClaims().some((c) => c.id !== editing && c.ref?.toLowerCase() === refKey)) {
+      this.error.set(`The reference ${ref} is already used on this sheet.`);
+      return;
+    }
+    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? corrects : null, ref };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;
     try {
@@ -963,7 +984,9 @@ export class Claims {
       this.error.set(
         correction
           ? `Claim no. ${corrects} is not a settled claim of ${this.personName()}, so it cannot be corrected.`
-          : editing === null ? (conflict ? CLOSED : 'Could not add that claim.') : 'Could not save that claim.',
+          : conflict && ref
+            ? `The reference ${ref} is already used on this sheet, or the claim's period is closed.`
+            : editing === null ? (conflict ? CLOSED : 'Could not add that claim.') : 'Could not save that claim.',
       );
     } finally {
       this.submitting = false;

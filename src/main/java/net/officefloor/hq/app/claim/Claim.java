@@ -45,6 +45,10 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
+    /** The claim's external reference, unique on its sheet without regard to case; null for a claim with none. */
+    @Column(name = "ref")
+    private String ref;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
@@ -285,6 +289,14 @@ public class Claim {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public ClaimStatus getStatus() {
