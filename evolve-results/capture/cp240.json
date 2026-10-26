@@ -1,0 +1,78 @@
+{
+  "checkpoint": 240,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp240_shared-due-per-holder",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    217,
+    226,
+    228,
+    229,
+    233,
+    234
+  ],
+  "replaced_tests": [
+    "cp217_shared-claims.spec.ts::shared claims",
+    "cp226_preview-date.spec.ts::preview date scenario 1",
+    "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2",
+    "cp229_grades-editable.spec.ts::grades editable scenario 2",
+    "cp233_due-by-override.spec.ts::due by override scenario 1",
+    "cp234_tree-export.spec.ts::tree export scenario 2"
+  ],
+  "request": {
+    "spec": "A shared claim's parts are now worked out per holder: each holder's part is the claim's amount\ntimes their share divided by 100, times the rate of the holder's own grade in force on the claim's\ndate, divided by 100, rounded like the claim (0.00 when their grade has no rate); the claim's own\nperson counts the claim's due less those parts. A settled claim keeps its parts as frozen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA shared claim's parts are now worked out per holder: each holder's part is the claim's amount\ntimes their share divided by 100, times the rate of the holder's own grade in force on the claim's\ndate, divided by 100, rounded like the claim (0.00 when their grade has no rate); the claim's own\nperson counts the claim's due less those parts. A settled claim keeps its parts as frozen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b753f77f266abf788cc2b2f9669a740d3f89ae6b",
+  "reset_sha": "",
+  "preagent_sha": "18bd42fe2e2aed4dea2c79b96d2e04298b1726cf",
+  "prev_sha": "18bd42fe2e2aed4dea2c79b96d2e04298b1726cf",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9103316,
+    "input_tokens": 38,
+    "output_tokens": 11590,
+    "cache_read_tokens": 947338,
+    "cache_creation_tokens": 61114,
+    "num_turns": 20,
+    "duration_ms": 629748,
+    "duration_api_ms": 161838,
+    "model": "claude-opus-5-5",
+    "session_id": "452dbc56-7296-4eca-b775-a92b5a0f2e23",
+    "stop_reason": "success",
+    "result_text": "Each holder's part of a shared claim is now worked out from their own grade, and all 4 tests in `e2e/specs/acceptance.spec.ts` pass under `bin/e2e` (I ran it again after the final comment-only edits).\n\n**How a part is worked out now**\n- **Claims not yet settled:** the holder's part is the claim's amount \u00d7 their share / 100 \u00d7 the rate of the holder's own grade in force on the claim's date / 100. It is rounded the same way as the claim, and the rate lookup follows the claim's existing rules: inherited parent-sheet rates and rate versions that apply only to later claims.\n- **Holder's grade has no rate:** the part is 0.00, and it doesn't count as a part held. So if that person's own grade has no rate today, their due-total still shows `n/a` (the test expects this for Cam).\n- **Claim's own person:** gets the claim's due minus all the holders' parts. This can go negative, which the test expects (e.g. `due-total=-0.67`).\n- **Settled claims:** the parts are frozen as the claim's settled due \u00d7 each holder's share / 100. Later rate or grade changes don't move them.\n\n**Decisions for you to check**\n- **What \"frozen\" means:** I didn't store the parts as they stood at settle time. That would freeze Ben's part of the 20.00 claim at 2.00, but the test expects 1.00, which is the settled due of 2.00 \u00d7 50%. So frozen parts follow that older formula, and no stored data or schema change was needed.\n- **Claim with no due of its own:** if the claim's own person's grade has no rate, so the claim's due is `n/a`, no parts are counted for anyone. That's how the code already behaved; the request doesn't say, and the tests don't cover it.\n\n**Where the changes are**\n- **Server:** `rollup/Rollup.java` has a new `heldPart` calculation used when the snapshot is built. The audit `ROLLUP`/`TOTALS` lines take their figures from that snapshot.\n- **Front end:** the screen works out the same figures itself. `claims-api.ts` has a new `heldPartCents`, and `people.ts` has a new `partsOf` used by both the holder's and the owner's due-total.\n- **Comments:** I updated the ones in `ClaimShare.java` and `ClaimService.java` that described the old formula.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9103316,
+        "num_turns": 20,
+        "duration_ms": 629748,
+        "duration_api_ms": 161838,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp240.agent.jsonl",
+  "agent_diff_file": "cp240.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
