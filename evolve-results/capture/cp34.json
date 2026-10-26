@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7819bcda8e478960a909524bd42d280376863e42",
+  "reset_sha": "",
+  "preagent_sha": "1c866519d50a7137dff95dc5d5f6b5e7be4fa59a",
+  "prev_sha": "1c866519d50a7137dff95dc5d5f6b5e7be4fa59a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8287688,
+    "input_tokens": 32,
+    "output_tokens": 8428,
+    "cache_read_tokens": 684644,
+    "cache_creation_tokens": 65394,
+    "num_turns": 19,
+    "duration_ms": 138019,
+    "duration_api_ms": 80444,
+    "model": "claude-opus-5-5",
+    "session_id": "89ee5f5b-9874-4737-8594-06605dea9135",
+    "stop_reason": "success",
+    "result_text": "Bulk open now works, and `bin/e2e` passes all 4 tests (the bulk-open test plus the three existing scenarios).\n\n**How it behaves**\n- Each claim row has a checkbox, and the People section has an \"Open selected claims\" button.\n- The selected claims are opened in list order: people in the order they're listed, newest claim first within each person. They're numbered in that order.\n- Each claim is opened on its own, using the existing single-claim open. So a claim that can't be opened (already open, or dated in a closed period) writes nothing to the store or the audit file. It's just counted as refused. Each claim that does open writes the same audit lines as opening it one at a time: `CLAIM_OPENED`, `ROLLUP`, `TOTALS`.\n- Afterwards the screen shows how many were opened and how many were refused. Both counts clear when the button is pressed, so a repeat press shows fresh numbers. The selection is cleared after a successful run.\n\n**What changed**\n- **Server:** a new `ClaimBulkService` does the ordering and opens each claim in its own transaction. A new endpoint, `POST /api/sheets/{sheetId}/claims/bulk-open`, takes `{ids}` and returns the opened claims plus the refused count. If an id isn't a claim on that sheet, it counts as refused.\n- **Front end:** `claims.ts` has the per-row checkbox. `people.ts` keeps track of which claims are selected and has the button, the two counts and an error message for when the whole request fails. When the sheet is reloaded, selected claims that are no longer on it are dropped.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8287688,
+        "num_turns": 19,
+        "duration_ms": 138019,
+        "duration_api_ms": 80444,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
