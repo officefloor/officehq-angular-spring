@@ -30,6 +30,14 @@ public class GradeController {
     public record RetireForm(@NotNull Grade grade) {
     }
 
+    /** The grade to merge and the grade to merge it into, as chosen on the screen. */
+    public record MergeForm(@NotNull Grade from, @NotNull Grade into) {
+    }
+
+    /** How many people a merge gave the other grade. */
+    public record MergeResult(int merged) {
+    }
+
     private final GradeService service;
 
     public GradeController(GradeService service) {
@@ -49,5 +57,12 @@ public class GradeController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RetireForm form) {
         service.retire(sheetId.trim(), SignedInUser.name(user), form.grade());
         return list(sheetId);
+    }
+
+    /** Merge a grade into another on the sheet. */
+    @PostMapping("/merge")
+    public MergeResult merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid MergeForm form) {
+        return new MergeResult(service.merge(sheetId.trim(), SignedInUser.name(user), form.from(), form.into()).size());
     }
 }

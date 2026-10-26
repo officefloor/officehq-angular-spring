@@ -28,6 +28,12 @@ export class GradesApi {
   retire(sheetId: string, grade: Grade): Promise<GradeView[]> {
     return firstValueFrom(this.http.post<GradeView[]>(`${this.url(sheetId)}/retire`, { grade }));
   }
+
+  /** Merge a grade into another: refused for the same grade twice, or unless a steward. Answers how
+   *  many people were given the other grade. */
+  merge(sheetId: string, from: Grade, into: Grade): Promise<{ merged: number }> {
+    return firstValueFrom(this.http.post<{ merged: number }>(`${this.url(sheetId)}/merge`, { from, into }));
+  }
 }
 
 // The active sheet's grades. Each load of a sheet re-reads them from the store.
@@ -42,6 +48,8 @@ export class Grades {
   readonly retired = computed(() => new Set(this.state().filter((g) => g.retired).map((g) => g.grade)));
   /** The refusal of the last loading of the grades, or blank. */
   readonly loadError = signal('');
+  /** How many grade merges this screen has made: the people's grades are re-read on each. */
+  readonly merges = signal(0);
 
   constructor() {
     effect(() => {
@@ -65,5 +73,12 @@ export class Grades {
   async retire(sheetId: string, grade: Grade): Promise<void> {
     const list = await this.api.retire(sheetId, grade);
     if (this.session.sheet()?.id === sheetId) this.state.set(list);
+  }
+
+  /** Merge a grade into another on the active sheet; how many people were given the other grade. */
+  async merge(sheetId: string, from: Grade, into: Grade): Promise<number> {
+    const result = await this.api.merge(sheetId, from, into);
+    this.merges.update((n) => n + 1);
+    return result.merged;
   }
 }

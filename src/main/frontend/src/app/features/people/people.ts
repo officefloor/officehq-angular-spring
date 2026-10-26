@@ -1061,6 +1061,12 @@ export class People {
         void untracked(() => this.reloadSnapshots(sheet.id));
       }
     });
+    // A grade merge gives people another grade, so they are re-read.
+    effect(() => {
+      if (this.gradeStore.merges() === 0) return;
+      const sheet = untracked(() => this.session.sheet());
+      if (sheet) void this.reload(sheet.id);
+    });
     // A change of the sheet's parent changes the rates its dues fall back on, so they are re-read.
     effect(() => {
       if (this.sheetParent.changes() === 0) return;
