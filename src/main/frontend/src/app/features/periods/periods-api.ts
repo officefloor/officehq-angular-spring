@@ -36,6 +36,12 @@ export interface OpeningsView {
   periods: PeriodView[];
 }
 
+/** What a rollover did: how many periods it made, and the sheet's periods now. */
+export interface RolloverView {
+  made: number;
+  periods: PeriodView[];
+}
+
 export interface PeriodForm {
   name: string;
   from: string;
@@ -80,6 +86,13 @@ export class PeriodsApi {
    *  generator does: the periods made. */
   generateFiscalYear(sheetId: string, year: number): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-fy`, { year }));
+  }
+
+  /** Roll the fiscal year starting in a calendar year over: generate the next fiscal year's periods and
+   *  carry each person's open figure into its first period. Refused unless the user is a steward, and when
+   *  the year has no periods. */
+  rollover(sheetId: string, year: number): Promise<RolloverView> {
+    return firstValueFrom(this.http.post<RolloverView>(`${this.url(sheetId)}/rollover`, { year }));
   }
 
   /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, leaving out those whose

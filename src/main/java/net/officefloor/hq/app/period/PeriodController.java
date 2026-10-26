@@ -61,6 +61,14 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The calendar year the fiscal year rolled over starts in, as entered. */
+    public record RolloverForm(@NotNull @Min(1) @Max(9997) Integer year) {
+    }
+
+    /** What a rollover did: how many periods it made, and the sheet's periods now. */
+    public record RolloverView(int made, List<PeriodView> periods) {
+    }
+
     /** The calendar year whose quarters are generated, as entered. */
     public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
     }
@@ -101,6 +109,16 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GenerateFiscalYearForm form) {
         return service.generateFiscalYear(sheetId.trim(), SignedInUser.name(user), form.year()).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** Roll a fiscal year over into the next, carrying each person's open figure into its first period;
+     *  a steward only. */
+    @PostMapping("/rollover")
+    public RolloverView rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RolloverForm form) {
+        String sheet = sheetId.trim();
+        int made = service.rollover(sheet, SignedInUser.name(user), form.year()).size();
+        return new RolloverView(made, service.list(sheet).stream().map(PeriodView::of).toList());
     }
 
     /** Generate the four calendar quarters of a year, leaving out those whose name is in use or whose days

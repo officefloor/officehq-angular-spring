@@ -224,10 +224,7 @@ public class PeriodService {
             // Counted by the status the claim had at the end of the period's last day; a reached retirement
             // only leaves out a claim still open now, as it touches only live claims. A hold leaves none out.
             ClaimStatus then = claim.statusAsOf(period.getTo());
-            boolean bound = claim.isStated();
-            boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
-                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isRetiredBy(today))));
-            if (!counts) continue;
+            if (!counts(claim, person, then, today)) continue;
             // Carried: still open at the end of this period, belonging to a period ending before it starts.
             boolean carried = then.isOpen() && all.stream()
                     .anyMatch((p) -> p.contains(claim.getDueBy()) && p.getTo().isBefore(period.getFrom()));
@@ -247,6 +244,68 @@ public class PeriodService {
         audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));
         return saved;
+    }
+
+    /** Whether a claim counts toward a period's figures, by the status it had at the end of the period's
+     *  last day: open or settled then, not deferred on the sheet's today, and, when unbound and open still,
+     *  its person's retirement date not reached. */
+    private static boolean counts(Claim claim, Person person, ClaimStatus then, LocalDate today) {
+        return then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
+                || (then.isOpen() && (claim.isStated() || !claim.getStatus().isOpen() || !person.isRetiredBy(today))));
+    }
+
+    /** Roll a fiscal year over: generate the next fiscal year's twelve monthly periods as
+     *  {@link #generateFiscalYear} does, then add to each person's opening balance for the new year's first
+     *  period their open figure at the end of the old year's last period: the due of their claims that
+     *  count, belonging to a period of the old year, and OPEN or PENDING at that period's end. Refused unless
+     *  the user acts as a steward, and when the old year has no periods. The periods made, in date order. */
+    @Transactional
+    public List<Period> rollover(String sheetId, String user, int year) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may roll the year over.");
+        }
+        YearMonth first = YearMonth.of(year, settings.fiscalStartMonth(sheetId));
+        LocalDate oldFrom = first.atDay(1);
+        LocalDate oldTo = first.plusMonths(11).atEndOfMonth();
+        List<Period> oldYear = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter((p) -> !p.getFrom().isBefore(oldFrom) && !p.getTo().isAfter(oldTo)).toList();
+        if (oldYear.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year FY" + year + " has no periods.");
+        }
+        Period last = oldYear.stream().max(Comparator.comparing(Period::getTo)).orElseThrow();
+        LocalDate today = sheets.today(sheetId);
+        List<Person> listed = people.findInListOrder(sheetId);
+        Map<Long, Person> peopleById = listed.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, BigDecimal> open = new HashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = peopleById.get(claim.getPersonId());
+            if (person == null) continue;
+            ClaimStatus then = claim.statusAsOf(last.getTo());
+            if (!counts(claim, person, then, today) || !then.isOpen()) continue;
+            if (oldYear.stream().noneMatch((p) -> p.contains(claim.getDueBy()))) continue;
+            BigDecimal due = claimService.due(sheetId, person, claim);
+            if (due != null) open.merge(person.getId(), due, BigDecimal::add);
+        }
+
+        List<Period> made = generateMonths(sheetId, user, first.plusMonths(12), first.plusMonths(23));
+        LocalDate newFrom = first.plusMonths(12).atDay(1);
+        LocalDate newTo = first.plusMonths(23).atEndOfMonth();
+        Period opening = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter((p) -> !p.getFrom().isBefore(newFrom) && !p.getTo().isAfter(newTo)).findFirst().orElse(null);
+        if (opening != null) {
+            for (Person person : listed) {
+                BigDecimal amount = open.get(person.getId());
+                if (amount == null || amount.signum() == 0) continue;
+                opening.addOpening(person.getId(), amount);
+                audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                        + " period=" + opening.getName() + " amount=" + amount.setScale(2).toPlainString());
+            }
+            periods.saveAndFlush(opening);
+        }
+        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
+        return made;
     }
 
     /** Reopen a closed or soft-closed period, making its due-total live again. Refused when the sheet's permission

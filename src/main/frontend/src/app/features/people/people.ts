@@ -37,6 +37,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
 import { ImportOpenings } from '../periods/import-openings';
+import { Rollover } from '../periods/rollover';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
 import { TreeSearch } from '../summary/tree-search';
@@ -51,7 +52,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, Rollover, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -110,6 +111,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <app-quick-add (added)="quickAdded($event)" />
         <app-paste-claims (added)="pasted($event)" />
         <app-import-openings (pasted)="periods.set($event)" />
+        <app-rollover (rolled)="periods.set($event)" />
         <app-generate-plans (generated)="pasted($event)" />
         <app-import-people (added)="imported($event)" />
         <label>
