@@ -134,6 +134,18 @@ public class ClaimController {
         return ClaimView.of(service.reject(user, sheetId, id, form.reason()));
     }
 
+    /** The person a claim is to move to, by id. */
+    public record ReassignForm(@NotNull Long personId) {
+    }
+
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody ReassignForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.reassign(user, sheetId, id, form.personId()));
+    }
+
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

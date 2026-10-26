@@ -216,6 +216,7 @@ interface StatementView {
                   [claims]="claimsBy().get(p.id) ?? []"
                   [grades]="p.grades"
                   [retiredFrom]="p.retiredFrom"
+                  [people]="people()"
                   [selected]="selectedClaims()"
                   (selectedChange)="selectClaim($event.id, $event.checked)"
                   (saved)="claimSaved($event)"
@@ -566,11 +567,12 @@ export class People {
   }
 
   protected claimSaved(saved: Claim): void {
-    this.claims.update((list) =>
-      list.some((c) => c.id === saved.id)
-        ? list.map((c) => (c.id === saved.id ? saved : c))
-        : [saved, ...list],
-    );
+    this.claims.update((list) => {
+      const was = list.find((c) => c.id === saved.id);
+      // a new claim, or one moved to another person, is listed first: its person's newest
+      if (!was || was.personId !== saved.personId) return [saved, ...list.filter((c) => c.id !== saved.id)];
+      return list.map((c) => (c.id === saved.id ? saved : c));
+    });
   }
 
   protected selectClaim(id: number, checked: boolean): void {

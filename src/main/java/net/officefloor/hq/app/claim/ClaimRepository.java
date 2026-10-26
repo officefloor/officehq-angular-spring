@@ -5,12 +5,21 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+
+    /** The sheet's claims in list order: newest listed first. */
+    List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
+
+    /** Gives the claim the next place in the list, so it is listed first under its person. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE claim SET listed = NEXT VALUE FOR claim_listing WHERE id = :id", nativeQuery = true)
+    void relist(@Param("id") Long id);
 
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 

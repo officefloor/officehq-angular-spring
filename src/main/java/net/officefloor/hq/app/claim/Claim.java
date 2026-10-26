@@ -82,6 +82,13 @@ public class Claim {
     @Column(name = "rounds_on", nullable = false)
     private LocalDate roundsOn;
 
+    /**
+     * The claim's place in the list, newest first: the next place when it is added or moved to another person. The
+     * store gives it; a move takes the next through {@link ClaimRepository#relist}.
+     */
+    @Column(name = "listed", insertable = false, updatable = false)
+    private Long listed;
+
     protected Claim() {
     }
 
@@ -125,6 +132,15 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** Moves the claim to another person of the sheet. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public Long getListed() {
+        return listed;
     }
 
     public BigDecimal getAmount() {

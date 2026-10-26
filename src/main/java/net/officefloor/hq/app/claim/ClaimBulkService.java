@@ -39,9 +39,10 @@ public class ClaimBulkService {
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
             personOrder.put(p.getId(), personOrder.size());
         }
-        List<Long> ordered = repository.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Long> ordered = repository.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder())
                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
                 .map(Claim::getId).toList();
         List<Claim> opened = new ArrayList<>();

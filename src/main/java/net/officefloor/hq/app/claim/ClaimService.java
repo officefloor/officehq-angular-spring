@@ -53,7 +53,7 @@ public class ClaimService {
     /** All the claims on the sheet, newest first. */
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
     }
 
     /**
@@ -200,6 +200,38 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_REJECTED", by, person(sheetId, saved.getPersonId()), saved)
                 + " reason=" + why);
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * A steward moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
+     * loses any figure a statement bound it to (it is live again until its new person's next statement), and is
+     * listed as its new person's newest claim. Refused unless the user is a steward, for a settled or voided claim,
+     * to the person it is already with, in a closed period, and when it is dated after the new person's retirement.
+     */
+    @Transactional
+    public Claim reassign(String by, String sheetId, Long id, Long toPersonId) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can move a claim.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot move.");
+        }
+        if (claim.getPersonId().equals(toPersonId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already that person's.");
+        }
+        Person from = person(sheetId, claim.getPersonId());
+        Person to = person(sheetId, toPersonId);
+        refuseAfterRetirement(to, claim.getDate());
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        Claim saved = claims.saveAndFlush(claim);
+        claims.relist(saved.getId());
+        audit.recordOnCommit(record("CLAIM_REASSIGNED", by, to, saved) + " from=" + from.getName() + " to="
+                + to.getName());
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

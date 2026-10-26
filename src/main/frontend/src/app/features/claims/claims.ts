@@ -241,6 +241,22 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
                 Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+              <select
+                [id]="'claim-reassign-to-' + c.id"
+                data-testid="claim-reassign-to"
+                (change)="setReassignTo(c.id, value($event))"
+              >
+                <option value="" [selected]="!reassignTo()[c.id]">Choose a person</option>
+                @for (q of people(); track q.id) {
+                  @if (q.id !== c.personId) {
+                    <option [value]="q.id" [selected]="reassignTo()[c.id] === '' + q.id">{{ q.name }}</option>
+                  }
+                }
+              </select>
+              <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
+                Move<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <button type="button" data-testid="claim-edit" (click)="edit(c)">
                 Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -271,6 +287,8 @@ export class Claims {
   readonly grades = input<readonly DatedGrade[]>([]);
   // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
   readonly retiredFrom = input<string | null>(null);
+  // Every person on the sheet, whom a steward can move a claim to.
+  readonly people = input<readonly { id: number; name: string }[]>([]);
   readonly saved = output<Claim>();
   // The claims selected for a bulk action, by id; a checkbox's change is reported, not kept here.
   readonly selected = input<ReadonlySet<number>>(new Set());
@@ -288,6 +306,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   // The reason typed to reject each pending claim, by claim id.
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  // The person (by id) chosen to move each claim to, by claim id.
+  protected readonly reassignTo = signal<Record<number, string>>({});
 
   protected readonly dueOf = dueOf;
 
@@ -299,7 +319,7 @@ export class Claims {
   protected readonly overdue = overdue;
 
   protected value(e: Event): string {
-    return (e.target as HTMLInputElement).value;
+    return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
   protected checked(e: Event): boolean {
@@ -361,6 +381,43 @@ export class Claims {
               ? 'You opened this claim, so another steward must approve it.'
               : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
+    }
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTo.update((r) => ({ ...r, [id]: personId }));
+    this.clearRowError(id);
+  }
+
+  /** A steward moves the claim to the chosen person; a settled or voided claim cannot move. */
+  protected async reassign(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = this.reassignTo()[c.id] ?? '';
+    if (!to) {
+      this.setRowError(c.id, 'Choose the person to move this claim to.');
+      return;
+    }
+    if (c.status === 'SETTLED' || c.status === 'VOID') {
+      this.setRowError(c.id, `A ${c.status} claim cannot move.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/reassign`;
+    try {
+      const moved = await firstValueFrom(this.http.post<Claim>(url, { personId: Number(to) }));
+      this.reassignTo.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(moved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.setRowError(
+        c.id,
+        forbidden ? 'Only a steward can move a claim.' : `This ${c.status} claim cannot be moved to that person.`,
+      );
     }
   }
 
