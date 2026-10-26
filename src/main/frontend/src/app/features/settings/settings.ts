@@ -33,8 +33,8 @@ interface SettingsView {
 
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
- * clerk-limit, floor, terms, terms-<grade>, late-pct, cap, proof-threshold or note-threshold. The value is null for
- * none (a blank clerk limit, cap, proof threshold or note threshold).
+ * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold or note-threshold. The value
+ * is null for none (a blank clerk limit, grace, cap, proof threshold or note threshold).
  */
 interface DatedSetting {
   key: string;
@@ -43,7 +43,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}` | `grace-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -139,13 +139,14 @@ export class SettingsStore {
   /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
   readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
-   * What an overdue claim's late charge follows: the sheet's today and the late percent in force on each 30-day
-   * boundary past its due-by; and the policy date in force (the sheet's today when blank), which decides how live figures round.
+   * What an overdue claim's late charge follows: the sheet's today, the grace days a grade has in force on a claim's
+   * date and the late percent in force on each 30-day boundary past its due-by plus that grace; and the policy date in force (the sheet's today when blank), which decides how live figures round.
    */
   readonly lateness = computed(() => ({
     today: this.session.sheetToday(),
     latePct: this.latePct(),
     policyDate: this.policyDate() ?? this.session.sheetToday(),
+    grace: (grade: string | null, date: string) => this.graceFor(grade, date),
   }));
 
   /** Re-read the sheet's settings from the store. */
@@ -191,7 +192,11 @@ export class SettingsStore {
    * already recorded from that date is replaced.
    */
   async setDated(sheet: string, key: DatedKey, value: string | number | null, from: string | null): Promise<void> {
-    const path = key.startsWith('terms-') ? `grade-terms/${encodeURIComponent(key.slice('terms-'.length))}` : key;
+    const path = key.startsWith('terms-')
+      ? `grade-terms/${encodeURIComponent(key.slice('terms-'.length))}`
+      : key.startsWith('grace-')
+        ? `grade-grace/${encodeURIComponent(key.slice('grace-'.length))}`
+        : key;
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/${path}`, { value, from }),
     );
@@ -203,6 +208,17 @@ export class SettingsStore {
     const own = grade ? valueOn(this.dated(), `terms-${grade}`, date) : undefined;
     const terms = own ?? valueOn(this.dated(), 'terms', date);
     return terms == null ? DEFAULT_TERMS : Number(terms);
+  }
+
+  /** The grace days the grade has in force on the date; 0 with none (blank, or none recorded). */
+  graceFor(grade: string | null, date: string | null): number {
+    const grace = grade ? valueOn(this.dated(), `grace-${grade}`, date) : undefined;
+    return grace == null ? 0 : Number(grace);
+  }
+
+  /** The grace days recorded for the grade in force on the date, as text; blank with none. */
+  graceShown(grade: string, date: string | null): string {
+    return valueOn(this.dated(), `grace-${grade}`, date) ?? '';
   }
 
   async setPolicyDate(sheet: string, value: string | null): Promise<void> {
@@ -330,6 +346,27 @@ export class SettingsStore {
             [value]="from()[gradeKey(g)] ?? ''"
             (input)="setFrom(gradeKey(g), value($event))"
             (change)="setFrom(gradeKey(g), value($event))"
+          />
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (days past its due-by before a claim is overdue; blank for none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGrace()[g] ?? ''"
+            (input)="setGradeGraceField(g, value($event))"
+            (keydown.delete)="gradeGraceChanged.add(g); settingsError.set(null)"
+            (keydown.backspace)="gradeGraceChanged.add(g); settingsError.set(null)"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} from (blank for the sheet's today)</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            type="date"
+            [value]="from()[graceKey(g)] ?? ''"
+            (input)="setFrom(graceKey(g), value($event))"
+            (change)="setFrom(graceKey(g), value($event))"
           />
         }
         <label for="setting-late-pct">Late percent (added for every full 30 days a claim is overdue)</label>
@@ -479,6 +516,12 @@ export class SettingsStore {
           <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ store.termsFor(g, session.sheetToday()) }}</strong> days
         </p>
       }
+      @for (g of grades; track g) {
+        <p>
+          Grace days in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ store.graceShown(g, session.sheetToday()) }}</strong>
+        </p>
+      }
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePctToday() }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
       <p>
@@ -563,6 +606,7 @@ export class Settings {
   protected readonly floor = signal('');
   protected readonly terms = signal('');
   protected readonly gradeTerms = signal<Readonly<Record<string, string>>>({});
+  protected readonly gradeGrace = signal<Readonly<Record<string, string>>>({});
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
@@ -579,6 +623,7 @@ export class Settings {
   protected floorChanged = false;
   protected termsChanged = false;
   protected readonly gradeTermsChanged = new Set<string>();
+  protected readonly gradeGraceChanged = new Set<string>();
   protected latePctChanged = false;
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
@@ -621,6 +666,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected setGradeGraceField(grade: string, v: string): void {
+    this.gradeGrace.update((t) => ({ ...t, [grade]: v }));
+    this.gradeGraceChanged.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected setPermField(action: string, v: string): void {
     this.perms.update((p) => ({ ...p, [action]: v }));
     this.permsChanged.add(action);
@@ -629,6 +680,10 @@ export class Settings {
 
   protected gradeKey(grade: string): DatedKey {
     return `terms-${grade}`;
+  }
+
+  protected graceKey(grade: string): DatedKey {
+    return `grace-${grade}`;
   }
 
   // A from-date typed for a setting whose value field holds a value saves it from that date.
@@ -658,7 +713,11 @@ export class Settings {
         this.noteThresholdChanged ||= this.noteThreshold().trim() !== '';
         break;
       default:
-        if ((this.gradeTerms()[key.slice('terms-'.length)] ?? '').trim() !== '') {
+        if (key.startsWith('grace-')) {
+          if ((this.gradeGrace()[key.slice('grace-'.length)] ?? '').trim() !== '') {
+            this.gradeGraceChanged.add(key.slice('grace-'.length));
+          }
+        } else if ((this.gradeTerms()[key.slice('terms-'.length)] ?? '').trim() !== '') {
           this.gradeTermsChanged.add(key.slice('terms-'.length));
         }
     }
@@ -699,6 +758,14 @@ export class Settings {
     for (const [g, t] of gradeTerms) {
       if (!DAYS.test(t)) {
         this.settingsError.set(`Enter terms for grade ${g} as a whole number of days, 0 or more.`);
+        return;
+      }
+    }
+    const gradeGrace = new Map<string, string>();
+    for (const g of this.gradeGraceChanged) gradeGrace.set(g, (this.gradeGrace()[g] ?? '').trim());
+    for (const [g, t] of gradeGrace) {
+      if (t && !DAYS.test(t)) {
+        this.settingsError.set(`Enter grace days for grade ${g} as a whole number of days, 0 or more, or leave it blank for none.`);
         return;
       }
     }
@@ -756,6 +823,7 @@ export class Settings {
     if (this.floorChanged) keys.push('floor');
     if (this.termsChanged) keys.push('terms');
     for (const g of gradeTerms.keys()) keys.push(`terms-${g}`);
+    for (const g of gradeGrace.keys()) keys.push(`grace-${g}`);
     if (this.latePctChanged) keys.push('late-pct');
     if (this.capChanged) keys.push('cap');
     if (this.proofThresholdChanged) keys.push('proof-threshold');
@@ -787,6 +855,10 @@ export class Settings {
       for (const [g, t] of gradeTerms) {
         await this.store.setDated(sheet, `terms-${g}`, Number(t), from.get(`terms-${g}`) ?? null);
         if ((this.gradeTerms()[g] ?? '').trim() === t) this.gradeTermsChanged.delete(g);
+      }
+      for (const [g, t] of gradeGrace) {
+        await this.store.setDated(sheet, `grace-${g}`, t ? Number(t) : null, from.get(`grace-${g}`) ?? null);
+        if ((this.gradeGrace()[g] ?? '').trim() === t) this.gradeGraceChanged.delete(g);
       }
       if (this.latePctChanged) {
         await this.store.setDated(sheet, 'late-pct', latePct, from.get('late-pct') ?? null);

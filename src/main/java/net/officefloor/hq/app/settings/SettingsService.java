@@ -226,6 +226,16 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Records the grace days for one grade (null for none) from the date (null for the sheet's today): a claim dated on
+     * or after it whose person has the grade on its date is overdue only once its due-by plus them is before the
+     * sheet's today, and its late charge's 30-day boundaries count from there. The live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setGradeGrace(String by, String sheetId, String grade, Integer days, LocalDate from) {
+        return record(by, sheetId, Sheet.GRACE + "-" + grade, days == null ? null : String.valueOf(days), from, true);
+    }
+
+    /**
      * Records the sheet's late percent from the date (null for the sheet's today): the percent of an overdue claim's
      * figure added for each 30-day boundary past its due-by falling on or after it. Settled figures keep what
      * they were; the live figures it moves are rolled up.

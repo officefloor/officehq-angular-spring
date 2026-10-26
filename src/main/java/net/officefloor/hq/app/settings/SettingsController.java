@@ -58,7 +58,7 @@ public class SettingsController {
     }
 
     /**
-     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, late-pct, cap,
+     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap,
      * proof-threshold or note-threshold), in force
      * from its from-date; null for none.
      */
@@ -134,6 +134,13 @@ public class SettingsController {
 
     /** The grace days as the form submits them: a whole number of days, 0 or more, or null for blank (off). */
     public record GraceDaysForm(@Min(0) @Max(99999) Integer value) {
+    }
+
+    /**
+     * A grade's grace days as the form submits them: a whole number of days, 0 or more, or null for blank (none); from
+     * the date, or null for the sheet's today.
+     */
+    public record GradeGraceForm(@Min(0) @Max(99999) Integer value, LocalDate from) {
     }
 
     /** The terms in force on the sheet's today for one grade that has its own, in whole days. */
@@ -215,6 +222,14 @@ public class SettingsController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody TermsForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setGradeTerms(user, sheetId, grade, form.value(), form.from()));
+    }
+
+    @PutMapping("/settings/grade-grace/{grade}")
+    public SettingsView setGradeGrace(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody GradeGraceForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setGradeGrace(user, sheetId, grade, form.value(), form.from()));
     }
 
     @PutMapping("/settings/late-pct")

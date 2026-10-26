@@ -130,9 +130,22 @@ export function activeOn(c: Claim, today: string | null): boolean {
   return isOpen(c) && today !== null && plusDays(today, -29) <= c.date && c.date <= today;
 }
 
-/** Whether a claim is overdue: open (or pending), not deferred, and due by a date before the sheet's today. */
-export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && !deferred(c, today) && c.dueBy < today;
+/**
+ * The date after which a claim is overdue: its due-by plus the grace days (those its person's grade in force on its
+ * date has in force on that date). Its late charge's 30-day boundaries count from it; the due-by shown is unchanged.
+ */
+export function lateFrom(c: Claim, grace: number): string {
+  return grace > 0 ? plusDays(c.dueBy, grace) : c.dueBy;
+}
+
+/** Whether a claim is overdue: open (or pending), not deferred, and its due-by plus its grace is before the sheet's today. */
+export function overdue(c: Claim, today: string | null, grace = 0): boolean {
+  return isOpen(c) && today !== null && !deferred(c, today) && lateFrom(c, grace) < today;
+}
+
+/** The grace days of the claim: those its person's grade in force on its date has in force on that date. */
+export function graceOf(c: Claim, grades: readonly DatedGrade[], late: Lateness): number {
+  return late.grace(gradeOn(grades, c.date), c.date);
 }
 
 /** The floor in force on a date. */
@@ -146,6 +159,8 @@ export interface Lateness {
   today: string | null;
   latePct: (date: string) => string;
   policyDate: string | null;
+  /** The grace days the grade has in force on a date; 0 with none. */
+  grace: (grade: string | null, date: string) => number;
 }
 
 /** The whole days from one date (yyyy-mm-dd) to another. */
@@ -166,18 +181,19 @@ export function plusDays(date: string, days: number): string {
 /**
  * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
  * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
- * the late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, rounded like
+ * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure, rounded like
  * the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
  * statement. A correction has neither.
  */
-export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness): string | null {
+export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
   const figure = figureOf(c, rates, late.policyDate);
   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
-  if (!overdue(c, late.today)) return atLeast(figure, floor(c.date));
-  const periods = Math.floor(daysBetween(c.dueBy, late.today!) / 30);
+  if (!overdue(c, late.today, grace)) return atLeast(figure, floor(c.date));
+  const from = lateFrom(c, grace);
+  const periods = Math.floor(daysBetween(from, late.today!) / 30);
   const halfUp = roundsHalfUp(c, late.policyDate);
   const charges = Array.from({ length: Math.max(periods, 0) }, (_, k) =>
-    dueOn(figure, late.latePct(plusDays(c.dueBy, 30 * (k + 1))), halfUp),
+    dueOn(figure, late.latePct(plusDays(from, 30 * (k + 1))), halfUp),
   );
   return atLeast(sumSkippingNa([figure, ...charges]), floor(c.date));
 }
@@ -264,9 +280,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
-            <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
+            <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred">{{ deferred(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
             <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
@@ -456,6 +472,10 @@ export class Claims {
   /** Every rate set for the person's grade in force on the date. */
   protected ratesOn(date: string): readonly RateView[] {
     return this.rateStore.rates().get(gradeOn(this.grades(), date)) ?? [];
+  }
+  /** The claim's grace days: those its person's grade in force on its date has in force on that date. */
+  protected graceOn(c: Claim): number {
+    return graceOf(c, this.grades(), this.settings.lateness());
   }
   protected readonly overdue = overdue;
   protected readonly deferred = deferred;

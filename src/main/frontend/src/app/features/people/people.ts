@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -510,7 +510,7 @@ export class People {
       const counted = this.liveBy().get(p.id) ?? [];
       // the grades whose rate today decides n/a: the one in force today and each counted claim's
       const grades = [this.gradeToday(p), ...counted.map((c) => gradeOn(p.grades, c.date))];
-      const dues = counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late));
+      const dues = counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late)));
       if (!grades.some((g) => current.has(g)) && dues.every((d) => d === null)) {
         by.set(p.id, null);
         continue;
@@ -530,7 +530,7 @@ export class People {
     const by = new Map<number, { settled: string; open: string }>();
     for (const [id, list] of this.liveBy()) {
       const own = grades.get(id) ?? [];
-      const due = (c: Claim) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late);
+      const due = (c: Claim) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
       by.set(id, {
         settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
         open: sumSkippingNa(list.filter(isOpen).map(due)),
@@ -570,7 +570,7 @@ export class People {
         return {
           personId: c.personId,
           dueBy: c.dueBy,
-          figure: dueOf(c, rates.get(grade) ?? [], floor, late),
+          figure: dueOf(c, rates.get(grade) ?? [], floor, late, late.grace(grade, c.date)),
           status: c.status,
           log: c.log,
         };
@@ -631,10 +631,12 @@ export class People {
   });
   // The sheet's due-total: trimmed of the highest and lowest person's figure when three or more have one.
   protected readonly dueTotal = computed(() => trimmedSum([...this.dueBy().values()]));
-  // The claims counted live that are overdue: open and due by a date before the sheet's today.
+  // The claims counted live that are overdue: open and due by a date (plus its grace) before the sheet's today.
   protected readonly overdueClaims = computed(() => {
     const today = this.session.sheetToday();
-    return this.liveClaims().filter((c) => overdue(c, today));
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const late = this.settings.lateness();
+    return this.liveClaims().filter((c) => overdue(c, today, graceOf(c, grades.get(c.personId) ?? [], late)));
   });
   protected readonly overdueBy = computed(() => {
     const by = new Map<number, Claim[]>();
@@ -650,7 +652,7 @@ export class People {
     const by = new Map<number, string>();
     for (const [id, list] of this.overdueBy()) {
       const own = grades.get(id) ?? [];
-      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late))));
+      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late)))));
     }
     return by;
   });
@@ -670,7 +672,7 @@ export class People {
       const own = grades.get(id) ?? [];
       const buckets: (string | null)[][] = [[], [], []];
       for (const c of list.filter(isOpen)) {
-        const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late);
+        const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
         buckets[c.date >= from30 ? 0 : c.date >= from60 ? 1 : 2].push(due);
       }
       by.set(id, buckets.map(sumSkippingNa));

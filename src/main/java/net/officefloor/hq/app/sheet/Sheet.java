@@ -33,6 +33,8 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The key prefix of a grade's grace days: grace-<grade>. */
+    public static final String GRACE = "grace";
 
     /** The floor, the terms and the late percent a sheet starts with, in force before any is recorded. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
@@ -195,6 +197,17 @@ public class Sheet {
     /** The terms a claim dated on the date has when its person has the grade: the grade's own, else the sheet's. */
     public int termsFor(String grade, LocalDate on) {
         return gradeTermsOn(grade, on).orElseGet(() -> termsOn(on));
+    }
+
+    /**
+     * The grace days recorded for the grade in force on the date: the days past its due-by a claim dated on the date,
+     * whose person has the grade then, goes on before it is overdue; 0 when none are (blank, or none recorded).
+     */
+    public int graceOn(String grade, LocalDate on) {
+        if (grade == null) {
+            return 0;
+        }
+        return inForce(GRACE + "-" + grade, on).map(DatedSetting::getValue).map(Integer::valueOf).orElse(0);
     }
 
     /**

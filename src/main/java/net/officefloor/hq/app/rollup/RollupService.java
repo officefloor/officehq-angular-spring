@@ -95,12 +95,12 @@ public class RollupService {
                 // the claim's rate is the one its person's grade in force on its date has
                 BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
                 if (c.getSettledDue() == null) {
-                    figure = ClaimService.liveDue(figure, c, sheet, c.getStatus().isOpen());
+                    figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
                 }
                 if (figure != null) {
                     kept = true;
                     due = due.add(figure);
-                    if (isOverdue(c, today)) {
+                    if (isOverdue(c, p, sheet, today)) {
                         overdue = overdue.add(figure);
                     }
                 }
@@ -182,10 +182,13 @@ public class RollupService {
         return rate == null ? null : ClaimService.dueOn(c.getAmount(), rate.getPct(), sheet.roundingOn(c.getRoundsOn()));
     }
 
-    /** Whether a claim is overdue: open (or pending), not deferred, and due by a date before the sheet's today. */
-    private static boolean isOverdue(Claim c, LocalDate today) {
+    /**
+     * Whether a claim is overdue: open (or pending), not deferred, and its due-by plus its grace (see
+     * {@link ClaimService#lateFrom}) is before the sheet's today.
+     */
+    private static boolean isOverdue(Claim c, Person p, Sheet sheet, LocalDate today) {
         return c.getStatus().isOpen() && today != null && !c.isDeferredOn(today) && c.getDueBy() != null
-                && c.getDueBy().isBefore(today);
+                && ClaimService.lateFrom(c, p, sheet).isBefore(today);
     }
 
     private static String text(BigDecimal value) {

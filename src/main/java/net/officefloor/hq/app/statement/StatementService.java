@@ -181,7 +181,7 @@ public class StatementService {
             } else {
                 figure = bound ? c.getStatedDue() : rateFigure(ratesThen, then, person.gradeOn(c.getDate()), c);
                 kept |= bound && figure != null;
-                due = ClaimService.liveDue(figure, c, then, status.isOpen());
+                due = ClaimService.liveDue(figure, c, person, then, status.isOpen());
             }
             c.bind(figure);
             count++;
