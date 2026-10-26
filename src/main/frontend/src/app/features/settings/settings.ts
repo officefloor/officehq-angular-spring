@@ -109,7 +109,7 @@ export class SettingsStore {
     const dated = this.dated();
     return (date: string | null): string => valueOn(dated, 'floor', date) ?? DEFAULT_FLOOR;
   });
-  /** The late percent in force on a date: what an overdue claim dated on it gains for every full 30 days. */
+  /** The late percent in force on a date: what an overdue claim gains for a 30-day boundary past its due-by falling on it. */
   readonly latePct = computed(() => {
     const dated = this.dated();
     return (date: string | null): string => valueOn(dated, 'late-pct', date) ?? DEFAULT_LATE_PCT;
@@ -133,8 +133,8 @@ export class SettingsStore {
   /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
   readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
-   * What an overdue claim's late charge follows: the sheet's today and the late percent in force on the claim's
-   * date; and the policy date in force (the sheet's today when blank), which decides how live figures round.
+   * What an overdue claim's late charge follows: the sheet's today and the late percent in force on each 30-day
+   * boundary past its due-by; and the policy date in force (the sheet's today when blank), which decides how live figures round.
    */
   readonly lateness = computed(() => ({
     today: this.session.sheetToday(),

@@ -149,8 +149,8 @@ public class Sheet {
     }
 
     /**
-     * The percent of an overdue claim's figure added for every full 30 days it is overdue, in force on the claim's
-     * date; the starting 0.00 before any is recorded.
+     * The percent of an overdue claim's figure added for a full 30 days it is overdue, in force on the date (each
+     * 30-day boundary past its due-by takes the one in force then); the starting 0.00 before any is recorded.
      */
     public BigDecimal latePctOn(LocalDate on) {
         return inForce(LATE_PCT, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(DEFAULT_LATE_PCT);

@@ -148,7 +148,7 @@ public class SettingsService {
 
     /**
      * Records the sheet's late percent from the date (null for the sheet's today): the percent of an overdue claim's
-     * figure added for every full 30 days it is overdue, for a claim dated on or after it. Settled figures keep what
+     * figure added for each 30-day boundary past its due-by falling on or after it. Settled figures keep what
      * they were; the live figures it moves are rolled up.
      */
     @Transactional

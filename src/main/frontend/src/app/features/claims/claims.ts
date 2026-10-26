@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
-import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, withPctPer } from '../rates/rates';
+import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
 export interface Claim {
@@ -128,7 +128,7 @@ export function overdue(c: Claim, today: string | null): boolean {
 export type FloorOn = (date: string) => string;
 
 /**
- * What the late charge follows: the sheet's today and the late percent in force on a claim's date; and the policy
+ * What the late charge follows: the sheet's today and the late percent in force on a date; and the policy
  * date in force (the sheet's today when the setting is blank), which decides how a claim's live figures round.
  */
 export interface Lateness {
@@ -146,16 +146,27 @@ function daysBetween(from: string, to: string): number {
   return Math.round((utc(to) - utc(from)) / 86_400_000);
 }
 
+/** The date (yyyy-mm-dd) the given whole days after another. */
+function plusDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
 /**
- * The due a claim shows and totals: its figure, and for an overdue claim the late percent in force on its date of
- * that figure for every full 30 days it is overdue, added on top. The charge is never bound by a statement; a settled claim's
+ * The due a claim shows and totals: its figure, and for an overdue claim, for each full 30 days it is overdue, the
+ * late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of that figure, rounded like
+ * the claim, added on top; a boundary whose percent is 0.00 adds nothing. The charge is never bound by a statement; a settled claim's
  * due already holds it. A correction gains no late charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness): string | null {
   const figure = figureOf(c, rates, floor, late.policyDate);
   if (figure === null || isCorrection(c) || !overdue(c, late.today)) return figure;
   const periods = Math.floor(daysBetween(c.dueBy, late.today!) / 30);
-  return withPctPer(figure, late.latePct(c.date), periods, roundsHalfUp(c, late.policyDate));
+  const halfUp = roundsHalfUp(c, late.policyDate);
+  const charges = Array.from({ length: Math.max(periods, 0) }, (_, k) =>
+    dueOn(figure, late.latePct(plusDays(c.dueBy, 30 * (k + 1))), halfUp),
+  );
+  return sumSkippingNa([figure, ...charges]);
 }
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';

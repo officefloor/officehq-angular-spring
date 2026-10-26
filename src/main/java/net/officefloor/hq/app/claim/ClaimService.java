@@ -414,9 +414,11 @@ public class ClaimService {
     }
 
     /**
-     * The figure (null for n/a) of the claim, with the sheet's late percent in force on its date of it added for every full 30 days it is
-     * overdue (past its due-by) by the sheet's today, rounded like its due; a deferred claim is not overdue. The charge is never bound by a statement: it keeps
-     * following the sheet's today and its policy date.
+     * The figure (null for n/a) of the claim, with a late charge added for every full 30 days it is overdue (past its
+     * due-by) by the sheet's today: for each such boundary (its due-by plus 30, 60, 90 ... days), the sheet's late
+     * percent in force on that boundary date of the figure, rounded like its due; a boundary whose percent is 0.00
+     * adds nothing. A deferred claim is not overdue. The charge is never bound by a statement: it keeps following the
+     * sheet's today and its policy date.
      */
     public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Sheet sheet) {
         if (figure == null || sheet == null || sheet.getToday() == null || claim.isDeferredOn(sheet.getToday())) {
@@ -424,12 +426,15 @@ public class ClaimService {
         }
         long overdue = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday());
         long periods = overdue > 0 ? overdue / 30 : 0;
-        BigDecimal latePct = sheet.latePctOn(claim.getDate());
-        if (periods == 0 || latePct.signum() == 0) {
-            return figure;
+        RoundingMode rounding = sheet.roundingOn(claim.getRoundsOn());
+        BigDecimal due = figure;
+        for (long k = 1; k <= periods; k++) {
+            BigDecimal latePct = sheet.latePctOn(claim.getDueBy().plusDays(30 * k));
+            if (latePct.signum() != 0) {
+                due = due.add(dueOn(figure, latePct, rounding));
+            }
         }
-        return figure.add(dueOn(figure, latePct.multiply(BigDecimal.valueOf(periods)),
-                sheet.roundingOn(claim.getRoundsOn())));
+        return due;
     }
 
     /**
