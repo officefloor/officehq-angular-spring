@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -41,17 +42,29 @@ public class PersonService {
         return sheets.load(sheetId).getToday();
     }
 
-    /** Adds the person; the grade they are given first applies from the beginning of time. */
+    /** Adds the person with no terms of their own. */
     @Transactional
     public Person add(String by, String sheetId, String name, String grade) {
+        return add(by, sheetId, name, grade, null);
+    }
+
+    /**
+     * Adds the person with their own terms (null: none); the grade they are given first applies from the beginning
+     * of time.
+     */
+    @Transactional
+    public Person add(String by, String sheetId, String name, String grade, Integer terms) {
         sheets.load(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
-        Person added = save(new Person(sheetId, trimmed, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", by, added, today(sheetId)));
+        Person person = new Person(sheetId, trimmed, grade);
+        person.setTerms(terms);
+        Person added = save(person);
+        audit.recordOnCommit(record("PERSON_ADDED", by, added, today(sheetId))
+                + (terms != null ? " terms=" + terms : ""));
         rollup.recordChanges(by, sheetId, before);
         return added;
     }
@@ -59,11 +72,12 @@ public class PersonService {
     /**
      * Saves an edit made from the given version of the person; refused when it has been saved since. The grade is
      * recorded from the from-date (missing: the sheet's today), keeping the ones already recorded, except that an
-     * edit leaving the grade in force today as it is, with no from-date, records nothing.
+     * edit leaving the grade in force today as it is, with no from-date, records nothing. The person's own terms are
+     * set to the given ones (null: none).
      */
     @Transactional
     public Person update(String by, String sheetId, Long id, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         LocalDate today = today(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -79,8 +93,11 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
+        boolean termsChanged = !Objects.equals(terms, person.getTerms());
+        person.setTerms(terms);
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", by, saved, today));
+        audit.recordOnCommit(record("PERSON_EDITED", by, saved, today)
+                + (termsChanged ? " terms=" + (terms != null ? terms : "") : ""));
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

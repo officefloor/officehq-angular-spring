@@ -21,7 +21,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
  * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
- * applies from its from-date, the first one given from the beginning of time.
+ * applies from its from-date, the first one given from the beginning of time; and the terms of their own, if any.
  */
 @Entity
 @Table(name = "person")
@@ -40,6 +40,9 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedGrade> grades = new ArrayList<>();
+
+    @Column(name = "terms")
+    private Integer terms;
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -94,6 +97,15 @@ public class Person {
     public void recordGrade(String grade, LocalDate from) {
         grades.removeIf(g -> Objects.equals(g.getFrom(), from));
         grades.add(new DatedGrade(grade, from));
+    }
+
+    /** The person's own terms in days: a claim of theirs is due by its date plus these; null for none. */
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     /** The date the person is retired from; null while they are not retired. */

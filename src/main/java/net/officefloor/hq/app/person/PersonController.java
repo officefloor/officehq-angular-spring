@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -23,13 +25,16 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    /** A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded. */
+    /**
+     * A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded, the
+     * terms their own (null: none).
+     */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            LocalDate retiredFrom, boolean held, List<HoldView> holds) {
+            LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms) {
         public static PersonView of(Person p, LocalDate today) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
-                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList());
+                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms());
         }
     }
 
@@ -47,17 +52,21 @@ public class PersonController {
         }
     }
 
-    /** A person's fields as the form submits them; the name is stored without surrounding spaces. */
+    /**
+     * A person's fields as the form submits them; the name is stored without surrounding spaces, the terms are whole
+     * days, 0 or more, or null for none.
+     */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms) {
     }
 
     /**
      * An edit of a person: its fields, the date its grade applies from (missing: the sheet's today) and the version
-     * of the person the editor loaded.
+     * of the person the editor loaded, and their own terms (null: none).
      */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
+            @Min(0) @Max(99999) Integer terms) {
     }
 
     /** One person named as another's patron. */
@@ -108,7 +117,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PersonForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        return view(sheetId, service.add(user, sheetId, form.name(), form.grade()));
+        return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms()));
     }
 
     @PutMapping("/{id}")
@@ -117,7 +126,8 @@ public class PersonController {
             @PathVariable Long id, @Valid @RequestBody PersonEdit form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId,
-                service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom()));
+                service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom(),
+                        form.terms()));
     }
 
     @PostMapping("/{id}/retire")

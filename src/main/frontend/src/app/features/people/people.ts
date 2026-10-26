@@ -15,6 +15,8 @@ interface Person {
   // The grade in force on the sheet's today when the store answered, and every grade recorded, each from its date.
   grade: string;
   grades: DatedGrade[];
+  // The person's own terms in days, ahead of their grade's and the sheet's; null for none.
+  terms: number | null;
   // Raised by the store on each save; an edit made from an older version is refused.
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
@@ -89,6 +91,14 @@ interface StatementView {
           data-testid="person-form-grade-from"
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
+        <label for="person-terms">Terms (days)</label>
+        <input
+          id="person-terms"
+          inputmode="numeric"
+          data-testid="person-form-terms"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save' }}
@@ -183,7 +193,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
@@ -199,6 +209,7 @@ interface StatementView {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
@@ -338,6 +349,8 @@ export class People {
   protected readonly grade = signal('A');
   // The date the form's grade applies from; blank takes the sheet's today.
   protected readonly gradeFrom = signal('');
+  // The person's own terms in whole days as typed; blank for none.
+  protected readonly terms = signal('');
   protected readonly editingId = signal<number | null>(null);
   // The version of the person the open editor loaded.
   private readonly editingVersion = signal(0);
@@ -757,6 +770,7 @@ export class People {
     this.name.set(p.name);
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
+    this.terms.set(p.terms === null ? '' : String(p.terms));
     this.error.set(null);
   }
 
@@ -843,6 +857,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -852,7 +867,14 @@ export class People {
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const form = { name: this.name().trim(), grade: this.grade() };
+    const termsText = this.terms().trim();
+    if (termsText !== '' && !/^\d{1,5}$/.test(termsText)) {
+      // refused terms change nothing: an open editor is closed, so the form is ready to add the next person
+      this.reset();
+      this.error.set('Enter the terms as a whole number of days, or leave them blank.');
+      return;
+    }
+    const form = { name: this.name().trim(), grade: this.grade(), terms: termsText === '' ? null : Number(termsText) };
     if (!form.name) {
       this.error.set('Enter a name.');
       return;
@@ -975,6 +997,7 @@ export class People {
         this.editingVersion.set(current.version);
         this.name.set(current.name);
         this.grade.set(this.gradeToday(current));
+        this.terms.set(current.terms === null ? '' : String(current.terms));
       }
     } catch {
       // the error below still tells the person the save was refused

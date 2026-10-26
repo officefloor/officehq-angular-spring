@@ -76,7 +76,7 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
-        claim.setDueBy(on.plusDays(sheets.load(sheetId).termsFor(person.gradeOn(on), on)));
+        claim.setDueBy(on.plusDays(termsFor(sheetId, person, on)));
         logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
@@ -375,8 +375,7 @@ public class ClaimService {
         Claim original = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, claim.getPersonId(), scaled(amount), claim.getDate(), claim.getNote());
         part.setRoundsOn(claim.getRoundsOn());
-        part.setDueBy(claim.getDate()
-                .plusDays(sheets.load(sheetId).termsFor(person.gradeOn(claim.getDate()), claim.getDate())));
+        part.setDueBy(claim.getDate().plusDays(termsFor(sheetId, person, claim.getDate())));
         part.setSplitFrom(claim.getNumber());
         part.setStatus(ClaimStatus.OPEN);
         number(sheetId, part);
@@ -531,6 +530,15 @@ public class ClaimService {
     private Person person(String sheetId, Long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+    }
+
+    /**
+     * The terms a claim of the person dated on the date has: the person's own, else those of their grade on the date,
+     * else the sheet's on the date.
+     */
+    private int termsFor(String sheetId, Person person, LocalDate on) {
+        return person.getTerms() != null ? person.getTerms()
+                : sheets.load(sheetId).termsFor(person.gradeOn(on), on);
     }
 
     /** The audit line about a claim; one that has a number ends with it. */
