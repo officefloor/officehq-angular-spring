@@ -5,7 +5,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isCorrection, isDeferred, isOpen, isOverdue, isReviewLate, keepsFigure, money, statusAsOf } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, sharePartCents, isBound, isCorrection, isDeferred, isOpen, isOverdue, isReviewLate, keepsFigure, money, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -1688,15 +1688,37 @@ export class People {
       if (!this.countsLive(c)) continue;
       const grade = gradeOn(person.grades, c.date);
       const due = claimOwedCents(c, this.ratesOf(grade), this.floor.centsOn(c.date), this.lateness(), this.claims());
-      if (due !== null) total += due;
+      // Each holder's part of a shared claim is theirs, not the claim's own person's.
+      if (due !== null) total += due - c.shares.reduce((t, s) => t + sharePartCents(due, s.share), 0);
       if (keepsFigure(c)) keptFigure = true;
       // A live figure at a grade other than today's is not undone by today's grade having no rate.
       if (due !== null && grade !== gradeToday) keptFigure = true;
       // Nor is a live figure on a claim dated by today undone by its rate having ended since.
       if (due !== null && today !== undefined && c.date <= today) keptFigure = true;
     }
+    // A part of a claim shared with the person counts, and keeps a figure.
+    const held = this.heldPartsCents().get(person.id);
+    if (held !== undefined) {
+      total += held;
+      keptFigure = true;
+    }
     return this.rateOf(gradeToday) === null && !keptFigure ? null : total;
   }
+
+  /** The parts of the shared claims that count, by holder, in cents: each claim's due, at its own
+   *  person's grade in force on its date, times the holder's share divided by 100, rounded half to even. */
+  private readonly heldPartsCents = computed(() => {
+    const by = new Map<number, number>();
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const person = byId.get(c.personId);
+      if (c.shares.length === 0 || person === undefined || !this.countsLive(c)) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
+      if (due === null) continue;
+      for (const s of c.shares) by.set(s.personId, (by.get(s.personId) ?? 0) + sharePartCents(due, s.share));
+    }
+    return by;
+  });
 
   /** The person's due-total with two decimals, or n/a when no rate of their grade in force today is in
    *  force today and no claim keeps a figure (settled, bound by a statement, at another grade, or dated by

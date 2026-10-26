@@ -11,6 +11,7 @@ import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
@@ -33,7 +34,8 @@ import org.springframework.stereotype.Service;
 /**
  * The sheet's figures as the screen shows them: each person's claimed, due-total (late charges
  * included, held to the sheet's cap) and overdue-total (what is owed on their counting claims that are
- * open past their due-by, late charges included, skipping n/a), and the sheet's
+ * open past their due-by, late charges included, skipping n/a; a claim shared with others counts its
+ * due less the holders' parts, each holder's due-total counting their part), and the sheet's
  * claimed-total, due-total and overdue-total (the last two leaving out the single highest and lowest
  * person's figure when three or more people have one). A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
@@ -119,7 +121,13 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findInListOrder(sheetId)) {
+        // The parts of shared claims each holder holds, and each person's due and whether a claim keeps
+        // their figure, by person id: a due-total is made up once every claim's parts are known.
+        Map<Long, BigDecimal> heldParts = new LinkedHashMap<>();
+        Map<Long, BigDecimal> dueOf = new LinkedHashMap<>();
+        Map<Long, Boolean> keptOf = new LinkedHashMap<>();
+        List<Person> listed = people.findInListOrder(sheetId);
+        for (Person person : listed) {
             Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
@@ -143,6 +151,14 @@ public class Rollup {
                 BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,
                         grace, values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
+                // Each holder's part of what is owed is theirs, not the claim's own person's.
+                if (owed != null) {
+                    for (ClaimShare share : claim.getShares()) {
+                        BigDecimal part = share.partOf(owed);
+                        due = due.subtract(part);
+                        heldParts.merge(share.getPersonId(), part, BigDecimal::add);
+                    }
+                }
                 if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
                 if (isOverdue(claim, grace, today)) overdueCount++;
                 if (owed != null && claim.getStatus() == ClaimStatus.SETTLED && !claim.isCorrection()) settled = settled.add(owed);
@@ -154,15 +170,27 @@ public class Rollup {
                 // Nor is a live figure on a claim dated by today undone by its rate having ended since.
                 if (figure != null && today != null && !claim.getDate().isAfter(today)) keptFigure = true;
             }
+            dueOf.put(person.getId(), due);
+            keptOf.put(person.getId(), keptFigure);
+            figures.put(person.getId(), new Figures(person.getName(), claimed, null, overdue, settled, overdueCount));
+            claimedTotal = claimedTotal.add(claimed);
+            overdues.add(overdue);
+        }
+        for (Person person : listed) {
+            Grade gradeToday = today == null ? null : person.gradeOn(today);
+            BigDecimal part = heldParts.get(person.getId());
+            BigDecimal due = part == null ? dueOf.get(person.getId()) : dueOf.get(person.getId()).add(part);
+            // A part of a claim shared with the person keeps a figure.
+            boolean keptFigure = keptOf.get(person.getId()) || part != null;
             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
             // Held to the sheet's cap; n/a is not capped.
             BigDecimal personDue = SettingService.capped((today == null
                     || Rate.inForceInherited(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
                             ? null : due, cap);
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, settled, overdueCount));
-            claimedTotal = claimedTotal.add(claimed);
+            Figures was = figures.get(person.getId());
+            figures.put(person.getId(), new Figures(was.name(), was.claimed(), personDue, was.overdueTotal(),
+                    was.settled(), was.overdueCount()));
             if (personDue != null) dues.add(personDue);
-            overdues.add(overdue);
         }
         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
     }

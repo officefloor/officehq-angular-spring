@@ -184,6 +184,12 @@ public class Claim {
     @OrderColumn(name = "position")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's shares, in the order they were given. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "position")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     /** The claim's lines, in the order they were added; while it has any its amount is their total. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
@@ -568,6 +574,20 @@ public class Claim {
 
     public boolean isHeld() {
         return held;
+    }
+
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Give the person a share of the claim, as a percent of its due. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
+    }
+
+    /** The claim's shares added up, as a percent of its due. */
+    public BigDecimal sharedPct() {
+        return shares.stream().map(ClaimShare::getShare).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** Hold the claim, or release it, while the sheet's today is the date given. */

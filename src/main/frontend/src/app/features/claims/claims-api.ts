@@ -116,6 +116,22 @@ export interface ClaimView {
   waived: boolean;
   /** Whether the claim is held; a held claim still counts in every total. */
   held: boolean;
+  /** The claim's shares, in the order they were given. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: the person on the sheet holding it and their percent of its due (two decimals). */
+export interface ClaimShare {
+  personId: number;
+  share: string;
+}
+
+/** A holder's part of a claim's due in cents: the due times their share divided by 100, rounded half to even. */
+export function sharePartCents(dueCents: number, share: string): number {
+  const scaled = dueCents * cents(share);
+  const whole = Math.floor(scaled / 10000);
+  const rest = scaled - whole * 10000;
+  return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
 }
 
 /** A line of a claim: its label, whole quantity and unit amount (two decimals). */
@@ -454,6 +470,12 @@ export class ClaimsApi {
    *  a claim in any other status or one already waived. */
   waive(sheetId: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/waive`, {}));
+  }
+
+  /** Share a claim with another person on the sheet: refused for its own person, a person already
+   *  holding a share, shares totalling more than 100.00, and a settled, void or deleted claim. */
+  share(sheetId: string, id: number, personId: number, share: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/shares`, { personId, share }));
   }
 
   /** Hold an open or pending claim, or release a held one: refused for a claim in any other status. */

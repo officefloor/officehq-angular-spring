@@ -580,6 +580,43 @@ public class ClaimService {
         return saved;
     }
 
+    /** Share a claim with another person on the sheet, writing CLAIM_SHARED with the holder and their
+     *  share: the holder's due-total counts the claim's due times their share divided by 100, rounded half
+     *  to even, and the claim's own person's the rest. Refused for a share not more than 0.00 or with
+     *  more than two decimals, for the claim's own person, for a person already holding a share of it, for
+     *  shares totalling more than 100.00, and for a SETTLED, VOID or DELETED claim. */
+    @Transactional
+    public Claim share(String sheetId, String user, long id, long withPersonId, BigDecimal share) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (share == null || share.signum() <= 0 || share.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A share is a percent more than 0.00, with two decimals.");
+        }
+        ClaimStatus status = claim.getStatus();
+        if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + status + " claim cannot be shared.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Person with = person(sheetId, withPersonId);
+        if (with.getId().equals(person.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person.");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(with.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, with.getName() + " already holds a share of the claim.");
+        }
+        BigDecimal scaled = share.setScale(2);
+        if (claim.sharedPct().add(scaled).compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's shares cannot total more than 100.00.");
+        }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.share(with.getId(), scaled);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_SHARED", user, person, saved, saved.getNumber(),
+                " with=" + with.getName() + " share=" + scaled.toPlainString());
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Raise a claim's proofs count by one, and its count of the kind (none chosen: a receipt); a chosen
      *  kind is audited at the end of CLAIM_PROOF_ADDED. Refused for a SETTLED or VOID claim. No figure moves, so a
      *  claim dated inside a closed period may still have a proof added. */

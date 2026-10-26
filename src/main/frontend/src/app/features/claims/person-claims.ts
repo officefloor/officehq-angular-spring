@@ -111,6 +111,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
@@ -197,6 +198,19 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Waive late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <button type="button" data-testid="claim-hold" (click)="toggleHold(c)" [attr.aria-pressed]="c.held"
             [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select #shareWith [id]="'claim-share-select-' + c.id" data-testid="claim-share-select"
+            (change)="clearClaimError(c)">
+            <option value="">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share %</label>
+          <input #sharePct [id]="'claim-share-pct-' + c.id" data-testid="claim-share-pct" inputmode="decimal"
+            (input)="clearClaimError(c)" />
+          <button type="button" data-testid="claim-share-add" (click)="share(c, shareWith.value, sharePct)"
+            [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date">Share</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
           <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
@@ -648,6 +662,39 @@ export class PersonClaims {
 
   /** Comment a claim with the text typed; an empty comment is refused, and so is any change by a
    *  viewer, on an archived sheet or in the as-of view. */
+  /** The claim's holders as <name> <share>, comma and space separated, in the order they were given. */
+  protected sharesShown(claim: ClaimView): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return claim.shares.map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  /** Share the claim with another person on the sheet: a share with two decimals, more than 0.00. The
+   *  store refuses the claim's own person, a person already holding a share, shares totalling more than
+   *  100.00, and a SETTLED, VOID or DELETED claim. */
+  protected async share(claim: ClaimView, personId: string, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const pct = input.value.trim();
+    if (personId === '' || !/^\d{1,3}(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
+      this.claimError.set({ id: claim.id, message: 'Choose a person and type a share with two decimals, more than 0.00.' });
+      return;
+    }
+    try {
+      const shared = await this.api.share(sheet.id, claim.id, Number(personId), pct);
+      if (this.session.sheet()?.id === sheet.id) {
+        input.value = '';
+        this.changed.emit(shared);
+      }
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message
+          : 'This claim cannot be shared.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
   protected async comment(claim: ClaimView, input: HTMLInputElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
