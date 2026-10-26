@@ -1,0 +1,486 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods-api.ts b/src/main/frontend/src/app/features/periods/periods-api.ts
+index 9e396957..322b54eb 100644
+--- a/src/main/frontend/src/app/features/periods/periods-api.ts
++++ b/src/main/frontend/src/app/features/periods/periods-api.ts
+@@ -28,6 +28,9 @@ export interface PeriodView {
+   personOpenings: Record<string, string>;
+   /** Whether a steward has locked the period: a locked period cannot be reopened. */
+   locked: boolean;
++  /** Each pool member's cut fixed when the period was closed or soft-closed, with two decimals, by member
++   *  key, by pool id (a crew's negated); a pool that showed no cuts then is missing. Empty while it is open. */
++  closedPoolCuts: Record<string, Record<string, string>>;
+ }
+ 
+ /** What pasting opening balances did: how many lines went through, and the sheet's periods now. */
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 8b215732..0883ea34 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -110,6 +110,8 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen
+ // For every period whose to-date is on or before the sheet's today, each member also shows their cut as it
+ // stood at the end of that period: worked out as above from the pools, their members, the pot and the holds
+ // as the sheet held them then, with the period's to-date as the sheet's today; empty when there was none.
++// A closed or soft-closed period (ended or not) instead shows the cuts fixed when it was closed, until it is
++// reopened.
+ @Component({
+   selector: 'app-pool-row',
+   imports: [FigurePipe, ReactiveFormsModule],
+@@ -177,7 +179,8 @@ export class PoolRow {
+   readonly crew = input(false);
+   /** Each member's cut, with two decimals, by member key; null for an unbalanced pool or no pot. */
+   readonly cuts = input.required<ReadonlyMap<string, string> | null>();
+-  /** The periods whose to-date is on or before the sheet's today, in date order. */
++  /** The periods whose to-date is on or before the sheet's today, or that are closed or soft-closed, in
++   *  date order. */
+   readonly ended = input.required<PeriodView[]>();
+   /** Each member's cut as it stood at the end of each of those periods, with two decimals, by member key,
+    *  by period id; none for a period when the pool showed no cuts then (or is not yet read). */
+@@ -293,6 +296,11 @@ function totalCents(members: readonly MemberRow[]): number {
+   return members.reduce((t, m) => (!m.inForce ? t : t + cents(m.share)), 0);
+ }
+ 
++/** Whether the period's cuts are fixed: it is closed or soft-closed. */
++function fixed(q: PeriodView): boolean {
++  return q.closed || q.softClosed;
++}
++
+ /** Each pool's cuts by member key, by pool id: null for an unbalanced pool or one with no pot. A pool that
+  *  is a member of none has the sheet's pot; one that is a member of another has its cut there. */
+ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null,
+@@ -399,10 +407,16 @@ export class PoolsList {
+ 
+   protected readonly noPastCuts: ReadonlyMap<number, ReadonlyMap<string, string> | null> = new Map();
+ 
+-  /** The periods whose to-date is on or before the sheet's today, in date order. */
++  /** The periods whose to-date is on or before the sheet's today, or that are closed or soft-closed, in
++   *  date order. */
+   protected readonly ended = computed(() => {
+     const today = this.session.sheet()?.today;
+-    return today === undefined ? [] : this.periods().filter((q) => q.to <= today);
++    return today === undefined ? [] : this.periods().filter((q) => q.to <= today || fixed(q));
++  });
++
++  /** The ended periods that are open, whose cuts are worked out from the sheet as it stood at their end. */
++  private readonly live = computed(() => this.ended().filter((q) => !fixed(q)), {
++    equal: (a, b) => a.length === b.length && a.every((q, i) => q.id === b[i].id && q.to === b[i].to),
+   });
+ 
+   /** Each pool's cuts at the end of each ended period, by pool id and then period id, as last read. */
+@@ -410,11 +424,21 @@ export class PoolsList {
+   /** Counts the readings of the history, so only the latest is shown. */
+   private historyReads = 0;
+ 
+-  /** Each pool's cuts at the end of each ended period, with two decimals, by member key, by period id, by
+-   *  pool id. */
+-  protected readonly pastCuts = computed(() => new Map([...this.history()].map(([poolId, byPeriod]) =>
+-    [poolId, new Map([...byPeriod].map(([periodId, cuts]) =>
+-      [periodId, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))]))])));
++  /** Each pool's cuts for each ended period, with two decimals, by member key, by period id, by pool id: those
++   *  fixed when a closed or soft-closed period was closed, otherwise those at the end of the period. */
++  protected readonly pastCuts = computed(() => {
++    const out = new Map<number, Map<number, ReadonlyMap<string, string> | null>>([...this.history()].map(([poolId, byPeriod]) =>
++      [poolId, new Map([...byPeriod].map(([periodId, cuts]) =>
++        [periodId, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))]))]));
++    for (const q of this.ended().filter(fixed)) {
++      for (const p of this.all()) {
++        if (!out.has(p.id)) out.set(p.id, new Map());
++        const cuts = q.closedPoolCuts?.[String(p.id)];
++        out.get(p.id)?.set(q.id, cuts ? new Map(Object.entries(cuts)) : null);
++      }
++    }
++    return out;
++  });
+ 
+   /** The sheet's pools and then its crews as pools. */
+   protected readonly all = computed(() => poolsWithCrews(this.store.pools(), this.crews.crews()));
+@@ -436,7 +460,7 @@ export class PoolsList {
+       // Re-read on each load of the sheet as well as on a change of its periods or its today.
+       this.session.loaded();
+       const sheetId = this.session.sheet()?.id;
+-      const ended = this.ended();
++      const ended = this.live();
+       untracked(() => {
+         if (sheetId !== shownSheet) this.history.set(new Map());
+         shownSheet = sheetId;
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index d7cd5499..cee81fa1 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -14,8 +14,10 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.Locale;
+ import java.util.Map;
++import java.util.Set;
+ 
+ /** One of the sheet's periods: a name unique on the sheet and a from and to date, both inclusive. */
+ @Entity
+@@ -71,6 +73,11 @@ public class Period {
+     @Column(name = "carried", nullable = false)
+     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
+ 
++    /** Every pool member's cut fixed when the period was closed or soft-closed; empty while it is open. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
++    private Set<PeriodPoolCut> closedPoolCuts = new HashSet<>();
++
+     /** Each person's opening balance for the period, by person id: part of their carried figure for it. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+@@ -159,6 +166,23 @@ public class Period {
+         return closedPersonCarried;
+     }
+ 
++    /** Each pool member's cut fixed when the period was closed or soft-closed, by member key, by pool id (a
++     *  crew's negated); a pool that showed no cuts then is missing; empty while it is open. */
++    public Map<Long, Map<String, BigDecimal>> getClosedPoolCuts() {
++        Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
++        for (PeriodPoolCut c : closedPoolCuts) {
++            byPool.computeIfAbsent(c.getPoolId(), (id) -> new HashMap<>()).put(c.getMemberKey(), c.getCut());
++        }
++        return byPool;
++    }
++
++    /** Fix every pool member's cut for the period, by member key, by pool id, as worked out now. */
++    public void fixPoolCuts(Map<Long, Map<String, BigDecimal>> cuts) {
++        closedPoolCuts.clear();
++        cuts.forEach((poolId, members) -> members.forEach((key, cut) ->
++                closedPoolCuts.add(new PeriodPoolCut(poolId, key, cut))));
++    }
++
+     public Map<Long, BigDecimal> getPersonOpenings() {
+         return personOpenings;
+     }
+@@ -202,6 +226,7 @@ public class Period {
+         this.closedTotal = null;
+         this.closedPersonTotals.clear();
+         this.closedPersonCarried.clear();
++        this.closedPoolCuts.clear();
+     }
+ 
+     /** Whether the date falls within this period, both ends inclusive. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index b78b74ff..37fc7435 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -30,10 +30,13 @@ public class PeriodController {
+     /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
+      *  it is closed, whether it is soft-closed and, once closed or soft-closed, the due-total fixed then (null while open) and each person's
+      *  due-total and carried figure fixed then, by person id (empty while open), its cap on each person's open claims (null for none),
+-     *  each person's opening balance for it, by person id (a person missing has none), and whether it is locked. */
++     *  each person's opening balance for it, by person id (a person missing has none), whether it is locked, and
++     *  each pool member's cut fixed when it was closed or soft-closed, by member key, by pool id (a crew's
++     *  negated; a pool that showed no cuts then is missing; empty while open). */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
+-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
++            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked,
++            Map<Long, Map<String, String>> closedPoolCuts) {
+         static PeriodView of(Period period) {
+             Map<Long, String> personTotals = new TreeMap<>();
+             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
+@@ -41,10 +44,16 @@ public class PeriodController {
+             period.getClosedPersonCarried().forEach((id, carried) -> personCarried.put(id, carried.toPlainString()));
+             Map<Long, String> openings = new TreeMap<>();
+             period.getPersonOpenings().forEach((id, amount) -> openings.put(id, amount.toPlainString()));
++            Map<Long, Map<String, String>> poolCuts = new TreeMap<>();
++            period.getClosedPoolCuts().forEach((poolId, cuts) -> {
++                Map<String, String> shown = new TreeMap<>();
++                cuts.forEach((key, cut) -> shown.put(key, cut.setScale(2).toPlainString()));
++                poolCuts.put(poolId, shown);
++            });
+             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+                     period.isClosed(), period.isSoftClosed(),
+                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+-                    personTotals, period.getCap(), personCarried, openings, period.isLocked());
++                    personTotals, period.getCap(), personCarried, openings, period.isLocked(), poolCuts);
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodPoolCut.java b/src/main/java/net/officefloor/hq/app/period/PeriodPoolCut.java
+new file mode 100644
+index 00000000..b0cc766b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodPoolCut.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.util.Objects;
++
++/** A pool member's cut fixed when its period was closed or soft-closed. */
++@Embeddable
++public class PeriodPoolCut {
++
++    /** The pool, or a crew's id negated. */
++    @Column(name = "pool_id", nullable = false)
++    private Long poolId;
++
++    /** The member's key: the person's id, or pool-&lt;name&gt; for a member pool. */
++    @Column(name = "member_key", nullable = false)
++    private String memberKey;
++
++    @Column(name = "cut", nullable = false)
++    private BigDecimal cut;
++
++    protected PeriodPoolCut() {
++    }
++
++    PeriodPoolCut(Long poolId, String memberKey, BigDecimal cut) {
++        this.poolId = poolId;
++        this.memberKey = memberKey;
++        this.cut = cut;
++    }
++
++    public Long getPoolId() {
++        return poolId;
++    }
++
++    public String getMemberKey() {
++        return memberKey;
++    }
++
++    public BigDecimal getCut() {
++        return cut;
++    }
++
++    @Override
++    public boolean equals(Object other) {
++        return other instanceof PeriodPoolCut that && Objects.equals(poolId, that.poolId)
++                && Objects.equals(memberKey, that.memberKey);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(poolId, memberKey);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 1e87cdbb..ab7b2d8b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -15,8 +15,11 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolCuts;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -39,12 +42,16 @@ public class PeriodService {
+     private final ClaimService claimService;
+     private final PersonRepository people;
+     private final SettingService settings;
++    private final PoolRepository pools;
++    private final CrewRepository crews;
+     private final Audit audit;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
+             ClaimRepository claims, ClaimService claimService, PersonRepository people, SettingService settings,
+-            Audit audit) {
++            PoolRepository pools, CrewRepository crews, Audit audit) {
+         this.settings = settings;
++        this.pools = pools;
++        this.crews = crews;
+         this.periods = periods;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+@@ -240,6 +247,9 @@ public class PeriodService {
+         }
+         if (soft) period.softClose(total, personTotals, personCarried);
+         else period.close(total, personTotals, personCarried);
++        // Every pool member's cut for the period is fixed as it stands now, the sheet's today as it is.
++        period.fixPoolCuts(PoolCuts.of(pools.findBySheetIdOrderByIdAsc(sheetId),
++                crews.findBySheetIdOrderByIdAsc(sheetId), people.findInListOrder(sheetId), settings.pot(sheetId), today));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));
+@@ -308,7 +318,7 @@ public class PeriodService {
+         return made;
+     }
+ 
+-    /** Reopen a closed or soft-closed period, making its due-total live again. Refused when the sheet's permission
++    /** Reopen a closed or soft-closed period, making its due-total and its pool members' cuts live again. Refused when the sheet's permission
+      *  matrix does not allow the user's role to reopen (by default, only a steward), or the period is not closed. */
+     @Transactional
+     public Period reopen(String sheetId, String user, long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolCuts.java b/src/main/java/net/officefloor/hq/app/pool/PoolCuts.java
+new file mode 100644
+index 00000000..c9a55232
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolCuts.java
+@@ -0,0 +1,149 @@
++package net.officefloor.hq.app.pool;
++
++import java.math.BigDecimal;
++import java.math.BigInteger;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.person.Person;
++
++/**
++ * Each pool's cuts as the pools screen works them out (see the front end's pools.ts): the sheet's pools and
++ * then its crews as pools (under the crew's id negated, the lead and then the members at equal shares of
++ * 100.00), each balanced pool sharing out its pot (the sheet's pot, or for a pool that is a member of
++ * another its cut there) among the members whose dates include the sheet's today, a retired or held
++ * person cutting 0.00 and their share spread over the others.
++ */
++public final class PoolCuts {
++
++    private static final long FULL = 10000;
++
++    /** A pool's member as the cuts take it: its key on the screens, share in cents, and whether it cuts. */
++    private record Row(String key, long share, boolean inForce, boolean noCut) {
++    }
++
++    /** A pool or a crew as a pool: its id (a crew's negated), name and members. */
++    private record AnyPool(long id, String name, List<Member> members) {
++    }
++
++    private record Member(Long personId, Long poolId, long share, LocalDate from, LocalDate to) {
++    }
++
++    private PoolCuts() {
++    }
++
++    /** Each pool's cuts with two decimals, by member key, by pool id (a crew's negated); a pool that shows no
++     *  cuts (unbalanced, no pot, or every member retired or held) is left out. */
++    public static Map<Long, Map<String, BigDecimal>> of(List<Pool> pools, List<Crew> crews, List<Person> people,
++            BigDecimal pot, LocalDate today) {
++        List<AnyPool> all = new ArrayList<>();
++        for (Pool p : pools) {
++            all.add(new AnyPool(p.getId(), p.getName(), p.getMembers().stream()
++                    .map((m) -> new Member(m.getPersonId(), m.getMemberPoolId(), cents(m.getShare()), m.getFrom(), m.getTo()))
++                    .toList()));
++        }
++        for (Crew c : crews) {
++            List<Long> ids = new ArrayList<>();
++            if (c.getLeadId() != null) ids.add(c.getLeadId());
++            ids.addAll(c.getMemberIds());
++            long count = ids.size();
++            long each = count == 0 ? 0 : divideHalfEven(BigInteger.valueOf(FULL), BigInteger.valueOf(count)).longValue();
++            List<Member> members = new ArrayList<>();
++            for (int i = 0; i < ids.size(); i++) {
++                members.add(new Member(ids.get(i), null, i == 0 ? FULL - each * (count - 1) : each, null, null));
++            }
++            all.add(new AnyPool(-c.getId(), c.getName(), members));
++        }
++        Map<Long, AnyPool> byId = new HashMap<>();
++        all.forEach((p) -> byId.put(p.id(), p));
++        Map<Long, AnyPool> parents = new HashMap<>();
++        for (AnyPool p : all) for (Member m : p.members()) if (m.poolId() != null) parents.put(m.poolId(), p);
++        Map<Long, Person> peopleById = new HashMap<>();
++        people.forEach((p) -> peopleById.put(p.getId(), p));
++
++        Map<Long, Map<String, Long>> out = new HashMap<>();
++        Map<Long, Boolean> done = new HashMap<>();
++        for (AnyPool p : all) cutsFor(p, 0, all.size(), out, done, byId, parents, peopleById, pot, today);
++        Map<Long, Map<String, BigDecimal>> result = new LinkedHashMap<>();
++        for (AnyPool p : all) {
++            Map<String, Long> cuts = out.get(p.id());
++            if (cuts == null) continue;
++            Map<String, BigDecimal> money = new LinkedHashMap<>();
++            cuts.forEach((key, cut) -> money.put(key, BigDecimal.valueOf(cut, 2)));
++            result.put(p.id(), money);
++        }
++        return result;
++    }
++
++    private static Map<String, Long> cutsFor(AnyPool pool, int depth, int poolCount, Map<Long, Map<String, Long>> out,
++            Map<Long, Boolean> done, Map<Long, AnyPool> byId, Map<Long, AnyPool> parents, Map<Long, Person> people,
++            BigDecimal pot, LocalDate today) {
++        if (done.containsKey(pool.id())) return out.get(pool.id());
++        done.put(pool.id(), true);
++        Long potCents = null;
++        AnyPool parent = parents.get(pool.id());
++        if (parent == null) {
++            potCents = pot == null ? null : cents(pot);
++        } else if (depth <= poolCount) {
++            Map<String, Long> parentCuts = cutsFor(parent, depth + 1, poolCount, out, done, byId, parents, people, pot, today);
++            potCents = parentCuts == null ? null : parentCuts.get("pool-" + pool.name());
++        }
++        List<Row> rows = new ArrayList<>();
++        long total = 0;
++        for (Member m : pool.members()) {
++            Person person = m.personId() != null ? people.get(m.personId()) : null;
++            String key = m.personId() != null ? String.valueOf(m.personId())
++                    : "pool-" + (byId.containsKey(m.poolId()) ? byId.get(m.poolId()).name() : m.poolId());
++            boolean inForce = (m.from() == null || !m.from().isAfter(today)) && (m.to() == null || !today.isAfter(m.to()));
++            boolean noCut = person != null && (person.isRetired() || person.isHeldOn(today));
++            if (inForce) total += m.share();
++            rows.add(new Row(key, m.share(), inForce, noCut));
++        }
++        List<Row> inForce = rows.stream().filter(Row::inForce).toList();
++        if (potCents == null || total != FULL || inForce.stream().allMatch(Row::noCut)) return null;
++        Map<String, Long> cuts = cutsOf(potCents, inForce);
++        out.put(pool.id(), cuts);
++        return cuts;
++    }
++
++    /** The cuts of a pot (in cents) among the members, as the front end's cutsOf shares it. */
++    private static Map<String, Long> cutsOf(long potCents, List<Row> members) {
++        long[] shares = members.stream().mapToLong((m) -> m.noCut() ? 0 : m.share()).toArray();
++        long total = 0;
++        for (long s : shares) total += s;
++        long[] cuts = new long[shares.length];
++        for (int i = 0; i < shares.length; i++) {
++            cuts[i] = total == 0 ? 0 : divideHalfEven(BigInteger.valueOf(potCents).multiply(BigInteger.valueOf(shares[i])),
++                    BigInteger.valueOf(total)).longValue();
++        }
++        int target = -1;
++        for (int i = 0; i < cuts.length; i++) {
++            if (cuts[i] != 0 && (target < 0 || cuts[i] <= cuts[target])) target = i;
++        }
++        if (target < 0) {
++            for (int i = 0; i < shares.length; i++) if (shares[i] > 0) target = i;
++        }
++        if (total > 0 && target >= 0) {
++            long sum = 0;
++            for (long c : cuts) sum += c;
++            cuts[target] += potCents - sum;
++        }
++        Map<String, Long> out = new LinkedHashMap<>();
++        for (int i = 0; i < members.size(); i++) out.put(members.get(i).key(), cuts[i]);
++        return out;
++    }
++
++    private static long cents(BigDecimal amount) {
++        return amount.setScale(2, RoundingMode.HALF_EVEN).unscaledValue().longValueExact();
++    }
++
++    /** A whole number divided by another, rounded half to even. */
++    private static BigInteger divideHalfEven(BigInteger value, BigInteger by) {
++        return new BigDecimal(value).divide(new BigDecimal(by), 0, RoundingMode.HALF_EVEN).toBigInteger();
++    }
++}
+diff --git a/src/main/resources/db/migration/V96__period_pool_cut.sql b/src/main/resources/db/migration/V96__period_pool_cut.sql
+new file mode 100644
+index 00000000..819d0935
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__period_pool_cut.sql
+@@ -0,0 +1,11 @@
++-- Closing or soft-closing a period also fixes, at that moment, every pool member's cut for it: the cut
++-- each member of each pool (a crew's under its id negated) showed then, by member key (the person's id,
++-- or pool-<name> for a member pool). A pool with no row showed no cuts then. Reopening removes the rows:
++-- the cuts for the period are live again.
++CREATE TABLE period_pool_cut (
++    period_id  BIGINT         NOT NULL REFERENCES period (id),
++    pool_id    BIGINT         NOT NULL,
++    member_key VARCHAR(300)   NOT NULL,
++    cut        DECIMAL(12, 2) NOT NULL,
++    PRIMARY KEY (period_id, pool_id, member_key)
++);
