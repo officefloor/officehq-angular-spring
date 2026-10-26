@@ -56,7 +56,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()" />
     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
-      [ownOverdueTotal]="money(sheetOverdue().cents)" />
+      [ownOverdueTotal]="money(sheetOverdue().cents)" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
     <app-tree-search />
     <app-duplicates />
     @if (session.sheet()) {

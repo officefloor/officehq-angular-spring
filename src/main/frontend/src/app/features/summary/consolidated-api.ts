@@ -15,6 +15,11 @@ export interface DescendantsView {
   ownPeopleCount: number;
   ownDueTotal: string;
   ownOverdueTotal: string;
+  /** Per grade, the due-totals of the descendants' people on it today who are not retired, added up, with
+   *  two decimals. */
+  gradeDueTotals: Record<string, string>;
+  /** Per status, how many of the descendants' claims have it. */
+  statusCounts: Record<string, number>;
 }
 
 // The figures of a sheet's descendants, and its own: while the screen shows the sheet as of a date, every
