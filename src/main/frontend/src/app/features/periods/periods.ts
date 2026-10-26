@@ -107,6 +107,15 @@ export class PeriodStore {
     this.put(sheet, p);
   }
 
+  /** Generate one period per month from the from-date's month to the to-date's; answers how many were made. */
+  async generate(sheet: string, from: string, to: string): Promise<number> {
+    const made = await firstValueFrom(
+      this.http.post<PeriodView[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }),
+    );
+    for (const p of made) this.put(sheet, p);
+    return made.length;
+  }
+
   async close(sheet: string, id: number): Promise<void> {
     const p = await firstValueFrom(
       this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/close`, null),
@@ -164,6 +173,32 @@ export class PeriodStore {
         }
       </form>
 
+      <form (submit)="generate($event)" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="genFrom()"
+          (input)="genFrom.set(value($event)); genError.set(null)"
+        />
+        <label for="period-generate-to">To</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="genTo()"
+          (input)="genTo.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made: <strong data-testid="period-generated">{{ generated() }}</strong></p>
+        }
+        @if (genError(); as err) {
+          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+        }
+      </form>
+
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th>
@@ -208,6 +243,12 @@ export class Periods {
   protected readonly error = signal<string | null>(null);
   // Each period's refused action, by period id.
   protected readonly rowErrors = signal<Record<number, string>>({});
+  protected readonly genFrom = signal('');
+  protected readonly genTo = signal('');
+  protected readonly genError = signal<string | null>(null);
+  // How many periods the last generate made; null while one runs or before any.
+  protected readonly generated = signal<number | null>(null);
+  private generating = false;
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
@@ -261,6 +302,36 @@ export class Periods {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  /** Generates a period per month between the dates, leaving out months already named or overlapped; shows how many were made. */
+  protected async generate(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.genError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const from = this.genFrom().trim() || (this.session.sheetToday() ?? '');
+    const to = this.genTo().trim();
+    if (!DATE.test(from) || !DATE.test(to)) {
+      this.genError.set('Enter a from and a to date as yyyy-mm-dd.');
+      return;
+    }
+    if (to < from) {
+      this.genError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.store.generate(sheet, from, to);
+      if (this.session.sheetId() !== sheet) return;
+      this.generated.set(made);
+    } catch {
+      this.genError.set('Could not generate those periods.');
+    } finally {
+      this.generating = false;
+    }
   }
 
   protected async submit(e: Event): Promise<void> {

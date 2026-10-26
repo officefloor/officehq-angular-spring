@@ -43,6 +43,10 @@ public class PeriodController {
             @NotNull LocalDate from, @NotNull LocalDate to) {
     }
 
+    /** The months to generate periods for: those of the from-date through the to-date. */
+    public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -61,6 +65,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PeriodForm form, @SessionAttribute(SessionController.USER) String user) {
         return PeriodView.of(service.add(user, sheetId, form.name(), form.from(), form.to()));
+    }
+
+    /** Generates monthly periods; answers the ones made, by month. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody GenerateForm form, @SessionAttribute(SessionController.USER) String user) {
+        return service.generate(user, sheetId, form.from(), form.to()).stream().map(PeriodView::of).toList();
     }
 
     @PostMapping("/{id}/close")

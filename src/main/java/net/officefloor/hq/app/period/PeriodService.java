@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +82,35 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + by + " period=" + added.getName()
                 + " from=" + added.getFrom() + " to=" + added.getTo());
         return added;
+    }
+
+    /**
+     * Adds one period per calendar month from the from-date's month to the to-date's month, each from the first to the
+     * last day of its month and named yyyy-mm, by month. A month whose name is in use on the sheet or whose days
+     * overlap a period is left out; the others are still made. Refused when the to-date is before the from-date.
+     */
+    @Transactional
+    public List<Period> generate(String by, String sheetId, LocalDate from, LocalDate to) {
+        // the sheet stays locked until the transaction ends, so periods added at once are checked in turn
+        sheets.lock(sheetId);
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date cannot be before the from-date.");
+        }
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (periods.existsBySheetIdAndName(sheetId, name)
+                    || periods.existsBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(sheetId, last, first)) {
+                continue;
+            }
+            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + by + " period=" + added.getName()
+                    + " from=" + added.getFrom() + " to=" + added.getTo());
+            made.add(added);
+        }
+        return made;
     }
 
     /**
