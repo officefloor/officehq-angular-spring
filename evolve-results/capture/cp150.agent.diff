@@ -1,0 +1,266 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b3cb049b..dfbeccec 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -31,6 +31,7 @@ import { QuickAdd } from './quick-add';
+ import { PasteClaims } from '../claims/paste-claims';
+ import { ImportPeople } from './import-people';
+ import { Consolidated } from '../summary/consolidated';
++import { TreeSearch } from '../summary/tree-search';
+ import { GeneratePlans } from '../plans/generate-plans';
+ import { PersonPlans } from '../plans/person-plans';
+ 
+@@ -40,13 +41,14 @@ import { PersonPlans } from '../plans/person-plans';
+ // their counting claims to the figures they show then.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, PoolsList, PersonPlans, GeneratePlans],
++  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, TreeSearch, PoolsList, PersonPlans, GeneratePlans],
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
+     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
+       [ownOverdueTotal]="money(sheetOverdue().cents)" />
++    <app-tree-search />
+     @if (session.sheet()) {
+       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+diff --git a/src/main/frontend/src/app/features/summary/consolidated-api.ts b/src/main/frontend/src/app/features/summary/consolidated-api.ts
+index 6aad2d81..77ea0ef7 100644
+--- a/src/main/frontend/src/app/features/summary/consolidated-api.ts
++++ b/src/main/frontend/src/app/features/summary/consolidated-api.ts
+@@ -28,3 +28,22 @@ export class ConsolidatedApi {
+       { context: new HttpContext().set(LIVE_READ, true) }));
+   }
+ }
++
++/** A person found over a sheet's tree: their sheet, name and due-total (two decimals, or n/a). */
++export interface TreeSearchHit {
++  sheetId: string;
++  name: string;
++  dueTotal: string;
++}
++
++// The people over a sheet's tree whose name or an alias contains the text, case ignored: the sheet's
++// own first in list order, then the other sheets' by sheet id. Read live, as the store holds them now.
++@Injectable({ providedIn: 'root' })
++export class TreeSearchApi {
++  private readonly http = inject(HttpClient);
++
++  search(sheetId: string, text: string): Promise<TreeSearchHit[]> {
++    return firstValueFrom(this.http.get<TreeSearchHit[]>(`/api/sheets/${encodeURIComponent(sheetId)}/tree-search`,
++      { params: { text }, context: new HttpContext().set(LIVE_READ, true) }));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/summary/tree-search.ts b/src/main/frontend/src/app/features/summary/tree-search.ts
+new file mode 100644
+index 00000000..8a7723de
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/tree-search.ts
+@@ -0,0 +1,67 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { FormControl, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { TreeSearchApi, TreeSearchHit } from './consolidated-api';
++
++// A search over the sheet and every other sheet of its tree: each person whose name or an alias
++// contains the typed text, case ignored, one line per person as `<sheet id> <name> <due-total>`.
++// The count is cleared when the button is pressed and shown again once the lines are read.
++@Component({
++  selector: 'app-tree-search',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-label="Search the tree" data-testid="tree-search">
++      <form (submit)="$event.preventDefault(); search()">
++        <label for="search-name">Search the tree</label>
++        <input id="search-name" data-testid="search-name" [formControl]="text" />
++        <button type="submit" data-testid="search">Search</button>
++        <span aria-live="polite">Found <span data-testid="search-count">{{ count() }}</span></span>
++      </form>
++      @if (error()) {
++        <p role="alert" data-testid="search-error">The search could not be run.</p>
++      }
++      <ul>
++        @for (hit of hits(); track $index) {
++          <li data-testid="search-line">{{ hit.sheetId }} {{ hit.name }} {{ hit.dueTotal }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class TreeSearch {
++  private readonly session = inject(Session);
++  private readonly api = inject(TreeSearchApi);
++
++  protected readonly text = new FormControl('', { nonNullable: true });
++  protected readonly hits = signal<TreeSearchHit[]>([]);
++  protected readonly count = signal('');
++  protected readonly error = signal(false);
++  private run = 0;
++
++  constructor() {
++    effect(() => {
++      // A newly loaded sheet starts with no search shown.
++      this.session.sheet();
++      this.run++;
++      this.hits.set([]);
++      this.count.set('');
++      this.error.set(false);
++    });
++  }
++
++  protected search(): void {
++    const sheet = this.session.sheet();
++    const run = ++this.run;
++    this.hits.set([]);
++    this.count.set('');
++    this.error.set(false);
++    if (sheet === null) return;
++    this.api.search(sheet.id, this.text.value).then(
++      (hits) => {
++        if (run !== this.run) return;
++        this.hits.set(hits);
++        this.count.set(String(hits.length));
++      },
++      () => { if (run === this.run) this.error.set(true); });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index 722be4e5..810480f5 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -2,10 +2,12 @@ package net.officefloor.hq.app.rollup;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.util.List;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+@@ -14,9 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ConsolidatedController {
+ 
+     private final ConsolidatedService service;
++    private final TreeSearchService search;
+ 
+-    public ConsolidatedController(ConsolidatedService service) {
++    public ConsolidatedController(ConsolidatedService service, TreeSearchService search) {
+         this.service = service;
++        this.search = search;
+     }
+ 
+     /** The figures of the sheet's descendants added up; the screen adds its own to consolidate them. */
+@@ -24,4 +28,11 @@ public class ConsolidatedController {
+     public ConsolidatedService.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
+         return service.descendantsOf(id.trim());
+     }
++
++    /** The people over the sheet's tree whose name or an alias contains the text, case ignored. */
++    @GetMapping("/{id}/tree-search")
++    public List<TreeSearchService.Found> treeSearch(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestParam(defaultValue = "") @Size(max = 200) String text) {
++        return search.search(id.trim(), text);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java
+new file mode 100644
+index 00000000..11b88ce7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java
+@@ -0,0 +1,90 @@
++package net.officefloor.hq.app.rollup;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Deque;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Set;
++import java.util.TreeSet;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.setting.SheetParentLink;
++import net.officefloor.hq.app.setting.SheetParentRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The people of a sheet's tree (its top sheet, found up its parents, and all the top sheet's
++ * descendants) whose name or an alias contains a text, case ignored: the sheet's own people first in
++ * list order, then the other sheets' by sheet id, each with their due-total as their sheet shows it.
++ */
++@Service
++public class TreeSearchService {
++
++    /** A person found: their sheet, name, and due-total with two decimals, or "n/a". */
++    public record Found(String sheetId, String name, String dueTotal) {
++    }
++
++    private final SheetParentRepository parents;
++    private final PersonRepository people;
++    private final Rollup rollup;
++
++    public TreeSearchService(SheetParentRepository parents, PersonRepository people, Rollup rollup) {
++        this.parents = parents;
++        this.people = people;
++        this.rollup = rollup;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Found> search(String sheetId, String text) {
++        String needle = text == null ? "" : text.toLowerCase(Locale.ROOT);
++        List<Found> found = new ArrayList<>(searchSheet(sheetId, needle));
++        for (String other : treeOf(sheetId)) {
++            if (!other.equals(sheetId)) found.addAll(searchSheet(other, needle));
++        }
++        return found;
++    }
++
++    private List<Found> searchSheet(String sheetId, String needle) {
++        Rollup.Snapshot figures = rollup.snapshot(sheetId);
++        List<Found> found = new ArrayList<>();
++        for (Person person : people.findInListOrder(sheetId)) {
++            if (!matches(person, needle)) continue;
++            Rollup.Figures theirs = figures.people().get(person.getId());
++            BigDecimal due = theirs == null ? null : theirs.dueTotal();
++            found.add(new Found(sheetId, person.getName(),
++                    due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString()));
++        }
++        return found;
++    }
++
++    private static boolean matches(Person person, String needle) {
++        if (person.getName().toLowerCase(Locale.ROOT).contains(needle)) return true;
++        return person.getAliases().stream().anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(needle));
++    }
++
++    /** The sheets of the sheet's tree, by id. */
++    private Set<String> treeOf(String sheetId) {
++        String top = sheetId;
++        Set<String> up = new HashSet<>(List.of(sheetId));
++        for (String parent = parentOf(top); parent != null && up.add(parent); parent = parentOf(parent)) {
++            top = parent;
++        }
++        Set<String> tree = new TreeSet<>(List.of(top));
++        Deque<String> next = new ArrayDeque<>(List.of(top));
++        while (!next.isEmpty()) {
++            for (SheetParentLink child : parents.findByParentId(next.pop())) {
++                if (tree.add(child.getSheetId())) next.add(child.getSheetId());
++            }
++        }
++        return tree;
++    }
++
++    private String parentOf(String id) {
++        return parents.findById(id).map(SheetParentLink::getParentId).orElse(null);
++    }
++}
