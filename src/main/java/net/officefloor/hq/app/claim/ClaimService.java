@@ -78,12 +78,13 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** The terms a claim of the person created now is due by, whatever its date: those in force on the
-     *  sheet's today, the person's own, else those of their grade, else the sheet's, each looked up on it. */
-    private int termsOf(String sheetId, Person person) {
+    /** The terms a claim of the person dated on the date and created now is due by: those in force on the
+     *  sheet's today, the person's own, else those of the grade they have on the claim's date (as its rate
+     *  is), else the sheet's, each looked up on today. */
+    private int termsOf(String sheetId, Person person, LocalDate date) {
         LocalDate today = sheets.today(sheetId);
         Integer own = person.termsOn(today);
-        return own != null ? own : settings.terms(sheetId, person.gradeOn(today), today);
+        return own != null ? own : settings.terms(sheetId, person.gradeOn(date), today);
     }
 
     /** Add a claim to a person; a claim with no date is dated the sheet's entry date while it is set,
@@ -95,8 +96,8 @@ public class ClaimService {
             String corrects, String ref, String tags) {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : entryDateOr(sheetId);
-        // The terms are fixed now, those in force on the sheet's today; the due-by counts them in business days.
-        int terms = termsOf(sheetId, person);
+        // The terms are fixed now (see termsOf); the due-by counts them in business days.
+        int terms = termsOf(sheetId, person, dated);
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
@@ -205,7 +206,7 @@ public class ClaimService {
         refuseIfLocked(claim, user);
         Person person = person(sheetId, claim.getPersonId());
         refuseIfRetired(person, dated);
-        refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person)));
+        refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
         if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A claim with lines has the total of its lines as its amount.");
@@ -321,13 +322,15 @@ public class ClaimService {
         BigDecimal dueOpening = next == ClaimStatus.OPEN ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, dueOpening);
         if (next == ClaimStatus.OPEN) refuseIfCapped(sheetId, claim);
-        // Opened with a due above the review threshold, it waits for a steward's review, with no number yet.
+        // Opened with a due above the review threshold, it waits for a steward's review.
         if (next == ClaimStatus.OPEN && isAboveReviewThreshold(sheetId, claim, dueOpening)) next = ClaimStatus.REVIEW;
         // Settled one at a time until a bulk settle marks it with its batch.
         if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, person, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
+        // Numbered as it is settled (not left PENDING); one numbered already keeps its number.
+        String number = next == ClaimStatus.SETTLED && claim.getNumber() == null
+                ? nextNumber(sheetId, claim) : claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) claim.setOpenedBy(user);
         // A voided claim keeps its number, which is never given to another claim.
@@ -424,7 +427,7 @@ public class ClaimService {
     }
 
     /** Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim into a new
-     *  OPEN claim of the same person, date and note, given the next number, opened by the user and due
+     *  OPEN claim of the same person, date and note, with no number until it is settled, opened by the user and due
      *  by the terms in force on the date; the claim keeps the rest and loses any figure a statement bound
      *  it to; it is a late entry when its due-by falls inside a soft-closed period. Refused for a claim that
      *  is not OPEN (a PENDING one included), a deferred claim, and a claim whose due-by, or the new claim's,
@@ -450,21 +453,19 @@ public class ClaimService {
                     "The amount split off must be more than 0.00 and less than the claim's amount.");
         }
         Person person = person(sheetId, claim.getPersonId());
-        // The terms are fixed now, those in force on the sheet's today; the due-by counts them in business days.
-        int terms = termsOf(sheetId, person);
+        // The terms are fixed now (see termsOf); the due-by counts them in business days.
+        int terms = termsOf(sheetId, person, claim.getDate());
         LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate(), terms);
         refuseIfClosed(sheetId, dueBy);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Claim split = claim.splitOff(part, null, user, terms, dueBy, sheets.today(sheetId));
-        String number = nextNumber(sheetId, split);
-        split.setNumber(number);
         // Split off into a soft-closed period, the new claim is a late entry of it.
         if (periods.isSoftClosedOn(sheetId, dueBy)) split.markLateEntry();
         split.setListed(claims.lastListed(sheetId) + 1);
         Claim saved = claims.saveAndFlush(claim);
         split = claims.saveAndFlush(split);
         logStatus(sheetId, user, person, split);
-        recordChange("CLAIM_SPLIT", user, person, saved, saved.getNumber(), " into=" + number);
+        recordChange("CLAIM_SPLIT", user, person, saved, saved.getNumber(), " into=");
         recordChange("CLAIM_OPENED", user, person, split);
         rollup.recordChanges(user, before);
         return new Split(saved, split);
@@ -673,7 +674,7 @@ public class ClaimService {
     }
 
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet, as their newest claim. It
-     *  keeps its date, takes the next number in the sequence it is numbered in (a draft, having none,
+     *  keeps its date, takes the next number in the sequence it is numbered in (one not yet settled, having none,
      *  gets none; its old number is never used again) and loses any figure a statement bound it to (it is live again until
      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
      *  role to reassign (by default, a steward), and for a
@@ -705,7 +706,7 @@ public class ClaimService {
         }
         refuseIfRetired(to, claim.getDate());
         if (!from.getId().equals(to.getId())) {
-            refuseIfClosed(sheetId, holidays.dueBy(sheetId, claim.getDate(), termsOf(sheetId, to)));
+            refuseIfClosed(sheetId, holidays.dueBy(sheetId, claim.getDate(), termsOf(sheetId, to, claim.getDate())));
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));
@@ -721,7 +722,7 @@ public class ClaimService {
         return saved;
     }
 
-    /** Approve a PENDING claim: it is SETTLED, its due (its figure, bound or live, and any late charge) frozen
+    /** Approve a PENDING claim: it is SETTLED, given the next number unless numbered already, its due (its figure, bound or live, and any late charge) frozen
      *  now. Refused unless the user is a steward of the sheet other than the one who opened or last
      *  edited it. */
     @Transactional
@@ -740,6 +741,7 @@ public class ClaimService {
         refuseIfUnproven(sheetId, person, claim, dueNow);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
+        if (claim.getNumber() == null) claim.setNumber(nextNumber(sheetId, claim));
         claim.setSettledDue(dueNow);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -749,7 +751,7 @@ public class ClaimService {
         return saved;
     }
 
-    /** Review a REVIEW claim: it is OPEN, given the next number; who opened it stays as it was. Refused
+    /** Review a REVIEW claim: it is OPEN, still with no number until it is settled; who opened it stays as it was. Refused
      *  unless the user is a steward of the sheet, and for a claim that is not REVIEW or whose due-by is
      *  inside a closed period. */
     @Transactional
@@ -768,7 +770,6 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
-        claim.setNumber(nextNumber(sheetId, claim));
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_REVIEWED", user, person, saved, null, "");
@@ -872,7 +873,7 @@ public class ClaimService {
         return due == null ? "n/a" : due.toPlainString();
     }
 
-    /** The number a claim takes as it is opened: while the sheet's period numbering is in force (its
+    /** The number a claim takes as it is settled (or approved): while the sheet's period numbering is in force (its
      *  today on or after the setting's date), the next of the claim's period (the one its due-by falls in), <period name>-<n>, or of
      *  claims in no period, X-<n> (each per sheet); otherwise FY<year>-<n>, the next number within the
      *  fiscal year its due-by falls in (named by the calendar year it starts in), of the sequence of that

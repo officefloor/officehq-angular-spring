@@ -63,7 +63,8 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number, given when it is opened and kept once void; none while a draft. It is the
+    /** The claim's number, given when it is settled (or approved) and kept once void; none before then
+     *  (claims opened before numbering moved to settlement keep the number they were given). It is the
      *  FY<year>-<n> within its fiscal year (or the sheet-wide 1, 2, ... given before), or while period numbering is in force <period name>-<n> or X-<n>. */
     @Column(name = "claim_number")
     private String number;
