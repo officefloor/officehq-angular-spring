@@ -58,7 +58,7 @@ const YEAR = /^\d{4}$/;
       </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -71,6 +71,7 @@ const YEAR = /^\d{4}$/;
               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -102,6 +103,8 @@ export class Periods {
   readonly periods = input.required<PeriodView[]>();
   /** Each period's due-total with two decimals, by period id. */
   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
+  /** Each period's count of its claims, VOID and DELETED ones left out, by period id. */
+  readonly claimCounts = input.required<ReadonlyMap<number, number>>();
   readonly added = output<PeriodView>();
   /** A period that was closed or reopened. */
   readonly changed = output<PeriodView>();

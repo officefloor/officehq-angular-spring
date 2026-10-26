@@ -67,7 +67,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
     <app-duplicates />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
       <app-pools [people]="people()" [periods]="periods()" />
       <app-crews [people]="people()" [dues]="dueCents()" />
       <section aria-labelledby="people-heading">
@@ -931,6 +931,16 @@ export class People {
       if ((period.closed || period.softClosed) && period.closedTotal !== null) totals.set(period.id, cents(period.closedTotal));
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
+  });
+  /** Each period's count of the claims belonging to it (due by a date in it), VOID and DELETED ones left out, by period id. */
+  protected readonly periodClaimCounts = computed(() => {
+    const counts = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+    for (const c of this.claims()) {
+      if (c.status === 'VOID' || c.status === 'DELETED') continue;
+      const period = periodOf(this.periods(), c.dueBy);
+      if (period !== null) counts.set(period.id, (counts.get(period.id) ?? 0) + 1);
+    }
+    return counts;
   });
   /** The ids of the people who are active: those with an open (PENDING included) claim that counts,
    *  dated within the 30 days up to and including the sheet's today. */
