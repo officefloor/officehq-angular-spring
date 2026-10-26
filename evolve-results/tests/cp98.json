@@ -1,0 +1,66 @@
+{
+  "checkpoint": 98,
+  "checkpoint_id": "cp98_settle-batches",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "ac1535b2bd33171eee862a60dd4bb6bb91b0ea49",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T05:43:20",
+  "seconds": 141,
+  "build_log_file": "cp98.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp98_settle-batches.spec.ts::settle batches": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 1": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 2": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8725,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18330,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 41854,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12608,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

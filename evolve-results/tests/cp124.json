@@ -1,0 +1,76 @@
+{
+  "checkpoint": 124,
+  "checkpoint_id": "cp124_retired-share-reallocates",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "0d51fb3873d48391b74c6acdf15af963cd2ae3ad",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T08:42:40",
+  "seconds": 150,
+  "build_log_file": "cp124.test.log",
+  "replaced_tests": [
+    "cp105_pools.spec.ts::pools",
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp113_import-people.spec.ts::import people scenario 2",
+    "cp116_import-upserts.spec.ts::import upserts scenario 1",
+    "cp119_cut-totals.spec.ts::cut totals scenario 2",
+    "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+    "cp121_history-follows.spec.ts::history follows scenario 2",
+    "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 1": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 2": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9790,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 41945,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18177,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15829,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 146,
+  "checkpoint_id": "cp146_over-threshold-alert",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "9c677d32105d03b2f8c81fd3e92d276945fca6ac",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T11:43:32",
+  "seconds": 130,
+  "build_log_file": "cp146.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp146_over-threshold-alert.spec.ts::over threshold alert": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 1": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 2": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10624,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26544,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

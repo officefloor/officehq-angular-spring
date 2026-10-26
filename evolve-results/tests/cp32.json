@@ -1,0 +1,77 @@
+{
+  "checkpoint": 32,
+  "checkpoint_id": "cp32_rounding-policy-date",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "d2eafa14e91c564068f1a7a6bd87a31307a9524f",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T01:48:52",
+  "seconds": 79,
+  "build_log_file": "cp32.test.log",
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp12_half-even.spec.ts::half even",
+    "cp15_statements.spec.ts::statements",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp21_retire.spec.ts::retire scenario 2",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp26_late-charge.spec.ts::late charge scenario 2",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp32_rounding-policy-date.spec.ts::rounding policy date": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9000,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10711,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6912,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

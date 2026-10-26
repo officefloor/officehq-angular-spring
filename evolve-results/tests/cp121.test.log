@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp121-gzhm_fo9
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows (6.6s)
+  ✓  2 [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 (14.4s)
+  ✓  3 [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 (49.7s)
+  ✓  4 [chromium] › cp121_history-follows.spec.ts:1205:7 › history follows › history follows scenario 3 (14.7s)
+
+  Slow test file: [chromium] › cp121_history-follows.spec.ts (1.4m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.5m)

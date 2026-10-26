@@ -1,0 +1,345 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp160-jz4orx_o
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+al">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      947 |     await expect(pg_uma.getByTestId("person-row-" + p_eve).getByTestId("person-due-total")).toHaveText("n/a");
+      948 |     await expect(pg_uma.getByTestId("person-row-" + p_fay).getByTestId("person-claimed")).toHaveText("0.00");
+    > 949 |     await expect(pg_uma.getByTestId("person-row-" + p_fay).getByTestId("person-due-total")).toHaveText("0.00");
+          |                                                                                             ^
+      950 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_0).getByTestId("claim-due")).toHaveText("n/a");
+      951 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_0).getByTestId("claim-status")).toHaveText("OPEN");
+      952 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_0).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp145_bulk-redate.spec.ts:949:93
+
+  16) [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-32').getByTestId('plan-generated')
+    Expected string: [32m"0"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-32').getByTestId('plan-generated')[22m
+
+
+      1143 |     await expect(pg_vic.getByTestId("month-2026-02-due-total")).toHaveText("1.00");
+      1144 |     await expect(pg_vic.getByTestId("month-2026-03-due-total")).toHaveText("2.50");
+    > 1145 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
+           |                                                                                            ^
+      1146 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
+      1147 |     await ui.expectAudit(sheet, [
+      1148 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp152_imported-claims-open.spec.ts:1145:92
+
+  17) [chromium] › cp158_column-chooser.spec.ts:6:7 › column chooser › column chooser ──────────────
+
+    Error: set rate: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp158_column-chooser.spec.ts:10:12
+
+  18) [chromium] › cp34_bulk-open.spec.ts:302:7 › bulk open › bulk open scenario 2 ─────────────────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp34_bulk-open.spec.ts:359:12
+
+  19) [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ───────────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1070').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1070').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      167 |     await ui.refresh(pg_wes);
+      168 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+    > 169 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+          |                                                                                             ^
+      170 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-due")).toHaveText("n/a");
+      171 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-status")).toHaveText("VOID");
+      172 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp43_cap.spec.ts:169:93
+
+  20) [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 ───────────
+
+    Error: paste claims: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at Object.pasteClaims (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:778:14)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp57_split-claim.spec.ts:850:12
+
+  21) [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ──────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31mnull[39m
+
+      119 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("2.50");
+      120 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("2.50");
+    > 121 |     expect(await ui.pasteClaims(pg_uma, "Ada,1.00,2026-03-28,a, b\nAda,7.77,2026-03-09,paste\nAda,20.00,2026-03-28,")).toBe(3);
+          |                                                                                                                        ^
+      122 |     const c_ada_2 = await ui.claimAt(pg_uma, p_ada, 2);
+      123 |     const c_ada_3 = await ui.claimAt(pg_uma, p_ada, 3);
+      124 |     const c_ada_4 = await ui.claimAt(pg_uma, p_ada, 4);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp62_archive-sheet.spec.ts:121:120
+
+  22) [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 ──────────────
+
+    TimeoutError: locator.click: Timeout 30000ms exceeded.
+    Call log:
+      [2m- waiting for getByTestId('claim-row-2003').getByTestId('claim-cancel')[22m
+
+
+       at ../support/ui.ts:921
+
+      919 |
+      920 | export async function claimEditCancel(page: Page, claimId: string): Promise<void> {
+    > 921 |   await claimRow(page, claimId).getByTestId('claim-cancel').click();
+          |                                                             ^
+      922 | }
+      923 |
+      924 | /** open | settle | void | approve | reject(reason) | void(reason): true when the status changed.
+
+        at Object.claimEditCancel (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:921:61)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp69_claim-lock.spec.ts:461:14
+
+  23) [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp71_cancel-statement.spec.ts:758:12
+
+  24) [chromium] › cp76_snapshots.spec.ts:798:7 › snapshots › snapshots scenario 3 ─────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1396').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1396').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      823 |     await ui.refresh(pg_wes);
+      824 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+    > 825 |     await expect(pg_wes.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+          |                                                                                             ^
+      826 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-due")).toHaveText("19.99");
+      827 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-status")).toHaveText("DRAFT");
+      828 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp76_snapshots.spec.ts:825:93
+
+  25) [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 ──────
+
+    Error: save claim editor: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp77_note-required.spec.ts:163:12
+
+  26) [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m3[39m
+
+      102 |     const c_cam_1 = await ui.claimAt(pg_wes, p_cam, 1);
+      103 |     const c_cam_2 = ui.must(await ui.quickAdd(pg_wes, {"name": "Cam", "amount": "0.40"}, p_cam));
+    > 104 |     expect(await ui.pasteClaims(pg_wes, "Ben,0.04,2026-04-02,\nCam,7.77,,\nBen,4.00,,")).toBeNull();
+          |                                                                                          ^
+      105 |     const c_ben_0 = ui.must(await ui.quickAdd(pg_wes, {"name": "Ben", "amount": "99.95"}, p_ben));
+      106 |     const c_ben_1 = ui.must(await ui.addClaim(pg_wes, p_ben, {"amount": "4.00", "date": "2026-03-01", "note": "n"}));
+      107 |     expect(await ui.statement(pg_wes, p_cam)).toBe(true);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp78_age-buckets.spec.ts:104:90
+
+  27) [chromium] › cp79_entry-date.spec.ts:363:7 › entry date › entry date scenario 2 ──────────────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp79_entry-date.spec.ts:453:12
+
+  28) [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 ─────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31mnull[39m
+
+      200 |     expect(await ui.claimAction(pg_vic, c_ben_1, "settle")).toBe(true);
+      201 |     expect(await ui.watch(pg_vic, p_cam, true)).toBe(true);
+    > 202 |     expect(await ui.pasteClaims(pg_vic, "Ben,1.00,,a, b\nCam,10.25,2026-03-20,\nCam,12.50,2026-03-01,a, b")).toBe(3);
+          |                                                                                                              ^
+      203 |     const c_ben_2 = await ui.claimAt(pg_vic, p_ben, 2);
+      204 |     const c_cam_3 = await ui.claimAt(pg_vic, p_cam, 3);
+      205 |     const c_cam_4 = await ui.claimAt(pg_vic, p_cam, 4);
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp83_holidays.spec.ts:202:110
+
+  Slow test file: [chromium] › cp156_forward-only-rates.spec.ts (2.6m)
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (2.5m)
+  Slow test file: [chromium] › cp117_list-positions.spec.ts (2.1m)
+  Slow test file: [chromium] › cp154_classic-summary.spec.ts (2.1m)
+  Slow test file: [chromium] › cp115_nested-pools.spec.ts (2.1m)
+  Consider splitting slow test files to speed up parallel execution
+  28 failed
+    [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts ───────────────────────────────
+    [chromium] › cp107_merge-people.spec.ts:1335:7 › merge people › merge people scenario 3 ────────
+    [chromium] › cp111_transfer-person.spec.ts:504:7 › transfer person › transfer person scenario 2 
+    [chromium] › cp118_import-rates.spec.ts:870:7 › import rates › import rates scenario 3 ─────────
+    [chromium] › cp121_history-follows.spec.ts:1215:7 › history follows › history follows scenario 3 
+    [chromium] › cp124_retired-share-reallocates.spec.ts:567:7 › retired share reallocates › retired share reallocates scenario 2 
+    [chromium] › cp125_unretire.spec.ts:154:7 › unretire › unretire scenario 1 ─────────────────────
+    [chromium] › cp126_clone-sheet.spec.ts:6:7 › clone sheet › clone sheet ─────────────────────────
+    [chromium] › cp128_transfer-merges.spec.ts:6:7 › transfer merges › transfer merges ─────────────
+    [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 
+    [chromium] › cp131_plans.spec.ts:1101:7 › plans › plans scenario 3 ─────────────────────────────
+    [chromium] › cp133_person-tags.spec.ts:551:7 › person tags › person tags scenario 2 ────────────
+    [chromium] › cp137_claim-lines.spec.ts:1121:7 › claim lines › claim lines scenario 3 ───────────
+    [chromium] › cp144_numbering-per-fiscal-year.spec.ts:585:7 › numbering per fiscal year › numbering per fiscal year scenario 2 
+    [chromium] › cp145_bulk-redate.spec.ts:870:7 › bulk redate › bulk redate scenario 3 ────────────
+    [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+    [chromium] › cp158_column-chooser.spec.ts:6:7 › column chooser › column chooser ────────────────
+    [chromium] › cp34_bulk-open.spec.ts:302:7 › bulk open › bulk open scenario 2 ───────────────────
+    [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ─────────────────────────────────────
+    [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ────────
+    [chromium] › cp69_claim-lock.spec.ts:399:7 › claim lock › claim lock scenario 2 ────────────────
+    [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 
+    [chromium] › cp76_snapshots.spec.ts:798:7 › snapshots › snapshots scenario 3 ───────────────────
+    [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 ────────
+    [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 ──────────────
+    [chromium] › cp79_entry-date.spec.ts:363:7 › entry date › entry date scenario 2 ────────────────
+    [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 ───────────────────────
+  600 passed (1.2h)

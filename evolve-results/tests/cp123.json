@@ -1,0 +1,66 @@
+{
+  "checkpoint": 123,
+  "checkpoint_id": "cp123_bulk-retire",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "7537881d64f0c79adc053a4de877af9681868be3",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T08:40:03",
+  "seconds": 156,
+  "build_log_file": "cp123.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp123_bulk-retire.spec.ts::bulk retire": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 1": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 2": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10012,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33724,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 37650,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

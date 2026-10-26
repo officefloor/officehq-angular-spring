@@ -1,0 +1,66 @@
+{
+  "checkpoint": 173,
+  "checkpoint_id": "cp173_opening-balances",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "16129ab1eabb42a4a359c0322522360900e24985",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T16:20:45",
+  "seconds": 139,
+  "build_log_file": "cp173.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp173_opening-balances.spec.ts::opening balances": true,
+      "cp173_opening-balances.spec.ts::opening balances scenario 1": true,
+      "cp173_opening-balances.spec.ts::opening balances scenario 2": true,
+      "cp173_opening-balances.spec.ts::opening balances scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp173_opening-balances.spec.ts::opening balances",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15390,
+        "failure": ""
+      },
+      {
+        "test_id": "cp173_opening-balances.spec.ts::opening balances scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp173_opening-balances.spec.ts::opening balances scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15651,
+        "failure": ""
+      },
+      {
+        "test_id": "cp173_opening-balances.spec.ts::opening balances scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21339,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

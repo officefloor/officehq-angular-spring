@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp199-p8njvvyg
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp199_approvers.spec.ts:6:7 › approvers › approvers (9.9s)
+  ✓  2 [chromium] › cp199_approvers.spec.ts:74:7 › approvers › approvers scenario 1 (27.9s)
+  ✓  3 [chromium] › cp199_approvers.spec.ts:757:7 › approvers › approvers scenario 2 (21.6s)
+  ✘  4 [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 (35.0s)
+
+
+  1) [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 ────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('crew-row-C1').getByTestId('crew-lead')
+    Expected string: [32m""[39m
+    Received string: [31m"Ada (A)"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('crew-row-C1').getByTestId('crew-lead')[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+    [2m  -   locator resolved to <span data-testid="crew-lead">Ada (A)</span>[22m
+    [2m  -   unexpected value "Ada (A)"[22m
+
+
+      1487 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-cut-P1")).toHaveText("");
+      1488 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_cam).getByTestId("pool-cut-P2")).toHaveText("");
+    > 1489 |     await expect(pg_vic.getByTestId("crew-row-C1").getByTestId("crew-lead")).toHaveText("");
+           |                                                                              ^
+      1490 |     await expect(pg_vic.getByTestId("crew-row-C1").getByTestId("crew-due-total")).toHaveText("0.00");
+      1491 |     await expect(pg_vic.getByTestId("rate-month-A-2026-01")).toHaveText("20.00");
+      1492 |     await expect(pg_vic.getByTestId("rate-month-A-2026-02")).toHaveText("20.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp199_approvers.spec.ts:1489:78
+
+  Slow test file: [chromium] › cp199_approvers.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp199_approvers.spec.ts:1081:7 › approvers › approvers scenario 3 ─────────────────
+  3 passed (1.6m)

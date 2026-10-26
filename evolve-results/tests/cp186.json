@@ -1,0 +1,66 @@
+{
+  "checkpoint": 186,
+  "checkpoint_id": "cp186_quarterly-periods",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "2237ef94b16c58ce4a73b9610ab45c9b13a268d7",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T18:20:00",
+  "seconds": 146,
+  "build_log_file": "cp186.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp186_quarterly-periods.spec.ts::quarterly periods": true,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 1": false,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 2": true,
+      "cp186_quarterly-periods.spec.ts::quarterly periods scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6411,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 16966,
+        "failure": "Error: save person: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610241-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp186_quarterly-periods.spec.ts:124:12 | Error: save person: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26951,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_quarterly-periods.spec.ts::quarterly periods scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 50553,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

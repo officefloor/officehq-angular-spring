@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp128-e3_679qw
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✘  1 [chromium] › cp128_transfer-merges.spec.ts:6:7 › transfer merges › transfer merges (11.3s)
+  ✓  2 [chromium] › cp128_transfer-merges.spec.ts:91:7 › transfer merges › transfer merges scenario 1 (11.2s)
+  ✓  3 [chromium] › cp128_transfer-merges.spec.ts:385:7 › transfer merges › transfer merges scenario 2 (16.6s)
+  ✓  4 [chromium] › cp128_transfer-merges.spec.ts:764:7 › transfer merges › transfer merges scenario 3 (14.2s)
+
+
+  1) [chromium] › cp128_transfer-merges.spec.ts:6:7 › transfer merges › transfer merges ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('person-aliases')
+    Expected string: [32m"Ad, [7mA[27mddie, [7ma[27mddie"[39m
+    Received string: [31m"Ad, [7ma[27mddie, [7mA[27mddie"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('person-aliases')[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+    [2m  -   locator resolved to <span data-testid="person-aliases">Ad, addie, Addie</span>[22m
+    [2m  -   unexpected value "Ad, addie, Addie"[22m
+
+
+      46 |     await ui.refresh(pg_vic);
+      47 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Ada");
+    > 48 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-aliases")).toHaveText("Ad, Addie, addie");
+         |                                                                                           ^
+      49 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-statement-count")).toHaveText("1");
+      50 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("31.00");
+      51 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("7.00");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp128_transfer-merges.spec.ts:48:91
+
+  1 failed
+    [chromium] › cp128_transfer-merges.spec.ts:6:7 › transfer merges › transfer merges ─────────────
+  3 passed (55.9s)

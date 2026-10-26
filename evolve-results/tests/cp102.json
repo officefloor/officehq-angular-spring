@@ -1,0 +1,66 @@
+{
+  "checkpoint": 102,
+  "checkpoint_id": "cp102_aliases",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "8234a8c6199bb7b34bfc618431aeec2e3b53023e",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T06:29:05",
+  "seconds": 152,
+  "build_log_file": "cp102.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp102_aliases.spec.ts::aliases": true,
+      "cp102_aliases.spec.ts::aliases scenario 1": true,
+      "cp102_aliases.spec.ts::aliases scenario 2": true,
+      "cp102_aliases.spec.ts::aliases scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14768,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16031,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27070,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32322,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

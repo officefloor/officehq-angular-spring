@@ -1,0 +1,68 @@
+{
+  "checkpoint": 88,
+  "checkpoint_id": "cp88_compound-late-charge",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "cd86e632ff6551b237db5d2f43b02d8b8005b49f",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T04:50:47",
+  "seconds": 157,
+  "build_log_file": "cp88.test.log",
+  "replaced_tests": [
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp88_compound-late-charge.spec.ts::compound late charge": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 1": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 2": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8868,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28064,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19463,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43615,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

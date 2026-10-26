@@ -1,0 +1,71 @@
+{
+  "checkpoint": 136,
+  "checkpoint_id": "cp136_bindings-follow",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "630af8828120a5c102b012ca0b564a13e102fbdc",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T10:29:31",
+  "seconds": 123,
+  "build_log_file": "cp136.test.log",
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp136_bindings-follow.spec.ts::bindings follow": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 1": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 2": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11220,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26824,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21874,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25591,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp163-ewr_12xs
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp163_statement-lines.spec.ts:6:7 › statement lines › statement lines (7.1s)
+  ✓  2 [chromium] › cp163_statement-lines.spec.ts:67:7 › statement lines › statement lines scenario 1 (24.0s)
+  ✘  3 [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 (29.4s)
+  ✓  4 [chromium] › cp163_statement-lines.spec.ts:1312:7 › statement lines › statement lines scenario 3 (17.1s)
+
+
+  1) [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-10').getByTestId('claim-due')
+    Expected string: [32m"1.29"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-10').getByTestId('claim-due')[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <span data-testid="claim-due">n/a</span>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      798 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-date")).toHaveText("2026-03-01");
+      799 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-note")).toHaveText("n");
+    > 800 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-due")).toHaveText("1.29");
+          |                                                                                         ^
+      801 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-status")).toHaveText("DRAFT");
+      802 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-number")).toHaveText("");
+      803 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0_2).getByTestId("claim-opened-by")).toHaveText("");
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp163_statement-lines.spec.ts:800:89
+
+  1 failed
+    [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 
+  3 passed (1.3m)

@@ -1,0 +1,86 @@
+{
+  "checkpoint": 104,
+  "checkpoint_id": "cp104_reassign-renumbers",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "9aeaae9872fc7cd483f85e17551f9afae2e4b2dd",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T06:33:26",
+  "seconds": 142,
+  "build_log_file": "cp104.test.log",
+  "replaced_tests": [
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 1",
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 3",
+    "cp102_aliases.spec.ts::aliases scenario 3",
+    "cp37_reassign-claim.spec.ts::reassign claim",
+    "cp38_terms-per-grade.spec.ts::terms per grade scenario 2",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3",
+    "cp54_viewer-role.spec.ts::viewer role scenario 3",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 3",
+    "cp59_period-templates.spec.ts::period templates scenario 2",
+    "cp74_as-of-view.spec.ts::as of view scenario 3",
+    "cp81_remind.spec.ts::remind scenario 1",
+    "cp90_void-reasons.spec.ts::void reasons scenario 3",
+    "cp93_bulk-reassign.spec.ts::bulk reassign",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1",
+    "cp99_person-contact.spec.ts::person contact scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 1": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 2": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12785,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22409,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33650,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26623,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

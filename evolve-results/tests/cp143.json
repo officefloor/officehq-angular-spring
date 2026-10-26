@@ -1,0 +1,66 @@
+{
+  "checkpoint": 143,
+  "checkpoint_id": "cp143_fiscal-year",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "a95a38b0aa29dfaac9140abfd8ab87317051dd9e",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T11:37:43",
+  "seconds": 125,
+  "build_log_file": "cp143.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp143_fiscal-year.spec.ts::fiscal year": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 1": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 2": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11915,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16829,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27332,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21424,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

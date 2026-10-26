@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp93-trvzw4bv
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp93_bulk-reassign.spec.ts:6:7 › bulk reassign › bulk reassign (9.6s)
+  ✓  2 [chromium] › cp93_bulk-reassign.spec.ts:99:7 › bulk reassign › bulk reassign scenario 1 (14.3s)
+  ✓  3 [chromium] › cp93_bulk-reassign.spec.ts:380:7 › bulk reassign › bulk reassign scenario 2 (13.1s)
+  ✓  4 [chromium] › cp93_bulk-reassign.spec.ts:711:7 › bulk reassign › bulk reassign scenario 3 (20.8s)
+
+  Slow test file: [chromium] › cp93_bulk-reassign.spec.ts (57.8s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (60.0s)

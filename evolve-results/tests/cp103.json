@@ -1,0 +1,66 @@
+{
+  "checkpoint": 103,
+  "checkpoint_id": "cp103_claim-templates",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "b5ace4b2bc4946c29ca86f7800125f43ad37d56f",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T06:31:37",
+  "seconds": 109,
+  "build_log_file": "cp103.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp103_claim-templates.spec.ts::claim templates": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 1": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 2": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12165,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12692,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15807,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

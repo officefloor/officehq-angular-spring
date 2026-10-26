@@ -1,0 +1,66 @@
+{
+  "checkpoint": 199,
+  "checkpoint_id": "cp199_approvers",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "b41f0f5fe65f8ac661ce5614735848cd75dba2aa",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T21:49:26",
+  "seconds": 149,
+  "build_log_file": "cp199.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp199_approvers.spec.ts::approvers": true,
+      "cp199_approvers.spec.ts::approvers scenario 1": true,
+      "cp199_approvers.spec.ts::approvers scenario 2": true,
+      "cp199_approvers.spec.ts::approvers scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9890,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27942,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21632,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_approvers.spec.ts::approvers scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 35032,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('crew-row-C1').getByTestId('crew-lead')\nExpected string: \u001b[32m\"\"\u001b[39m\nReceived string: \u001b[31m\"Ada (A)\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('crew-row-C1').getByTestId('crew-lead')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"crew-lead\">Ada (A)</span>\u001b[22m\n\u001b[2m  -   unexpected value \"Ada (A)\"\u001b[22m\n\n\n  1487 |     await expect(pg_vic.getByTestId(\"pool-member-C1-\" + p_cam).getByTestId(\"pool-cut-P1\")).toHaveText(\"\");\n  1488 |     await expect(pg_vic.getByTestId(\"pool-member-C1-\" + p_cam).getByTestId(\"pool-cut-P2\")).toHaveText(\"\");\n> 1489 |     await expect(pg_vic.getByTestId(\"crew-row-C1\").getByTestId(\"crew-lead\")).toHaveText(\"\");\n       |                                                                              ^\n  1490 |     await expect(pg_vic.getByTestId(\"crew-row-C1\").getByTestId("
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

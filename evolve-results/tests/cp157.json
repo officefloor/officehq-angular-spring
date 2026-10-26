@@ -1,0 +1,66 @@
+{
+  "checkpoint": 157,
+  "checkpoint_id": "cp157_user-locale",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "2ee47f2d89c387b00042bab0a07fb61442c2e4ef",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T13:14:14",
+  "seconds": 158,
+  "build_log_file": "cp157.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp157_user-locale.spec.ts::user locale": true,
+      "cp157_user-locale.spec.ts::user locale scenario 1": true,
+      "cp157_user-locale.spec.ts::user locale scenario 2": true,
+      "cp157_user-locale.spec.ts::user locale scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12944,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24923,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 44450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15355,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

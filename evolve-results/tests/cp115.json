@@ -1,0 +1,66 @@
+{
+  "checkpoint": 115,
+  "checkpoint_id": "cp115_nested-pools",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "36f672c7e567a40c6cf153d835bed6a5576f994a",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T07:38:48",
+  "seconds": 158,
+  "build_log_file": "cp115.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp115_nested-pools.spec.ts::nested pools": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 1": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 2": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19307,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 44915,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28538,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14701,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

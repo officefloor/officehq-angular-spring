@@ -1,0 +1,73 @@
+{
+  "checkpoint": 148,
+  "checkpoint_id": "cp148_claimed-without-corrections",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "cda868417daa7d6ba865c34abb99d2fe353185b0",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T11:47:34",
+  "seconds": 164,
+  "build_log_file": "cp148.test.log",
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+    "cp30_corrections.spec.ts::corrections",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 1": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 2": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8243,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21282,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38541,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26386,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

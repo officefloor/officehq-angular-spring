@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp191-c36hytgc
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp191_clerk-limit-per-grade.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (17.6s)
+  ✓  2 [chromium] › cp191_clerk-limit-per-grade.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (32.9s)
+  ✓  3 [chromium] › cp191_clerk-limit-per-grade.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (25.8s)
+  ✓  4 [chromium] › cp191_clerk-limit-per-grade.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (22.5s)
+
+  Slow test file: [chromium] › cp191_clerk-limit-per-grade.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.7m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 187,
+  "checkpoint_id": "cp187_cut-history",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "352c2af2e72f1b53dbbbb404ffcc585befc4741e",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T18:22:26",
+  "seconds": 182,
+  "build_log_file": "cp187.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp187_cut-history.spec.ts::cut history": true,
+      "cp187_cut-history.spec.ts::cut history scenario 1": true,
+      "cp187_cut-history.spec.ts::cut history scenario 2": true,
+      "cp187_cut-history.spec.ts::cut history scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp187_cut-history.spec.ts::cut history",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15828,
+        "failure": ""
+      },
+      {
+        "test_id": "cp187_cut-history.spec.ts::cut history scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp187_cut-history.spec.ts::cut history scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20885,
+        "failure": ""
+      },
+      {
+        "test_id": "cp187_cut-history.spec.ts::cut history scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32008,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

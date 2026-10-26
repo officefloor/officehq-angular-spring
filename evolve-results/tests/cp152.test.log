@@ -1,0 +1,42 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp152-lcxbokf3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp152_imported-claims-open.spec.ts:6:7 › imported claims open › imported claims open (8.3s)
+  ✓  2 [chromium] › cp152_imported-claims-open.spec.ts:120:7 › imported claims open › imported claims open scenario 1 (26.1s)
+  ✘  3 [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 (24.6s)
+  ✓  4 [chromium] › cp152_imported-claims-open.spec.ts:1201:7 › imported claims open › imported claims open scenario 3 (22.8s)
+
+
+  1) [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('plan-row-1').getByTestId('plan-generated')
+    Expected string: [32m"0"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-generated')[22m
+
+
+      1143 |     await expect(pg_vic.getByTestId("month-2026-02-due-total")).toHaveText("1.00");
+      1144 |     await expect(pg_vic.getByTestId("month-2026-03-due-total")).toHaveText("2.50");
+    > 1145 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
+           |                                                                                            ^
+      1146 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
+      1147 |     await ui.expectAudit(sheet, [
+      1148 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
+
+        at /home/daniel/ui-work/runs/202610241-as/testing/e2e/specs/cp152_imported-claims-open.spec.ts:1145:92
+
+  1 failed
+    [chromium] › cp152_imported-claims-open.spec.ts:692:7 › imported claims open › imported claims open scenario 2 
+  3 passed (1.4m)

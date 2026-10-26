@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "checkpoint_id": "cp172_pending-bound",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "170c66edd3029c6b6175a5b7913127e7e10b4ab3",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T16:18:25",
+  "seconds": 140,
+  "build_log_file": "cp172.test.log",
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp172_pending-bound.spec.ts::pending bound": true,
+      "cp172_pending-bound.spec.ts::pending bound scenario 1": false,
+      "cp172_pending-bound.spec.ts::pending bound scenario 2": true,
+      "cp172_pending-bound.spec.ts::pending bound scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp172_pending-bound.spec.ts::pending bound",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7828,
+        "failure": ""
+      },
+      {
+        "test_id": "cp172_pending-bound.spec.ts::pending bound scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 24570,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('rate-current-C')\nExpected string: \u001b[32m\"5.00\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('rate-current-C')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-C\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  320 |     await expect(pg_wes.getByTestId(\"rate-current-A\")).toHaveText(\"20.00\");\n  321 |     await expect(pg_wes.getByTestId(\"rate-current-B\")).toHaveText(\"12.50\");\n> 322 |     await expect(pg_wes.getByTestId(\"rate-current-C\")).toHaveText(\"5.00\");\n      |                                                        ^\n  323 |     await expect(pg_wes.getByTestId(\"summary-grade-A-count\")).toHaveText(\"0\");\n  324 |     await expect(pg_wes.getByTestId(\"summary-grade-A-due-total\")).toHaveText(\"0.00\");\n  325 |     await expect(pg_wes.getByTestId(\"summary-grade-A-active\")).toHaveText(\"0\");\n\n    at /home/da"
+      },
+      {
+        "test_id": "cp172_pending-bound.spec.ts::pending bound scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20279,
+        "failure": ""
+      },
+      {
+        "test_id": "cp172_pending-bound.spec.ts::pending bound scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28083,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 99,
+  "checkpoint_id": "cp99_person-contact",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "f9f55cc951714b1838dec5dfb3138e8419f0e1de",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T05:45:41",
+  "seconds": 117,
+  "build_log_file": "cp99.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp99_person-contact.spec.ts::person contact": true,
+      "cp99_person-contact.spec.ts::person contact scenario 1": true,
+      "cp99_person-contact.spec.ts::person contact scenario 2": true,
+      "cp99_person-contact.spec.ts::person contact scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15035,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20585,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11198,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18376,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

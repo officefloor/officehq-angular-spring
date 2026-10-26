@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp54-tckjmnm3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role (32.2s)
+  ✓  2 [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 (10.8s)
+  ✓  3 [chromium] › cp54_viewer-role.spec.ts:291:7 › viewer role › viewer role scenario 2 (12.2s)
+  ✓  4 [chromium] › cp54_viewer-role.spec.ts:613:7 › viewer role › viewer role scenario 3 (11.3s)
+
+  Slow test file: [chromium] › cp54_viewer-role.spec.ts (1.1m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.1m)

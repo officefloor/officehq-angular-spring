@@ -1,0 +1,66 @@
+{
+  "checkpoint": 141,
+  "checkpoint_id": "cp141_monthly-plans",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "71748bc6ca3689502a8d74d8667294f124d362b9",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T11:34:39",
+  "seconds": 111,
+  "build_log_file": "cp141.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp141_monthly-plans.spec.ts::monthly plans": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 1": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 2": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16632,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19013,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14907,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16824,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

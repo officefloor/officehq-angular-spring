@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610241-as-testing-cp168-1noftf_b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610241-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp168_crews-are-pools.spec.ts:6:7 › crews are pools › crews are pools (8.8s)
+  ✓  2 [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 (13.2s)
+  ✓  3 [chromium] › cp168_crews-are-pools.spec.ts:621:7 › crews are pools › crews are pools scenario 2 (20.1s)
+  ✓  4 [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 (33.1s)
+
+  Slow test file: [chromium] › cp168_crews-are-pools.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.3m)

@@ -1,0 +1,71 @@
+{
+  "checkpoint": 112,
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "73ec574b730ca559237901c6e9297c93902afa59",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T07:31:31",
+  "seconds": 132,
+  "build_log_file": "cp112.test.log",
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8505,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29680,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20470,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34243,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "checkpoint": 196,
+  "checkpoint_id": "cp196_floor-before-late-charge",
+  "kind": "checkpoint",
+  "run_id": "202610241-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610241-as/just-solve/chain2",
+  "commit_sha": "7a6259bf45bf8bcae06b5fb07fc769da08980c1a",
+  "harness_sha": "5b0ee4a500121207e81a38eada172f25d3fcd0af",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3008,
+  "started_at": "2026-10-26T21:42:15",
+  "seconds": 151,
+  "build_log_file": "cp196.test.log",
+  "replaced_tests": [
+    "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+    "cp143_fiscal-year.spec.ts::fiscal year scenario 1",
+    "cp145_bulk-redate.spec.ts::bulk redate scenario 1",
+    "cp149_period-claim-cap.spec.ts::period claim cap scenario 3",
+    "cp151_rounding-mode.spec.ts::rounding mode scenario 3",
+    "cp154_classic-summary.spec.ts::classic summary scenario 1",
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 3",
+    "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+    "cp162_claim-timeline.spec.ts::claim timeline scenario 3",
+    "cp163_statement-lines.spec.ts::statement lines scenario 1",
+    "cp176_statement-binds-late-charge.spec.ts::statement binds late charge",
+    "cp177_proof-kinds.spec.ts::proof kinds scenario 1",
+    "cp178_steward-dashboard.spec.ts::steward dashboard scenario 3",
+    "cp184_hold-leaves-claimed.spec.ts::hold leaves claimed scenario 1",
+    "cp184_hold-leaves-claimed.spec.ts::hold leaves claimed scenario 2",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3",
+    "cp67_active-people.spec.ts::active people scenario 3",
+    "cp74_as-of-view.spec.ts::as of view scenario 3",
+    "cp80_period-by-due-by.spec.ts::period by due by scenario 3",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp196_floor-before-late-charge.spec.ts::floor before late charge": true,
+      "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 1": true,
+      "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 2": true,
+      "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp196_floor-before-late-charge.spec.ts::floor before late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21782,
+        "failure": ""
+      },
+      {
+        "test_id": "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31037,
+        "failure": ""
+      },
+      {
+        "test_id": "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22607,
+        "failure": ""
+      },
+      {
+        "test_id": "cp196_floor-before-late-charge.spec.ts::floor before late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23512,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
