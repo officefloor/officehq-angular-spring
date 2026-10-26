@@ -1,0 +1,83 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 00000000..2b057a37
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,36 @@
++import { Component, computed, input } from '@angular/core';
++import { STATUSES } from '../summary/summary';
++
++// The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
++// summary, the two totals the sheet's totals.
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Sheet counters">
++      <dl>
++        <dt>People</dt>
++        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        @for (s of byStatus(); track s.status) {
++          <dt>{{ s.status }}</dt>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++        }
++        <dt>Due</dt>
++        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </header>
++  `,
++})
++export class Header {
++  // Everyone on the sheet, retired people included.
++  readonly peopleCount = input(0);
++  // The status of every claim on the sheet, as the summary counts them.
++  readonly statuses = input<readonly string[]>([]);
++  readonly dueTotal = input('');
++  readonly overdueTotal = input('');
++
++  protected readonly byStatus = computed(() =>
++    STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
++  );
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index beabc9e2..7e7dedfe 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,6 +6,7 @@ import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, ke
+ import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
+ import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
++import { Header } from '../header/header';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ 
+ interface Person {
+@@ -48,8 +49,14 @@ interface StatementView {
+ // The people on the active sheet: one form adds a person or, with an editor open, saves one.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods, Summary],
++  imports: [Claims, Header, Periods, Summary],
+   template: `
++    <app-header
++      [peopleCount]="people().length"
++      [statuses]="claimStatuses()"
++      [dueTotal]="dueTotal()"
++      [overdueTotal]="overdueTotal()"
++    />
+     <app-periods [figures]="countedFigures()" />
+     <app-summary [people]="summaryPeople()" [figures]="countedFigures()" [statuses]="claimStatuses()" />
+ 
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 40ed377e..e682c753 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -10,7 +10,7 @@ export interface SummaryPerson {
+ }
+ 
+ // Every status a claim's count is shown for.
+-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
++export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+ 
+ // The sheet's figures at a glance, each worked out the same way as the list shows it.
+ @Component({
