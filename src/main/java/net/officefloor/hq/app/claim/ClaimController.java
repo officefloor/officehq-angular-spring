@@ -146,10 +146,12 @@ public class ClaimController {
 
     private final ClaimService service;
     private final BulkChangeService bulk;
+    private final ClaimAsOfService asOf;
 
-    public ClaimController(ClaimService service, BulkChangeService bulk) {
+    public ClaimController(ClaimService service, BulkChangeService bulk, ClaimAsOfService asOf) {
         this.service = service;
         this.bulk = bulk;
+        this.asOf = asOf;
     }
 
     /** The sheet's claims, newest first. */
@@ -272,11 +274,23 @@ public class ClaimController {
                 result.changed().stream().map(ClaimView::of).toList());
     }
 
-    /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. */
+    /** The date a claim is settled as of; none to settle it as of the sheet's today. */
+    public record SettleForm(LocalDate on) {
+    }
+
+    /** Settle an open claim; a clerk's settling above the clerk limit leaves it pending. Settled as of a date
+     *  on or before the sheet's today, the due frozen is the claim's due at the end of that date; a date after
+     *  today, or a claim that did not exist then, is refused. */
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.name(user), id, ClaimStatus.SETTLED));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) SettleForm form) {
+        String sheet = sheetId.trim();
+        if (form == null || form.on() == null) {
+            return ClaimView.of(service.changeStatus(sheet, SignedInUser.name(user), id, ClaimStatus.SETTLED));
+        }
+        ClaimAsOfService.DueAsOf due = asOf.dueAsOf(sheet, id, form.on());
+        return ClaimView.of(service.settleAsOf(sheet, SignedInUser.name(user), id, form.on(), due.due()));
     }
 
     /** Why a steward rejects a pending claim. */

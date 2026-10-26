@@ -150,7 +150,9 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
             [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
-          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input #settleDate type="date" [id]="'claim-settle-date-' + c.id" data-testid="claim-settle-date" />
+          <button type="button" data-testid="claim-settle" (click)="settle(c, settleDate)"
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
             [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
@@ -532,6 +534,8 @@ export class PersonClaims {
           ? `Your role may not ${action} a claim on this sheet.`
           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
             ? 'Choose a void reason from the sheet\'s list to void this claim.'
+          : action === 'settle' && reason !== '' && e instanceof HttpErrorResponse && e.status === 422
+            ? `This claim cannot be settled as of ${reason}: the date must be on or before the sheet's today, and the claim must have existed then.`
           : periodOf(this.periods(), claim.dueBy)?.closed
             ? `This claim's due-by is inside a closed period, so it cannot be ${PAST[action]}.`
           : action === 'open' && capReached(e)
@@ -552,6 +556,19 @@ export class PersonClaims {
         this.claimError.set({ id: claim.id, message });
       }
     }
+  }
+
+  /** Settle a claim, as of the date typed when there is one (blank: the sheet's today); the date is cleared
+   *  with each press so it never carries into the next settle. The store refuses a date after the sheet's
+   *  today, and a claim that did not exist at the end of the date. */
+  protected async settle(claim: ClaimView, dateInput: HTMLInputElement): Promise<void> {
+    const on = dateInput.value.trim();
+    dateInput.value = '';
+    if (on !== '' && !DATE.test(on)) {
+      this.claimError.set({ id: claim.id, message: 'Type the date to settle this claim as of as yyyy-mm-dd.' });
+      return;
+    }
+    await this.act(claim, 'settle', on);
   }
 
   /** Defer an open claim until a date after the sheet's today; the store refuses a claim that is not

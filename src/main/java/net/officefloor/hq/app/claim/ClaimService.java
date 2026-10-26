@@ -273,6 +273,23 @@ public class ClaimService {
     /** As {@link #changeStatus}; when the settling is judged already (a part-settle judges the four-eyes and
      *  proof rules on the claim the part is split off), they are not judged again on this claim. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, boolean judged) {
+        return changeStatus(sheetId, user, id, next, reason, judged, null);
+    }
+
+    /** Settle a claim as of a date on or before the sheet's today, as {@link #changeStatus}: the due it freezes
+     *  is the claim's due as it stood at the end of that date (worked out by {@link ClaimAsOfService}), and
+     *  its audit line ends with the date. */
+    @Transactional
+    public Claim settleAsOf(String sheetId, String user, long id, LocalDate on, BigDecimal dueOn) {
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, new SettledAsOf(on, dueOn));
+    }
+
+    /** The date a claim is settled as of, and its due at the end of it (null when n/a). */
+    private record SettledAsOf(LocalDate on, BigDecimal due) {
+    }
+
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, boolean judged,
+            SettledAsOf asOf) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -299,7 +316,7 @@ public class ClaimService {
                     "The person is flagged; only a steward may open their claim.");
         }
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
-        BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
+        BigDecimal dueNow = next != ClaimStatus.SETTLED ? null : asOf != null ? asOf.due() : due(sheetId, person, claim);
         if (next == ClaimStatus.SETTLED && !judged) refuseIfUnproven(sheetId, person, claim, dueNow);
         BigDecimal dueOpening = next == ClaimStatus.OPEN ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, dueOpening);
@@ -321,7 +338,8 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         String event = EVENTS.get(next);
         if (next == ClaimStatus.SETTLED) {
-            recordChange(event, user, person, saved, number, " due=" + text(saved.getSettledDue()));
+            recordChange(event, user, person, saved, number, " due=" + text(saved.getSettledDue())
+                    + (asOf == null ? "" : " on=" + asOf.on()));
             notifyWatchers(user, person, saved);
         } else if (voidingSettled) {
             recordChange(event, user, person, saved, number, " reversed=" + text(saved.getSettledDue())

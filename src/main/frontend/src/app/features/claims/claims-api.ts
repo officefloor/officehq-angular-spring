@@ -391,7 +391,8 @@ export class ClaimsApi {
    *  claim whose due is above the review threshold leaves it REVIEW, which a steward's review makes OPEN
    *  (refused, 403, to all but a steward). */
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
-    const body = action === 'reject' || action === 'void' ? { reason: reason ?? '' } : {};
+    const body = action === 'reject' || action === 'void' ? { reason: reason ?? '' }
+      : action === 'settle' && reason ? { on: reason } : {};
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));
   }
 
