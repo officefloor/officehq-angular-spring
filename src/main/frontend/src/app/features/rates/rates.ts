@@ -84,6 +84,29 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
 }
 
 /**
+ * 100.00 split equally into the given number of two-decimal shares, each rounded half to even, with the remainder
+ * (100.00 minus the shares added up) given to the first.
+ */
+export function equalShares(count: number): string[] {
+  if (count <= 0) return [];
+  const n = BigInt(count);
+  let share = 10000n / n;
+  const rest = 10000n % n;
+  if (rest * 2n > n || (rest * 2n === n && share % 2n === 1n)) share += 1n;
+  return Array.from({ length: count }, (_, i) => formatCents(i === 0 ? 10000n - share * (n - 1n) : share));
+}
+
+/** The sum of each two-decimal figure times its two-decimal share divided by 100, rounded half to even. */
+export function sharedSum(parts: readonly { figure: string; share: string }[]): string {
+  const product = parts.reduce((sum, p) => sum + cents(p.figure) * cents(p.share), 0n);
+  const size = product < 0n ? -product : product;
+  let total = size / 10000n;
+  const rest = size % 10000n;
+  if (rest > 5000n || (rest === 5000n && total % 2n === 1n)) total += 1n;
+  return formatCents(product < 0n ? -total : total);
+}
+
+/**
  * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
  * single lowest are left out.
  */
