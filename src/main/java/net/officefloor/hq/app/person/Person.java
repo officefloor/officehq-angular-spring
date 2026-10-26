@@ -122,6 +122,11 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** Whether the person's retirement date is reached on the day: the day is on or after it. */
+    public boolean isRetiredOn(LocalDate day) {
+        return retiredFrom != null && day != null && !day.isBefore(retiredFrom);
+    }
+
     /** Every hold put on the person, earliest from-date first. */
     public List<DatedHold> getHolds() {
         return holds.stream().sorted(Comparator.comparing(DatedHold::getFrom)).toList();
@@ -139,12 +144,13 @@ public class Person {
 
     /**
      * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
-     * within a hold that no statement binds, and one deferred on the sheet's today.
+     * within a hold that no statement binds, or once the person's retirement date is reached on the sheet's today, and
+     * one deferred on the sheet's today.
      */
     public boolean countsLive(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
     }
 
     /**
@@ -155,7 +161,7 @@ public class Person {
         ClaimStatus then = claim.statusAtEndOf(end);
         return then != null && then.counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
     }
 
     /** The version of the person as stored, raised on each save. */

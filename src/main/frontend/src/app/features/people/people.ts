@@ -400,18 +400,24 @@ export class People {
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
-  // dated within one of their person's holds that no statement binds, and the deferred ones.
+  // dated within one of their person's holds, or whose person's retirement date today has reached, that no statement
+  // binds, and the deferred ones.
   protected readonly liveClaims = computed(() => {
     const leftOut = this.leftOut();
     return this.claims().filter((c) => counts(c) && !leftOut(c));
   });
-  // Whether the live rules leave the claim out whatever its status: deferred, or open, dated within one of its
-  // person's holds and bound by no statement.
+  // Whether the live rules leave the claim out whatever its status: deferred, or open, bound by no statement and
+  // dated within one of its person's holds or with its person's retirement date reached today.
   private readonly leftOut = computed(() => {
     const today = this.session.sheetToday();
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
-    const held = (c: Claim) =>
-      (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
+    // a person whose retirement date the sheet's today has reached holds every claim, as a hold would
+    const held = (c: Claim) => {
+      const from = retiredFrom.get(c.personId) ?? null;
+      return (from !== null && today !== null && today >= from)
+        || (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+    };
     return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && held(c));
   });
   protected readonly liveBy = computed(() => {
