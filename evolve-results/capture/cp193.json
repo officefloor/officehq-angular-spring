@@ -1,0 +1,64 @@
+{
+  "checkpoint": 193,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp193_sheet-age-buckets",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show for the sheet the due of OPEN and PENDING claims that count by age, as the people's age\nbuckets added up (0 to 30, 31 to 60, 61 or more days), not trimmed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow for the sheet the due of OPEN and PENDING claims that count by age, as the people's age\nbuckets added up (0 to 30, 31 to 60, 61 or more days), not trimmed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bc8d664ea2e06fad3d804a6288d5369dac7f933f",
+  "reset_sha": "",
+  "preagent_sha": "a6e2d5a125714f729b4cf7b7fbb89ec34e1855ae",
+  "prev_sha": "a6e2d5a125714f729b4cf7b7fbb89ec34e1855ae",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7787383999999998,
+    "input_tokens": 50,
+    "output_tokens": 8895,
+    "cache_read_tokens": 994232,
+    "cache_creation_tokens": 50224,
+    "num_turns": 26,
+    "duration_ms": 633278,
+    "duration_api_ms": 103060,
+    "model": "claude-opus-5-5",
+    "session_id": "40a4ed3f-c2e6-45f0-baa5-c04796120eea",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows the due of its OPEN and PENDING claims by age: 0\u201330 days, 31\u201360 days and 61 or more days. Each figure is everyone's matching age bucket added up, not trimmed. All 4 tests in `bin/e2e` pass.\n\n**The change itself** (`src/main/frontend/src/app/features/people/people.ts`):\n- A new `sheetAged` value adds up each person's existing age buckets. It works the same way as the existing \"settled / open in total\" figure.\n- A new summary line shows the three figures as `rollup-aged-0-30`, `rollup-aged-31-60` and `rollup-aged-61`, under \"Overdue\" and before \"Cut in total\".\n- No stored data or audit records were needed.\n\n**A second fix the test needed, in grade editing.** I also changed how the server records grades, which is outside what you asked for, so please check it. Scenario 3 kept failing while saving a person, and the new totals weren't the cause:\n- Editing only Ben's terms also saved \"grade A from today\" (2026-03-20), because the person form always sends the current grade.\n- A later edit to \"grade C from 2026-02-10\" was then overridden by that entry, so Ben's row stayed A and the test timed out.\n- The fix is in `PersonService.update`: if an edit leaves today's grade unchanged and has no from-date, it no longer records a grade. Edits that change the grade or give a from-date are recorded as before.\n- The server's own comments on this don't agree. The controller says every edit records the grade, while `Person.setGrade` says an edit that leaves the grade as it is shouldn't hide a later grade. My fix follows the second. If saving the grade on every edit was meant for some other case, that case would need another look.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7787383999999998,
+        "num_turns": 26,
+        "duration_ms": 633278,
+        "duration_api_ms": 103060,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp193.agent.jsonl",
+  "agent_diff_file": "cp193.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
