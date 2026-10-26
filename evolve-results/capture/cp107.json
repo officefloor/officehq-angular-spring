@@ -1,0 +1,64 @@
+{
+  "checkpoint": 107,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp107_merge-people",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can merge a person into another (a select of the other person and a merge button on\nthe row; PERSON_MERGED from=<name> into=<name>; anyone else, the same person, or either of them\nretired, is refused with an error on the row). The merged person's claims move to the other\n(numbers and dates kept, listed after the other's claims in the order they were added, each losing\nany figure a statement bound); the merged name and aliases become aliases of the other; the merged\nperson's patrons are added to the other's (not themselves, no repeats), anyone naming the merged\nperson as patron names the other instead (no repeats), and the merged person's pool memberships move\nto the other (shares added when the other is already a member). Their statements, holds, watchers\nand contact are dropped. The merged person leaves the list (no row), and every total follows.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can merge a person into another (a select of the other person and a merge button on\nthe row; PERSON_MERGED from=<name> into=<name>; anyone else, the same person, or either of them\nretired, is refused with an error on the row). The merged person's claims move to the other\n(numbers and dates kept, listed after the other's claims in the order they were added, each losing\nany figure a statement bound); the merged name and aliases become aliases of the other; the merged\nperson's patrons are added to the other's (not themselves, no repeats), anyone naming the merged\nperson as patron names the other instead (no repeats), and the merged person's pool memberships move\nto the other (shares added when the other is already a member). Their statements, holds, watchers\nand contact are dropped. The merged person leaves the list (no row), and every total follows.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d3cf51c9d3255ddb8a0f89f0c3024b50a170be96",
+  "reset_sha": "",
+  "preagent_sha": "879d06057454fed8966b1994930c47967c36c708",
+  "prev_sha": "879d06057454fed8966b1994930c47967c36c708",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7852326,
+    "input_tokens": 70,
+    "output_tokens": 17194,
+    "cache_read_tokens": 2796323,
+    "cache_creation_tokens": 110226,
+    "num_turns": 39,
+    "duration_ms": 359932,
+    "duration_api_ms": 216479,
+    "model": "claude-opus-5-5",
+    "session_id": "75074681-07e5-42d8-9a87-463133c2b73b",
+    "stop_reason": "success",
+    "result_text": "Merging a person into another now works, and `bin/e2e` passes all 4 tests: the merge test and the three existing scenarios. Before the change, the merge test failed and the three scenarios passed.\n\n**How it works**\n- **Screen:** each person's row has a \"Merge into\" select (`person-merge-into`) and a Merge button (`person-merge`). A refused merge shows `person-error` on the row; picking another person or taking another action on the row clears it. After a successful merge every view on the screen re-reads the sheet, so the merged person's row disappears and the pools and totals update.\n- **Server:** the work is in a new `person/PersonMergeService.java`, reached by `POST /api/sheets/{sheetId}/people/{id}/merge` with `{intoId}`. It refuses anyone who isn't a steward, merging a person into themselves, and either person being retired. A refused merge writes nothing to the store or the audit file.\n- **What moves:**\n  - **Claims:** they go to the other person with numbers and dates kept, lose any figure a statement bound, and are listed after the other's claims in the order they were added.\n  - **Names:** the merged person's name and aliases become aliases of the other.\n  - **Patrons:** the merged person's patrons are added to the other's, never the other themselves and never twice. Anyone who named the merged person as patron now names the other, again never twice.\n  - **Pools:** memberships move to the other; where the other is already a member of that pool, the shares are added.\n  - **Dropped:** the merged person's statements, watchers, holds and contact are deleted along with the person.\n- **Audit:** it writes `PERSON_MERGED sheet=\u2026 by=\u2026 from=<name> into=<name>`, then the usual ROLLUP/TOTALS lines for whatever figures moved.\n- **Smaller edits:** setters added to `PoolMember`, `Patron` and `Period`, and the new endpoint in `PersonController`.\n\n**Two choices the request didn't cover**\n1. **Combined pool share over 100.00:** if two shares add up to more than 100.00, I cap the result at 100.00, because the store won't accept more. The other option would be to refuse the merge.\n2. **Closed periods:** the figure a closed or soft-closed period fixed for the merged person is added to the other person's figure for that period. Simply dropping it would make the totals stop adding up.\n\nNeither case comes up in the test, so let me know if you'd rather either one work differently.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7852326,
+        "num_turns": 39,
+        "duration_ms": 359932,
+        "duration_api_ms": 216479,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp107.agent.jsonl",
+  "agent_diff_file": "cp107.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
