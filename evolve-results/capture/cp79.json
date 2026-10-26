@@ -1,0 +1,64 @@
+{
+  "checkpoint": 79,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp79_entry-date",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e8d5f879715c0a4442c55696da6e31f870bfd002",
+  "reset_sha": "",
+  "preagent_sha": "ebc63ee6c170ae00fdea0e615c04be4aecc7a87e",
+  "prev_sha": "ebc63ee6c170ae00fdea0e615c04be4aecc7a87e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2339594000000003,
+    "input_tokens": 64,
+    "output_tokens": 12041,
+    "cache_read_tokens": 1897217,
+    "cache_creation_tokens": 76680,
+    "num_turns": 32,
+    "duration_ms": 477522,
+    "duration_api_ms": 169070,
+    "model": "claude-opus-5-5",
+    "session_id": "61a80421-50a6-4601-8c01-f64f48007f51",
+    "stop_reason": "success",
+    "result_text": "I added the entry-date setting, and all 4 tests in the e2e spec now pass when run with `bin/e2e`.\n\n**What changed**\n- **Stored data:** a new migration, `V50__sheet_entry_date.sql`, adds a nullable `entry_date` column to the sheet. `Sheet` has the matching field, and the field is kept when the sheet is viewed as of an earlier date.\n- **Server:** a new endpoint, `PUT /settings/entry-date`, saves the date. Blank turns it off, and it isn't dated (it has no from-date). Each save writes `SETTING_CHANGED \u2026 key=entry-date value=<date>` to the audit file, with nothing after `value=` when it's cleared. Viewers are refused by the existing guard, as with any other change.\n- **New claims:** when a new claim has no date, it now takes the entry date if one is set, otherwise the sheet's today. All four paths in the request go through the same add method: the claim form, the quick-add bar, a pasted line with a blank date, and a correction. The usual checks run against that date, so a claim that lands in a closed period or after a retirement is refused.\n- **Front end:** the settings screen has an \"Entry date\" field (`setting-entry-date`) and shows the date in force (`setting-entry-date-current`).\n\n**Decision for you:** saving an edit to an existing draft claim with a blank date still uses the sheet's today, not the entry date. I read the request as covering new claims only. If edits should follow the entry date too, it's a one-line change in `ClaimService.update`.\n\n**An unrelated fix the test needed:** \"entry date scenario 1\" failed at a step where a viewer uses bulk grade. The other bulk actions report \"0 changed\" for a viewer, but `/bulk-grade` refused them with an error instead. I made it behave like the others: for a viewer, or on an archived sheet, it now reports 0 and changes nothing (`PersonController.bulkGrade`).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2339594000000003,
+        "num_turns": 32,
+        "duration_ms": 477522,
+        "duration_api_ms": 169070,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp79.agent.jsonl",
+  "agent_diff_file": "cp79.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
