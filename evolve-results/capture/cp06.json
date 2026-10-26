@@ -1,0 +1,64 @@
+{
+  "checkpoint": 6,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp06_audit",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Record every change to the sheet in the audit file, one line per change, appended in the order\nthe changes happen:\nPERSON_ADDED name=<name> grade=<grade>, PERSON_EDITED name=<name> grade=<grade>,\nCLAIM_ADDED person=<name> amount=<amount> date=<date>, and CLAIM_EDITED with the same fields.\nEvery line starts with the event, then sheet=<sheet id> and by=<signed-in user>, then the fields\nin the order given, separated by single spaces. Amounts are written exactly as the screen shows\nthem (two decimals) and dates as yyyy-mm-dd. A change that is refused, by any rule now or later,\nwrites no line and changes nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRecord every change to the sheet in the audit file, one line per change, appended in the order\nthe changes happen:\nPERSON_ADDED name=<name> grade=<grade>, PERSON_EDITED name=<name> grade=<grade>,\nCLAIM_ADDED person=<name> amount=<amount> date=<date>, and CLAIM_EDITED with the same fields.\nEvery line starts with the event, then sheet=<sheet id> and by=<signed-in user>, then the fields\nin the order given, separated by single spaces. Amounts are written exactly as the screen shows\nthem (two decimals) and dates as yyyy-mm-dd. A change that is refused, by any rule now or later,\nwrites no line and changes nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5c49c4da44d0981063d3070173991ca781997ba0",
+  "reset_sha": "",
+  "preagent_sha": "8957d9704a08ce94837ed1d5f58adbf596fbd8d7",
+  "prev_sha": "8957d9704a08ce94837ed1d5f58adbf596fbd8d7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5275874,
+    "input_tokens": 16,
+    "output_tokens": 5203,
+    "cache_read_tokens": 288157,
+    "cache_creation_tokens": 45729,
+    "num_turns": 9,
+    "duration_ms": 124935,
+    "duration_api_ms": 78514,
+    "model": "claude-opus-5-5",
+    "session_id": "eca8c341-f5d0-4ed0-8f9d-e05c26b42d3d",
+    "stop_reason": "success",
+    "result_text": "Every change to the sheet now writes one line to the audit file in the order the request gives, and changes that are refused write nothing. `bin/e2e` passes all 4 tests.\n\n**How it works (all on the server; the front end didn't need to change):**\n- **Who made the change:** until now the server never kept the signed-in name. Signing in now stores it in the browser's HTTP session (`SessionController.java`). The add and edit endpoints for people and claims read it from there, so each browser context records its own user.\n- **No line for a refused change:** I added `Audit.recordOnCommit` (`Audit.java`), which writes the line only after the database transaction commits. A change that fails validation, uses a name already taken, or hits the unique-name check in the database is rolled back, so no line is written. Any rule added later that throws inside the transaction gets the same behaviour.\n- **The lines themselves:** `PersonService` writes `PERSON_ADDED` and `PERSON_EDITED`, and `ClaimService` writes `CLAIM_ADDED` and `CLAIM_EDITED`. Claim lines look up the person's name. Amounts use the stored two-decimal value, the same one the screen shows, and dates are written as yyyy-mm-dd.\n\nOne behaviour change: adding or editing a person or claim without signing in first is now refused with a 400 error. That can't happen through the screen, which always signs in first.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5275874,
+        "num_turns": 9,
+        "duration_ms": 124935,
+        "duration_api_ms": 78514,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp06.agent.jsonl",
+  "agent_diff_file": "cp06.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
