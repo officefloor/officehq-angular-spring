@@ -707,6 +707,40 @@ public class ClaimService {
                 .map(pct -> dueOn(claim.getAmount(), pct, rounding)).orElse(null);
     }
 
+    /** What a candidate rate for a grade would change: how many claims would show a different due, and by how much. */
+    public record RatePreview(int count, BigDecimal diff) {
+    }
+
+    /**
+     * Previews the grade's rate at the percent on every date, saving nothing: the OPEN and PENDING claims whose
+     * person has the grade in force on the claim's date and whose due would differ, and the sum of new due minus
+     * current due (an n/a due counts as 0.00). A claim bound by a statement does not change.
+     */
+    @Transactional(readOnly = true)
+    public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
+        Sheet sheet = sheets.load(sheetId);
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (!claim.getStatus().isOpen() || claim.getSettledDue() != null || claim.isBound()) {
+                continue;
+            }
+            Person person = person(sheetId, claim.getPersonId());
+            if (!grade.equals(person.gradeOn(claim.getDate()))) {
+                continue;
+            }
+            BigDecimal current = due(sheetId, person, claim);
+            BigDecimal figure = dueOn(claim.getAmount(), pct, sheet.roundingOn(claim.getRoundsOn()));
+            BigDecimal next = liveDue(figure, claim, person, sheet, true);
+            BigDecimal before = current == null ? BigDecimal.ZERO : current;
+            if (current == null || before.compareTo(next) != 0) {
+                count++;
+                diff = diff.add(next.subtract(before));
+            }
+        }
+        return new RatePreview(count, diff.setScale(2));
+    }
+
     /**
      * The figure of the claim: its settled due, else the one a statement bound it to (not while it is pending), else
      * its rate figure. A statement binds this figure, under the late charge and the floor.

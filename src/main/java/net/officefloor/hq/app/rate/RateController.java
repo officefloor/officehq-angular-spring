@@ -11,10 +11,12 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,10 +51,20 @@ public class RateController {
         }
     }
 
-    private final RateService service;
+    /** A candidate percent to preview: 0.00 or more with up to two decimals. */
+    public record PreviewForm(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal pct) {
+    }
 
-    public RateController(RateService service) {
+    /** How many claims would show a different due, and the sum of the differences, with two decimals. */
+    public record PreviewView(int count, String diff) {
+    }
+
+    private final RateService service;
+    private final ClaimService claims;
+
+    public RateController(RateService service, ClaimService claims) {
         this.service = service;
+        this.claims = claims;
     }
 
     /** The rates set on the sheet, by grade and from-date; a grade with no rate is left out. */
@@ -68,5 +80,14 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody RateForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
+    }
+
+    /** Previews the grade's rate at a candidate percent on every date; nothing is saved or audited. */
+    @PostMapping("/{grade}/preview")
+    public PreviewView preview(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody PreviewForm form) {
+        ClaimService.RatePreview p = claims.previewRate(sheetId, grade, form.pct());
+        return new PreviewView(p.count(), p.diff().toPlainString());
     }
 }
