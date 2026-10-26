@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ca3973964aa4c10f15fe828c1c8dc233444f5b77",
+  "reset_sha": "",
+  "preagent_sha": "3d46c45ff128f7787c14f86782c790f89e51e6fe",
+  "prev_sha": "3d46c45ff128f7787c14f86782c790f89e51e6fe",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6497480000000001,
+    "input_tokens": 36,
+    "output_tokens": 8980,
+    "cache_read_tokens": 668300,
+    "cache_creation_tokens": 42043,
+    "num_turns": 19,
+    "duration_ms": 352429,
+    "duration_api_ms": 109012,
+    "model": "claude-opus-5-5",
+    "session_id": "91d81bc5-79e6-4175-8886-778f8e71ce19",
+    "stop_reason": "success",
+    "result_text": "Sheet notes are in place, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does**\n- **Adding a note:** the sheet has a \"Notes\" section with a text field (`note-text`) and an add button (`note-add`). A blank note is refused with an error beside the entry (`note-error`) and nothing is saved. Typing in the field clears the error.\n- **Showing notes:** they are listed newest first, each line reading `<sheet's today when added> <user>: <text>`. Adding a note writes `NOTE_ADDED sheet=\u2026 by=\u2026 text=\u2026` to the audit file.\n- **Who can add:** I didn't write new permission rules for notes. The app's existing guards refuse notes from viewers and on archived sheets, and the audit service adds `for=<steward>` when a delegate adds a note. The test checks all three.\n- **As-of date:** I didn't add any date filtering for notes. The app's as-of view already rebuilds the whole sheet as it stood on the chosen date, which covers notes because the new table is linked to the sheet. So the list shows only notes added while the sheet's today was on or before that date. The test doesn't check this case.\n\n**Files**\n- **Data:** migration `V86__sheet_note.sql` adds a `sheet_note` table (sheet, date added, user, text).\n- **Server:** a new `note` package with the entity, repository, service and controller at `/api/sheets/{id}/notes`, modelled on the existing void-reasons feature.\n- **Front end:** `features/notes/notes-api.ts` and `notes.ts`, placed on the home screen after the void reasons.\n\nCloning a sheet doesn't copy its notes, because the request didn't ask for it. Adding notes to the clone's list of copied tables is a one-line change if you want it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6497480000000001,
+        "num_turns": 19,
+        "duration_ms": 352429,
+        "duration_api_ms": 109012,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
