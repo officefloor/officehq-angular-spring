@@ -119,6 +119,11 @@ export function deferred(c: Claim, today: string | null): boolean {
   return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
+/** Whether a claim makes its person active: open (or pending) and dated within the 30 days up to and including today. */
+export function activeOn(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && plusDays(today, -29) <= c.date && c.date <= today;
+}
+
 /** Whether a claim is overdue: open (or pending), not deferred, and due by a date before the sheet's today. */
 export function overdue(c: Claim, today: string | null): boolean {
   return isOpen(c) && today !== null && !deferred(c, today) && c.dueBy < today;
@@ -147,7 +152,7 @@ function daysBetween(from: string, to: string): number {
 }
 
 /** The date (yyyy-mm-dd) the given whole days after another. */
-function plusDays(date: string, days: number): string {
+export function plusDays(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }

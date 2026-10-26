@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -196,7 +196,7 @@ interface StatementView {
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
@@ -220,6 +220,7 @@ interface StatementView {
               <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
@@ -486,13 +487,20 @@ export class People {
     const figures = this.countedFigures();
     return new Map(this.people().map((p) => [p.id, personPeriodDueTotals(periods, p.id, figures)]));
   });
-  // Each person as the summary counts them: grade today, due-total and whether retired.
+  // The people who are active: with an open or pending counted claim dated within the 30 days up to today.
+  protected readonly activeIds = computed(() => {
+    const today = this.session.sheetToday();
+    return new Set(this.liveClaims().filter((c) => activeOn(c, today)).map((c) => c.personId));
+  });
+  // Each person as the summary counts them: grade today, due-total, whether retired and whether active.
   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
     const due = this.dueBy();
+    const active = this.activeIds();
     return this.people().map((p) => ({
       grade: this.gradeToday(p),
       dueTotal: due.get(p.id) ?? null,
       retired: p.retiredFrom !== null,
+      active: active.has(p.id),
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));

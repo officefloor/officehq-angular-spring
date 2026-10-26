@@ -2,11 +2,15 @@ import { Component, computed, inject, input } from '@angular/core';
 import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
 import { GRADES, sumSkippingNa } from '../rates/rates';
 
-/** A person as the summary counts them: their grade today, their due-total (null for n/a) and whether retired. */
+/**
+ * A person as the summary counts them: their grade today, their due-total (null for n/a), whether retired and
+ * whether active.
+ */
 export interface SummaryPerson {
   grade: string;
   dueTotal: string | null;
   retired: boolean;
+  active: boolean;
 }
 
 // Every status a claim's count is shown for.
@@ -21,7 +25,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
       <table>
         <caption>By grade</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of byGrade(); track g.grade) {
@@ -29,6 +33,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -73,11 +78,17 @@ export class Summary {
   // The status of every claim on the sheet.
   readonly statuses = input<readonly string[]>([]);
 
-  // Per grade: the people on it today, leaving out retired ones, and their due-totals added up, skipping n/a.
+  // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
+  // many of them are active.
   protected readonly byGrade = computed(() =>
     GRADES.map((grade) => {
       const on = this.people().filter((p) => !p.retired && p.grade === grade);
-      return { grade, count: on.length, dueTotal: sumSkippingNa(on.map((p) => p.dueTotal)) };
+      return {
+        grade,
+        count: on.length,
+        dueTotal: sumSkippingNa(on.map((p) => p.dueTotal)),
+        active: on.filter((p) => p.active).length,
+      };
     }),
   );
   protected readonly byPeriod = computed(() => {
