@@ -2,6 +2,8 @@ package net.officefloor.hq.app.person;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -26,6 +28,7 @@ public class MergeService {
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
+    private final PersonMergeRepository merges;
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final PoolRepository pools;
@@ -35,11 +38,12 @@ public class MergeService {
     private final Audit audit;
 
     public MergeService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            ClaimRepository claims, StatementRepository statements, PoolRepository pools, CrewRepository crews,
+            PersonMergeRepository merges, ClaimRepository claims, StatementRepository statements, PoolRepository pools, CrewRepository crews,
             SettingService settings, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
+        this.merges = merges;
         this.claims = claims;
         this.statements = statements;
         this.pools = pools;
@@ -57,8 +61,8 @@ public class MergeService {
      * to the other's (never the other themselves, nor twice), anyone naming the merged person as patron names
      * the other instead (not twice), and the merged person's pool memberships move to the other (their shares
      * added when the other is already a member), as do their places in crews (as lead or member; a member place
-     * is dropped when the other is already in the crew). Their holds, watchers and contact are dropped,
-     * and they leave the sheet. Refused unless the user is a steward of the sheet, for a merge into the
+     * is dropped when the other is already in the crew). Their watchers are dropped, and they leave the
+     * sheet, kept off it so the merge can be undone ({@link #undo}). Refused unless the user is a steward of the sheet, for a merge into the
      * person themselves, and when either of them is retired. The person merged into.
      */
     @Transactional
@@ -77,7 +81,13 @@ public class MergeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
-        Person saved = absorb(sheetId, from, into);
+        Set<Long> moved = claims.findForMove(sheetId, from.getId()).stream().map(Claim::getId)
+                .collect(Collectors.toSet());
+        List<String> names = new ArrayList<>();
+        names.add(from.getName());
+        names.addAll(from.getAliases());
+        merges.save(new PersonMerge(sheetId, from.getId(), into.getId(), user, settings.today(sheetId), moved, names));
+        Person saved = fold(sheetId, from, into, true);
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
                 + " into=" + saved.getName());
         rollup.recordChanges(user, before);
@@ -90,6 +100,67 @@ public class MergeService {
      */
     @Transactional
     public Person absorb(String sheetId, Person from, Person into) {
+        return fold(sheetId, from, into, false);
+    }
+
+    /**
+     * Undo the last merge made into a person: the person merged is back on the sheet, at the end of its
+     * list, with their name and their own aliases (which the other loses) and the claims that moved from them
+     * that the other still has (their numbers and status as they are now). Patrons, pools, crews and
+     * statements stay as the merge left them. Refused unless the user is the steward who made the merge, on
+     * the sheet's today it was made, for a person whose last merge is undone or who has none, and when a
+     * name of the person merged is now another's on the sheet. The person restored.
+     */
+    @Transactional
+    public Person undo(String sheetId, String user, long intoId) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a merge.");
+        }
+        Person into = people.findForUpdate(intoId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, intoId)
+                .filter((m) -> !m.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "This person has no merge to undo."));
+        if (!merge.getMadeBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made the merge can undo it.");
+        }
+        if (!merge.getMadeOn().equals(settings.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A merge can only be undone on the day it was made.");
+        }
+        Person from = people.findParkedForUpdate(merge.getPersonId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "This person has no merge to undo."));
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+
+        List<String> names = merge.getAliases();
+        names.forEach(into::removeAlias);
+        people.saveAndFlush(into);
+        for (String name : names) {
+            if (people.findByNameOrAlias(sheetId, Person.keyOf(name)).isPresent()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The name " + name + " is now another's.");
+            }
+        }
+        from.restoreTo(sheetId, people.lastPlace(sheetId) + 1);
+        names.stream().skip(1).forEach(from::addAlias);
+        Person restored = people.saveAndFlush(from);
+
+        for (Long claimId : merge.getClaimIds()) {
+            claims.findByIdAndSheetId(claimId, sheetId)
+                    .filter((claim) -> into.getId().equals(claim.getPersonId()))
+                    .ifPresent((claim) -> claim.followTo(restored.getId(), claim.getListed()));
+        }
+        claims.flush();
+        merge.undo();
+        merges.save(merge);
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user + " name=" + restored.getName()
+                + " from=" + into.getName());
+        rollup.recordChanges(user, before);
+        return restored;
+    }
+
+    /** Fold one person into another; the one folded is taken off the sheet to be put back by an undo (park),
+     *  else deleted. */
+    private Person fold(String sheetId, Person from, Person into, boolean park) {
         long listed = claims.lastListed(sheetId);
         for (Claim claim : claims.findForMove(sheetId, from.getId())) {
             claim.followTo(into.getId(), ++listed);
@@ -133,8 +204,13 @@ public class MergeService {
         List<String> names = new ArrayList<>();
         names.add(from.getName());
         names.addAll(from.getAliases());
-        people.delete(from);
-        people.flush();
+        if (park) {
+            from.park();
+            people.saveAndFlush(from);
+        } else {
+            people.delete(from);
+            people.flush();
+        }
         names.forEach(into::addAlias);
         return people.saveAndFlush(into);
     }

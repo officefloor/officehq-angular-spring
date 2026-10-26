@@ -267,6 +267,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/merge`, { intoId }));
   }
 
+  /** Undo the last merge into the person, putting the person merged back on the sheet; only by the steward
+   *  who made it, on the sheet's today it was made. The person restored is answered. */
+  undoMerge(sheetId: string, id: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/merge-undo`, {}));
+  }
+
   /** Start (true) or stop (false) the signed-in user watching the person. */
   watch(sheetId: string, id: number, on: boolean): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheetId)}/${id}/watch`, { on }));

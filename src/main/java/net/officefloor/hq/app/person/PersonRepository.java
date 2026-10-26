@@ -23,6 +23,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
+    /** The last place in the sheet's list; 0 when it has no one. */
+    @Query("select coalesce(max(coalesce(p.position, p.id)), 0) from Person p where p.sheetId = :sheetId")
+    long lastPlace(@Param("sheetId") String sheetId);
+
+    /** A person a merge took off their sheet, locked until the transaction ends. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Person p where p.id = :id and p.sheetId is null")
+    Optional<Person> findParkedForUpdate(@Param("id") Long id);
+
     /** The person, locked until the transaction ends (without bumping their version), so two
      *  statements of the same person are taken one after the other. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

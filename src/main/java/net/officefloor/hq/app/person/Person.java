@@ -342,6 +342,31 @@ public class Person {
         aliases.add(new PersonAlias(sheetId, alias));
     }
 
+    /** Take away one of the person's aliases, compared as names are; whether they had it. */
+    public boolean removeAlias(String alias) {
+        String key = keyOf(alias);
+        for (PersonAlias a : aliases) {
+            if (a.getAliasKey().equals(key)) {
+                aliases.remove(a);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Take the person off their sheet, as a merge does, keeping everything else they have but their
+     *  aliases (which become another's): they are on no sheet until {@link #restoreTo} puts them back. */
+    public void park() {
+        aliases.clear();
+        sheetId = null;
+    }
+
+    /** Put a person taken off their sheet back on it, at the place in the list given. */
+    public void restoreTo(String sheetId, long position) {
+        this.sheetId = sheetId;
+        this.position = position;
+    }
+
     public Integer getTerms() {
         return terms;
     }

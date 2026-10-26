@@ -520,6 +520,8 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   </select>
                   <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
                     [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                  <button type="button" data-testid="person-merge-undo" (click)="undoMerge(p)"
+                    [disabled]="merging() === p.id" [attr.aria-label]="'Undo the last merge into ' + p.name">Undo merge</button>
                   <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
                   <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
                     placeholder="Sheet id" (input)="clearPersonError(p.id)" />
@@ -1233,6 +1235,28 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward can merge people.' : 'The person could not be merged.' });
+      }
+    } finally {
+      this.merging.set(null);
+    }
+  }
+
+  /** Undo the last merge into the person, then re-read the sheet's people, claims, statements, pools and
+   *  crews, as a merge does. */
+  protected async undoMerge(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.merging() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.merging.set(person.id);
+    try {
+      await this.api.undoMerge(sheet.id, person.id);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id), this.crews.refresh(sheet.id)]);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who made the merge can undo it.' : 'The merge could not be undone.' });
       }
     } finally {
       this.merging.set(null);
