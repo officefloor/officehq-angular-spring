@@ -1,0 +1,64 @@
+{
+  "checkpoint": 215,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp215_sheet-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "58f99b765429d082c49fd57d58ddfdab0ec7314d",
+  "reset_sha": "",
+  "preagent_sha": "49eec5d64010b52fb3d1491b125c17c5edac60eb",
+  "prev_sha": "49eec5d64010b52fb3d1491b125c17c5edac60eb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.552707,
+    "input_tokens": 26,
+    "output_tokens": 6328,
+    "cache_read_tokens": 466615,
+    "cache_creation_tokens": 41590,
+    "num_turns": 14,
+    "duration_ms": 234398,
+    "duration_api_ms": 59778,
+    "model": "claude-opus-5-5",
+    "session_id": "be07b55e-5d85-4855-b724-a805a0e89e2a",
+    "stop_reason": "success",
+    "result_text": "I've added the sheet comparison, and all 4 tests in the spec pass with `bin/e2e`.\n\n**How it behaves:** type another sheet's id into the `compare-sheet` box and press `compare`. You get one `compare-line` per grade of this sheet, in the form `<grade> <this sheet's due-total> <the other sheet's>`. A grade the other sheet has no one on shows `0.00`, and a sheet id that doesn't exist gives no lines.\n\n**What changed:**\n- **Server:** a new read, `GET /api/sheets/{id}/grade-due-totals`, returns the other sheet's due-total for each grade. It works these out the same way the existing per-grade totals are, so retired people and \"n/a\" figures are left out. For a sheet that doesn't exist it returns nothing.\n- **Front end:** a new component, `features/summary/compare-sheet.ts`, sits just above the Summary on the main screen. This sheet's figures come straight from the Summary's per-grade totals, so the two always agree. The other sheet's come from the new server read. The lines clear when you press the button again or load another sheet, and if the read fails it shows a `compare-error` message.\n\nNo changes to stored data or the audit file were needed.\n\n**Decision for you:** the other sheet is always read as it is now. If the screen is set to show this sheet as of a past date, you'd be comparing this sheet's past figures with the other sheet's current ones. The request doesn't cover that case and the test doesn't use it, so I kept it simple. If you'd rather compare both sheets as of the same date, the existing as-of handling could be passed through.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.552707,
+        "num_turns": 14,
+        "duration_ms": 234398,
+        "duration_api_ms": 59778,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp215.agent.jsonl",
+  "agent_diff_file": "cp215.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
