@@ -1,0 +1,64 @@
+{
+  "checkpoint": 222,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp222_dashboard-over-tree",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The steward's dashboard counts are now over the sheet and all its descendants.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe steward's dashboard counts are now over the sheet and all its descendants.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "81471dd51fbbb0e179fd2e7f71e3ac5e73310d31",
+  "reset_sha": "",
+  "preagent_sha": "621cae53f950c2a5342a9ad040ee4e63fb802670",
+  "prev_sha": "621cae53f950c2a5342a9ad040ee4e63fb802670",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9710889999999996,
+    "input_tokens": 96,
+    "output_tokens": 26756,
+    "cache_read_tokens": 3264045,
+    "cache_creation_tokens": 97847,
+    "num_turns": 48,
+    "duration_ms": 1345777,
+    "duration_api_ms": 365399,
+    "model": "claude-opus-5-5",
+    "session_id": "ab79cd84-650b-4cda-a66c-60f7ffd61008",
+    "stop_reason": "success",
+    "result_text": "The dashboard now counts over the sheet and all its descendants, but `bin/e2e` still fails: 2 of the 4 tests pass and 2 fail. Both failures are on steps that have nothing to do with the dashboard, and I left them alone rather than bend the app to fit them.\n\n**What changed**\n- `rollup/DashboardService.java`: for a steward, the pending, review and overdue counts now add up the sheet and every descendant (children, their children, and so on). Overdue is counted on each sheet as that sheet shows it. Only the role on the loaded sheet is checked; being a steward of a sub-sheet isn't required for it to be counted. If the screen is set to an as-of date, the tree is read as it stood that day, the same way the consolidated figures already work.\n- `rollup/ConsolidatedService.java`: the existing descendant lookup (now or as of a date) is exposed through a small `descendantSheets(sheetId, asOf)` method so the dashboard can reuse it.\n- `rollup/DashboardController.java`: passes the screen's as-of date through.\n- `steward-dashboard.ts`: one comment updated. No `data-testid` changed.\n\n**The two failures**\n1. **\"dashboard over tree\", line 48.** The spec expects wes's settle of Cy's first claim on the child sheet to be refused. The app allows it (wes didn't open it and it's under the clerk limit), so the claim is settled. The spec's audit also expects wes's next step, changing today (line 49), to be recorded as `SNAPSHOT \u2026 by=uma`. The spec seems to assume those two steps were taken by uma: uma opened the claim, so the rule that the person who opened a claim can't settle it would refuse it, and the SNAPSHOT would say `by=uma`. Nothing in the app could make wes's browser act as uma.\n2. **\"scenario 1\", line 451 (and 482).** The spec expects each claim to show 0 receipts after Ben is merged into Ada. The app carries proof-kind counts across a merge, so they show 1. Matching the spec would mean merges throw those counts away, which would break the app.\n\n**How I checked the dashboard itself:** I ran a throwaway copy of the specs, now deleted, with two edits:\n- In the first test, lines 48\u201349 were run as uma, which is what the spec seems to assume.\n- In the other three, the `claim-proofs-receipt` checks were removed.\n\nAll four passed. That covers the tree counts (root shows 1 pending, 2 in review, 0 overdue; the child shows 0 / 1 / 0), the blank dashboard for non-stewards and in the as-of views, and the child sheet's full audit file.\n\nI didn't edit the spec. To get `bin/e2e` fully green, either the spec needs fixing on those lines or you need to decide that merges and the opener rule should behave the way the spec expects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9710889999999996,
+        "num_turns": 48,
+        "duration_ms": 1345777,
+        "duration_api_ms": 365399,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp222.agent.jsonl",
+  "agent_diff_file": "cp222.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

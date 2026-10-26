@@ -1,0 +1,135 @@
+diff --git a/src/main/frontend/src/app/features/summary/steward-dashboard.ts b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+index ae71c1ea..f092e80e 100644
+--- a/src/main/frontend/src/app/features/summary/steward-dashboard.ts
++++ b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+@@ -2,7 +2,7 @@ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { DashboardApi, DashboardView } from './dashboard-api';
+ 
+-// A steward's dashboard over the sheet: how many claims are PENDING, how many are in REVIEW, and how many
++// A steward's dashboard over the sheet and all its descendants: how many claims are PENDING, how many are in REVIEW, and how many
+ // are overdue and count. A user who is not a steward sees the cells empty. Re-read each time a sheet is
+ // loaded; while the screen shows the sheet as of a date, as it stood then, for the role the user had then.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+index 7e3ca525..9d976c66 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedService.java
+@@ -76,7 +76,7 @@ public class ConsolidatedService {
+      *  the end of that day: only within a transaction that is rolled back (the as-of view's). */
+     @Transactional(readOnly = true)
+     public Descendants descendantsOf(String sheetId, LocalDate asOf) {
+-        Set<String> found = asOf == null ? descendantsNow(sheetId) : descendantsAsOf(sheetId, asOf);
++        Set<String> found = descendantSheets(sheetId, asOf);
+         int peopleCount = 0;
+         BigDecimal due = BigDecimal.ZERO;
+         BigDecimal overdue = BigDecimal.ZERO;
+@@ -143,6 +143,12 @@ public class ConsolidatedService {
+         return totals;
+     }
+ 
++    /** The sheet's descendants, nearest first: as the store holds them now, or with the date, as every sheet
++     *  of the tree stood at the end of that day (only within the as-of view's rolled back transaction). */
++    Set<String> descendantSheets(String sheetId, LocalDate asOf) {
++        return asOf == null ? descendantsNow(sheetId) : descendantsAsOf(sheetId, asOf);
++    }
++
+     private Set<String> descendantsNow(String sheetId) {
+         Set<String> found = new LinkedHashSet<>();
+         Deque<String> next = new ArrayDeque<>(List.of(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+index ab32d25e..645ab13d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+@@ -1,8 +1,10 @@
+ package net.officefloor.hq.app.rollup;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.SignedInUser;
++import net.officefloor.hq.app.asof.AsOf;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -21,11 +23,13 @@ public class DashboardController {
+         this.service = service;
+     }
+ 
+-    /** The signed-in user's steward dashboard of the sheet; empty unless they are a steward. Read from a
+-     *  screen set to an as-of date, the sheet as it stood then, with the role the user had then. */
++    /** The signed-in user's steward dashboard over the sheet and its descendants; empty unless they are a
++     *  steward of the sheet. Read from a screen set to an as-of date, every sheet of the tree as it stood
++     *  then, with the role the user had then. */
+     @GetMapping("/{id}/dashboard")
+     public DashboardService.Dashboard dashboard(@PathVariable @NotBlank @Size(max = 100) String id,
+-            @RequestHeader(name = SignedInUser.HEADER, required = false) String user) {
+-        return service.dashboardOf(id.trim(), user == null ? null : SignedInUser.name(user));
++            @RequestHeader(name = SignedInUser.HEADER, required = false) String user, HttpServletRequest request) {
++        return service.dashboardOf(id.trim(), user == null ? null : SignedInUser.name(user),
++                AsOf.of(request).orElse(null));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+index bd65d651..adf2e990 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+@@ -5,11 +5,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** A steward's dashboard of the sheet: how many of its claims are PENDING, how many are in REVIEW, and how
+- *  many are overdue and count. Only a steward (by the role assigned, or by a delegation covering the
++/** A steward's dashboard over the sheet and all its descendants (its children, the sheets naming it as
++ *  their parent, then theirs, and so on): how many of their claims are PENDING, how many are in REVIEW, and
++ *  how many are overdue and count, each sheet's overdue as that sheet shows it. Only a steward (by the role assigned, or by a delegation covering the
+  *  sheet's today) has one; anyone else's is empty. */
+ @Service
+ public class DashboardService {
+@@ -22,23 +26,33 @@ public class DashboardService {
+     private final SettingService settings;
+     private final ClaimRepository claims;
+     private final Rollup rollup;
++    private final ConsolidatedService consolidated;
+ 
+-    public DashboardService(SettingService settings, ClaimRepository claims, Rollup rollup) {
++    public DashboardService(SettingService settings, ClaimRepository claims, Rollup rollup,
++            ConsolidatedService consolidated) {
+         this.settings = settings;
++        this.consolidated = consolidated;
+         this.claims = claims;
+         this.rollup = rollup;
+     }
+ 
+-    /** The user's dashboard of the sheet, as the store holds it now. */
++    /** The user's dashboard over the sheet's tree, as the store holds it now, or with the date, as every
++     *  sheet of the tree stood at the end of that day (only within the as-of view's rolled back transaction). */
+     @Transactional(readOnly = true)
+-    public Dashboard dashboardOf(String sheetId, String user) {
++    public Dashboard dashboardOf(String sheetId, String user, LocalDate asOf) {
+         if (user == null || user.isBlank() || settings.roleOf(sheetId, user) != Role.STEWARD) return Dashboard.EMPTY;
++        List<String> tree = new ArrayList<>(List.of(sheetId));
++        tree.addAll(consolidated.descendantSheets(sheetId, asOf));
+         int pending = 0;
+         int review = 0;
+-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+-            if (claim.getStatus() == ClaimStatus.PENDING) pending++;
+-            else if (claim.getStatus() == ClaimStatus.REVIEW) review++;
++        int overdue = 0;
++        for (String sheet : tree) {
++            for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheet)) {
++                if (claim.getStatus() == ClaimStatus.PENDING) pending++;
++                else if (claim.getStatus() == ClaimStatus.REVIEW) review++;
++            }
++            overdue += rollup.overdueCount(sheet);
+         }
+-        return new Dashboard(pending, review, rollup.overdueCount(sheetId));
++        return new Dashboard(pending, review, overdue);
+     }
+ }
