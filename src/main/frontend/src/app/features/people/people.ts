@@ -211,6 +211,27 @@ interface StatementView {
         @if (bulkSettleError(); as err) {
           <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
         }
+        <label for="bulk-reassign-to">Move selected claims to</label>
+        <select
+          id="bulk-reassign-to"
+          data-testid="bulk-reassign-to"
+          (change)="bulkReassignTo.set(value($event)); bulkReassignError.set(null)"
+        >
+          <option value="" [selected]="!bulkReassignTo()">Choose a person</option>
+          @for (q of people(); track q.id) {
+            <option [value]="q.id" [selected]="bulkReassignTo() === '' + q.id">{{ q.name }}</option>
+          }
+        </select>
+        <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
+        @if (bulkReassigned(); as result) {
+          <p role="status">
+            Moved: <strong data-testid="bulk-reassigned">{{ result.reassigned }}</strong>
+            Refused: <strong data-testid="bulk-reassign-refused">{{ result.refused }}</strong>
+          </p>
+        }
+        @if (bulkReassignError(); as err) {
+          <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
+        }
       </div>
 
       <div role="group" aria-label="Selected people">
@@ -499,6 +520,11 @@ export class People {
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
+  // The person a bulk move takes the selected claims to, by id ('' for none chosen), and its last counts.
+  protected readonly bulkReassignTo = signal('');
+  protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal<string | null>(null);
+  private bulkReassigning = false;
   // The people selected for a bulk grade, by id; the grade and from-date (blank: the sheet's today) it gives them,
   // and how many the last one changed (none while one runs).
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
@@ -764,6 +790,9 @@ export class People {
         this.bulkGradeFrom.set('');
         this.bulkGraded.set(null);
         this.bulkGradeError.set(null);
+        this.bulkReassignTo.set('');
+        this.bulkReassigned.set(null);
+        this.bulkReassignError.set(null);
         if (id) void this.fetch(id);
       });
     });
@@ -1077,6 +1106,44 @@ export class People {
       this.bulkSettleError.set('Could not settle the selected claims.');
     } finally {
       this.bulkSettling = false;
+    }
+  }
+
+  /**
+   * Moves the selected claims to the chosen person together: the store moves each that can be moved in list order,
+   * by the rules of moving one, and leaves each that cannot as it is; shows how many were moved and how many refused.
+   */
+  protected async bulkReassign(): Promise<void> {
+    if (this.bulkReassigning) return;
+    this.bulkReassigned.set(null);
+    this.bulkReassignError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = this.bulkReassignTo();
+    if (!to) {
+      this.bulkReassignError.set('Choose the person to move the selected claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    this.bulkReassigning = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ reassigned: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-reassign`,
+          { ids, personId: Number(to) },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      // each moved claim is listed as its person's newest, the last one moved first
+      for (const moved of result.reassigned) {
+        this.claims.update((list) => [moved, ...list.filter((c) => c.id !== moved.id)]);
+      }
+      this.selectedClaims.set(new Set());
+      this.bulkReassigned.set({ reassigned: result.reassigned.length, refused: result.refused });
+    } catch {
+      this.bulkReassignError.set('Could not move the selected claims.');
+    } finally {
+      this.bulkReassigning = false;
     }
   }
 

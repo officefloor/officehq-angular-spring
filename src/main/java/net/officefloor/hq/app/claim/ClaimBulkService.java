@@ -53,6 +53,15 @@ public class ClaimBulkService {
     }
 
     /**
+     * Moves each of the claims that can be moved to the person, in list order, by the rules of moving one claim. Each
+     * is moved in its own transaction: one that is refused, or is not a claim of the sheet, is left as it is and
+     * counted as refused.
+     */
+    public Result reassign(String by, String sheetId, Set<Long> ids, Long toPersonId) {
+        return each(by, sheetId, ids, id -> claims.reassign(by, sheetId, id, toPersonId, true));
+    }
+
+    /**
      * Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. A
      * viewer, or anyone on an archived sheet, changes none: every one is refused.
      */

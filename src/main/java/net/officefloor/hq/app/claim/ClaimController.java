@@ -171,6 +171,23 @@ public class ClaimController {
         return new BulkSettleView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
+    /** The claims a bulk move is to move, by id, and the person it moves them to. */
+    public record BulkReassignForm(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
+    /** The claims a bulk move moved, in the order it took them, and how many it refused. */
+    public record BulkReassignView(List<ClaimView> reassigned, int refused) {
+    }
+
+    @PostMapping("/claims/bulk-reassign")
+    @ViewerPasses
+    public BulkReassignView bulkReassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkReassignForm form, @SessionAttribute(SessionController.USER) String user) {
+        ClaimBulkService.Result result = bulk.reassign(user, sheetId, form.ids(), form.personId());
+        return new BulkReassignView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

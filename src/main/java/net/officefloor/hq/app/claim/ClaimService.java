@@ -512,12 +512,21 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String by, String sheetId, Long id, Long toPersonId) {
+        return reassign(by, sheetId, id, toPersonId, false);
+    }
+
+    /**
+     * Moves a claim as {@link #reassign(String, String, Long, Long)} does; a bulk move (sameAllowed) also takes a
+     * claim already with the person, re-listing it as that person's newest.
+     */
+    @Transactional
+    public Claim reassign(String by, String sheetId, Long id, Long toPersonId, boolean sameAllowed) {
         settings.refuseUnlessMay(sheetId, by, "reassign");
         Claim claim = lockedClaim(sheetId, id);
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot move.");
         }
-        if (claim.getPersonId().equals(toPersonId)) {
+        if (!sameAllowed && claim.getPersonId().equals(toPersonId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already that person's.");
         }
         Person from = person(sheetId, claim.getPersonId());
