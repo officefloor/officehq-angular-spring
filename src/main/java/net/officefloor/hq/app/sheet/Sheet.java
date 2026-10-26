@@ -32,6 +32,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The floor, the terms and the late percent a sheet starts with, in force before any is recorded. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
@@ -210,6 +211,14 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate on) {
         return inForce(PROOF_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+    }
+
+    /**
+     * The due above which a claim dated on the date cannot be opened with an empty note, in force on that date; null
+     * means none.
+     */
+    public BigDecimal noteThresholdOn(LocalDate on) {
+        return inForce(NOTE_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /** The permission matrix as set, by action; an action not listed keeps the standing rule. */

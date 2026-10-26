@@ -214,6 +214,7 @@ public class ClaimService {
             tail = " reversed=" + text(claim.getSettledDue());
         }
         if (next == ClaimStatus.OPEN) {
+            refuseWithoutNote(sheetId, claim);
             number(sheetId, claim);
             claim.setOpenedBy(by);
         }
@@ -302,6 +303,22 @@ public class ClaimService {
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with a due above " + threshold.toPlainString() + " needs a proof first.");
+        }
+    }
+
+    /**
+     * Refuses opening the claim when its note is empty and its due is above the note threshold in force on its date;
+     * an n/a due is within any threshold.
+     */
+    private void refuseWithoutNote(String sheetId, Claim claim) {
+        BigDecimal threshold = sheets.load(sheetId).noteThresholdOn(claim.getDate());
+        if (threshold == null || (claim.getNote() != null && !claim.getNote().isBlank())) {
+            return;
+        }
+        BigDecimal due = due(sheetId, person(sheetId, claim.getPersonId()), claim);
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with a due above " + threshold.toPlainString() + " needs a note first.");
         }
     }
 

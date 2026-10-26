@@ -31,8 +31,8 @@ interface SettingsView {
 
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
- * clerk-limit, floor, terms, terms-<grade>, late-pct, cap or proof-threshold. The value is null for none (a blank
- * clerk limit, cap or proof threshold).
+ * clerk-limit, floor, terms, terms-<grade>, late-pct, cap, proof-threshold or note-threshold. The value is null for
+ * none (a blank clerk limit, cap, proof threshold or note threshold).
  */
 interface DatedSetting {
   key: string;
@@ -41,7 +41,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | `terms-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -120,6 +120,8 @@ export class SettingsStore {
   readonly cap = computed(() => valueOn(this.dated(), 'cap', this.session.sheetToday()) ?? null);
   /** The proof threshold in force on the sheet's today; null for none. */
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.session.sheetToday()) ?? null);
+  /** The note threshold in force on the sheet's today; null for none. */
+  readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.session.sheetToday()) ?? null);
   /** The floor, the terms and the late percent in force on the sheet's today. */
   readonly floorToday = computed(() => this.floor()(this.session.sheetToday()));
   readonly termsToday = computed(() => this.termsFor('', this.session.sheetToday()));
@@ -406,6 +408,25 @@ export class SettingsStore {
           (input)="setFrom('proof-threshold', value($event))"
           (change)="setFrom('proof-threshold', value($event))"
         />
+        <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to open; blank for none)</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThreshold()"
+          (input)="noteThreshold.set(value($event)); noteThresholdChanged = true; settingsError.set(null)"
+          (keydown.delete)="noteThresholdChanged = true; settingsError.set(null)"
+          (keydown.backspace)="noteThresholdChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-note-threshold-from">Note threshold from (blank for the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          type="date"
+          [value]="from()['note-threshold'] ?? ''"
+          (input)="setFrom('note-threshold', value($event))"
+          (change)="setFrom('note-threshold', value($event))"
+        />
         <fieldset>
           <legend>Permissions (roles that may take each action, comma separated; blank for the standing rule)</legend>
           @for (p of permissionActions; track p.action) {
@@ -445,6 +466,10 @@ export class SettingsStore {
       <p>
         Proof threshold in force:
         <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
+      </p>
+      <p>
+        Note threshold in force:
+        <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
       </p>
       @for (p of permissionActions; track p.action) {
         <p>
@@ -519,6 +544,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
+  protected readonly noteThreshold = signal('');
   // The from-date typed for each dated setting, by key; blank for the sheet's today.
   protected readonly from = signal<Readonly<Partial<Record<DatedKey, string>>>>({});
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
@@ -533,6 +559,7 @@ export class Settings {
   protected graceDaysChanged = false;
   protected capChanged = false;
   protected proofThresholdChanged = false;
+  protected noteThresholdChanged = false;
   protected readonly permsChanged = new Set<string>();
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -599,6 +626,9 @@ export class Settings {
         break;
       case 'proof-threshold':
         this.proofThresholdChanged ||= this.proofThreshold().trim() !== '';
+        break;
+      case 'note-threshold':
+        this.noteThresholdChanged ||= this.noteThreshold().trim() !== '';
         break;
       default:
         if ((this.gradeTerms()[key.slice('terms-'.length)] ?? '').trim() !== '') {
@@ -675,6 +705,11 @@ export class Settings {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const noteThreshold = this.noteThreshold().trim();
+    if (this.noteThresholdChanged && noteThreshold && !LIMIT.test(noteThreshold)) {
+      this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const perms = new Map<string, string>();
     for (const a of this.permsChanged) {
       const typed = (this.perms()[a] ?? '').trim();
@@ -692,6 +727,7 @@ export class Settings {
     if (this.latePctChanged) keys.push('late-pct');
     if (this.capChanged) keys.push('cap');
     if (this.proofThresholdChanged) keys.push('proof-threshold');
+    if (this.noteThresholdChanged) keys.push('note-threshold');
     const from = new Map<DatedKey, string | null>();
     for (const k of keys) {
       const f = this.fromOf(k);
@@ -743,6 +779,10 @@ export class Settings {
       if (this.proofThresholdChanged) {
         await this.store.setDated(sheet, 'proof-threshold', proofThreshold || null, from.get('proof-threshold') ?? null);
         this.proofThresholdChanged = this.proofThreshold().trim() !== proofThreshold;
+      }
+      if (this.noteThresholdChanged) {
+        await this.store.setDated(sheet, 'note-threshold', noteThreshold || null, from.get('note-threshold') ?? null);
+        this.noteThresholdChanged = this.noteThreshold().trim() !== noteThreshold;
       }
       for (const [a, roles] of perms) {
         await this.store.setPermission(sheet, a, roles || null);

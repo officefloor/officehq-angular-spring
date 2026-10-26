@@ -58,8 +58,8 @@ public class SettingsController {
     }
 
     /**
-     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, late-pct, cap or
-     * proof-threshold), in force
+     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, late-pct, cap,
+     * proof-threshold or note-threshold), in force
      * from its from-date; null for none.
      */
     public record DatedSettingView(String key, LocalDate from, String value) {
@@ -88,6 +88,14 @@ public class SettingsController {
      * date, or null for the sheet's today.
      */
     public record ProofThresholdForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value,
+            LocalDate from) {
+    }
+
+    /**
+     * The note threshold as the form submits it: 0.00 or more with up to two decimals, or null for none; from the
+     * date, or null for the sheet's today.
+     */
+    public record NoteThresholdForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value,
             LocalDate from) {
     }
 
@@ -245,6 +253,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ProofThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setProofThreshold(user, sheetId, form.value(), form.from()));
+    }
+
+    @PutMapping("/settings/note-threshold")
+    public SettingsView setNoteThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody NoteThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setNoteThreshold(user, sheetId, form.value(), form.from()));
     }
 
     @PutMapping("/settings/permissions/{action}")
