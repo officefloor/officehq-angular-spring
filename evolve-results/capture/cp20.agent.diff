@@ -1,0 +1,63 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ccc877e3..cfcbc304 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -173,6 +173,11 @@ export class Claims {
+ 
+   protected edit(c: Claim): void {
+     this.clearRowError(c.id);
++    if (c.status !== 'DRAFT') {
++      // an open claim is changed by voiding it and adding a new one
++      this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
++      return;
++    }
+     this.editingId.set(c.id);
+     this.amount.set(c.amount);
+     this.date.set(c.date);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6721419b..f91b6617 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number given when the claim is opened; null for a draft or voided claim. */
++    /** The sheet's number given when the claim is opened; kept when it is voided, never reused; null for a claim never opened. */
+     @Column(name = "claim_number")
+     private Long number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 608868ba..fd30765f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -59,12 +59,18 @@ public class ClaimService {
+         return added;
+     }
+ 
+-    /** Edits a claim; refused when it is dated in a closed period, or the edit would date it in one. */
++    /**
++     * Edits a claim; refused unless it is a draft, when it is dated in a closed period, or when the edit would date
++     * it in one. An open claim is changed by voiding it and adding a new one.
++     */
+     @Transactional
+     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
+         LocalDate on = dateOrToday(sheetId, date);
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
++        }
+         refuseInClosedPeriod(sheetId, claim.getDate());
+         refuseInClosedPeriod(sheetId, on);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+@@ -102,9 +108,6 @@ public class ClaimService {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
+             claim.setOpenedBy(by);
+-        } else if (next == ClaimStatus.VOID) {
+-            // the number is cleared, never given to another claim; the audit line still carries it
+-            claim.setNumber(null);
+         }
+         Person person = person(sheetId, claim.getPersonId());
+         String due = null;
