@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -58,6 +59,12 @@ public class Plan {
     @Column(name = "plan_date", nullable = false)
     private Set<LocalDate> generated = new HashSet<>();
 
+    /** Its pauses, oldest first; one is still open while the plan is paused. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderBy("pausedOn")
+    private List<PlanPause> pauses = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -72,8 +79,13 @@ public class Plan {
         this.end = end;
     }
 
-    /** The plan dates, oldest first, on or before both its end and the date. */
+    /** The plan dates, oldest first, on or before both its end and the date, those a pause skips left out. */
     List<LocalDate> datesUpTo(LocalDate upTo) {
+        return scheduleUpTo(upTo).stream().filter((d) -> pauses.stream().noneMatch((p) -> p.skips(d))).toList();
+    }
+
+    /** The plan dates by its schedule alone, oldest first, on or before both its end and the date. */
+    private List<LocalDate> scheduleUpTo(LocalDate upTo) {
         LocalDate last = end.isBefore(upTo) ? end : upTo;
         List<LocalDate> dates = new ArrayList<>();
         if (day == null) {
@@ -98,6 +110,21 @@ public class Plan {
 
     void markGenerated(LocalDate date) {
         generated.add(date);
+    }
+
+    /** Whether the plan is paused now. */
+    public boolean isPaused() {
+        return pauses.stream().anyMatch(PlanPause::isOpen);
+    }
+
+    /** Pause the plan on the date; the caller has checked it is running. */
+    void pause(LocalDate on) {
+        pauses.add(new PlanPause(on));
+    }
+
+    /** Resume the plan on the date; the caller has checked it is paused. */
+    void resume(LocalDate on) {
+        pauses.stream().filter(PlanPause::isOpen).forEach((p) -> p.resume(on));
     }
 
     public Long getId() {

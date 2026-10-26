@@ -20,7 +20,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)" [disabled]="pausing() === pl.id">
+            Pause</button>
+          <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)" [disabled]="pausing() === pl.id">
+            Resume</button>
+          @if (rowError()?.planId === pl.id) {
+            <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
+          }
         </li>
       }
     </ul>
@@ -60,6 +68,8 @@ export class PersonPlans {
   });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly pausing = signal<number | null>(null);
+  protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -67,8 +77,27 @@ export class PersonPlans {
     effect(() => {
       this.session.loaded();
       this.error.set('');
+      this.rowError.set(null);
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
+  }
+
+  /** Pause (true) or resume (false) a plan; a refusal shows on its row. */
+  protected async pause(planId: number, on: boolean): Promise<void> {
+    if (this.pausing() !== null) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rowError.set(null);
+    this.pausing.set(planId);
+    try {
+      await this.store.pause(sheet.id, planId, on);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.rowError.set({ planId, message: on ? 'The plan could not be paused.' : 'The plan could not be resumed.' });
+      }
+    } finally {
+      this.pausing.set(null);
+    }
   }
 
   protected async submit(): Promise<void> {
@@ -76,6 +105,7 @@ export class PersonPlans {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.error.set('');
+    this.rowError.set(null);
     const v = this.form.getRawValue();
     const amount = v.amount.trim();
     const start = v.start.trim();

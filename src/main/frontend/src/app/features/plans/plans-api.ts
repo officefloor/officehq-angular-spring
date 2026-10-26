@@ -8,7 +8,9 @@ import { ClaimView } from '../claims/claims-api';
  *  it, or, for a monthly plan, on its `day` of every month from the start's month (a day beyond the
  *  month's length falling on its last day, those before the start left out), up to the end date
  *  (yyyy-mm-dd). Generated is how many claims it has made so far; next dates are its first five plan
- *  dates after the sheet's today and on or before the end, oldest first. */
+ *  dates after the sheet's today and on or before the end, those a pause skips left out, oldest first.
+ *  Paused is whether it is paused now: a plan date on or after the day it was paused and before the day
+ *  it was resumed is skipped, not postponed. */
 export interface PlanView {
   id: number;
   personId: number;
@@ -19,6 +21,7 @@ export interface PlanView {
   end: string;
   generated: number;
   nextDates: string[];
+  paused: boolean;
 }
 
 /** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */
@@ -59,6 +62,12 @@ export class PlansApi {
       { personId, amount: f.amount, start: f.start, every: f.every, day: f.day, end: f.end }));
   }
 
+  /** Pause (true) or resume (false) a plan on the sheet's today: refused for pausing a paused plan or
+   *  resuming a running one. */
+  pause(sheetId: string, planId: number, on: boolean): Promise<PlanView> {
+    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheetId)}/${planId}/${on ? 'pause' : 'resume'}`, {}));
+  }
+
   /** Make every plan's claims due by the sheet's today. */
   generate(sheetId: string): Promise<GenerateView> {
     return firstValueFrom(this.http.post<GenerateView>(`${this.url(sheetId)}/generate`, {}));
@@ -96,6 +105,13 @@ export class Plans {
     const added = await this.api.add(sheetId, personId, f);
     if (this.session.sheet()?.id !== sheetId) return;
     this.state.update((list) => [...list.filter((p) => p.id !== added.id), added]);
+  }
+
+  /** Pause (true) or resume (false) a plan of the active sheet. */
+  async pause(sheetId: string, planId: number, on: boolean): Promise<void> {
+    const changed = await this.api.pause(sheetId, planId, on);
+    if (this.session.sheet()?.id !== sheetId) return;
+    this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
   }
 
   /** Generate the plans' claims: the store's plans replace those shown. */

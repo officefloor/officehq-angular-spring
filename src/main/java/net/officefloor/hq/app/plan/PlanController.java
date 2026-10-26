@@ -28,13 +28,13 @@ public class PlanController {
 
     /** What the screen shows of a plan; the amount always has two decimals. Generated is how many claims
      *  it has made so far; next dates are its first five plan dates after the sheet's today, on or before
-     *  its end, oldest first. */
+     *  its end and not skipped by a pause, oldest first. Paused is whether it is paused now. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated, List<LocalDate> nextDates) {
+            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount(),
-                    plan.datesAfter(today, 5));
+                    plan.datesAfter(today, 5), plan.isPaused());
         }
     }
 
@@ -70,6 +70,22 @@ public class PlanController {
         String id = sheetId.trim();
         return PlanView.of(service.add(id, SignedInUser.name(user), form.personId(), form.amount(),
                 form.start(), form.every(), form.day(), form.end()), service.today(id));
+    }
+
+    /** Pause the plan from the sheet's today. */
+    @PostMapping("/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String id = sheetId.trim();
+        return PlanView.of(service.pause(id, SignedInUser.name(user), planId, true), service.today(id));
+    }
+
+    /** Resume the plan from the sheet's today. */
+    @PostMapping("/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String id = sheetId.trim();
+        return PlanView.of(service.pause(id, SignedInUser.name(user), planId, false), service.today(id));
     }
 
     /** Make the plans' claims due by the sheet's today. */
