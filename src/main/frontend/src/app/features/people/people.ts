@@ -51,7 +51,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
-      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
+      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()" />
     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
       [ownOverdueTotal]="money(sheetOverdue().cents)" />
     <app-tree-search />
@@ -544,6 +544,15 @@ export class People {
     const key = (name: string) => name.trim().toLowerCase();
     const mine = key(user);
     return this.people().find((p) => key(p.name) === mine || p.aliases.some((a) => key(a) === mine)) ?? null;
+  });
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    if (me === null) return '';
+    const led = this.crews.crews().filter((c) => c.leadId === me.id);
+    if (led.length === 0) return '';
+    const dues = this.dueCents();
+    return money(led.reduce((t, c) => t + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
   protected readonly sheetDueTotal = computed(() => {
