@@ -115,6 +115,25 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
     }
 
+    /** A steward's reason for rejecting a pending claim. */
+    public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+    }
+
+    @PostMapping("/claims/{id}/approve")
+    public ClaimView approve(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.approve(user, sheetId, id));
+    }
+
+    @PostMapping("/claims/{id}/reject")
+    public ClaimView reject(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody RejectForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.reject(user, sheetId, id, form.reason()));
+    }
+
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

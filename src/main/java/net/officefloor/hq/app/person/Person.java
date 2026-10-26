@@ -108,7 +108,7 @@ public class Person {
         return retiredFrom != null;
     }
 
-    /** Whether the person is on hold: while held, their open claims count in no live total. */
+    /** Whether the person is on hold: while held, their open (and pending) claims count in no live total. */
     public boolean isHeld() {
         return held;
     }
@@ -119,7 +119,7 @@ public class Person {
 
     /** Whether the claim of the given status counts toward the person's live totals: an open one not while held. */
     public boolean countsLive(ClaimStatus status) {
-        return status.counts() && !(held && status == ClaimStatus.OPEN);
+        return status.counts() && !(held && status.isOpen());
     }
 
     /** The version of the person as stored, raised on each save. */

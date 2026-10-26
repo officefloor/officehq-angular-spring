@@ -153,19 +153,21 @@ public class SettingsService {
     }
 
     /**
-     * Refuses the user settling a claim with the due (null for n/a) when they are a clerk and the due is above the
-     * sheet's clerk limit. A steward settles anything, and an n/a due is within any limit.
+     * Whether the user settling a claim with the due (null for n/a) needs a steward's approval: they are a clerk and
+     * the due is above the sheet's clerk limit. A steward settles anything, and an n/a due is within any limit.
      */
     @Transactional(readOnly = true)
-    public void refuseAboveClerkLimit(String sheetId, String user, BigDecimal due) {
+    public boolean aboveClerkLimit(String sheetId, String user, BigDecimal due) {
         BigDecimal limit = sheets.load(sheetId).getClerkLimit();
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
-            return;
+            return false;
         }
-        if (SheetRole.STEWARD.equals(roleOf(sheetId, user))) {
-            return;
-        }
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "A clerk cannot settle a claim whose due is above the clerk limit.");
+        return !isSteward(sheetId, user);
+    }
+
+    /** Whether the user is a steward of the sheet. */
+    @Transactional(readOnly = true)
+    public boolean isSteward(String sheetId, String user) {
+        return SheetRole.STEWARD.equals(roleOf(sheetId, user));
     }
 }

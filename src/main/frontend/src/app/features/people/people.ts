@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isOpen, keepsFigure, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -282,10 +282,11 @@ export class People {
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkError = signal<string | null>(null);
   private bulkOpening = false;
-  // The claims that count in the live totals: open and settled ones, leaving out a held person's open ones.
+  // The claims that count in the live totals: open, pending and settled ones, leaving out a held person's open and
+  // pending ones.
   protected readonly liveClaims = computed(() => {
     const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
-    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+    return this.claims().filter((c) => counts(c) && !(isOpen(c) && held.has(c.personId)));
   });
   protected readonly liveBy = computed(() => {
     const by = new Map<number, Claim[]>();

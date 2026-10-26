@@ -29,13 +29,25 @@ export interface Claim {
   roundsOn: string;
 }
 
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+// A clerk settling a claim whose due is above the clerk limit makes it PENDING, for a steward to approve (SETTLED)
+// or reject (OPEN again).
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-type ClaimAction = 'open' | 'settle' | 'void';
+type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
 
-/** Only open and settled claims count toward what is claimed and due. */
+/** Only open, pending and settled claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return isOpen(c) || c.status === 'SETTLED';
+}
+
+/** Whether the claim is open: OPEN or PENDING. An open claim goes overdue and bears the late charge. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
+}
+
+/** Whether the person's last statement binds the claim's figure: not while it is pending, which shows it live. */
+function isBound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
 }
 
 /** Whether the claim is a correction: one with a negative amount. */
@@ -52,20 +64,21 @@ export function roundsHalfUp(c: Claim, policyDate: string | null): boolean {
 }
 
 /**
- * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
+ * The figure a claim shows and totals: its settled due, else the one a statement bound it to (not while it is
+ * pending), else its live due
  * at the rate in force on its date and at least the floor (a correction has none), rounded as the policy date
  * decides for it; null (n/a) with none.
  */
 export function figureOf(c: Claim, rates: readonly RateView[], floor: string, policyDate: string | null): string | null {
   if (c.settledDue !== null) return c.settledDue;
-  if (c.stated) return c.statedDue;
+  if (isBound(c)) return c.statedDue;
   const due = dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, policyDate));
   return due === null || isCorrection(c) ? due : atLeast(due, floor);
 }
 
-/** Whether the claim keeps a figure whatever the rates: a settled or stated one with a figure. */
+/** Whether the claim keeps a figure whatever the rates: a settled or bound one with a figure. */
 export function keepsFigure(c: Claim): boolean {
-  return c.settledDue !== null || (c.stated && c.statedDue !== null);
+  return c.settledDue !== null || (isBound(c) && c.statedDue !== null);
 }
 
 /** The date (yyyy-mm-dd) the given number of days after the date. */
@@ -79,9 +92,9 @@ export function dueByOf(c: Claim, terms: number): string {
   return addDays(c.date, terms);
 }
 
-/** Whether a claim is overdue: open, and due by a date before the sheet's today. */
+/** Whether a claim is overdue: open (or pending), and due by a date before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return c.status === 'OPEN' && today !== null && dueByOf(c, terms) < today;
+  return isOpen(c) && today !== null && dueByOf(c, terms) < today;
 }
 
 /**
@@ -212,6 +225,19 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">
+                Approve<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <label [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
+              <input
+                [id]="'claim-reject-reason-' + c.id"
+                data-testid="claim-reject-reason"
+                [value]="rejectReasons()[c.id] ?? ''"
+                (input)="setRejectReason(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">
+                Reject<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
                 Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -260,6 +286,8 @@ export class Claims {
   private submitting = false;
   // Each claim's refused status change, by claim id.
   protected readonly rowErrors = signal<Record<number, string>>({});
+  // The reason typed to reject each pending claim, by claim id.
+  protected readonly rejectReasons = signal<Record<number, string>>({});
 
   protected readonly dueOf = dueOf;
 
@@ -298,6 +326,11 @@ export class Claims {
     this.error.set(null);
   }
 
+  protected setRejectReason(id: number, reason: string): void {
+    this.rejectReasons.update((r) => ({ ...r, [id]: reason }));
+    this.clearRowError(id);
+  }
+
   protected async act(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
@@ -307,15 +340,26 @@ export class Claims {
       this.setRowError(c.id, CLOSED);
       return;
     }
+    const reason = (this.rejectReasons()[c.id] ?? '').trim();
+    if (action === 'reject' && !reason) {
+      this.setRowError(c.id, 'Enter a reason to reject this claim.');
+      return;
+    }
     try {
-      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+      const body = action === 'reject' ? { reason } : null;
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, body)));
+      if (action === 'reject') this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
     } catch (e) {
+      const opener = c.openedBy !== null && c.openedBy === this.session.user();
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       const err =
-        action === 'settle' && c.openedBy !== null && c.openedBy === this.session.user()
+        action === 'settle' && opener
           ? 'You opened this claim, so another user must settle it.'
-          : action === 'settle' && e instanceof HttpErrorResponse && e.status === 403
-            ? 'Its due is above the clerk limit, so only a steward can settle it.'
-            : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+          : (action === 'approve' || action === 'reject') && forbidden
+            ? 'Only a steward can approve or reject a pending claim.'
+            : action === 'approve' && opener
+              ? 'You opened this claim, so another steward must approve it.'
+              : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
     }
   }

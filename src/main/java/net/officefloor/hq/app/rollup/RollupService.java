@@ -15,7 +15,6 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
-import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -77,7 +76,7 @@ public class RollupService {
         BigDecimal claimedTotal = ZERO;
         BigDecimal dueTotal = ZERO;
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            // while the person is held, their open claims count in no live total
+            // while the person is held, their open and pending claims count in no live total
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
                     .filter(c -> p.countsLive(c.getStatus())).toList();
             BigDecimal claimed = ZERO;
@@ -89,10 +88,10 @@ public class RollupService {
             for (Claim c : counted) {
                 grades.add(p.gradeOn(c.getDate()));
                 claimed = claimed.add(c.getAmount());
-                kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
+                kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
                 BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor, sheet);
-                if (c.getStatus() == ClaimStatus.OPEN && !c.isCorrection()) {
+                if (c.getStatus().isOpen() && !c.isCorrection()) {
                     figure = ClaimService.withLateCharge(figure, c, sheet);
                 }
                 if (figure != null) {
@@ -143,7 +142,7 @@ public class RollupService {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
-        if (c.isStated()) {
+        if (c.isBound()) {
             return c.getStatedDue();
         }
         Rate rate = inForce(rates, c.getDate());
