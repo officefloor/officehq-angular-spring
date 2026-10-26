@@ -31,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
  * theirs, and so on), added up: the number of people on them and each one's due-total and
  * overdue-total as that sheet shows it; per grade, the due-totals of the people on it today who are not
  * retired (skipping n/a); and per status, how many claims have it. The screen adds the sheet's own figures to make its
- * consolidated figures. A sheet with no children has none. The sheet's own figures are answered too, as
+ * consolidated figures; each descendant person's figures and name keys are answered too, so the screen can
+ * trim the due-total and overdue-total once over the whole tree and count each person once. A sheet with
+ * no children has none. The sheet's own figures are answered too, as
  * it shows them. Read as of a date (within the as-of view's transaction, which is rolled back), every
  * sheet of the tree is put back to how it stood at the end of that day, with that date as its today.
  */
@@ -43,7 +45,12 @@ public class ConsolidatedService {
      *  status, every status but DELETED listed. */
     public record Descendants(List<String> sheets, int peopleCount, String dueTotal, String overdueTotal,
             int ownPeopleCount, String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts) {
+            Map<String, Integer> statusCounts, List<PersonFigures> people) {
+    }
+
+    /** A descendant's person: their name and aliases as names are compared, their due-total with two
+     *  decimals (null for n/a) and their overdue-total with two decimals. */
+    public record PersonFigures(List<String> keys, String dueTotal, String overdueTotal) {
     }
 
     private final SheetParentRepository parents;
@@ -79,8 +86,17 @@ public class ConsolidatedService {
         for (ClaimStatus status : ClaimStatus.values()) {
             if (status != ClaimStatus.DELETED) statusCount.put(status, 0);
         }
+        List<PersonFigures> treePeople = new ArrayList<>();
         for (String sheet : found) {
             Rollup.Snapshot figures = rollup.snapshot(sheet);
+            for (Person person : people.findInListOrder(sheet)) {
+                Rollup.Figures theirs = figures.people().get(person.getId());
+                if (theirs == null) continue;
+                List<String> keys = new ArrayList<>(List.of(Person.keyOf(person.getName())));
+                person.getAliases().forEach(alias -> keys.add(Person.keyOf(alias)));
+                treePeople.add(new PersonFigures(keys, theirs.dueTotal() == null ? null : text(theirs.dueTotal()),
+                        text(theirs.overdueTotal())));
+            }
             peopleCount += figures.people().size();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
@@ -102,7 +118,7 @@ public class ConsolidatedService {
         statusCount.forEach((status, n) -> statusCounts.put(status.name(), n));
         Rollup.Snapshot own = rollup.snapshot(sheetId);
         return new Descendants(new ArrayList<>(found), peopleCount, text(due), text(overdue), own.people().size(),
-                text(own.dueTotal()), text(own.overdueTotal()), gradeDueTotals, statusCounts);
+                text(own.dueTotal()), text(own.overdueTotal()), gradeDueTotals, statusCounts, treePeople);
     }
 
     private Set<String> descendantsNow(String sheetId) {

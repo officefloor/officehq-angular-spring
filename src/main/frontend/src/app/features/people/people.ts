@@ -56,8 +56,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()" />
-    <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
-      [ownOverdueTotal]="money(sheetOverdue().cents)" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
+    <app-consolidated [ownPeople]="treeFigures()" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
     <app-tree-search />
     <app-duplicates />
     @if (session.sheet()) {
@@ -781,6 +780,15 @@ export class People {
     const figures = this.people().map((p) => this.overdueByPerson().get(p.id)?.cents ?? 0);
     return { count, cents: trimmedSum(figures) };
   });
+  /** Everyone's name keys (name and aliases, as names are compared) and figures, for the consolidated figures. */
+  protected readonly treeFigures = computed(() => this.people().map((p) => {
+    const due = this.dueCentsOf(p);
+    return {
+      keys: [p.name, ...p.aliases].map((n) => n.trim().toLowerCase()),
+      dueTotal: due === null ? null : money(due),
+      overdueTotal: money(this.overdueByPerson().get(p.id)?.cents ?? 0),
+    };
+  }));
   /** Each person's due-total in cents, by person id; null when it is n/a. */
   protected readonly dueCents = computed(() => new Map(this.people().map((p) => [p.id, this.dueCentsOf(p)])));
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */

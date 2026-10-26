@@ -2,12 +2,14 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
-import { ConsolidatedApi, DescendantsView } from './consolidated-api';
+import { ConsolidatedApi, DescendantsView, TreePersonFigures } from './consolidated-api';
 import { GradeSummary, StatusSummary } from './summary';
 
 // The consolidated figures over the sheet and all its descendants (the sheets naming it as their
-// parent, then theirs, and so on): the number of people, and each sheet's due-total and overdue-total
-// as that sheet shows it, added up; per grade, the due-totals of the people on it who are not retired,
+// parent, then theirs, and so on): the number of people, each counted once over the tree (people whose
+// names or aliases match, as names are compared, are one person); the due-total and overdue-total, each
+// person's figure as their sheet shows it added up over the whole tree, leaving out the single highest and
+// the single lowest when three or more have one; per grade, the due-totals of the people on it who are not retired,
 // added up; and per status, how many claims have it. The sheet's own figures are those it shows; its descendants' are
 // re-read each time a sheet is loaded. A sheet with no children shows its own figures. While the screen
 // shows the sheet as of a date, the consolidated figures are as of that date too: every sheet of the
@@ -58,10 +60,8 @@ export class Consolidated {
   private readonly session = inject(Session);
   private readonly api = inject(ConsolidatedApi);
 
-  /** The sheet's own figures, as it shows them. */
-  readonly ownPeopleCount = input.required<number>();
-  readonly ownDueTotal = input.required<string>();
-  readonly ownOverdueTotal = input.required<string>();
+  /** The sheet's own people, with their figures as it shows them. */
+  readonly ownPeople = input.required<TreePersonFigures[]>();
   /** The sheet's own summary lines per grade and per status, as it shows them. */
   readonly ownGrades = input.required<GradeSummary[]>();
   readonly ownStatuses = input.required<StatusSummary[]>();
@@ -69,15 +69,14 @@ export class Consolidated {
   /** The loaded sheet's descendants' figures; null until read (or when the read failed). */
   private readonly descendants = signal<DescendantsView | null>(null);
 
-  /** The sheet's own figures, as it shows them. */
-  private readonly own = computed(() =>
-    ({ peopleCount: this.ownPeopleCount(), dueTotal: this.ownDueTotal(), overdueTotal: this.ownOverdueTotal() }));
+  /** Everyone over the tree: the sheet's own people, then its descendants'. */
+  private readonly treePeople = computed(() => [...this.ownPeople(), ...(this.descendants()?.people ?? [])]);
 
-  protected readonly peopleCount = computed(() => this.own().peopleCount + (this.descendants()?.peopleCount ?? 0));
-  protected readonly dueTotal = computed(() =>
-    money(cents(this.own().dueTotal) + cents(this.descendants()?.dueTotal ?? '0.00')));
-  protected readonly overdueTotal = computed(() =>
-    money(cents(this.own().overdueTotal) + cents(this.descendants()?.overdueTotal ?? '0.00')));
+  protected readonly peopleCount = computed(() => distinctPeople(this.treePeople()));
+  protected readonly dueTotal = computed(() => money(trimmedSum(
+    this.treePeople().flatMap((p) => p.dueTotal === null ? [] : [cents(p.dueTotal)]))));
+  protected readonly overdueTotal = computed(() => money(trimmedSum(
+    this.treePeople().map((p) => cents(p.overdueTotal)))));
 
   protected readonly grades = computed(() => this.ownGrades().map((g) => ({
     grade: g.grade,
@@ -99,4 +98,25 @@ export class Consolidated {
         () => undefined);
     });
   }
+}
+
+/** The sum of the figures, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const total = figures.reduce((t, f) => t + f, 0);
+  return figures.length < 3 ? total : total - Math.max(...figures) - Math.min(...figures);
+}
+
+/** How many people there are, those whose names or aliases match (in turn) being one person. */
+function distinctPeople(people: TreePersonFigures[]): number {
+  const parent = people.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const byKey = new Map<string, number>();
+  people.forEach((p, i) => {
+    for (const key of p.keys) {
+      const seen = byKey.get(key);
+      if (seen === undefined) byKey.set(key, i);
+      else parent[find(i)] = find(seen);
+    }
+  });
+  return people.filter((_, i) => find(i) === i).length;
 }

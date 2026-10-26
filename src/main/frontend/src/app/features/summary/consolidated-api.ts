@@ -20,6 +20,16 @@ export interface DescendantsView {
   gradeDueTotals: Record<string, string>;
   /** Per status, how many of the descendants' claims have it. */
   statusCounts: Record<string, number>;
+  /** Each of the descendants' people: their name and aliases as names are compared, and their figures. */
+  people: TreePersonFigures[];
+}
+
+/** A person's figures on a sheet of the tree: their name and aliases as names are compared (trimmed, lower-cased),
+ *  their due-total with two decimals (null for n/a) and their overdue-total with two decimals. */
+export interface TreePersonFigures {
+  keys: string[];
+  dueTotal: string | null;
+  overdueTotal: string;
 }
 
 // The figures of a sheet's descendants, and its own: while the screen shows the sheet as of a date, every

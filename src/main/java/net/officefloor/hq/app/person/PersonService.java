@@ -290,8 +290,8 @@ public class PersonService {
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
-        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms)
-                || !Objects.equals(person.termsOn(sheets.today(sheetId)), terms);
+        Integer termsBefore = person.termsOn(sheets.today(sheetId));
+        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms);
         person.setName(name);
         // An edit that leaves the grade in force today as it is, with no from-date, records no grade, so it
         // does not hide a grade given later from an earlier date.
@@ -306,6 +306,7 @@ public class PersonService {
         useTags(sheetId, tagged);
         Person saved = save(person);
         Integer termsToday = saved.termsOn(sheets.today(sheetId));
+        termsChanged = termsChanged || !Objects.equals(termsBefore, termsToday);
         recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (termsToday == null ? "" : termsToday) : "")
                 + (contactChanged ? " contact=" + (contactKey == null ? "" : contactKey) : ""));
         rollup.recordChanges(user, before);
