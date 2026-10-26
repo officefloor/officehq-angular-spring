@@ -14,6 +14,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -151,6 +153,13 @@ public class Claim {
     @JoinColumn(name = "claim_id", nullable = false)
     @OrderBy("id ASC")
     private List<ClaimLogEntry> log = new ArrayList<>();
+
+    /** The claim's comments, in the order they were written. */
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id ASC")
+    private List<ClaimComment> comments = new ArrayList<>();
 
     protected Claim() {
     }
@@ -408,6 +417,15 @@ public class Claim {
 
     public List<ClaimLogEntry> getLog() {
         return log;
+    }
+
+    public List<ClaimComment> getComments() {
+        return comments;
+    }
+
+    /** Adds a comment: by the user, on the sheet's today. */
+    public void comment(String by, LocalDate on, String text) {
+        comments.add(new ClaimComment(by, on, text));
     }
 
     /**

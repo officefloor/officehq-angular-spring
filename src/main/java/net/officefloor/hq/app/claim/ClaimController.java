@@ -36,17 +36,20 @@ public class ClaimController {
      * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
      * was soft-closed. Ref is its external reference, or null. Tags are its tags, sorted (none for a claim with none).
+     * Comments are its comments, in the order they were written.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
-            String lockedBy, boolean lateEntry, List<String> tags, String voidReason) {
+            String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
+            List<CommentView> comments) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
-                    c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason());
+                    c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
+                    c.getComments().stream().map(CommentView::of).toList());
         }
     }
 
@@ -55,6 +58,13 @@ public class ClaimController {
         public static LogLineView of(ClaimLogEntry e) {
             return new LogLineView(e.getStatus(), e.getBy(), e.getOn(),
                     e.getDue() == null ? null : e.getDue().toPlainString());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+        public static CommentView of(ClaimComment c) {
+            return new CommentView(c.getBy(), c.getOn(), c.getText());
         }
     }
 
@@ -252,6 +262,18 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.remind(user, sheetId, id));
+    }
+
+    /** The text of a comment to add to a claim. */
+    public record CommentForm(@Size(max = 500) String text) {
+    }
+
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody CommentForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.comment(user, sheetId, id, form.text()));
     }
 
     @PostMapping("/claims/{id}/proof")

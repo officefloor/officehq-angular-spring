@@ -358,6 +358,23 @@ public class ClaimService {
         return saved;
     }
 
+    /** Adds a comment to the claim, by the user on the sheet's today. Refused for a blank comment. */
+    @Transactional
+    public Claim comment(String by, String sheetId, Long id, String text) {
+        String stripped = text == null ? "" : text.strip();
+        if (stripped.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A comment cannot be empty.");
+        }
+        sheets.lock(sheetId);
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        claim.comment(by, sheets.load(sheetId).getToday(), stripped);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("COMMENT_ADDED", by, person(sheetId, saved.getPersonId()), saved) + " text="
+                + stripped);
+        return saved;
+    }
+
     /**
      * Raises the claim's proofs count by one. Refused for a SETTLED or VOID claim, and in a closed period.
      */
