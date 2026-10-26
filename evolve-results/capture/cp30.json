@@ -1,0 +1,64 @@
+{
+  "checkpoint": 30,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp30_corrections",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim with a negative amount is a correction. It is allowed only when the claim form names, by\nnumber, a SETTLED claim of the same person that it corrects; otherwise it is refused. A\ncorrection's due is its amount times the rate, rounded like any claim, with no floor and no late\ncharge. It is numbered, opened and settled like any claim, counts in every total, and shows the\nnumber it corrects.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim with a negative amount is a correction. It is allowed only when the claim form names, by\nnumber, a SETTLED claim of the same person that it corrects; otherwise it is refused. A\ncorrection's due is its amount times the rate, rounded like any claim, with no floor and no late\ncharge. It is numbered, opened and settled like any claim, counts in every total, and shows the\nnumber it corrects.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "47ad2edf63985f82ece659607a5f42a498a8211c",
+  "reset_sha": "",
+  "preagent_sha": "1035e1ac6063b031bf41353d867b5863ff081c74",
+  "prev_sha": "1035e1ac6063b031bf41353d867b5863ff081c74",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1442219999999996,
+    "input_tokens": 44,
+    "output_tokens": 14613,
+    "cache_read_tokens": 1275930,
+    "cache_creation_tokens": 74575,
+    "num_turns": 23,
+    "duration_ms": 240049,
+    "duration_api_ms": 131264,
+    "model": "claude-opus-5-5",
+    "session_id": "763ccb62-e399-4968-840b-77bc9ebda335",
+    "stop_reason": "success",
+    "result_text": "Corrections are in, and `bin/e2e` passes all 4 tests: the corrections test and the three regression scenarios.\n\n**How it behaves**\n- A claim with a negative amount is only accepted when the form names a settled claim of the same person by its number. Otherwise the add or edit is refused, the form shows its error, and nothing is written to the store or the audit file.\n- A correction's due is amount \u00d7 rate, rounded the usual way, with no floor and no late charge. That holds for its live due, its figure in the totals, and the due fixed when it's settled.\n- It's numbered, opened and settled like any other claim, and its row shows the number it corrects.\n\n**What changed**\n- **Stored data:** migration `V24__claim_corrects.sql` adds a `corrects` column. The original claim table had an unnamed `CHECK (amount >= 0)` that rejected every negative amount, and it can't be dropped by name. So the migration rebuilds the `amount` column, and the new check only lets an amount be negative when `corrects` is set.\n- **Server:** the claim form now accepts negative amounts and an optional `corrects` number. `ClaimService` checks that a negative amount names a settled claim of that person, on both add and edit, and leaves the floor and late charge off corrections. `RollupService` totals them the same way. Quick-add still can't create a correction because it has no way to name a claim.\n- **Front end:** the claim form has a new `claim-form-corrects` field and each row has a `claim-corrects` cell. I also fixed the money helpers in `rates.ts`, which assumed values were never negative and would have shown a negative due wrongly (e.g. -0.30 came out as \"0.-30\").\n\n**Choices the request didn't settle**\n- If a non-negative claim is submitted with a \"corrects\" number, the number is ignored rather than refused.\n- An open correction past its due date is still counted as overdue, the same as any claim, but it gains no late charge.\n- The screen only checks that the \"corrects\" value is a number. The server decides whether it names a settled claim, because the screen's list of claims may be out of date if another user has changed them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1442219999999996,
+        "num_turns": 23,
+        "duration_ms": 240049,
+        "duration_api_ms": 131264,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp30.agent.jsonl",
+  "agent_diff_file": "cp30.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
