@@ -39,14 +39,14 @@ public class ClaimController {
      * Comments are its comments, in the order they were written.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+            String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
             List<CommentView> comments) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
-                    c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
+                    c.getOpenedBy(), c.getEditedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
                     c.getComments().stream().map(CommentView::of).toList());

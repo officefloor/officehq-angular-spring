@@ -25,6 +25,7 @@ export interface Claim {
   settledDue: string | null;
   // The user who opened the claim; null for a claim never opened. That user cannot settle it.
   openedBy: string | null;
+  editedBy: string | null;
   // Whether the person's last statement binds the claim, and the figure it binds it to (null for n/a).
   stated: boolean;
   statedDue: string | null;
@@ -744,6 +745,7 @@ export class Claims {
       if (action === 'void') this.voidReasonChoices.update(({ [c.id]: _, ...rest }) => rest);
     } catch (e) {
       const opener = c.openedBy !== null && c.openedBy === this.session.user();
+      const editor = c.editedBy !== null && c.editedBy === this.session.user();
       const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       const err =
         action === 'settle' && deferred(c, this.session.sheetToday())
@@ -756,12 +758,16 @@ export class Claims {
           ? `Your role may not ${action} a claim on this sheet.`
           : action === 'settle' && opener
           ? 'You opened this claim, so another user must settle it.'
+          : action === 'settle' && editor
+          ? 'You last edited this claim, so another user must settle it.'
           : (action === 'approve' || action === 'reject') && forbidden
             ? 'Only a steward can approve or reject a pending claim.'
             : action === 'resettle' && forbidden
               ? 'Only a steward can re-settle a claim.'
               : action === 'approve' && opener
                 ? 'You opened this claim, so another steward must approve it.'
+                : action === 'approve' && editor
+                ? 'You last edited this claim, so another steward must approve it.'
                 : ((action === 'settle' && c.status === 'OPEN') || (action === 'approve' && c.status === 'PENDING')) &&
                     c.proofs === 0
                   ? 'This claim\'s due is above the proof threshold, so it needs a proof first.'

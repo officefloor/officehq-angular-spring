@@ -158,6 +158,7 @@ public class ClaimService {
         claim.setNote(noteOf(note));
         claim.setRef(reference);
         claim.setTags(tagsOf(tagged));
+        claim.setEditedBy(by);
         // the save closes the editor, which releases the claim
         claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
@@ -219,7 +220,7 @@ public class ClaimService {
 
     /**
      * Moves the claim to the status; a change its status does not allow is refused, as is settling by the user
-     * who opened it, and any change to a claim whose due-by falls in a closed period. A clerk settling a claim whose due is above
+     * who opened it or last edited it, and any change to a claim whose due-by falls in a closed period. A clerk settling a claim whose due is above
      * the clerk limit makes it PENDING instead, for a steward to approve or reject.
      */
     @Transactional
@@ -260,6 +261,9 @@ public class ClaimService {
         }
         if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
+        }
+        if (next == ClaimStatus.SETTLED && by.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
         }
         if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             refuseVoidOfSettled(by, sheetId, claim);
@@ -422,13 +426,18 @@ public class ClaimService {
 
     /**
      * A steward approves a pending claim: it is settled, its due fixed at the live figure it shows now. Refused
-     * unless it is pending, unless the user is a steward, for the user who opened it, and in a closed period.
+     * unless it is pending, unless the user is a steward, for the user who opened it or last edited it, and in a
+     * closed period.
      */
     @Transactional
     public Claim approve(String by, String sheetId, Long id) {
         Claim claim = pendingClaim(by, sheetId, id);
         if (by.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot approve it.");
+        }
+        if (by.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The user who last edited a claim cannot approve it.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, claim.getPersonId());
