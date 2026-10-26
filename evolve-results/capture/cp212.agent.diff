@@ -1,0 +1,114 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d002bbbd..750cc35f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -727,7 +727,7 @@ export class People {
+   });
+   /** Each person's claims that count, by person: the sum of the figures of their SETTLED claims (at
+    *  their frozen figures) and of their open (PENDING included) ones, in cents, skipping those that are
+-   *  n/a; together their due-total before the cap. */
++   *  n/a; together their due-total before the cap. Scored is the settled sum leaving out corrections. */
+   private readonly settledOpenByPerson = computed(() => {
+     const by = new Map<number, SettledOpen>();
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+@@ -735,8 +735,9 @@ export class People {
+       const person = byId.get(c.personId);
+       if (person === undefined || !this.countsLive(c)) continue;
+       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
+-      const was = by.get(c.personId) ?? { settled: 0, open: 0 };
+-      if (c.status === 'SETTLED') by.set(c.personId, { ...was, settled: was.settled + due });
++      const was = by.get(c.personId) ?? { settled: 0, open: 0, scored: 0 };
++      if (c.status === 'SETTLED') by.set(c.personId, { ...was, settled: was.settled + due,
++        scored: was.scored + (isCorrection(c) ? 0 : due) });
+       else if (isOpen(c)) by.set(c.personId, { ...was, open: was.open + due });
+     }
+     return by;
+@@ -1584,11 +1585,11 @@ export class People {
+     return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
+   }
+ 
+-  /** The person's score: their settled figures divided by 100, less 5 for each overdue claim that
++  /** The person's score: their settled figures (of SETTLED claims that correct nothing) divided by 100, less 5 for each overdue claim that
+    *  counts, rounded half to even to a whole number. */
+   protected scoreOf(personId: number): string {
+-    // In cents, the score times 10000: the settled cents less 50000 per overdue claim.
+-    const scaled = this.settledOpenOf(personId).settled - 50000 * this.overdueOf(personId).count;
++    // In cents, the score times 10000: the scored settled cents less 50000 per overdue claim.
++    const scaled = this.settledOpenOf(personId).scored - 50000 * this.overdueOf(personId).count;
+     const floor = Math.floor(scaled / 10000);
+     const rest = scaled - floor * 10000;
+     const whole = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
+@@ -1607,7 +1608,7 @@ export class People {
+ 
+   /** The due of the person's settled and of their open claims that count, in cents. */
+   protected settledOpenOf(personId: number): SettledOpen {
+-    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
++    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0, scored: 0 };
+   }
+ 
+   /** The due of the person's open claims that count, in cents, by age. */
+@@ -2159,7 +2160,7 @@ export class People {
+ interface Aged { upTo30: number; upTo60: number; over60: number }
+ 
+ /** The due of a person's settled claims and of their open ones, in cents. */
+-interface SettledOpen { settled: number; open: number }
++interface SettledOpen { settled: number; open: number; scored: number }
+ 
+ /** The person's own terms from the beginning of time as the form shows them: blank when they have none. */
+ function termsText(person: PersonView): string {
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 9e1f352c..8b215732 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -102,7 +102,7 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen
+ // shares: each cuts the pot times their share over the shares of the members with a cut added up. The pot
+ // less the cuts added up goes to the member with a cut with the largest share, the earliest added on a
+ // tie, so the cuts total exactly the pot. Neither a hold nor a retirement changes the total share or the
+-// balance. A pool whose every member is retired shows no cuts.
++// balance. A pool whose every member is retired or held shows no cuts.
+ // A membership may have a from-date and a to-date: a member whose dates do not include the sheet's today
+ // is left out entirely, counting toward neither the total share nor the balance, and shows no cut.
+ // A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
+@@ -309,7 +309,7 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
+     else if (depth <= pools.length) potCents = cutsFor(parent, depth + 1)?.get(`pool-${pool.name}`) ?? null;
+     const members = membersOf(pool, people, poolsById, today);
+     const inForce = members.filter((m) => m.inForce);
+-    const result = potCents === null || totalCents(members) !== 10000 || inForce.every((m) => m.retired) ? null
++    const result = potCents === null || totalCents(members) !== 10000 || inForce.every((m) => m.retired || m.held) ? null
+       : new Map(cutsOf(potCents, inForce));
+     out.set(pool.id, result);
+     return result;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 4166e9a9..06ce7b70 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -45,8 +45,8 @@ public class Rollup {
+ 
+     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+ 
+-    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims,
+-     *  skipping n/a) and how many counting claims are overdue make up their score. */
++    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims
++     *  that correct nothing, skipping n/a) and how many counting claims are overdue make up their score. */
+     record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settled,
+             int overdueCount) {
+         boolean sameAs(Figures other) {
+@@ -145,7 +145,7 @@ public class Rollup {
+                 if (owed != null) due = due.add(owed);
+                 if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
+                 if (isOverdue(claim, grace, today)) overdueCount++;
+-                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(owed);
++                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED && !claim.isCorrection()) settled = settled.add(owed);
+                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
+                     keptFigure = true;
+                 }
+@@ -184,7 +184,8 @@ public class Rollup {
+         return count;
+     }
+ 
+-    /** The person's score, as the screen shows it: their settled figures divided by 100, less 5 for each
++    /** The person's score, as the screen shows it: their settled figures (of SETTLED claims that correct
++     *  nothing) divided by 100, less 5 for each
+      *  overdue claim that counts, rounded half to even to a whole number. */
+     static String score(Figures figures) {
+         return figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
