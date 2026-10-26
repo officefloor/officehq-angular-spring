@@ -224,6 +224,7 @@ interface StatementView {
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
@@ -252,6 +253,9 @@ interface StatementView {
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="person-aged-0-30">{{ agedBy().get(p.id)?.[0] ?? '0.00' }}</td>
+              <td data-testid="person-aged-31-60">{{ agedBy().get(p.id)?.[1] ?? '0.00' }}</td>
+              <td data-testid="person-aged-61">{{ agedBy().get(p.id)?.[2] ?? '0.00' }}</td>
               <td data-testid="person-statement-count">{{ statementsBy().get(p.id)?.count ?? 0 }}</td>
               <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) }}</td>
               <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
@@ -620,6 +624,29 @@ export class People {
     for (const [id, list] of this.overdueBy()) {
       const own = grades.get(id) ?? [];
       by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late))));
+    }
+    return by;
+  });
+  // Each person's due of their counted open and pending claims, split by the claim's age on the sheet's today (the
+  // days from its date): 0 to 30, 31 to 60, and 61 or more; one dated after today is 0 to 30. Each skips n/a.
+  protected readonly agedBy = computed(() => {
+    const today = this.session.sheetToday();
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const rates = this.rates.rates();
+    const floor = this.settings.floor();
+    const late = this.settings.lateness();
+    const by = new Map<number, string[]>();
+    if (today === null) return by;
+    const from30 = plusDays(today, -30);
+    const from60 = plusDays(today, -60);
+    for (const [id, list] of this.liveBy()) {
+      const own = grades.get(id) ?? [];
+      const buckets: (string | null)[][] = [[], [], []];
+      for (const c of list.filter(isOpen)) {
+        const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late);
+        buckets[c.date >= from30 ? 0 : c.date >= from60 ? 1 : 2].push(due);
+      }
+      by.set(id, buckets.map(sumSkippingNa));
     }
     return by;
   });
