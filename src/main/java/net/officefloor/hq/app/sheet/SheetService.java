@@ -36,6 +36,13 @@ public class SheetService {
         return saved;
     }
 
+    /** Loads the sheet and locks it until the transaction ends, so changes checked against the whole sheet run in turn. */
+    @Transactional
+    public Sheet lock(String id) {
+        load(id);
+        return sheets.findWithLockById(id).orElseThrow();
+    }
+
     /** Takes the sheet's next claim number; two callers at once never get the same one. */
     @Transactional
     public long nextClaimNumber(String id) {

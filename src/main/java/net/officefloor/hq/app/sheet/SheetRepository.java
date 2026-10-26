@@ -1,11 +1,18 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.LockModeType;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SheetRepository extends JpaRepository<Sheet, String> {
+
+    /** The sheet, locked until the transaction ends. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Sheet> findWithLockById(String id);
 
     /** Moves the sheet's last claim number on by one; the row stays locked until the transaction ends. */
     @Modifying(flushAutomatically = true)

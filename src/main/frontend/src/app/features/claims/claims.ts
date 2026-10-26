@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { PeriodStore, periodOn } from '../periods/periods';
 import { RateView, dueOn, rateOn } from '../rates/rates';
 
 export interface Claim {
@@ -93,7 +94,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -108,6 +109,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+            <td data-testid="claim-period">{{ periodName(c.date) }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -137,6 +139,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
 export class Claims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly periods = inject(PeriodStore);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -159,6 +162,11 @@ export class Claims {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  /** The name of the period the date falls in; empty when none does. */
+  protected periodName(date: string): string {
+    return periodOn(this.periods.list(), date)?.name ?? '';
   }
 
   protected edit(c: Claim): void {

@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
+import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
 
 interface Person {
@@ -24,8 +25,10 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims],
+  imports: [Claims, Periods],
   template: `
+    <app-periods [figures]="countedFigures()" />
+
     <section aria-label="People">
       <h2>People</h2>
 
@@ -111,6 +114,7 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
+  private readonly periods = inject(PeriodStore);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -157,6 +161,14 @@ export class People {
       by.set(p.id, sumSkippingNa(counted.map((c) => figureOf(c, list))));
     }
     return by;
+  });
+  // Every counted claim's date and the figure it totals, for the periods' due-totals.
+  protected readonly countedFigures = computed<DatedFigure[]>(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const rates = this.rates.rates();
+    return this.claims()
+      .filter(counts)
+      .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? []) }));
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
 
@@ -295,6 +307,7 @@ export class People {
         firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
         firstValueFrom(this.http.get<StatementView[]>(`${base}/statements`)),
         this.rates.load(sheet),
+        this.periods.load(sheet),
       ]);
       // a later load may have moved to another sheet while this one was in flight
       if (this.session.sheetId() === sheet) {
