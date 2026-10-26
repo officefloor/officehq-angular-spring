@@ -1,0 +1,64 @@
+{
+  "checkpoint": 159,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp159_carried-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period, a carried figure: the due of their claims that count\nwhich belong to a period ending before this period starts and were still OPEN or\nPENDING at the end of this period (by the status log, as the period figures count). A period with\nnothing carried shows 0.00.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ed4f218b7d381b718e35cab71df03991755f3d49",
+  "reset_sha": "",
+  "preagent_sha": "17dc59162cc046d8abb1fb5a80d3af4b1fb33454",
+  "prev_sha": "17dc59162cc046d8abb1fb5a80d3af4b1fb33454",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.40614979999999995,
+    "input_tokens": 24,
+    "output_tokens": 4138,
+    "cache_read_tokens": 366069,
+    "cache_creation_tokens": 31260,
+    "num_turns": 12,
+    "duration_ms": 276430,
+    "duration_api_ms": 73787,
+    "model": "claude-opus-5-5",
+    "session_id": "75d37c31-b948-4f46-be82-4f4a4b69859c",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows a carried figure for every period, and all 4 acceptance tests pass under `bin/e2e`.\n\nThe change is all on the front end, in `src/main/frontend/src/app/features/people/people.ts`. Nothing on the server or in the stored data changed, because the claims already carry the status log the figure needs.\n\n- **The new cell:** each period gets a `person-period-<name>-carried` cell next to its `-due-total` cell.\n- **How it's worked out:** the computation is `personCarriedCents`. For each period, it adds up the due of the person's claims whose own period ended before this period starts. It only counts claims that were OPEN or PENDING at the end of this period by the status log. The period figures already have a rule for which claims count (holds, deferral, retirement), and the carried figure uses that same rule. A period with nothing carried shows 0.00.\n- **Which period a claim belongs to:** I matched it by the claim's due-by date, the same way the existing period figures and the claim's period label do.\n\nOne case behaves differently from the existing figures. A period's own due-total is frozen when the period is closed or soft-closed, but the carried figure is not: it is always worked out from the claims as they are now. The request didn't cover closed periods and the tests don't check them, so tell me if you want carried frozen at closing too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.40614979999999995,
+        "num_turns": 12,
+        "duration_ms": 276430,
+        "duration_api_ms": 73787,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp159.agent.jsonl",
+  "agent_diff_file": "cp159.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
