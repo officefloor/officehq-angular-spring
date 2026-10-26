@@ -39,6 +39,7 @@ import { ImportOpenings } from '../periods/import-openings';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
 import { TreeSearch } from '../summary/tree-search';
+import { Duplicates } from '../duplicates/duplicates';
 import { GeneratePlans } from '../plans/generate-plans';
 import { PersonPlans } from '../plans/person-plans';
 import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
@@ -49,7 +50,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -57,6 +58,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
       [ownOverdueTotal]="money(sheetOverdue().cents)" />
     <app-tree-search />
+    <app-duplicates />
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
