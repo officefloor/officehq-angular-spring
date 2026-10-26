@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp172_pending-bound",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    36
+  ],
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "request": {
+    "spec": "A PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "170c66edd3029c6b6175a5b7913127e7e10b4ab3",
+  "reset_sha": "",
+  "preagent_sha": "0afd74bf185aec0c325bfd9305d0e1377490191c",
+  "prev_sha": "0afd74bf185aec0c325bfd9305d0e1377490191c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1398478,
+    "input_tokens": 60,
+    "output_tokens": 10446,
+    "cache_read_tokens": 1673199,
+    "cache_creation_tokens": 74506,
+    "num_turns": 30,
+    "duration_ms": 426875,
+    "duration_api_ms": 148364,
+    "model": "claude-opus-5-5",
+    "session_id": "96d128cc-a85b-477c-8e80-e70a7f160595",
+    "stop_reason": "success",
+    "result_text": "I made the change. Three of the four e2e scenarios pass, including the main \"pending bound\" one. Scenario 1 still fails, on something unrelated to this change.\n\n**What changed**\n- **Server**\n  - `Claim.isBound()` is now just `stated`, so a PENDING claim under a statement shows and totals the bound figure everywhere it's used: due, figure, rollups, counting, rate preview, statements.\n  - When a statement is taken as of a date (`StatementService.stoodAsOf`), a PENDING claim now keeps its binding from then.\n  - Closing a period (`PeriodService`) now treats a stated PENDING claim as bound.\n  - Approving a PENDING claim now freezes the bound figure, the same way settling an OPEN bound claim already did. Comments in `ClaimService`, `Rollup` and `Claim` are updated to match.\n- **Front end:** `isBound()` in `claims-api.ts` is now `claim.stated`, matching the server. No new `data-testid`s or audit fields were needed.\n\n**Why scenario 1 fails** (at `acceptance.spec.ts:322`: `rate-current-C` shows `n/a`, expected `5.00`)\n- The test creates a parent sheet `<id>-p` and never sets its today. A new sheet's today starts as the real date, which is 2026-10-26 on this machine (`SheetService.java:183`).\n- Later the test views the child sheet as of 2026-04-02. The as-of view restores the parent from its history saved on or before that date. Everything the parent holds was saved under 2026-10-26, so it comes back empty, the parent's C rate of 5.00 disappears, and the screen shows n/a.\n- I confirmed this against the running app: the rates list includes the parent's rates without the as-of header and drops them with `X-As-Of: 2026-04-02`.\n- So the result depends on the wall clock, not on this change. It would pass if the real date were on or before 2026-04-02. I couldn't prove that here because `faketime` isn't installed.\n\nI didn't change how the as-of view restores parent sheets. That would change its behaviour beyond this request, and it may be what the app intends. If you want scenario 1 to pass regardless of the date, one option is to restore each parent with its full current state, or its latest history, rather than by its own today. Tell me if you want that and I'll make it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1398478,
+        "num_turns": 30,
+        "duration_ms": 426875,
+        "duration_api_ms": 148364,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp172.agent.jsonl",
+  "agent_diff_file": "cp172.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

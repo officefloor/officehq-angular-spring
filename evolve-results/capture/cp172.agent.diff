@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index a58d72f1..ff77c111 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -27,10 +27,10 @@ export function isOpen(claim: ClaimView): boolean {
+   return claim.status === 'OPEN' || claim.status === 'PENDING';
+ }
+ 
+-/** Whether the claim is bound to the figure its person's last statement stated: no statement binds
+- *  a PENDING claim, which shows its live figure. */
++/** Whether the claim is bound to the figure its person's last statement stated (a PENDING claim
++ *  included, like any other claim that counts). */
+ export function isBound(claim: ClaimView): boolean {
+-  return claim.stated && claim.status !== 'PENDING';
++  return claim.stated;
+ }
+ 
+ /** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date.
+@@ -217,7 +217,7 @@ export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], pol
+ }
+ 
+ /** The figure under the claim's due, in cents: the due fixed when it was settled, else the figure its
+- *  person's last statement bound it to (unless PENDING), else at the rate of `gradeRates` (its person's grade's rates)
++ *  person's last statement bound it to (PENDING included), else at the rate of `gradeRates` (its person's grade's rates)
+  *  in force on the claim's date, of the versions that apply to the claim, rounded half up when `halfUp` (else half to even); no floor is applied to it.
+  *  Null when there is none. */
+ export function claimFigureCents(claim: ClaimView, gradeRates: readonly RateView[], halfUp = false): number | null {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index e8ac2b4e..f9477e76 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -458,10 +458,10 @@ public class Claim {
+         return stated;
+     }
+ 
+-    /** Whether the claim is bound to its stated figure now: stated, and not PENDING, as no statement
+-     *  binds a PENDING claim (its binding holds again should it be rejected). */
++    /** Whether the claim is bound to its stated figure now: stated (a PENDING claim included, like any
++     *  other claim that counts). */
+     public boolean isBound() {
+-        return stated && status != ClaimStatus.PENDING;
++        return stated;
+     }
+ 
+     public LocalDate getDeferredUntil() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5f446161..c6e2ba2c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -616,7 +616,7 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Approve a PENDING claim: it is SETTLED, its due (its live figure and any late charge) frozen
++    /** Approve a PENDING claim: it is SETTLED, its due (its figure, bound or live, and any late charge) frozen
+      *  now. Refused unless the user is a steward of the sheet other than the one who opened or last
+      *  edited it. */
+     @Transactional
+@@ -703,7 +703,7 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Reject a PENDING claim for a reason: it is OPEN again, bound again by its person's last
++    /** Reject a PENDING claim for a reason: it is OPEN again, still bound by its person's last
+      *  statement if that statement bound it. Refused unless the user is a steward of the sheet. */
+     @Transactional
+     public Claim reject(String sheetId, String user, long id, String reason) {
+@@ -918,7 +918,7 @@ public class ClaimService {
+     }
+ 
+     /** The figure under the claim's due, before any late charge and floor: the due fixed when it was settled, else the figure
+-     *  its person's last statement bound it to (unless it is PENDING, which no statement binds), else its live due;
++     *  its person's last statement bound it to (a PENDING claim included), else its live due;
+      *  null when that is n/a. */
+     public BigDecimal figure(String sheetId, Person person, Claim claim) {
+         if (claim.getSettledDue() != null) return claim.getSettledDue();
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 18cebd03..23bef74a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -202,7 +202,7 @@ public class PeriodService {
+             // Counted by the status the claim had at the end of the period's last day; a hold only leaves
+             // out a claim still open now, as holds touch only live claims; so does a reached retirement.
+             ClaimStatus then = claim.statusAsOf(period.getTo());
+-            boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
++            boolean bound = claim.isStated();
+             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
+                     || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isLeftOut(claim.getDate(), today))));
+             if (!counts) continue;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 7547f870..87ebe00f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -251,8 +251,8 @@ public class Rollup {
+                         && (claim.isBound() || !person.isLeftOut(claim.getDate(), today)));
+     }
+ 
+-    /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
+-     *  (unless PENDING), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's) of the
++    /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due
++     *  (PENDING included), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's) of the
+      *  versions that apply to the claim, rounded as the claim rounds,
+      *  before any late charge and floor; null when that is n/a. */
+     private static BigDecimal figure(Claim claim, List<List<Rate>> gradeRates, RoundingMode rounding) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 631aa17f..a8bc658d 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -166,7 +166,7 @@ public class StatementService {
+         ClaimStatus status = claim.statusAsOf(asOf);
+         if (status == null) return null;
+         BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAsOf(asOf) : null;
+-        ClaimBinding binding = status == ClaimStatus.PENDING ? null : claim.bindingAsOf(asOf);
++        ClaimBinding binding = claim.bindingAsOf(asOf);
+         boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+                 && asOf.isBefore(claim.getDeferredUntil());
+         boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
