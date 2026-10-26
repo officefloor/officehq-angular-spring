@@ -62,7 +62,10 @@ public class ClaimService {
         return saved;
     }
 
-    /** Moves the claim to the status; a change its status does not allow is refused. */
+    /**
+     * Moves the claim to the status; a change its status does not allow is refused, as is settling by the user
+     * who opened it.
+     */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
         Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
@@ -71,11 +74,15 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
+        }
         Long number = claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
+            claim.setOpenedBy(by);
         } else if (next == ClaimStatus.VOID) {
             // the number is cleared, never given to another claim; the audit line still carries it
             claim.setNumber(null);

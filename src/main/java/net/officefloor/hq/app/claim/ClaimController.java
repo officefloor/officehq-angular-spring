@@ -28,13 +28,14 @@ public class ClaimController {
 
     /**
      * A claim as the screen shows it; the amount always carries two decimals. The settled due is the figure fixed
-     * when it was settled, or null while its due is live.
+     * when it was settled, or null while its due is live. Opened-by is the user who opened it, or null.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue) {
+            Long number, String settledDue, String openedBy) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
-                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString());
+                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
+                    c.getOpenedBy());
         }
     }
 

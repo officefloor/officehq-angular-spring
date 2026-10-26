@@ -15,6 +15,8 @@ export interface Claim {
   number: number | null;
   // The due fixed when the claim was settled; null while its due is live.
   settledDue: string | null;
+  // The user who opened the claim; null for a claim never opened. That user cannot settle it.
+  openedBy: string | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -74,7 +76,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -87,6 +89,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rateOn(rates(), c.date)) ?? 'n/a' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
+            <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -156,7 +159,11 @@ export class Claims {
     try {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
     } catch {
-      this.rowErrors.update((e) => ({ ...e, [c.id]: `A ${c.status} claim cannot be changed that way.` }));
+      const err =
+        action === 'settle' && c.openedBy !== null && c.openedBy === this.session.user()
+          ? 'You opened this claim, so another user must settle it.'
+          : `A ${c.status} claim cannot be changed that way.`;
+      this.rowErrors.update((e) => ({ ...e, [c.id]: err }));
     }
   }
 
