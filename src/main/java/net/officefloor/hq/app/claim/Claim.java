@@ -103,6 +103,11 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether a steward set the claim's due-by directly: it then stays as set, a holiday added later
+     *  not moving it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** How many proofs the claim has had added. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -273,6 +278,7 @@ public class Claim {
         copy.corrects = otherCorrects;
         copy.listed = otherListed;
         copy.deferredUntil = deferredUntil;
+        copy.dueBySet = dueBySet;
         copy.proofs = proofs;
         copy.proofsReceipt = proofsReceipt;
         copy.proofsPhoto = proofsPhoto;
@@ -334,6 +340,16 @@ public class Claim {
         if (dueBy.equals(this.dueBy)) return false;
         this.dueBy = dueBy;
         return true;
+    }
+
+    /** Set the due-by directly; it stays as set from then on. */
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
     }
 
     public String getNote() {

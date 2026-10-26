@@ -150,7 +150,8 @@ public class ClaimService {
 
     /** Once a holiday is added to the sheet, the due-by of every claim neither SETTLED nor VOID whose
      *  due-by is on or after the holiday is worked out again: the terms-th business day after the claim's
-     *  date, with the terms the claim was fixed with, past the holidays now. */
+     *  date, with the terms the claim was fixed with, past the holidays now. A due-by a steward set stays
+     *  as set. */
     @EventListener
     @Transactional
     public void moveDueBys(HolidaysChanged change) {
@@ -159,7 +160,7 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
-            if (claim.getDueBy().isBefore(change.date())) continue;
+            if (claim.getDueBy().isBefore(change.date()) || claim.isDueBySet()) continue;
             if (claim.moveDueBy(BusinessDays.after(claim.getDate(), claim.getTerms(), days))) {
                 claims.save(claim);
             }
@@ -423,6 +424,34 @@ public class ClaimService {
         claim.deferUntil(until);
         Claim saved = claims.saveAndFlush(claim);
         recordChange("CLAIM_DEFERRED", user, person, saved, saved.getNumber(), " until=" + until);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Set a DRAFT, OPEN or PENDING claim's due-by directly: it stays as set, a holiday added later not
+     *  moving it, and its overdue state, late charge, grace and period follow it. Refused unless the user
+     *  is a steward of the sheet, for a claim of any other status, and a claim whose due-by, or the new
+     *  one, is inside a closed period. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long id, LocalDate dueBy) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward sets a claim's due-by.");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus()
+                    + " claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.");
+        }
+        refuseIfLocked(claim, user);
+        refuseIfClosed(sheetId, dueBy);
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_DUE_BY_SET", user, person, saved, saved.getNumber(), " old=" + old + " new=" + dueBy);
         rollup.recordChanges(user, before);
         return saved;
     }

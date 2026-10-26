@@ -186,6 +186,10 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #newDate type="date" [id]="'claim-date-new-' + c.id" data-testid="claim-date-new" />
           <button type="button" data-testid="claim-redate" (click)="redate(c, newDate.value)"
             [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+          <label [for]="'claim-due-by-new-' + c.id">Set due-by to</label>
+          <input #newDueBy type="date" [id]="'claim-due-by-new-' + c.id" data-testid="claim-due-by-new" />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c, newDueBy.value)"
+            [attr.aria-label]="'Set the due-by of claim of ' + c.amount + ' on ' + c.date">Set due-by</button>
           <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
           <select #proofKind [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind">
             <option value="">(receipt)</option>
@@ -652,6 +656,36 @@ export class PersonClaims {
           : !(claim.status === 'OPEN' || claim.status === 'PENDING')
           ? 'Only an OPEN or PENDING claim can be re-dated.'
           : `The new date is after ${this.personName()} retired.`;
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Set a DRAFT, OPEN or PENDING claim's due-by directly; only a steward may, and the store refuses
+   *  another status, a claim whose due-by or new due-by is inside a closed period, and a claim another
+   *  user's editor locks. */
+  protected async setDueBy(claim: ClaimView, date: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const dated = date.trim();
+    if (!DATE.test(dated)) {
+      this.claimError.set({ id: claim.id, message: 'Type the new due-by of this claim as yyyy-mm-dd.' });
+      return;
+    }
+    try {
+      const changed = await this.api.setDueBy(sheet.id, claim.id, dated);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(changed);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const status = e instanceof HttpErrorResponse ? e.status : 0;
+        const message = status === 403
+          ? 'Only a steward can set a claim\'s due-by.'
+          : status === 423
+          ? 'This claim is being edited by another user.'
+          : !(claim.status === 'DRAFT' || claim.status === 'OPEN' || claim.status === 'PENDING')
+          ? 'Only a DRAFT, OPEN or PENDING claim\'s due-by can be set.'
+          : 'This claim\'s due-by, or the new one, is inside a closed period.';
         this.claimError.set({ id: claim.id, message });
       }
     }

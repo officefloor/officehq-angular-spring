@@ -443,6 +443,12 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/redate`, { date }));
   }
 
+  /** Set a DRAFT, OPEN or PENDING claim's due-by directly: refused (403) to all but a steward, and refused
+   *  for another status and a claim whose due-by, or the new one, is inside a closed period. */
+  setDueBy(sheetId: string, id: number, dueBy: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/due-by`, { dueBy }));
+  }
+
   /** Split an amount (more than 0.00, less than the claim's amount) off an OPEN claim into a new OPEN
    *  claim: refused for a claim that is not OPEN, a deferred claim, and a claim whose due-by is inside a closed period. */
   split(sheetId: string, id: number, amount: string): Promise<SplitView> {
