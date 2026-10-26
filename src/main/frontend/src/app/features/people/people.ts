@@ -871,9 +871,9 @@ export class People {
 
   private async reload(sheetId: string): Promise<void> {
     try {
-      const [people, claims, rates, statements, periods, tags] = await Promise.all([
+      const [people, claims, rates, statements, periods, tags] = await this.session.reading(Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId),
-        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]);
+        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]));
       if (this.session.sheet()?.id === sheetId) {
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.rates.set(rates);
@@ -1412,14 +1412,16 @@ export class People {
 
   /** Downloads everyone on the sheet, retired or not, in list order: their name, grade in force today,
    *  retired-from date and due-total as shown, one line each after the header, each ending in a line feed. */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled();
     this.download('people.csv', [['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.personDueTotal(p)])]);
   }
 
   /** Downloads every claim on the sheet, retired people's included: people in list order, each person's
    *  claims oldest first, with their number, date, amount, due, status and period as their rows show them. */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    await this.session.settled();
     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
       ...this.people().flatMap((p) => [...this.claimsOf(p.id)].reverse().map((c) => {
         const due = claimOwedCents(c, this.ratesOn(p, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());

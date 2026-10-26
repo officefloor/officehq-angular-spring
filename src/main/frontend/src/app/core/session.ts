@@ -22,6 +22,8 @@ export class Session {
   private readonly sheetState = signal<SheetView | null>(null);
   private readonly loadState = signal<SheetView | null>(null);
   private readonly asOfState = signal<string | null>(null);
+  /** The re-reads of the active sheet under way: the load itself, and what each load sets off. */
+  private readonly reads = new Set<Promise<unknown>>();
 
   readonly user = this.userState.asReadonly();
   readonly sheet = this.sheetState.asReadonly();
@@ -39,11 +41,29 @@ export class Session {
 
   /** Load a sheet by id, re-read from the store; a sheet never loaded before starts empty. */
   async loadSheet(id: string): Promise<void> {
-    const sheet = await firstValueFrom(
+    const sheet = await this.reading(firstValueFrom(
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
-    );
+    ));
     this.sheetState.set(sheet);
     this.loadState.set(sheet);
+  }
+
+  /** Note a re-read of what the screen holds for the sheet, so {@link settled} waits for it. */
+  reading<T>(read: Promise<T>): Promise<T> {
+    this.reads.add(read);
+    const done = () => this.reads.delete(read);
+    read.then(done, done);
+    return read;
+  }
+
+  /** Resolves once every re-read under way has answered, those a load just answered sets off included,
+   *  so what the screen holds is the sheet as it now shows it (as of its as-of date, while one is set). */
+  async settled(): Promise<void> {
+    do {
+      // Lets a load just answered set off its re-reads before they are waited for.
+      await new Promise((resolve) => setTimeout(resolve));
+      await Promise.allSettled([...this.reads]);
+    } while (this.reads.size > 0);
   }
 
   /** Show the active sheet as of a date, or as it is now (null): it is re-read from the store. */

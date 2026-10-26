@@ -77,7 +77,7 @@ export class Pools {
 
   private async load(sheetId: string): Promise<void> {
     try {
-      const list = await this.api.list(sheetId);
+      const list = await this.session.reading(this.api.list(sheetId));
       if (this.session.sheet()?.id === sheetId) this.state.set(list);
     } catch {
       if (this.session.sheet()?.id === sheetId) this.loadError.set('The pools could not be loaded.');

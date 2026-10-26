@@ -406,7 +406,7 @@ export class Settings {
 
   private async reload(sheetId: string): Promise<void> {
     try {
-      const settings = await this.api.get(sheetId);
+      const settings = await this.session.reading(this.api.get(sheetId));
       if (this.session.sheet()?.id === sheetId) this.show(settings);
     } catch {
       this.settingsError.set('The settings could not be loaded.');

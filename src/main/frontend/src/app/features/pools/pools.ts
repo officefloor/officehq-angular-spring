@@ -364,7 +364,8 @@ export class PoolsList {
 
   /** Downloads the pools as a CSV file: one line per member, pools and their members in the order they
    *  were added, a pool member as pool:<name>, and the cut as its row shows it (empty when none). */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled();
     const pools = this.store.pools();
     const poolsById = new Map(pools.map((p) => [p.id, p]));
     const cuts = this.cuts();
