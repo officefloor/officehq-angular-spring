@@ -1,0 +1,64 @@
+{
+  "checkpoint": 223,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp223_grade-retire",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it, but it cannot be chosen for a new person or in an\nedit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it, but it cannot be chosen for a new person or in an\nedit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e7677d06628f1adb8fc30cd90d7a55795fcb271",
+  "reset_sha": "",
+  "preagent_sha": "920c06fec1256896a0591110f2eb92d37f1eab9e",
+  "prev_sha": "920c06fec1256896a0591110f2eb92d37f1eab9e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5738235999999999,
+    "input_tokens": 68,
+    "output_tokens": 21100,
+    "cache_read_tokens": 2264878,
+    "cache_creation_tokens": 87322,
+    "num_turns": 36,
+    "duration_ms": 722980,
+    "duration_api_ms": 310127,
+    "model": "claude-opus-5-5",
+    "session_id": "e59eed8a-8eec-45d9-984b-8b69744f6909",
+    "stop_reason": "success",
+    "result_text": "Grades can now be retired, and all 4 tests in `bin/e2e` pass: the grade-retire test and the three existing scenarios.\n\n**What it does**\n- A new **Grades** panel on the home screen lists A, B and C, each showing whether it's retired. A select and a button retire one. Retiring a grade writes `GRADE_RETIRED sheet=<id> by=<user> grade=<g>` to the audit file. Retiring a grade that's already retired is refused, and a grade that doesn't exist isn't offered in the select.\n- People on a retired grade keep it; only choosing it is refused. The server refuses it when adding a person, in a form edit, in the inline grade change, in the bulk grade change and in an import. The person form and the inline grade change also refuse it in the browser, before anything is sent.\n- If the sheet's default grade is retired, the quick-add bar and import lines with a blank grade fall back to A. You can still save B as the default grade; it just isn't used while B is retired.\n\n**Two behaviours you might not expect**\n- **Any save that keeps a retired grade is refused.** The test needed editing Ben (already on B) with grade B to be refused, so the check rejects every form save where the chosen grade is retired. That means someone on a retired grade can't have their name or other details changed through the form unless the grade is changed too.\n- **The fallback is always A**, even if A is itself retired. In that case quick-add will try to add the person on A and be refused.\n\n**Where the changes are**\n- **Stored data:** a new table, `retired_grade`, in the migration `V101__retired_grade.sql`. Copying a sheet copies its retired grades too.\n- **Server:** the new files are `RetiredGrade`, `RetiredGradeRepository`, `GradeService` and `GradeController` (at `/api/sheets/{id}/grades`). The refusal checks are in `PersonService`. `SettingService.defaultGradeOf` handles the fallback to A and is now called from `QuickAddService` and `ImportPeopleService`.\n- **Front end:** the new code is in `features/grades/` \u2014 the `Grades` store and the `GradesList` panel, which is added in `home.ts`. In `people.ts`, the person form and the inline grade change check the store, and the form now shows the server's 422 messages.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5738235999999999,
+        "num_turns": 36,
+        "duration_ms": 722980,
+        "duration_api_ms": 310127,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp223.agent.jsonl",
+  "agent_diff_file": "cp223.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
