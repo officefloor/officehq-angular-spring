@@ -31,15 +31,24 @@ public class RateController {
     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
      *  rate applies from the beginning of time; no to-date, until the grade's next rate. Level is how many
      *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. Version is how
-     *  many versions the rate has had; the percent is the newest's. */
-    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level, int version) {
-        static RateView of(Rate rate) {
-            return of(0, rate);
-        }
-
-        static RateView of(int level, Rate rate) {
+     *  many versions the rate has had; the percent is the newest's. Forward-after, for a forward-only newest
+     *  version, is the highest claim id there was when it was saved (it applies only to claims with a greater
+     *  one), null when it applies to every claim; then older are its older versions, newest first, down to
+     *  the newest that applies to every claim, for the claims it does not apply to. */
+    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level, int version,
+            Long forwardAfter, List<VersionView> older) {
+        static RateView of(int level, Rate rate, List<RateChange> older) {
             return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level,
-                    rate.getVersion());
+                    rate.getVersion(), rate.getForwardAfter(), older.stream().map(VersionView::of).toList());
+        }
+    }
+
+    /** An older version of a rate: its percent, to-date and, when forward-only, the highest claim id there
+     *  was when it was saved. */
+    public record VersionView(String pct, LocalDate to, Long forwardAfter) {
+        static VersionView of(RateChange change) {
+            return new VersionView(change.getPct().setScale(2).toPlainString(), change.getTo(),
+                    change.getForwardAfter());
         }
     }
 
@@ -77,7 +86,7 @@ public class RateController {
     public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ImportForm form) {
         List<RateView> set = importer.importRates(sheetId.trim(), SignedInUser.name(user), form.text())
-                .stream().map(RateView::of).toList();
+                .stream().map(this::view).toList();
         return new ImportView(set.size(), set);
     }
 
@@ -94,7 +103,7 @@ public class RateController {
      *  nearest first; a grade with no rate is left out. */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.listInherited(sheetId.trim()).stream().map((r) -> RateView.of(r.level(), r.rate())).toList();
+        return service.listInherited(sheetId.trim()).stream().map((r) -> RateView.of(r.level(), r.rate(), r.older())).toList();
     }
 
     /** Set the rate for a grade from a from-date through a to-date, adding a new version when it
@@ -102,6 +111,11 @@ public class RateController {
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RateForm form) {
-        return RateView.of(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.to(), form.pct()));
+        return view(service.set(sheetId.trim(), SignedInUser.name(user), grade, form.from(), form.to(), form.pct()));
+    }
+
+    /** The sheet's own rate as the screen shows it. */
+    private RateView view(Rate rate) {
+        return RateView.of(0, rate, service.olderVersions(rate));
     }
 }

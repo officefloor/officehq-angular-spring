@@ -44,10 +44,20 @@ public class Rate {
     @Column(name = "version", nullable = false)
     private int version = 1;
 
+    /** For a forward-only version, the highest claim id there was when it was saved: it applies only to
+     *  claims with a greater one; null when it applies to every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected Rate() {
     }
 
     public Rate(String sheetId, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
+        this(sheetId, grade, from, to, pct, null);
+    }
+
+    public Rate(String sheetId, Grade grade, LocalDate from, LocalDate to, BigDecimal pct, Long forwardAfter) {
+        this.forwardAfter = forwardAfter;
         this.sheetId = sheetId;
         this.grade = grade;
         this.from = from;
@@ -97,10 +107,27 @@ public class Rate {
 
     /** Set the rate again: the value it held stays as an older version (its change), and this becomes
      *  the newest version, the one in force. */
-    public void newVersion(BigDecimal pct, LocalDate to) {
+    public void newVersion(BigDecimal pct, LocalDate to, Long forwardAfter) {
+        this.forwardAfter = forwardAfter;
         setPct(pct);
         setTo(to);
         version++;
+    }
+
+    /** For a forward-only rate, the highest claim id there was when it was saved; null when it applies
+     *  to every claim. */
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
+    /** Whether the rate applies to the claim: every claim unless it is forward-only, else only claims added
+     *  after it was saved; a claim not yet added (no id) is. */
+    public boolean appliesToClaim(Long claimId) {
+        return appliesToClaim(forwardAfter, claimId);
+    }
+
+    static boolean appliesToClaim(Long forwardAfter, Long claimId) {
+        return forwardAfter == null || claimId == null || claimId > forwardAfter;
     }
 
     /** Whether the rate is in force on or before this date. */

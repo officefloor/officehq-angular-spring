@@ -180,7 +180,7 @@ public class StatementService {
         } else if (binding != null) {
             figure = binding.getStatedDue();
         } else {
-            Rate rate = rates.inForceAsOf(sheetId, grade, claim.getDate(), asOf);
+            Rate rate = rates.inForceAsOf(sheetId, grade, claim.getDate(), asOf, claim.getId());
             figure = rate == null ? null
                     : claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
         }

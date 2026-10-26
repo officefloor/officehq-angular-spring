@@ -189,9 +189,9 @@ public class ClaimService {
 
     /** Change a draft claim's amount, date and note; a blank date takes the sheet's today. A claim that
      *  is no longer a draft is refused: to change an open claim, void it and add a new one. A claim
-     *  another user's editor locks is refused; saving releases the user's own lock. A new date whose
-     *  due-by, as a claim added on it would be fixed, falls inside a closed period is refused; the
-     *  claim's own due-by stays as it was fixed. */
+     *  another user's editor locks is refused; saving releases the user's own lock. A save whose date's
+     *  due-by, as a claim of its person added on it would be fixed now, falls inside a closed period is
+     *  refused, the date unchanged or not; the claim's own due-by stays as it was fixed. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tags) {
@@ -203,9 +203,7 @@ public class ClaimService {
         refuseIfLocked(claim, user);
         Person person = person(sheetId, claim.getPersonId());
         refuseIfRetired(person, dated);
-        if (!dated.equals(claim.getDate())) {
-            refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
-        }
+        refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
         if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A claim with lines has the total of its lines as its amount.");
@@ -913,10 +911,10 @@ public class ClaimService {
     }
 
     /** The claim's rate figure now: at the rate in force on the claim's date of its person's grade in
-     *  force on that date, rounded as the claim's {@link Rounding} decides, before any late charge and
+     *  force on that date, of the versions of the rates that apply to the claim, rounded as the claim's {@link Rounding} decides, before any late charge and
      *  floor; null when no rate of the grade applies by then. */
     private BigDecimal dueNow(String sheetId, Person person, Claim claim) {
-        Rate rate = rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
+        Rate rate = rates.inForceFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), claim.getId());
         if (rate == null) return null;
         return claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2,
                 rounding(sheetId, claim));

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { RateView, dueCents, rateInForce } from '../rates/rates-api';
+import { RateView, dueCents, rateInForce, ratesAppliedTo } from '../rates/rates-api';
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore' | 'review';
@@ -218,12 +218,12 @@ export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], pol
 
 /** The figure under the claim's due, in cents: the due fixed when it was settled, else the figure its
  *  person's last statement bound it to (unless PENDING), else at the rate of `gradeRates` (its person's grade's rates)
- *  in force on the claim's date, rounded half up when `halfUp` (else half to even); no floor is applied to it.
+ *  in force on the claim's date, of the versions that apply to the claim, rounded half up when `halfUp` (else half to even); no floor is applied to it.
  *  Null when there is none. */
 export function claimFigureCents(claim: ClaimView, gradeRates: readonly RateView[], halfUp = false): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (isBound(claim)) return claim.statedDue === null ? null : cents(claim.statedDue);
-  const rate = rateInForce(gradeRates, claim.date);
+  const rate = rateInForce(ratesAppliedTo(gradeRates, claim.id), claim.date);
   if (rate === null) return null;
   return dueCents(cents(claim.amount), rate.pct, halfUp);
 }

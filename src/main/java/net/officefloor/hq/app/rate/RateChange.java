@@ -46,6 +46,11 @@ public class RateChange {
     @Column(name = "version")
     private Integer version;
 
+    /** For a forward-only version, the highest claim id there was when it was saved; null when it applies
+     *  to every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateChange() {
     }
 
@@ -57,6 +62,7 @@ public class RateChange {
         this.pct = rate.getPct();
         this.madeOn = madeOn;
         this.version = rate.getVersion();
+        this.forwardAfter = rate.getForwardAfter();
     }
 
     public Grade getGrade() {
@@ -67,6 +73,23 @@ public class RateChange {
         return from;
     }
 
+    public LocalDate getTo() {
+        return to;
+    }
+
+    public BigDecimal getPct() {
+        return pct;
+    }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
+    /** Whether the version this change made applies to the claim (see {@link Rate#appliesToClaim}). */
+    public boolean appliesToClaim(Long claimId) {
+        return Rate.appliesToClaim(forwardAfter, claimId);
+    }
+
     /** Whether the change was made while the sheet's today was on or before the date. */
     public boolean madeBy(LocalDate date) {
         return madeOn == null || !madeOn.isAfter(date);
@@ -74,6 +97,6 @@ public class RateChange {
 
     /** The rate as this change set it, not kept. */
     Rate toRate() {
-        return new Rate(sheetId, grade, from, to, pct);
+        return new Rate(sheetId, grade, from, to, pct, forwardAfter);
     }
 }

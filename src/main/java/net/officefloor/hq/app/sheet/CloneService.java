@@ -43,8 +43,8 @@ public class CloneService {
         COPIED.put("sheet_setting_dated", "setting_key, from_date, setting_value");
         COPIED.put("setting_change", "setting_key, from_date, setting_value, made_on");
         COPIED.put("sheet_role", "user_name, role");
-        COPIED.put("rate", "grade, pct, from_date, to_date, version");
-        COPIED.put("rate_change", "grade, from_date, to_date, pct, made_on, version");
+        COPIED.put("rate", "grade, pct, from_date, to_date, version, forward_after");
+        COPIED.put("rate_change", "grade, from_date, to_date, pct, made_on, version, forward_after");
         COPIED.put("holiday", "holiday_date");
         COPIED.put("void_reason", "reason");
         COPIED.put("claim_template", "name, amount, note");
@@ -158,15 +158,25 @@ public class CloneService {
                 .forEach(c -> numbers.put(c.getNumber(), claimService.nextNumber(toSheetId, c)));
         List<Claim> oldestFirst = new ArrayList<>(all);
         Collections.reverse(oldestFirst);
+        java.util.TreeMap<Long, Long> claimIds = new java.util.TreeMap<>();
         for (Claim claim : oldestFirst) {
             Claim copy = claim.copyTo(toSheetId, personIds.get(claim.getPersonId()), claim.getListed(),
                     numbers.get(claim.getNumber()),
                     claim.getCorrects() == null ? null : numbers.get(claim.getCorrects()),
                     claim.getSplitFrom() == null ? null : numbers.get(claim.getSplitFrom()));
             copy.setRef(claim.getRef());
-            claims.save(copy);
+            claimIds.put(claim.getId(), claims.save(copy).getId());
         }
         claims.flush();
+        // A forward-only rate applies to the copies of the claims it applied to: those added after it was saved.
+        for (String table : List.of("rate", "rate_change")) {
+            for (Long after : jdbc.queryForList("SELECT DISTINCT forward_after FROM " + table
+                    + " WHERE sheet_id = ? AND forward_after IS NOT NULL", Long.class, toSheetId)) {
+                Map.Entry<Long, Long> last = claimIds.floorEntry(after);
+                jdbc.update("UPDATE " + table + " SET forward_after = ? WHERE sheet_id = ? AND forward_after = ?",
+                        last == null ? 0L : last.getValue(), toSheetId, after);
+            }
+        }
         entities.flush();
 
         audit.recordOnCommit("SHEET_CLONE_MADE sheet=" + sheetId + " by=" + user + " to=" + toSheetId);

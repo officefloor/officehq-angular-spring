@@ -17,7 +17,9 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.AppliedRates;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateChangeRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.setting.DatedSettings;
 import net.officefloor.hq.app.setting.SettingService;
@@ -59,6 +61,7 @@ public class Rollup {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateRepository rates;
+    private final RateChangeRepository rateChanges;
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
@@ -66,9 +69,11 @@ public class Rollup {
     private final PersonSnapshotRepository snapshots;
     private final Audit audit;
 
-    public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            SheetSettingRepository settings, SheetSettingDatedRepository dated, SheetParentRepository parents,
-            PersonSnapshotRepository snapshots, Audit audit) {
+    public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates,
+            RateChangeRepository rateChanges, SheetRepository sheets, SheetSettingRepository settings,
+            SheetSettingDatedRepository dated, SheetParentRepository parents, PersonSnapshotRepository snapshots,
+            Audit audit) {
+        this.rateChanges = rateChanges;
         this.snapshots = snapshots;
         this.people = people;
         this.claims = claims;
@@ -100,6 +105,10 @@ public class Rollup {
                 ratesByGrade.get(rate.getGrade()).get(level).add(rate);
             }
         }
+        // A forward-only version of a rate applies only to the claims added after it was saved.
+        boolean forwardOnly = ratesByGrade.values().stream().flatMap(List::stream).flatMap(List::stream)
+                .anyMatch((r) -> r.getForwardAfter() != null);
+        AppliedRates applied = forwardOnly ? AppliedRates.of(rateChanges, lineage) : null;
         Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             claimsByPerson.computeIfAbsent(claim.getPersonId(), p -> new ArrayList<>()).add(claim);
@@ -123,7 +132,9 @@ public class Rollup {
                 Grade grade = person.gradeOn(claim.getDate());
                 LocalDate roundsBy = Rounding.dateOf(claim, corrected(claim, theirs));
                 RoundingMode rounding = Rounding.of(roundsBy, policyDate, values.roundingOn(roundsBy));
-                BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding);
+                List<List<Rate>> gradeRates = ratesByGrade.getOrDefault(grade, List.of());
+                if (applied != null) gradeRates = applied.appliedLevels(gradeRates, claim.getId());
+                BigDecimal figure = figure(claim, gradeRates, rounding);
                 int grace = values.graceOn(grade, claim.getDate());
                 BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,
                         grace, values::latePctOn, rounding);
@@ -241,7 +252,8 @@ public class Rollup {
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due,
-     *  (unless PENDING), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's), rounded as the claim rounds,
+     *  (unless PENDING), else the rate figure at the grade's rate in force on its date (the sheet's, else its nearest parent's) of the
+     *  versions that apply to the claim, rounded as the claim rounds,
      *  before any late charge and floor; null when that is n/a. */
     private static BigDecimal figure(Claim claim, List<List<Rate>> gradeRates, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();

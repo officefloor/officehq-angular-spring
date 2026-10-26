@@ -15,6 +15,40 @@ export interface RateView {
   level: number;
   /** How many versions the rate has had; the percent is the newest's, the one in force. */
   version: number;
+  /** For a forward-only newest version, the highest claim id there was when it was saved: it applies only
+   *  to claims with a greater one; null when it applies to every claim. */
+  forwardAfter: number | null;
+  /** When the newest version is forward-only, the older versions, newest first, down to the newest that
+   *  applies to every claim; empty otherwise. */
+  older: RateVersion[];
+}
+
+/** An older version of a rate. */
+export interface RateVersion {
+  pct: string;
+  to: string | null;
+  forwardAfter: number | null;
+}
+
+/** Whether a version that is forward-only after `forwardAfter` applies to the claim with this id. */
+function appliesTo(forwardAfter: number | null | undefined, claimId: number): boolean {
+  return forwardAfter === null || forwardAfter === undefined || claimId > forwardAfter;
+}
+
+/** Of rates, the version of each that applies to the claim with this id: a forward-only version only to
+ *  claims added after it was saved, so a claim already on the sheet then keeps the newest older one that
+ *  applies to it; a rate with none that does is left out. */
+export function ratesAppliedTo(rates: readonly RateView[], claimId: number): RateView[] {
+  const applied: RateView[] = [];
+  for (const r of rates) {
+    if (appliesTo(r.forwardAfter, claimId)) {
+      applied.push(r);
+      continue;
+    }
+    const version = (r.older ?? []).find((v) => appliesTo(v.forwardAfter, claimId));
+    if (version !== undefined) applied.push({ ...r, pct: version.pct, to: version.to, forwardAfter: version.forwardAfter });
+  }
+  return applied;
 }
 
 /** Of one grade's rates on one sheet, the one in force on a date: the one with the latest from-date on
