@@ -11,6 +11,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,16 +28,19 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final SettingsService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
-            PeriodRepository periods, SheetService sheets, RollupService rollup, Audit audit) {
+            PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.periods = periods;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -90,7 +94,8 @@ public class ClaimService {
 
     /**
      * Moves the claim to the status; a change its status does not allow is refused, as is settling by the user
-     * who opened it and any change to a claim dated in a closed period.
+     * who opened it, settling by a clerk when the due is above the clerk limit, and any change to a claim dated in
+     * a closed period.
      */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
@@ -121,6 +126,7 @@ public class ClaimService {
             // force on the claim's date; with none it stays live
             BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
                     : liveDue(sheetId, person, claim);
+            settings.refuseAboveClerkLimit(sheetId, by, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
         }

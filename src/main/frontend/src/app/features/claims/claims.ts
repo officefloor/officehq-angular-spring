@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -198,11 +198,13 @@ export class Claims {
     }
     try {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
-    } catch {
+    } catch (e) {
       const err =
         action === 'settle' && c.openedBy !== null && c.openedBy === this.session.user()
           ? 'You opened this claim, so another user must settle it.'
-          : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+          : action === 'settle' && e instanceof HttpErrorResponse && e.status === 403
+            ? 'Its due is above the clerk limit, so only a steward can settle it.'
+            : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
     }
   }
