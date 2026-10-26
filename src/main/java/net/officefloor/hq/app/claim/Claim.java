@@ -369,6 +369,13 @@ public class Claim {
         this.number = number;
     }
 
+    /** Takes the claim's number away, so it can be numbered afresh. */
+    public void clearNumber() {
+        this.number = null;
+        this.numberSequence = null;
+        this.numberInSequence = null;
+    }
+
     public String getNumberSequence() {
         return numberSequence;
     }

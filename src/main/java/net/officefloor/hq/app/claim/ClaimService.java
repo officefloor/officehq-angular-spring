@@ -527,7 +527,8 @@ public class ClaimService {
     }
 
     /**
-     * A user whose role may reassign (a steward by the standing rule) moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
+     * A user whose role may reassign (a steward by the standing rule) moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its date,
+     * takes the next number in the sequence it would be numbered in now (a draft, having none, gets none) and never gives its old one again,
      * loses any figure a statement bound it to (it is live again until its new person's next statement), and is
      * listed as its new person's newest claim. Refused unless the user's role may reassign, for a settled or voided claim,
      * to the person it is already with, in a closed period, and when it is dated after the new person's retirement.
@@ -557,6 +558,9 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setPersonId(to.getId());
         claim.unbind();
+        if (claim.getNumber() != null) {
+            renumber(sheetId, claim);
+        }
         Claim saved = claims.saveAndFlush(claim);
         claims.relist(saved.getId());
         audit.recordOnCommit(record("CLAIM_REASSIGNED", by, to, saved) + " from=" + from.getName() + " to="
@@ -703,6 +707,18 @@ public class ClaimService {
         String sequence = sequenceOn(sheetId, claim.getDueBy());
         Long last = claims.lastInSequence(sheetId, sequence);
         claim.numberIn(sequence, last == null ? 1 : last + 1);
+    }
+
+    /**
+     * Gives a numbered claim the next number in the sequence it would be numbered in now; its old one is retired, so it
+     * is never given again (a sheet number never is: the sheet's count only rises).
+     */
+    private void renumber(String sheetId, Claim claim) {
+        if (claim.getNumberSequence() != null) {
+            claims.retireNumber(sheetId, claim.getNumberSequence(), claim.getNumberInSequence());
+        }
+        claim.clearNumber();
+        number(sheetId, claim);
     }
 
     /** Whether the sheet numbers claims by period: its period numbering from is set and its today on or after it. */
