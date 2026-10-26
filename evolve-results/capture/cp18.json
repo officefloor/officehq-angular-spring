@@ -1,0 +1,64 @@
+{
+  "checkpoint": 18,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp18_close-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period can be closed. Closing fixes its due-total at that moment: later changes to rates do not\nalter it. No claim dated inside a closed period can be added, edited, opened, settled or voided;\neach is refused with an error. Show closed yes/no on the period. Closing writes PERIOD_CLOSED\nperiod=<name> total=<due-total>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period can be closed. Closing fixes its due-total at that moment: later changes to rates do not\nalter it. No claim dated inside a closed period can be added, edited, opened, settled or voided;\neach is refused with an error. Show closed yes/no on the period. Closing writes PERIOD_CLOSED\nperiod=<name> total=<due-total>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b44fcd983de7bf6e9332f92d795a1b182d7aaffb",
+  "reset_sha": "",
+  "preagent_sha": "95bf37f85ed957cf440ad5f17a79103b3ac16e09",
+  "prev_sha": "95bf37f85ed957cf440ad5f17a79103b3ac16e09",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9021397999999999,
+    "input_tokens": 34,
+    "output_tokens": 13848,
+    "cache_read_tokens": 716219,
+    "cache_creation_tokens": 60225,
+    "num_turns": 18,
+    "duration_ms": 197848,
+    "duration_api_ms": 123805,
+    "model": "claude-opus-5-5",
+    "session_id": "9218d8a6-6352-4ba0-8cb3-d8804bfe4dde",
+    "stop_reason": "success",
+    "result_text": "Periods can now be closed, and all 4 tests in `bin/e2e` pass.\n\n**What changed:**\n\n- **Stored data** (`V15__period_closed.sql`): each period now stores whether it is closed and the due-total fixed at closing.\n- **Closing a period**:\n  - A new close endpoint (`PeriodController`, `PeriodService.close`) works out the total at that moment. It adds up the figures of the open and settled claims dated in the period, skipping any with no rate, the same way the screen already does.\n  - It saves that total and writes `PERIOD_CLOSED sheet=\u2026 by=\u2026 period=<name> total=<total>` to the audit file.\n  - Closing a period that is already closed is refused with an error.\n- **Claims in a closed period** (`ClaimService`):\n  - Adding, opening, settling and voiding a claim dated inside a closed period are all refused.\n  - An edit is refused if the claim's current date or its new date falls in a closed period.\n  - A refusal writes nothing to the store or the audit file.\n  - Closing a period and changing a claim lock the sheet first, so the two can't overlap.\n- **Screen**:\n  - Each period row shows Closed yes/no and has a Close button with its own error message.\n  - A closed period shows its fixed total, so later rate changes don't move it.\n  - The claim screens refuse these actions straight away. The server checks again in case another user has just closed the period.\n\n**Behaviour to be aware of:**\n\n- **Editing:** clicking Edit on a claim in a closed period still opens the editor; the refusal comes when you save. I did it this way because refusing on the click could race with the test's immediate check for the error.\n- **Other actions:** taking a statement and changing a person's grade are still allowed when they involve claims in a closed period, because the request didn't list them. Either can change what an individual claim shows, but not the closed period's fixed total.\n- **Not closable once closed:** there is no way to reopen a period, since the request didn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9021397999999999,
+        "num_turns": 18,
+        "duration_ms": 197848,
+        "duration_api_ms": 123805,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp18.agent.jsonl",
+  "agent_diff_file": "cp18.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
