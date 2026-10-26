@@ -245,6 +245,9 @@ interface StatementView {
                 <button type="button" data-testid="person-statement" (click)="takeStatement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)">
+                  Cancel statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'retire-date-' + p.id">Retire from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   type="date"
@@ -753,6 +756,28 @@ export class People {
       this.statements.update((list) => [...list.filter((s) => s.personId !== p.id), taken.statement]);
     } catch {
       this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not take a statement for this person.' }));
+    }
+  }
+
+  /** Cancels the person's last statement: the claims it bound are live again. */
+  protected async cancelStatement(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`;
+    try {
+      const left = await firstValueFrom(
+        this.http.delete<{ statement: StatementView; claims: Claim[] }>(url),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const byId = new Map(left.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      this.statements.update((list) => [
+        ...list.filter((s) => s.personId !== p.id),
+        ...(left.statement.count > 0 ? [left.statement] : []),
+      ]);
+    } catch {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not cancel the last statement for this person.' }));
     }
   }
 

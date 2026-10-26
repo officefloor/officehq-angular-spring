@@ -15,6 +15,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -37,10 +38,12 @@ public class StatementService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final SettingsService settings;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
+            ClaimService claimService, RateRepository rates, SheetService sheets, RollupService rollup,
+            SettingsService settings, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -48,6 +51,7 @@ public class StatementService {
         this.rates = rates;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -108,5 +112,38 @@ public class StatementService {
         rollup.recordChanges(by, sheetId, before);
         return new Summary(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).size(),
                 taken);
+    }
+
+    /**
+     * A steward cancels the person's last statement: the claims it bound are live again (a figure an earlier
+     * statement bound is not restored), and the statement before it is the last. Refused unless the user is a
+     * steward, and for a person with no statement. Returns the person's statements as the cancel left them.
+     */
+    @Transactional
+    public Summary cancel(String by, String sheetId, Long personId) {
+        Person person = people.findWithLockByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can cancel a statement.");
+        }
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (theirs.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "There is no statement to cancel.");
+        }
+        Statement last = theirs.get(theirs.size() - 1);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
+            if (c.isStated()) {
+                c.unbind();
+            }
+        }
+        claims.flush();
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+        rollup.recordChanges(by, sheetId, before);
+        int count = theirs.size() - 1;
+        return new Summary(personId, count, count == 0 ? null : theirs.get(count - 1));
     }
 }

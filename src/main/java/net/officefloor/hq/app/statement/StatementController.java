@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +28,9 @@ public class StatementController {
      */
     public record StatementView(Long personId, int count, String dueTotal, LocalDate date) {
         static StatementView of(StatementService.Summary s) {
+            if (s.last() == null) {
+                return new StatementView(s.personId(), 0, null, null);
+            }
             return new StatementView(s.personId(), s.count(),
                     s.last().getDueTotal() == null ? null : s.last().getDueTotal().toPlainString(),
                     s.last().getTakenOn());
@@ -60,5 +64,16 @@ public class StatementController {
         List<ClaimView> theirs = claims.list(sheetId).stream().filter(c -> c.getPersonId().equals(personId))
                 .map(ClaimView::of).toList();
         return new TakenView(taken, theirs);
+    }
+
+    /** Cancels the person's last statement; answers with their statements and claims as it left them. */
+    @DeleteMapping("/people/{personId}/statement")
+    public TakenView cancel(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long personId, @SessionAttribute(SessionController.USER) String user) {
+        StatementView left = StatementView.of(service.cancel(user, sheetId, personId));
+        List<ClaimView> theirs = claims.list(sheetId).stream().filter(c -> c.getPersonId().equals(personId))
+                .map(ClaimView::of).toList();
+        return new TakenView(left, theirs);
     }
 }

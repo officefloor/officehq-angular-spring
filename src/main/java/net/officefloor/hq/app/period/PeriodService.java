@@ -154,7 +154,7 @@ public class PeriodService {
     }
 
     /**
-     * Once the sheet's today is changed while it has grace days, closes every open period whose to-date plus them is
+     * Once the sheet's today is changed while it has grace days, closes every open period (not soft-closed) whose to-date plus them is
      * before the new today, by to-date, each as a close by hand would.
      */
     @EventListener
@@ -168,6 +168,10 @@ public class PeriodService {
         LocalDate today = sheet.getToday();
         for (Period period : periods.findBySheetIdAndClosedFalseAndToBeforeOrderByToAsc(sheet.getId(),
                 today.minusDays(graceDays))) {
+            // a soft-closed period keeps the figures it fixed
+            if (period.isSoftClosed()) {
+                continue;
+            }
             close(change.by(), sheet.getId(), period, today, " auto=yes");
         }
     }
