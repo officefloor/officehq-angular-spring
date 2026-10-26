@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cc3fea65..981345c6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
++import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdue } from '../claims/claims';
+@@ -117,6 +117,7 @@ interface StatementView {
+         />
+         Show retired
+       </label>
++      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+ 
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+@@ -214,6 +215,7 @@ interface StatementView {
+ })
+ export class People {
+   private readonly http = inject(HttpClient);
++  private readonly document = inject(DOCUMENT);
+   private readonly session = inject(Session);
+   protected readonly rates = inject(RateStore);
+   private readonly settings = inject(SettingsStore);
+@@ -512,6 +514,22 @@ export class People {
+   }
+ 
+   /** The grade in force for the person on the sheet's today. */
++  /** Downloads every person, retired ones included, in list order as a CSV file. */
++  protected exportCsv(): void {
++    const due = this.dueBy();
++    const lines = [['name', 'grade', 'retired-from', 'due-total']];
++    for (const p of this.people()) {
++      lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', due.get(p.id) ?? 'n/a']);
++    }
++    const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
++    const link = this.document.createElement('a');
++    link.href = url;
++    link.download = 'people.csv';
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   protected gradeToday(p: Person): string {
+     return gradeOn(p.grades, this.session.sheetToday());
+   }
+@@ -668,3 +686,8 @@ export class People {
+     }
+   }
+ }
++
++// A CSV field: wrapped in double quotes, with quotes doubled, when it holds a comma, a quote or a line break.
++function csvField(v: string): string {
++  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
++}
