@@ -1,0 +1,64 @@
+{
+  "checkpoint": 47,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp47_person-period-figures",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "21499e152584bd8d774e828dfea19321e4017420",
+  "reset_sha": "",
+  "preagent_sha": "cc2b0dbb2cc60edef4e8adfdf26519ab42885e3a",
+  "prev_sha": "cc2b0dbb2cc60edef4e8adfdf26519ab42885e3a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6183842,
+    "input_tokens": 22,
+    "output_tokens": 7917,
+    "cache_read_tokens": 393061,
+    "cache_creation_tokens": 47668,
+    "num_turns": 12,
+    "duration_ms": 139405,
+    "duration_api_ms": 70895,
+    "model": "claude-opus-5-5",
+    "session_id": "b6b678fb-997f-43d4-9011-de9017154db6",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows their due-total for every period on the sheet, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works**\n- **Open period:** a person's figure is the due of their counted claims dated in the period. Claims with no due (n/a) are skipped, so the figure is never n/a. A person with no rate for their grade shows 0.00 for each period, even though their overall due-total shows n/a. Figures are taken before the sheet's cap is applied, the same way the period totals already were.\n- **Closing a period:** the server now saves a figure for every person on the sheet at that moment, 0.00 for anyone with no claims in it. The period's fixed total is the sum of those figures, so the existing `PERIOD_CLOSED ... total=` audit record is unchanged. Anyone added after the close shows 0.00 for that period.\n- **Reopening:** the saved figures are deleted, so the numbers are worked out live again.\n- **Period total:** the period table and the summary now add up the people's figures for each period instead of counting claims directly, so the total always equals the sum of the rows.\n\n**Changes**\n- A new migration, `V33__period_person_total.sql`, adds a table with one row per period and person.\n- The server side is in `Period.java`, `PeriodService.close` and `PeriodView`, which now sends the saved per-person figures to the page.\n- On the front end, `periods.ts` has a new `personPeriodDueTotals` and builds `periodDueTotals` from it. `people.ts` adds a \"Due in <period>\" column with `data-testid=\"person-period-<name>-due-total\"`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6183842,
+        "num_turns": 12,
+        "duration_ms": 139405,
+        "duration_api_ms": 70895,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp47.agent.jsonl",
+  "agent_diff_file": "cp47.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
