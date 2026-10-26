@@ -1,0 +1,64 @@
+{
+  "checkpoint": 65,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp65_void-settled",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2120bd71005d6e01441ec19ff69416ad8f377519",
+  "reset_sha": "",
+  "preagent_sha": "a6f565d966100b8a3c09316450183d0cca681250",
+  "prev_sha": "a6f565d966100b8a3c09316450183d0cca681250",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5009312,
+    "input_tokens": 26,
+    "output_tokens": 5227,
+    "cache_read_tokens": 435596,
+    "cache_creation_tokens": 38646,
+    "num_turns": 14,
+    "duration_ms": 430478,
+    "duration_api_ms": 70855,
+    "model": "claude-opus-5-5",
+    "session_id": "f85a0437-12e5-4e07-b713-91aad2a42f1f",
+    "stop_reason": "success",
+    "result_text": "A steward can now void a SETTLED claim within 7 days of its settlement, and all 4 tests in `bin/e2e` pass.\n\nOne run in between failed on scenario 3, at a claim-paste step (`acceptance.spec.ts:609`) that comes before any voiding. I re-ran it unchanged and all 4 passed, so it looks like an intermittent failure in the paste step, not this change. It could happen again.\n\n**What changed (server):**\n- **`ClaimStatus.java`**: a SETTLED claim is now allowed to move to VOID.\n- **`Claim.java`**: new `settledOn()` returns the date of the claim's last SETTLED entry in its status log.\n- **`ClaimService.changeStatus`**: voiding a SETTLED claim goes through a new check, `refuseVoidOfSettled`. It refuses:\n  - anyone who isn't a steward, with a 403;\n  - a sheet today before the settlement date or more than 7 days after it, with a 409. The 7 is the constant `VOID_SETTLED_DAYS`.\n  \n  A claim dated in a closed period was already refused for every status change, so that needed nothing new. When the void goes through, `CLAIM_VOIDED` ends with `reversed=<frozen figure>`.\n- The claim keeps its number and its frozen settled figure, so its row still shows that due (e.g. `1.00`). VOID claims already count in no total, so the figure leaves every total without further code.\n\n**Front end (`claims.ts`)**: a refused void of a settled claim now shows its own message on the claim: \"Only a steward can void a settled claim, and only within 7 days of its settlement.\" Without it, a clerk would have seen \"Your role may not void a claim\", which is wrong because clerks can void open claims.\n\n\"Within 7 days\" counts the settlement day plus 7: settled on 03-10, a void on 03-17 goes through and one on 03-18 is refused, as the test expects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5009312,
+        "num_turns": 14,
+        "duration_ms": 430478,
+        "duration_api_ms": 70855,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp65.agent.jsonl",
+  "agent_diff_file": "cp65.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
