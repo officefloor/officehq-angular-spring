@@ -918,11 +918,15 @@ export class People {
     }
     return by;
   });
-  /** Each period's due-total, by period id: the sum of the people's figures for it. */
+  /** Each period's due-total, by period id: the sum of the people's figures for it; for a closed or
+   *  soft-closed period, the total fixed when it was closed (a person who has left since still in it). */
   protected readonly periodDueTotals = computed(() => {
     const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
     for (const of of this.personPeriodCents().values()) {
       for (const [id, due] of of) totals.set(id, (totals.get(id) ?? 0) + due);
+    }
+    for (const period of this.periods()) {
+      if ((period.closed || period.softClosed) && period.closedTotal !== null) totals.set(period.id, cents(period.closedTotal));
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
@@ -967,7 +971,8 @@ export class People {
       if (due !== null) totals.set(period.id, totals.get(period.id)! + due);
     }
     for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
-      totals.set(period.id, this.people().reduce((t, p) => t + cents(period.closedPersonTotals[p.id] ?? '0.00'), 0));
+      totals.set(period.id, period.closedTotal !== null ? cents(period.closedTotal)
+        : this.people().reduce((t, p) => t + cents(period.closedPersonTotals[p.id] ?? '0.00'), 0));
     }
     return this.periods().map((q) => ({ name: q.name, dueTotal: money(totals.get(q.id) ?? 0) }));
   });

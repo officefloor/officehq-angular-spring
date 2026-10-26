@@ -178,10 +178,10 @@ public class StatementService {
         if (status == null) return null;
         BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAsOf(asOf) : null;
         ClaimBinding binding = claim.bindingAsOf(asOf);
-        boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+        boolean deferred = (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && binding == null && claim.getDeferredUntil() != null
                 && asOf.isBefore(claim.getDeferredUntil());
-        boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
-                && (binding != null || !person.isRetiredAsOf(asOf)));
+        boolean counts = !deferred && (status == ClaimStatus.SETTLED
+                || (status.isOpen() && (binding != null || !person.isRetiredAsOf(asOf))));
         if (!counts) return null;
         RoundingMode rounding = claimService.rounding(sheetId, claim, asOf, dated);
         Grade grade = person.gradeOn(claim.getDate(), asOf);
@@ -251,8 +251,7 @@ public class StatementService {
      *  their retirement date is reached, do not, unless a statement binds them (a hold leaves them in), nor does a claim deferred on the
      *  sheet's today, as on the screen. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
-        return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isRetiredBy(today)));
+        return !claim.isDeferredOn(today) && (claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isRetiredBy(today))));
     }
 }

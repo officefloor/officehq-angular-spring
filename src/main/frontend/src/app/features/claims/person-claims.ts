@@ -16,7 +16,7 @@ import { SheetRounding } from '../settings/sheet-rounding';
 import { Templates, TemplatesApi } from '../templates/templates-api';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isDeferred, isOverdue, isPendingLate, isReviewLate, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isBound, isDeferred, isOverdue, isPendingLate, isReviewLate, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The claim form's fields, as typed. */
@@ -398,10 +398,10 @@ export class PersonClaims {
   }
 
   /** Whether the row shows the claim as deferred: deferred until a date the sheet's today has not
-   *  reached, whatever its status now. */
+   *  reached, whatever its status now, and bound by no statement. */
   protected deferredShown(claim: ClaimView): boolean {
     const today = this.session.figuresToday();
-    return claim.deferredUntil !== null && today !== undefined && today < claim.deferredUntil;
+    return claim.deferredUntil !== null && !isBound(claim) && today !== undefined && today < claim.deferredUntil;
   }
 
   /** The name of the period whose dates contain the claim's due-by, or blank when none does. */

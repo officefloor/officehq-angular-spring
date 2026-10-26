@@ -338,9 +338,8 @@ public class Rollup {
      *  the person's or the claim's, leaves them in); nor does a
      *  claim deferred on the sheet's today. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
-        return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isRetiredBy(today)));
+        return !claim.isDeferredOn(today) && (claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isRetiredBy(today))));
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due

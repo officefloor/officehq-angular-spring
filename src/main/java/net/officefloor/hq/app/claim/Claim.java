@@ -98,8 +98,9 @@ public class Claim {
     @Column(name = "listed", nullable = false)
     private long listed;
 
-    /** The date the claim is deferred until: while the sheet's today is before it an OPEN claim counts
-     *  in no total, is not overdue, cannot be settled and no statement binds it; none when never deferred. */
+    /** The date the claim is deferred until: while the sheet's today is before it an OPEN claim no statement
+     *  binds counts in no total, is not overdue, cannot be settled and no statement binds it (a bound claim's
+     *  deferral takes effect once its binding ends); none when never deferred. */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
@@ -528,9 +529,13 @@ public class Claim {
         this.deferredUntil = until;
     }
 
-    /** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date. */
+    /** Whether the claim is deferred on the sheet's today: OPEN (or SETTLED, as a bound claim deferred can
+     *  be settled while bound), with today before its deferred-until date, and bound by no statement (a
+     *  deferral takes effect only once the claim's binding ends). */
     public boolean isDeferredOn(LocalDate today) {
-        return deferredUntil != null && status == ClaimStatus.OPEN && today != null && today.isBefore(deferredUntil);
+        return deferredUntil != null && (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated
+                && today != null
+                && today.isBefore(deferredUntil);
     }
 
     public int getProofs() {

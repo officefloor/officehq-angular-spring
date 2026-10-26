@@ -37,10 +37,13 @@ export function isBound(claim: ClaimView): boolean {
   return claim.stated;
 }
 
-/** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date.
- *  A deferred claim counts in no total, is not overdue, cannot be settled and no statement binds it. */
+/** Whether the claim is deferred on the sheet's today: OPEN (or SETTLED, as a bound claim deferred can be
+ *  settled while bound) and bound by no statement, with today before its deferred-until date. A deferred
+ *  claim counts in no total, is not overdue, cannot be settled and no statement binds it; a bound claim's
+ *  deferral takes effect only once its binding ends. */
 export function isDeferred(claim: ClaimView, today: string | undefined): boolean {
-  return claim.deferredUntil !== null && claim.status === 'OPEN' && today !== undefined && today < claim.deferredUntil;
+  return claim.deferredUntil !== null && (claim.status === 'OPEN' || claim.status === 'SETTLED') && !isBound(claim) && today !== undefined
+    && today < claim.deferredUntil;
 }
 
 /** Only open (PENDING included) and settled claims count toward what is claimed and due. */
