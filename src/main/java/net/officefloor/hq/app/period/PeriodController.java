@@ -22,9 +22,11 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to) {
+    /** A period as the screen shows it; a closed one carries the due-total fixed when it was closed. */
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal) {
         static PeriodView of(Period p) {
-            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo());
+            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(),
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString());
         }
     }
 
@@ -51,5 +53,12 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PeriodForm form, @SessionAttribute(SessionController.USER) String user) {
         return PeriodView.of(service.add(user, sheetId, form.name(), form.from(), form.to()));
+    }
+
+    @PostMapping("/{id}/close")
+    public PeriodView close(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PeriodView.of(service.close(user, sheetId, id));
     }
 }

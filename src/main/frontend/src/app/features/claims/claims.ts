@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { PeriodStore, periodOn } from '../periods/periods';
+import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
 import { RateView, dueOn, rateOn } from '../rates/rates';
 
 export interface Claim {
@@ -45,6 +45,8 @@ export function figureOf(c: Claim, rates: readonly RateView[]): string | null {
 export function keepsFigure(c: Claim): boolean {
   return c.settledDue !== null || (c.stated && c.statedDue !== null);
 }
+
+const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
@@ -183,15 +185,23 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
+    if (inClosedPeriod(this.periods.list(), c.date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
     try {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
     } catch {
       const err =
         action === 'settle' && c.openedBy !== null && c.openedBy === this.session.user()
           ? 'You opened this claim, so another user must settle it.'
-          : `A ${c.status} claim cannot be changed that way.`;
-      this.rowErrors.update((e) => ({ ...e, [c.id]: err }));
+          : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+      this.setRowError(c.id, err);
     }
+  }
+
+  private setRowError(id: number, err: string): void {
+    this.rowErrors.update((e) => ({ ...e, [id]: err }));
   }
 
   private clearRowError(id: number): void {
@@ -222,9 +232,15 @@ export class Claims {
       this.error.set('Enter a date as yyyy-mm-dd.');
       return;
     }
+    const editing = this.editingId();
+    const was = this.claims().find((c) => c.id === editing);
+    const periods = this.periods.list();
+    if ((was && inClosedPeriod(periods, was.date)) || inClosedPeriod(periods, date || (this.session.sheetToday() ?? ''))) {
+      this.error.set(CLOSED);
+      return;
+    }
     const form = { amount, date: date || null, note: this.note().trim() };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const editing = this.editingId();
     this.submitting = true;
     try {
       const claim =

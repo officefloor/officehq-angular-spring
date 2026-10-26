@@ -10,6 +10,9 @@ export interface PeriodView {
   // Both inclusive (yyyy-mm-dd).
   from: string;
   to: string;
+  // A closed period keeps the due-total fixed when it was closed; no claim dated in it can change.
+  closed: boolean;
+  closedTotal: string | null;
 }
 
 /** A counted claim's date and the figure it totals (null for n/a). */
@@ -23,6 +26,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The period whose dates contain the date; undefined when none does. */
 export function periodOn(periods: readonly PeriodView[], date: string): PeriodView | undefined {
   return periods.find((p) => p.from <= date && date <= p.to);
+}
+
+/** Whether a closed period contains the date. */
+export function inClosedPeriod(periods: readonly PeriodView[], date: string): boolean {
+  return periodOn(periods, date)?.closed ?? false;
 }
 
 // The periods of the active sheet, by from-date.
@@ -44,6 +52,17 @@ export class PeriodStore {
     const p = await firstValueFrom(
       this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to }),
     );
+    this.put(sheet, p);
+  }
+
+  async close(sheet: string, id: number): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/close`, null),
+    );
+    this.put(sheet, p);
+  }
+
+  private put(sheet: string, p: PeriodView): void {
     if (this.session.sheetId() === sheet) {
       this.list.update((l) => [...l.filter((x) => x.id !== p.id), p].sort((a, b) => a.from.localeCompare(b.from)));
     }
@@ -88,7 +107,8 @@ export class PeriodStore {
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of store.list(); track p.id) {
@@ -97,6 +117,15 @@ export class PeriodStore {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" (click)="close(p)">
+                  Close<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                @if (rowErrors()[p.id]; as err) {
+                  <p role="alert" data-testid="period-error">{{ err }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -115,10 +144,13 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  // Each period's refused action, by period id.
+  protected readonly rowErrors = signal<Record<number, string>>({});
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
-  // Each period's due-total: the figures of the counted claims dated in it, skipping n/a.
+  // Each period's due-total: a closed one's fixed total, else the figures of the counted claims dated in it,
+  // skipping n/a.
   protected readonly dueBy = computed(() => {
     const by = new Map<number, (string | null)[]>();
     const periods = this.store.list();
@@ -127,8 +159,28 @@ export class Periods {
       const p = periodOn(periods, f.date);
       if (p) by.get(p.id)?.push(f.figure);
     }
-    return new Map([...by].map(([id, list]) => [id, sumSkippingNa(list)]));
+    const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
+    return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
   });
+
+  protected async close(p: PeriodView): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (p.closed) {
+      this.setRowError(p.id, 'That period is already closed.');
+      return;
+    }
+    try {
+      await this.store.close(sheet, p.id);
+    } catch {
+      this.setRowError(p.id, 'Could not close that period.');
+    }
+  }
+
+  private setRowError(id: number, err: string): void {
+    this.rowErrors.update((e) => ({ ...e, [id]: err }));
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
