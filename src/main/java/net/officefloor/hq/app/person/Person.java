@@ -201,13 +201,20 @@ public class Person {
      *  keeping every other one. A grade already in force on that date adds nothing, so an edit that
      *  leaves the grade as it is does not hide a grade given later from an earlier date. */
     public void setGrade(Grade grade, LocalDate from, LocalDate madeOn) {
+        setGrade(grade, from, madeOn, false);
+    }
+
+    /** Give the person a grade from a date as {@link #setGrade(Grade, LocalDate, LocalDate)}; given
+     *  explicitly, a grade already in force on that date is still recorded from it, so a grade given
+     *  later from an earlier date does not reach past it. */
+    public void setGrade(Grade grade, LocalDate from, LocalDate madeOn, boolean explicit) {
         for (PersonGrade g : grades) {
             if (from.equals(g.getFrom())) {
                 if (g.getGrade() != grade) g.setGrade(grade, madeOn);
                 return;
             }
         }
-        if (gradeOn(from) == grade) return;
+        if (!explicit && gradeOn(from) == grade) return;
         grades.add(new PersonGrade(grade, from, madeOn));
     }
 

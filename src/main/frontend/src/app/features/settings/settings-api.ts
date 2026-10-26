@@ -79,6 +79,9 @@ export interface SettingsView {
   /** The amount a person's due-total going above audits an alert, with two decimals, or null when off.
    *  Not dated. */
   alertThreshold: string | null;
+  /** The days since a claim's previous reminder after which reminding it escalates it, or null when off.
+   *  Not dated. */
+  escalateAfter: number | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -187,6 +190,11 @@ export class SettingsApi {
   /** Set the parent sheet; null clears it, leaving no parent. */
   setParent(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/parent`, { value }));
+  }
+
+  /** Set the escalation gap in days; null clears it, turning escalation off. */
+  setEscalateAfter(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/escalate-after`, { value }));
   }
 
   /** Set the grace days; null clears them, turning the closing of periods off. */

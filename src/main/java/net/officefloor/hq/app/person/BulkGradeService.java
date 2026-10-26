@@ -42,7 +42,7 @@ public class BulkGradeService {
             if (!selected.contains(person.getId())) continue;
             try {
                 changed.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
-                        grade, from, person.getTerms(), person.getContact()));
+                        grade, from, person.getTerms(), person.getContact(), String.join(",", person.getTags()), true));
             } catch (ResponseStatusException notChanged) {
                 // Left as it is: someone else saved the person at the same moment.
             }

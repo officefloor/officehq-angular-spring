@@ -65,7 +65,8 @@ function settled(control: AbstractControl): void {
 // sheet (a grade with no rate in force on a date on this sheet takes its parent's, then that one's parent's,
 // up to three levels up; blank: none), nor the fiscal year start month (the month, 1 to 12, each fiscal year
 // starts on; 1 unless set), nor the alert threshold (a change taking a person's due-total from at or below
-// it to above it audits an alert; blank: off).
+// it to above it audits an alert; blank: off), nor the escalation gap (reminding a claim whose previous
+// reminder was at least these days before the sheet's today escalates it, once per claim ever; blank: off).
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -160,6 +161,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-alert-threshold">Alert threshold (a due-total going above it is alerted; blank: off)</label>
         <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" inputmode="decimal" />
         <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</span></p>
+        <label for="setting-escalate-after">Escalation gap (days since a claim's previous reminder after which reminding it escalates it; blank: off)</label>
+        <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" />
+        <p>Escalation gap now: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
@@ -271,6 +275,7 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
+  protected readonly escalateAfter = signal<number | null>(null);
   protected readonly parent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal(DEFAULT_FISCAL_START_MONTH);
   protected readonly assigned = signal<RoleView[]>([]);
@@ -302,6 +307,7 @@ export class Settings {
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
+    escalateAfter: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
   });
@@ -383,7 +389,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -421,7 +427,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, escalateAfter, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -458,6 +464,7 @@ export class Settings {
     const entryDateValue = entryDate.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
+    const escalateAfterValue = escalateAfter.value.trim();
     const parentValue = parent.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
@@ -547,6 +554,10 @@ export class Settings {
     }
     if (changed(parent) && parentValue === sheet.id) {
       this.settingsError.set('A sheet cannot be its own parent.');
+      return;
+    }
+    if (changed(escalateAfter) && escalateAfterValue !== '' && (!DAYS.test(escalateAfterValue) || Number(escalateAfterValue) > 36500)) {
+      this.settingsError.set('Type the escalation gap as a whole number of days, from 0 to 36500, or leave it blank for off.');
       return;
     }
     if (changed(fiscalStartMonth) && (!MONTH.test(fiscalStartMonthValue) || Number(fiscalStartMonthValue) < 1
@@ -672,6 +683,11 @@ export class Settings {
         settled(alertThreshold);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(escalateAfter)) {
+        const settings = await this.api.setEscalateAfter(sheet.id, escalateAfterValue === '' ? null : Number(escalateAfterValue));
+        settled(escalateAfter);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(parent)) {
         const settings = await this.api.setParent(sheet.id, parentValue === '' ? null : parentValue);
         settled(parent);
@@ -723,6 +739,7 @@ export class Settings {
     this.pot.set(settings.pot);
     this.sheetPot.pot.set(settings.pot);
     this.alertThreshold.set(settings.alertThreshold);
+    this.escalateAfter.set(settings.escalateAfter);
     this.parent.set(settings.parent);
     this.sheetParent.parent.set(settings.parent);
     this.delegations.set(settings.delegations);

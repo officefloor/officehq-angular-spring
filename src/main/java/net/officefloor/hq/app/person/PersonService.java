@@ -218,6 +218,14 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
             LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, tags, false);
+    }
+
+    /** Edit a person as {@link #update(String, String, long, long, String, Grade, LocalDate, Integer, String, String)};
+     *  an explicit grade (a bulk grade) is recorded from its from-date even when already in force then. */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags, boolean explicitGrade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -240,7 +248,8 @@ public class PersonService {
         boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setName(name);
-        person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId));
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId),
+                explicitGrade);
         person.setTerms(terms);
         person.setContact(contactKey);
         List<String> tagged = ClaimService.tagsOf(tags);

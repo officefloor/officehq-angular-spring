@@ -88,6 +88,10 @@ public class SettingService implements ActingFor {
      *  these days, the period is closed; no value means off. Not dated. */
     public static final String GRACE_DAYS = "grace-days";
 
+    /** The key of the escalation gap: reminding a claim whose previous reminder was at least these days
+     *  before the sheet's today escalates it, once per claim ever; no value means off. Not dated. */
+    public static final String ESCALATE_AFTER = "escalate-after";
+
     /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
      *  no value means 1 (January). Not dated. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
@@ -421,6 +425,38 @@ public class SettingService implements ActingFor {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + GRACE_DAYS
+                + " value=" + (days == null ? "" : days.toString()));
+        return days;
+    }
+
+    /** The sheet's escalation gap in days, or null when it is blank (off). */
+    @Transactional(readOnly = true)
+    public Integer escalateAfter(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, ESCALATE_AFTER).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's escalation gap; null clears it, turning escalation off. */
+    @Transactional
+    public Integer setEscalateAfter(String sheetId, String user, Integer days) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, ESCALATE_AFTER).orElse(null);
+        try {
+            if (days == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, ESCALATE_AFTER, days.toString()));
+            } else {
+                setting.setValue(days.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + ESCALATE_AFTER
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
     }

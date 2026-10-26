@@ -122,6 +122,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether the claim was ever escalated; a claim is escalated once ever. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when it has none. */
     @Column(name = "ref")
     private String ref;
@@ -240,6 +244,7 @@ public class Claim {
         copy.splitFrom = otherSplitFrom;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.stated = stated;
@@ -506,6 +511,15 @@ public class Claim {
     /** Record a reminder written for the claim on the sheet's today given. */
     public void remind(LocalDate today) {
         this.remindedOn = today;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    /** Record the claim escalated. */
+    public void escalate() {
+        this.escalated = true;
     }
 
     /** Whether the claim is locked by a user other than this one. */
