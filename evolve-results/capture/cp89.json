@@ -1,0 +1,64 @@
+{
+  "checkpoint": 89,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp89_claim-tags",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim may carry tags: a comma separated text on the claim form, each tag trimmed and lower-cased,\nrepeats dropped; the claim shows its tags sorted, comma and space separated. The form can change a\nclaim's tags when it can edit the claim. For every tag ever used on the sheet, the sheet shows a\ndue-total per tag: the due of the claims that count which carry it (a claim with two tags counts in\nboth). CLAIM_ADDED gains tags=<comma separated, sorted> at its end when any were given. A claim\nsplit off another carries the original's tags.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim may carry tags: a comma separated text on the claim form, each tag trimmed and lower-cased,\nrepeats dropped; the claim shows its tags sorted, comma and space separated. The form can change a\nclaim's tags when it can edit the claim. For every tag ever used on the sheet, the sheet shows a\ndue-total per tag: the due of the claims that count which carry it (a claim with two tags counts in\nboth). CLAIM_ADDED gains tags=<comma separated, sorted> at its end when any were given. A claim\nsplit off another carries the original's tags.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1331d24e10bc6094cd3c4b8d9eaf4edab54f0abb",
+  "reset_sha": "",
+  "preagent_sha": "1679214b23842ca077c983664ed21725c33ec9b4",
+  "prev_sha": "1679214b23842ca077c983664ed21725c33ec9b4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1915274000000002,
+    "input_tokens": 48,
+    "output_tokens": 13224,
+    "cache_read_tokens": 1435877,
+    "cache_creation_tokens": 79960,
+    "num_turns": 25,
+    "duration_ms": 250881,
+    "duration_api_ms": 151836,
+    "model": "claude-opus-5-5",
+    "session_id": "3a9336d8-b5b1-4c3a-be32-eaf389c340bf",
+    "stop_reason": "success",
+    "result_text": "Claims can now carry tags, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does**\n- **Claim form:** a new \"Tags\" field takes comma-separated text. Each tag is trimmed and lower-cased, repeats and blanks are dropped, and the tags are stored sorted.\n- **Claim row:** the tags show sorted, separated by \", \".\n- **Editing:** tags can only be changed through the editor, which already opens only for a draft. Editing an open or voided claim is refused with the usual error. The amount box in the row keeps the claim's tags when it saves.\n- **Split:** a claim split off another carries the original's tags.\n- **Due per tag:** below the sheet totals there is a \"Due by tag\" table with one figure per tag (`tag-<tag>-due-total`). Each figure adds up the due of the claims that count in the sheet's totals and carry that tag. It skips n/a, and a claim with two tags counts in both.\n- **Audit:** `CLAIM_ADDED` gets ` tags=a,b` at the end of the line, only when tags were given.\n\n**One design choice:** \"every tag ever used on the sheet\" is backed by a new `claim_tag` table, so a tag stays in the table at 0.00 even after it has been edited off every claim. The tests only cover tags still on some claim, so this part is untested. Without the table, a tag would vanish once no claim carries it.\n\n**Where the changes are**\n- New migration `V55__claim_tags.sql`: a `tags` column on `claim` and the `claim_tag` table. The existing as-of snapshots pick both up automatically.\n- Server:\n  - `ClaimTag` and `ClaimTagRepository` are new.\n  - `Claim.java` gets the tags field.\n  - `ClaimService` cleans up the tags on add and edit, carries them on split, and writes the audit field.\n  - `ClaimController` accepts `tags` from the form and returns it with each claim. It also has a new `GET /api/sheets/{id}/claim-tags`.\n- Front end: `claims.ts` (form field and row cell) and `people.ts` (the per-tag totals, loaded with the rest of the sheet).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1915274000000002,
+        "num_turns": 25,
+        "duration_ms": 250881,
+        "duration_api_ms": 151836,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp89.agent.jsonl",
+  "agent_diff_file": "cp89.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
