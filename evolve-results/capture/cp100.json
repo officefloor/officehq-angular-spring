@@ -1,0 +1,92 @@
+{
+  "checkpoint": 100,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp100_batch-all-or-nothing",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    45,
+    48,
+    58,
+    62,
+    65,
+    67,
+    68,
+    95,
+    98
+  ],
+  "replaced_tests": [
+    "cp45_bulk-settle.spec.ts::bulk settle",
+    "cp48_dated-settings.spec.ts::dated settings scenario 2",
+    "cp58_watch-and-notify.spec.ts::watch and notify scenario 1",
+    "cp62_archive-sheet.spec.ts::archive sheet scenario 2",
+    "cp65_void-settled.spec.ts::void settled scenario 3",
+    "cp67_active-people.spec.ts::active people scenario 1",
+    "cp67_active-people.spec.ts::active people scenario 3",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1",
+    "cp98_settle-batches.spec.ts::settle batches"
+  ],
+  "request": {
+    "spec": "A bulk settle is now all-or-nothing: if any selected claim cannot be settled by the signed-in\nuser (any refusal the single settle would give; going to PENDING is not a refusal), none of them is\nsettled, every one counts as refused and nothing is written. Otherwise every selected claim is\nsettled in list order as before, and after the claims' own lines one line BATCH_SETTLED\nbatch=<batch number> count=<claims in the batch> total=<the frozen figures of those SETTLED, added\nup> is written.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle is now all-or-nothing: if any selected claim cannot be settled by the signed-in\nuser (any refusal the single settle would give; going to PENDING is not a refusal), none of them is\nsettled, every one counts as refused and nothing is written. Otherwise every selected claim is\nsettled in list order as before, and after the claims' own lines one line BATCH_SETTLED\nbatch=<batch number> count=<claims in the batch> total=<the frozen figures of those SETTLED, added\nup> is written.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0cd8a8b1186ffac669deb370cdc0ad1742bb7218",
+  "reset_sha": "",
+  "preagent_sha": "1555e7f983540b4a6f07f95121c59f96836e03c7",
+  "prev_sha": "1555e7f983540b4a6f07f95121c59f96836e03c7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4883543999999999,
+    "input_tokens": 20,
+    "output_tokens": 5866,
+    "cache_read_tokens": 309172,
+    "cache_creation_tokens": 38640,
+    "num_turns": 10,
+    "duration_ms": 212691,
+    "duration_api_ms": 53746,
+    "model": "claude-opus-5-5",
+    "session_id": "d5d4726c-b271-442b-9202-9a66dba26a56",
+    "stop_reason": "success",
+    "result_text": "Bulk settle is now all-or-nothing, and all 4 Playwright tests pass with `bin/e2e`.\n\nThe whole change is in `src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java`:\n\n- **One transaction:** every selected claim is settled in list order, using the same rules as settling a single claim.\n- **One refusal refuses all:** if any claim is refused, or one of the ids isn't a claim on this sheet, the whole transaction is rolled back. Nothing is settled, every selected claim counts as refused, and no batch number is used up. Audit lines are only written when the transaction commits, so a rolled-back settle writes nothing to the audit file. A read-only user still gets every claim refused, as before.\n- **Going to PENDING still counts as settled**, as before.\n- **Batch line:** when the settle goes through, the claims' own audit lines come first, then `BATCH_SETTLED sheet=\u2026 by=\u2026 batch=N count=<claims in the batch> total=<sum>`. The total adds up the frozen figures of the claims that became SETTLED only, so PENDING claims and claims with no figure are left out.\n\nBulk open and bulk reassign still handle each claim separately. I moved their shared list-order sorting into a helper that settle also uses. The stored data and the front end didn't need changing: the batch columns already existed, and the screen already shows an empty batch when none was made.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4883543999999999,
+        "num_turns": 10,
+        "duration_ms": 212691,
+        "duration_api_ms": 53746,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp100.agent.jsonl",
+  "agent_diff_file": "cp100.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": {
+    "probe_cost_usd": 1.389878,
+    "probe_input_tokens": 20,
+    "probe_cache_read_tokens": 617050,
+    "probe_recall": 0.4411764705882353,
+    "probe_text": "I didn't change anything. Below is what the code does now, with names as they appear in it. \"Today\" always means the sheet's own `today` (`Sheet.today`), never the real clock.\n\n## 1. Figures and the rules behind them\n\n### Figures shown for a claim (`claims.ts` template, data from `ClaimController.ClaimView`)\n- **claim-number** (`number`): given when the claim is opened (`ClaimService.number`). It is the sheet's running number (`nextClaimNumber`). Once `periodNumberingFrom` is set and today has reached it, it becomes `<period>-n`, where the period is the one the claim's due-by falls in, or `X-n` if none. Numbers are kept when a claim is voided and never reused.\n- **claim-amount, claim-date, claim-note, claim-ref, claim-tags.** A negative amount is a correction. `ref` must be unique on the sheet, ignoring case. Tags are trimmed, lower-cased, de-duplicated and sorted.\n- **claim-due** (`dueOf` in `claims.ts`; on the server `ClaimService.due`/`liveDue`/`withLateCharge`):\n  - **Figure** (`figureOf` / `ClaimService.figure`): `settledDue` if the claim is settled. Otherwise `statedDue` if a statement binds it (`isBound`: stated and not PENDING). Otherwise the rate figure.\n  - **Rate figure** (`rateFigure` / `dueOn`): amount \u00d7 pct / 100, rounded to 2 decimals. The pct is the rate of the person's grade on the claim's date (`gradeOn`), in force on the claim's date (`Rate.inForce`: latest from-date on or before the date, ignored once past its `to`). With no rate the figure is **n/a**.\n  - **Rounding** (`Sheet.roundingOn` / `roundsHalfUp`): HALF_UP if `roundsOn` is before `policyDate` (today when that is blank), otherwise HALF_EVEN. `roundsOn` is the claim's own date; a correction uses the date of the claim it corrects. A negative amount rounds like its positive.\n  - **Late charge** (`withLateCharge`): applies only while the claim is open (OPEN/PENDING) and not deferred. `lateFrom` is `dueBy` plus the grace days for the grade in force on the claim's date (`graceOn`, default 0). For every full 30 days past `lateFrom`, it adds the `latePctOn(boundary)` percent of the running due, so it compounds; a 0.00 boundary adds nothing.\n  - **Floor**: the due is then raised to `floorOn(claim date)` (default 1.00).\n  - **Corrections** get no floor and no late charge. A settled claim shows its frozen `settledDue` as it is.\n- **claim-due-by** (`dueBy`): fixed when the claim is added as the `terms`-th business day after its date (`HolidayService.businessDaysAfter`), skipping weekends and the sheet's holidays.\n  - Terms come from `termsFor`: the person's own `terms`, else `terms-<grade>` for the grade on the claim's date, else the sheet's `terms` (default 14).\n  - Later changes to terms, or edits and re-dates of the claim, leave it alone.\n  - Adding a holiday re-fixes `dueBy` for every claim that is not SETTLED or VOID and is due on or after that holiday, using its stored `terms`.\n- **claim-overdue** (`overdue` / `RollupService.isOverdue`): open, not deferred, and `lateFrom` is before today.\n- **claim-deferred / claim-deferred-until** (`deferred` / `isDeferredOn`): OPEN and today is before `deferredUntil`. A deferred claim:\n  - counts in no total and is not overdue;\n  - cannot be settled or split;\n  - is unbound by a statement.\n\n  `defer` needs an OPEN claim and a date after today.\n- **claim-status**: DRAFT \u2192 OPEN \u2192 SETTLED; OPEN \u2192 PENDING (a clerk settling above the limit); PENDING \u2192 SETTLED (approve) or OPEN (reject); VOID from DRAFT/OPEN/PENDING, or from SETTLED in limited cases (see permissions). The allowed moves are in `ClaimStatus.canMoveTo`, with extra checks in `changeStatus`.\n- **claim-period**: the period whose dates contain `dueBy`, not the claim's date.\n- **claim-late-entry**: `dueBy` fell in a soft-closed period when the claim was added. A split copies this from the original.\n- **claim-stated**: whether the person's last statement bound the claim.\n- **claim-batch**: the bulk-settle batch number. Reject clears it.\n- **claim-opened-by, claim-corrects, claim-split-from, claim-proofs, claim-reminded** (remind is allowed once per today, OPEN/PENDING only).\n- **claim-log-line**: one line per status: who changed it, today at that time, and the due at that moment.\n- **claim-comments-line.**\n\n### Which claims count (`Person.countsLive`, mirrored by `liveClaims`/`leftOut` in `people.ts`)\nA claim counts if its status counts (OPEN, PENDING or SETTLED; `ClaimStatus.counts`) and:\n- it is not deferred today; and\n- it is not open and unbound while either:\n  - its date falls inside one of the person's holds (`DatedHold.covers`, both ends inclusive, open-ended if there is no `to`), or\n  - today has reached the person's retirement date (`isRetiredOn`).\n\nSettled claims and statement-bound claims always count, holds or not.\n\n### Person figures (`people.ts` computeds; the server copy is `RollupService.snapshot`)\n- **person-claimed** (`claimedBy`): the sum of the amounts of counted claims, corrections included.\n- **person-due-total** (`uncappedDueBy` \u2192 `dueBy`): the sum of the counted claims' dues, skipping n/a.\n  - It is **n/a** when none of these grades has a rate in force today (the grade today, plus each counted claim's grade on its date) and no counted claim has a figure.\n  - It is then capped at `Sheet.cap` in force today (`atMost` / `capped`).\n- **person-excess** (`excessBy`): how far the uncapped due-total is above the cap.\n- **person-settled-total / person-open-total** (`splitBy`): the dues of counted SETTLED claims and of counted OPEN+PENDING claims. Neither is capped.\n- **person-overdue-total / person-overdue-count** (`overdueTotalBy`, `overdueBy`).\n- **person-aged-0-30 / 31-60 / 61** (`agedBy`): open counted claims bucketed by days since the claim's date. Claims dated in the future go in 0\u201330.\n- **person-active** (`activeIds`): has a counted open claim dated within the 30 days up to today.\n- **person-backing** (`backingBy`): the frozen `settledDue` of the person's patrons' SETTLED claims dated within the 90 days up to today.\n- **person-grade**: the grade in force today. Every rule about a claim instead uses the grade on the claim's date.\n- **person-retired / person-retired-from.** The list hides a person as soon as a retirement date is set (`retiredFrom !== null`), unless \"show retired\" is ticked.\n- **person-stated-total, person-statement-count, person-statement-date.**\n- **Per-period due for each person** (`periodDueBy` / `personPeriodDueTotals`):\n  - for a closed or soft-closed period: the frozen `closedPersonTotals`;\n  - otherwise: today's dues of the claims due by a date in the period that counted at the end of the period (`statusAtEndOf`).\n\n### Sheet totals\n- **rollup-claimed-total**: a plain sum.\n- **rollup-due-total** and **rollup-overdue-total**: `trimmedSum`. With 3 or more people that have a figure, the single highest and lowest are dropped.\n- **rollup-settled-total** and **rollup-open-total**: plain sums.\n- **rollup-overdue-count.**\n- **Tag due totals and month due totals** (`tagDueTotals`, `monthDueTotals`).\n- **period-due-total** (`periodDueTotals`).\n- **Summary panel:**\n  - by grade: people not retired, their due-totals summed, plus how many are active;\n  - count per status;\n  - count per void reason.\n\n### What gets frozen, and when\n- **Settle** (`changeStatus` \u2192 SETTLED): `settledDue` = `liveDue(statedDue if bound, else rate figure)`, with the late charge earned by today and the floor.\n- **Approve**: freezes the claim's current due.\n- **Resettle** (steward only): re-freezes at today's rate figure, ignoring any statement.\n- **Statement** (`StatementService.take`): binds each counted claim's *figure*. The late charge and floor still follow today on top of it. Claims that don't count are unbound. It records the person's capped due-total.\n  - An as-of statement (`takeAsOf`) rebuilds everything as of an earlier date: `Sheet.asOf`, `Person.asOf`, `ratesAsOf`.\n  - **Cancel** (steward only) unbinds every bound claim. Earlier bindings are not restored.\n  - **Reassign** and **split** unbind the claim. **Redate** keeps the binding.\n- **Close / soft-close a period** (`PeriodService.close`/`softClose`): freezes each person's total and the period's total.\n  - **Closed**: any add or change to a claim whose `dueBy` is in the period is refused (`refuseInClosedPeriod`, also checked on screen by `inClosedPeriod`).\n  - **Soft-closed**: claims can still change; new ones are flagged as late entries.\n  - **Auto-close**: when today changes and `graceDays` is set, every open, not-soft-closed period whose to-date plus the grace days is before the new today is closed.\n  - **Reopen** makes the totals live again.\n- Changing today also releases every claim editor lock (`unlockAll`).\n\n### Who may do what\n- **Roles**: clerk (the default), steward, viewer. A delegation (`delegatorOf`) makes someone act as steward while it covers today and the delegator is still a steward.\n- **Permission matrix** (`STANDING_PERMISSIONS`, which a sheet can override): open, settle, void and close are clerk+steward; reassign and reopen are steward only.\n- **Steward-only, written into the code:** approve/reject, resettle, redate, cancel a statement, archive, delegate, and voiding a SETTLED claim (only within `VOID_SETTLED_DAYS` = 7 days of when it was settled; the frozen figure then leaves the totals).\n- **Separation of duties:** whoever opened a claim, or last edited it, cannot settle or approve it.\n- **Clerk limit** (`aboveClerkLimit`, the limit in force today): a clerk settling a due above it makes the claim PENDING instead.\n- **Proof threshold** (the grade's own threshold on the claim's date, else the sheet's): a due above it needs at least 1 proof before settle or approve.\n- **Note threshold**: a due above it cannot be opened with an empty note.\n- **Editing**: only DRAFT claims can be edited, and only by whoever holds the editor lock (`lockedBy`).\n- **Retirement**: no claim may be dated after the person's `retiredFrom` (add, edit, redate, or move to a retired person).\n- **Corrections** must name a SETTLED claim of the same person.\n- **Void reasons**: once the sheet has a list, voiding requires a reason from it.\n- **Read-only**: viewers and archived sheets are refused by `ViewerGuard`; bulk endpoints still respond but report everything as refused. As-of view is read-only (`AsOfGuard`).\n\n### Imports, holds and closed periods\n- **Paste** (`PasteService`), one line per claim: `name,amount,date,note[ #ref]`.\n  - All or nothing: any bad line refuses the whole paste.\n  - The name must already exist (case ignored). The amount may have at most 2 decimals. The date is yyyy-mm-dd or blank.\n  - A blank date takes the `entryDate`, else today.\n  - A ref repeated within the paste is refused.\n  - Each line goes through the normal `add` and creates a DRAFT claim.\n- **Quick add**: creates the person with grade A if new, plus a DRAFT claim.\n- **Bulk**: open and move go claim by claim; settle is all or nothing and gets a batch number.\n- **Holds and closed periods**: covered above.\n\n## 2. How hard it was to follow\n\nIt is scattered and tangled. The core money rule (figure \u2192 late charge \u2192 floor \u2192 n/a \u2192 cap) exists in at least four copies:\n- `ClaimService`;\n- `RollupService` (its own private `figure`);\n- `StatementService` (its own `rateFigure` for as-of statements);\n- the Angular front end, which recomputes every figure the screen shows in `claims.ts`, `people.ts` and `periods.ts` rather than reading them from the server.\n\nThe \"counts\" rule is also split between `Person`, `ClaimStatus` and `people.ts`. Some comments contradict the code. For example, `PersonService.retire` says retired people's \"claims keep counting\", but `countsLive` drops their unbound open claims once the retirement date is reached. A new developer would have to read about a dozen files and keep the copies in step by hand."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
