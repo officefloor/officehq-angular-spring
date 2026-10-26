@@ -1,0 +1,64 @@
+{
+  "checkpoint": 94,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp94_proof-threshold-per-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ac37d1414d6677ca11220aa4187937897ed8c213",
+  "reset_sha": "",
+  "preagent_sha": "5c797ac038b3b9f60a306a74b65172b21029bf66",
+  "prev_sha": "5c797ac038b3b9f60a306a74b65172b21029bf66",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9043771999999999,
+    "input_tokens": 4,
+    "output_tokens": 70,
+    "cache_read_tokens": 73046,
+    "cache_creation_tokens": 752,
+    "num_turns": 1,
+    "duration_ms": 1717,
+    "duration_api_ms": 82906,
+    "model": "claude-opus-5-5",
+    "session_id": "f032fbb0-ca29-4348-8a2c-254141c9ebf3",
+    "stop_reason": "success",
+    "result_text": "That notice is only the watch I set on the test run timing out. The run had already finished, and all 4 tests passed, so nothing else is needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9043771999999999,
+        "num_turns": 1,
+        "duration_ms": 1717,
+        "duration_api_ms": 82906,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp94.agent.jsonl",
+  "agent_diff_file": "cp94.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
