@@ -6,6 +6,7 @@ import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, ke
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
+import { Header } from '../header/header';
 import { Summary, SummaryPerson } from '../summary/summary';
 
 interface Person {
@@ -48,8 +49,14 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Summary],
+  imports: [Claims, Header, Periods, Summary],
   template: `
+    <app-header
+      [peopleCount]="people().length"
+      [statuses]="claimStatuses()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="overdueTotal()"
+    />
     <app-periods [figures]="countedFigures()" />
     <app-summary [people]="summaryPeople()" [figures]="countedFigures()" [statuses]="claimStatuses()" />
 
