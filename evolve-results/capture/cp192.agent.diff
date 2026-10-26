@@ -1,0 +1,160 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 4de1dcfc..0d7c1cd8 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { FigurePipe } from '../../core/figure.pipe';
+ import { Session } from '../../core/session';
+ import { money } from '../claims/claims-api';
+-import { PersonView } from '../people/people-api';
++import { PersonView, nameWithGrade } from '../people/people-api';
+ import { Pools } from '../pools/pools-api';
+ import { CrewView, Crews, crewIds } from './crews-api';
+ 
+@@ -17,7 +17,7 @@ import { CrewView, Crews, crewIds } from './crews-api';
+   template: `
+     <h3 data-testid="crew-name">{{ crew().name }}</h3>
+     <p>
+-      Lead <span data-testid="crew-lead">{{ nameOf(crew().leadId) }}</span>,
++      Lead <span data-testid="crew-lead">{{ leadName() }}</span>,
+       due-total <span data-testid="crew-due-total">{{ dueTotal() | figure }}</span>
+     </p>
+     <ul [attr.aria-label]="'Members of ' + crew().name">
+@@ -65,6 +65,13 @@ export class CrewRow {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+   }
+ 
++  /** The lead's name with their grade in force on the sheet's today; blank when there is no lead. */
++  protected readonly leadName = computed(() => {
++    const id = this.crew().leadId;
++    const lead = id === null ? undefined : this.people().find((p) => p.id === id);
++    return lead === undefined ? '' : nameWithGrade(lead, this.session.sheet()?.today);
++  });
++
+   protected nameOf(id: number | null): string {
+     return id === null ? '' : this.namesById().get(id) ?? '';
+   }
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index a86227aa..afb516be 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -24,6 +24,11 @@ export function gradeOn(grades: readonly GradeView[], date: string): Grade | nul
+   return inForce?.grade ?? null;
+ }
+ 
++/** The person's name as the screen shows it: `<name> (<grade in force on the date>)`. */
++export function nameWithGrade(person: Pick<PersonView, 'name' | 'grade' | 'grades'>, date: string | undefined): string {
++  return `${person.name} (${(date === undefined ? null : gradeOn(person.grades, date)) ?? person.grade})`;
++}
++
+ /** A hold put on a person, both days included. */
+ export interface HoldView {
+   /** The date the hold starts (yyyy-mm-dd), or null when it holds from the beginning of time. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ec28ff42..c3316d7a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -28,7 +28,7 @@ import { SheetHeader } from '../summary/sheet-header';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
+ import { VoidReasons } from '../void-reasons/void-reasons-api';
+-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
++import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn, nameWithGrade } from './people-api';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
+@@ -289,7 +289,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+                     (change)="selectPerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+                 </td>
+                 <td>
+-                  <span data-testid="person-name">{{ p.name }}</span>
++                  <span data-testid="person-name">{{ shownName(p) }}</span>
+                   <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                     [disabled]="moving() === p.id" [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                   <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+@@ -1289,10 +1289,16 @@ export class People {
+ 
+   /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
+   protected patronNames(person: PersonView): string {
+-    const nameOf = new Map(this.people().map((p) => [p.id, p.name]));
+-    return sharesOf(person.patronIds).map(([id, share]) => [nameOf.get(id) ?? '', share] as const)
+-      .filter(([n]) => n !== '').sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+-      .map(([n, share]) => `${n} ${money(Number(share))}`).join(', ');
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    return sharesOf(person.patronIds).map(([id, share]) => [byId.get(id), share] as const)
++      .filter((e): e is readonly [PersonView, bigint] => e[0] !== undefined)
++      .sort(([a], [b]) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
++      .map(([p, share]) => `${this.shownName(p)} ${money(Number(share))}`).join(', ');
++  }
++
++  /** The person's name as the screen shows it, with their grade in force on the sheet's today. */
++  protected shownName(person: PersonView): string {
++    return nameWithGrade(person, this.session.sheet()?.today);
+   }
+ 
+   /** The person's backing: over their patrons, the patron's settled figure (their SETTLED claims dated
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java
+index 11b88ce7..e35d6796 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.rollup;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
+ import java.util.Deque;
+@@ -14,29 +15,34 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.setting.SheetParentLink;
+ import net.officefloor.hq.app.setting.SheetParentRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The people of a sheet's tree (its top sheet, found up its parents, and all the top sheet's
+  * descendants) whose name or an alias contains a text, case ignored: the sheet's own people first in
+- * list order, then the other sheets' by sheet id, each with their due-total as their sheet shows it.
++ * list order, then the other sheets' by sheet id, each shown as {@code <name> (<grade>)} with the grade
++ * in force on their sheet's today, and with their due-total as their sheet shows it.
+  */
+ @Service
+ public class TreeSearchService {
+ 
+-    /** A person found: their sheet, name, and due-total with two decimals, or "n/a". */
++    /** A person found: their sheet, name with their grade in force on that sheet's today, and due-total with two decimals, or "n/a". */
+     public record Found(String sheetId, String name, String dueTotal) {
+     }
+ 
+     private final SheetParentRepository parents;
+     private final PersonRepository people;
+     private final Rollup rollup;
++    private final SheetService sheets;
+ 
+-    public TreeSearchService(SheetParentRepository parents, PersonRepository people, Rollup rollup) {
++    public TreeSearchService(SheetParentRepository parents, PersonRepository people, Rollup rollup,
++            SheetService sheets) {
+         this.parents = parents;
+         this.people = people;
+         this.rollup = rollup;
++        this.sheets = sheets;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -52,11 +58,13 @@ public class TreeSearchService {
+     private List<Found> searchSheet(String sheetId, String needle) {
+         Rollup.Snapshot figures = rollup.snapshot(sheetId);
+         List<Found> found = new ArrayList<>();
++        LocalDate today = null;
+         for (Person person : people.findInListOrder(sheetId)) {
+             if (!matches(person, needle)) continue;
+             Rollup.Figures theirs = figures.people().get(person.getId());
+             BigDecimal due = theirs == null ? null : theirs.dueTotal();
+-            found.add(new Found(sheetId, person.getName(),
++            if (today == null) today = sheets.today(sheetId);
++            found.add(new Found(sheetId, person.getName() + " (" + person.gradeOn(today) + ")",
+                     due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString()));
+         }
+         return found;
