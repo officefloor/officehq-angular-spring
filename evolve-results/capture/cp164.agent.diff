@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 8b17dbba..b5451f54 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -24,6 +24,11 @@ function refUsed(e: unknown): boolean {
+   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
+     && e.error.message.startsWith('The reference ');
+ }
++/** Whether the store refused a correction because it exceeds what remains of the claim it corrects. */
++function overCorrected(e: unknown): e is HttpErrorResponse {
++  return e instanceof HttpErrorResponse && e.status === 422 && typeof e.error?.message === 'string'
++    && e.error.message.startsWith('A correction may not exceed ');
++}
+ /** Whether the store refused opening a claim because its person has as many open claims in its period as the period's cap. */
+ function capReached(e: unknown): boolean {
+   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
+@@ -379,13 +384,19 @@ export class PersonClaims {
+ 
+   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
+    *  sheet's today changes. A claim that cannot be edited (not a draft, or due by a date inside a closed period)
+-   *  is refused and takes no lock. A viewer's edit, and a claim another user's editor locks, are refused
++   *  is refused and takes no lock; one due inside a closed period opens the editor on its values. A viewer's edit, and a claim another user's editor locks, are refused
+    *  too, the editor showing its values without the lock; its save is refused. */
+   protected async edit(claim: ClaimView): Promise<void> {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     this.claimError.set(null);
+     if (this.inClosedPeriod(claim.dueBy)) {
++      // The editor shows the claim's values without the lock; its save is refused.
++      const was = this.editingId();
++      if (was !== null && was !== claim.id) this.release(sheet.id, was);
++      this.setEditing(claim.id);
++      this.fill(claim);
++      this.error.set('');
+       this.claimError.set({ id: claim.id, message: 'This claim\'s due-by is inside a closed period, so it cannot be edited.' });
+       return;
+     }
+@@ -889,7 +900,9 @@ export class PersonClaims {
+         // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
+         this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
+       } else {
+-        this.error.set(uncorrected
++        this.error.set(uncorrected && overCorrected(e)
++          ? e.error.message
++          : uncorrected
+           ? 'A correction must name, by number, a settled claim of this person.'
+           : conflict
+           ? 'A claim whose due-by is inside a closed period cannot be added or changed.'
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index f599c426..0aa315a2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -45,6 +45,14 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     /** The person's claim of the number, if any. */
+     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
+ 
++    /** The total amount of the person's corrections of the claim of the number, other than the claim given
++     *  (null: none), VOID and DELETED ones left out; 0 when there is none. */
++    @Query("select coalesce(sum(c.amount), 0) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
++            + " and c.corrects = :number and c.amount < 0 and (:id is null or c.id <> :id)"
++            + " and c.status not in (net.officefloor.hq.app.claim.ClaimStatus.VOID, net.officefloor.hq.app.claim.ClaimStatus.DELETED)")
++    java.math.BigDecimal correctedTotal(@Param("sheetId") String sheetId, @Param("personId") Long personId,
++            @Param("number") String number, @Param("id") Long id);
++
+     /** The claim, locked until the transaction ends, so two status changes cannot both pass. */
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index fefecdab..45781a53 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -98,7 +98,7 @@ public class ClaimService {
+         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
+         refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, dated);
+-        refuseIfNotCorrecting(sheetId, personId, amount, corrects);
++        refuseIfNotCorrecting(sheetId, personId, amount, corrects, null);
+         String reference = refOf(ref);
+         refuseIfRefUsed(sheetId, reference, null);
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+@@ -208,7 +208,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                     "A claim with lines has the total of its lines as its amount.");
+         }
+-        refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
++        refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
+         String reference = refOf(ref);
+         refuseIfRefUsed(sheetId, reference, claim.getId());
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+@@ -863,15 +863,22 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person. */
+-    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects) {
++    /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person,
++     *  and does not exceed what remains of that claim: its amount less the corrections already made against it
++     *  (other than the claim given, null: none), VOID and DELETED ones left out. */
++    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects, Long id) {
+         if (amount.signum() >= 0) return;
+-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+-                .filter(c -> c.getStatus() == ClaimStatus.SETTLED).isPresent();
+-        if (!settled) {
++        Claim target = corrects == null ? null : claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
++                .filter(c -> c.getStatus() == ClaimStatus.SETTLED).orElse(null);
++        if (target == null) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "A negative amount must name, by number, a settled claim of the same person that it corrects.");
+         }
++        BigDecimal remains = target.getAmount().add(claims.correctedTotal(sheetId, personId, corrects, id));
++        if (amount.negate().compareTo(remains) > 0) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "A correction may not exceed what remains of the claim it corrects (" + remains.setScale(2) + ").");
++        }
+     }
+ 
+     /** Refuse a claim dated after its person's retirement date. */
