@@ -12,6 +12,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.setting.Role;
@@ -36,6 +38,7 @@ public class TransferService {
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final SettingService settings;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
@@ -46,7 +49,7 @@ public class TransferService {
 
     public TransferService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimService claimService,
-            StatementRepository statements, PoolRepository pools, SettingService settings, SheetService sheets,
+            StatementRepository statements, PoolRepository pools, CrewRepository crews, SettingService settings, SheetService sheets,
             SheetRepository sheetRows, SheetHistory history, NameTree tree, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -55,6 +58,7 @@ public class TransferService {
         this.claimService = claimService;
         this.statements = statements;
         this.pools = pools;
+        this.crews = crews;
         this.settings = settings;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -71,8 +75,8 @@ public class TransferService {
      * claim that had a number takes the other sheet's next one, in the order the claims were opened (by the
      * sheet's today when each was opened, then by the order they were added); figures a statement bound are
      * kept and their statements are carried, but references are not. The person then leaves this sheet entirely:
-     * their patron links (both ways), pool memberships, watches, holds and statements are dropped. Refused
-     * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
+     * their patron links (both ways), pool and crew memberships, watches, holds and statements are dropped. Refused
+     * unless the user is a steward of this sheet, for a retired person, for the lead of a crew, to this sheet itself, to an archived
      * sheet, and when their name or an alias is on another sheet of the other sheet's tree. When the person's
      * name or an alias is already that of someone on the other sheet, the arriving person is merged into
      * them, as a merge does (refused when that someone is retired, or when the names are those of more than
@@ -90,6 +94,12 @@ public class TransferService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (from.isRetired()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
+        }
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (crew.getLeadId().equals(from.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The lead of the crew " + crew.getName() + " cannot be transferred.");
+            }
         }
         sheets.load(toSheetId);
         if (sheetRows.isArchived(toSheetId)) {
@@ -168,6 +178,10 @@ public class TransferService {
             pool.removeMember(from.getId());
         }
         pools.flush();
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            crew.removeMember(from.getId());
+        }
+        crews.flush();
         statements.deleteBySheetIdAndPersonId(sheetId, from.getId());
         watches.deleteByPersonId(from.getId());
         people.delete(from);

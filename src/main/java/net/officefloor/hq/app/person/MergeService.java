@@ -6,6 +6,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.setting.Role;
@@ -27,19 +29,21 @@ public class MergeService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final SettingService settings;
     private final Rollup rollup;
     private final Audit audit;
 
     public MergeService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
-            ClaimRepository claims, StatementRepository statements, PoolRepository pools, SettingService settings,
-            Rollup rollup, Audit audit) {
+            ClaimRepository claims, StatementRepository statements, PoolRepository pools, CrewRepository crews,
+            SettingService settings, Rollup rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
         this.claims = claims;
         this.statements = statements;
         this.pools = pools;
+        this.crews = crews;
         this.settings = settings;
         this.rollup = rollup;
         this.audit = audit;
@@ -52,7 +56,8 @@ public class MergeService {
      * (or, having none, becomes the merged person's); the merged name and aliases become aliases of the other; the merged person's patrons are added
      * to the other's (never the other themselves, nor twice), anyone naming the merged person as patron names
      * the other instead (not twice), and the merged person's pool memberships move to the other (their shares
-     * added when the other is already a member). Their holds, watchers and contact are dropped,
+     * added when the other is already a member), as do their places in crews (as lead or member; a member place
+     * is dropped when the other is already in the crew). Their holds, watchers and contact are dropped,
      * and they leave the sheet. Refused unless the user is a steward of the sheet, for a merge into the
      * person themselves, and when either of them is retired. The person merged into.
      */
@@ -117,6 +122,10 @@ public class MergeService {
             pool.moveMember(from.getId(), into.getId());
         }
         pools.flush();
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            crew.movePerson(from.getId(), into.getId());
+        }
+        crews.flush();
 
         watches.deleteByPersonId(from.getId());
 

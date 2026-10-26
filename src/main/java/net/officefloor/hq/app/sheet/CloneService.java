@@ -83,7 +83,7 @@ public class CloneService {
     /**
      * Clone the sheet to another id, which must never have been used. The clone gets the sheet's today,
      * settings, roles, rates, holidays, void reasons, templates, people (with everything they have), their
-     * patrons, the pools, the periods (all open) and the claims (status, frozen figures, dates, notes, logs),
+     * patrons, the pools, the crews, the periods (all open) and the claims (status, frozen figures, dates, notes, logs),
      * whose numbers are given afresh by the clone's own numbering in the order they were opened (by the
      * sheet's today when each was opened, then by the order they were added); statements are not copied.
      * Refused unless the user is a steward of the sheet, and when the other id is this sheet's or was used.
@@ -147,6 +147,26 @@ public class CloneService {
                     + "VALUES (?, ?, ?, ?, ?, ?)", poolIds.get(id(member, "POOL_ID")),
                     personIds.get(id(member, "PERSON_ID")), poolIds.get(id(member, "MEMBER_POOL_ID")),
                     member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"));
+        }
+
+        Map<Long, Long> crewIds = new HashMap<>();
+        for (Map<String, Object> crew : jdbc.queryForList(
+                "SELECT id, name, lead_id FROM crew WHERE sheet_id = ? ORDER BY id", sheetId)) {
+            KeyHolder key = new GeneratedKeyHolder();
+            jdbc.update((connection) -> {
+                PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO crew (sheet_id, name, lead_id) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
+                insert.setString(1, toSheetId);
+                insert.setString(2, (String) crew.get("NAME"));
+                insert.setLong(3, personIds.get(id(crew, "LEAD_ID")));
+                return insert;
+            }, key);
+            crewIds.put(id(crew, "ID"), key.getKey().longValue());
+        }
+        for (Map<String, Object> member : jdbc.queryForList("SELECT m.crew_id, m.person_id FROM crew_member m "
+                + "JOIN crew c ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id", sheetId)) {
+            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)", crewIds.get(id(member, "CREW_ID")),
+                    personIds.get(id(member, "PERSON_ID")));
         }
 
         // The claims that had a number take the clone's, in the order they were opened.

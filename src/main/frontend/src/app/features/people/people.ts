@@ -10,6 +10,8 @@ import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { PoolsList, personCutTotals } from '../pools/pools';
 import { Pools } from '../pools/pools-api';
+import { CrewsList } from '../crews/crews';
+import { Crews } from '../crews/crews-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
@@ -45,7 +47,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -57,6 +59,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
       <app-pools [people]="people()" />
+      <app-crews [people]="people()" [dues]="dueCents()" />
       <section aria-labelledby="people-heading">
         <h2 id="people-heading">People</h2>
         <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
@@ -446,6 +449,7 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly statementsApi = inject(StatementsApi);
   private readonly pools = inject(Pools);
+  private readonly crews = inject(Crews);
   private readonly sheetPot = inject(SheetPot);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
@@ -659,6 +663,8 @@ export class People {
     const figures = this.people().map((p) => this.overdueByPerson().get(p.id)?.cents ?? 0);
     return { count, cents: trimmedSum(figures) };
   });
+  /** Each person's due-total in cents, by person id; null when it is n/a. */
+  protected readonly dueCents = computed(() => new Map(this.people().map((p) => [p.id, this.dueCentsOf(p)])));
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */
   private readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.sheetPot.pot(),
     this.session.sheet()?.today));
@@ -961,7 +967,7 @@ export class People {
   protected readonly merging = signal<number | null>(null);
 
   /** Merge the person into the one chosen in the row's select, then re-read the sheet's people, claims,
-   *  statements and pools, which the merge changes. */
+   *  statements, pools and crews, which the merge changes. */
   protected async merge(person: PersonView, select: HTMLSelectElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.merging() !== null) return;
@@ -980,7 +986,7 @@ export class People {
     try {
       await this.api.merge(sheet.id, person.id, intoId);
       if (this.session.sheet()?.id !== sheet.id) return;
-      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id)]);
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id), this.crews.refresh(sheet.id)]);
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
@@ -995,7 +1001,7 @@ export class People {
   protected readonly transferring = signal<number | null>(null);
 
   /** Transfer the person to the sheet whose id is entered in the row, then re-read the sheet's people,
-   *  claims, statements and pools, which the transfer changes. */
+   *  claims, statements, pools and crews, which the transfer changes. */
   protected async transfer(person: PersonView, input: HTMLInputElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet || this.transferring() !== null) return;
@@ -1014,7 +1020,7 @@ export class People {
     try {
       await this.api.transfer(sheet.id, person.id, to);
       if (this.session.sheet()?.id !== sheet.id) return;
-      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id)]);
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id), this.crews.refresh(sheet.id)]);
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
