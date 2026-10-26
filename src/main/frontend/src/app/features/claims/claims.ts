@@ -173,6 +173,11 @@ export class Claims {
 
   protected edit(c: Claim): void {
     this.clearRowError(c.id);
+    if (c.status !== 'DRAFT') {
+      // an open claim is changed by voiding it and adding a new one
+      this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
+      return;
+    }
     this.editingId.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);

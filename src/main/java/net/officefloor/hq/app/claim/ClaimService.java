@@ -59,12 +59,18 @@ public class ClaimService {
         return added;
     }
 
-    /** Edits a claim; refused when it is dated in a closed period, or the edit would date it in one. */
+    /**
+     * Edits a claim; refused unless it is a draft, when it is dated in a closed period, or when the edit would date
+     * it in one. An open claim is changed by voiding it and adding a new one.
+     */
     @Transactional
     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
         LocalDate on = dateOrToday(sheetId, date);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
+        }
         refuseInClosedPeriod(sheetId, claim.getDate());
         refuseInClosedPeriod(sheetId, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -102,9 +108,6 @@ public class ClaimService {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
             claim.setOpenedBy(by);
-        } else if (next == ClaimStatus.VOID) {
-            // the number is cleared, never given to another claim; the audit line still carries it
-            claim.setNumber(null);
         }
         Person person = person(sheetId, claim.getPersonId());
         String due = null;
