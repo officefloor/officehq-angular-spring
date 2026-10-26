@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "352c2af2e72f1b53dbbbb404ffcc585befc4741e",
+  "reset_sha": "",
+  "preagent_sha": "90a46d6b70b51cb711284005049b4ee27f861f17",
+  "prev_sha": "90a46d6b70b51cb711284005049b4ee27f861f17",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.098582,
+    "input_tokens": 40,
+    "output_tokens": 12993,
+    "cache_read_tokens": 1121130,
+    "cache_creation_tokens": 76792,
+    "num_turns": 21,
+    "duration_ms": 317956,
+    "duration_api_ms": 156236,
+    "model": "claude-opus-5-5",
+    "session_id": "ccae1b4b-0057-42bb-891a-370b1e96a689",
+    "stop_reason": "success",
+    "result_text": "Each pool member's line now shows a cut for every period whose to-date is on or before the sheet's today, in an element with test id `pool-cut-<period name>`. All 4 Playwright tests in `bin/e2e` pass.\n\n**How it works:** the app already keeps a history of each sheet, used by its as-of view. For each finished period, the pools screen asks the server for the pools, crews, people (holds and retirements included) and pot as they stood at the period's to-date. It then runs the existing cut calculation with that to-date as the sheet's today. If the pool didn't exist yet, wasn't balanced, had no pot, or the member's dates didn't cover that day, the field is empty but still shown.\n\nEverything is in the front end; the server, data and audit records didn't need to change:\n- **`core/as-of.interceptor.ts`**: a new small helper, `readAsOf(date)`. It sends a read for a given date, whatever date the screen itself is set to.\n- **The four read methods** for pools, crews, people and settings each take an optional `asOf` date.\n- **`features/pools/pools.ts`**: this is where the per-period cuts are fetched and shown. They're re-read when the sheet is loaded, or when its today or periods change.\n- **`features/people/people.ts`**: passes the periods to the pools screen.\n\n**Cost:** each finished period triggers four history reads, and the server rebuilds the sheet's past state for each one. That's fast with a few periods, but it grows with the number of periods.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.098582,
+        "num_turns": 21,
+        "duration_ms": 317956,
+        "duration_api_ms": 156236,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
