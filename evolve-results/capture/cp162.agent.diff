@@ -1,0 +1,162 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index b2e96bbd..18b4845f 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -394,6 +394,11 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/lines`, line));
+   }
+ 
++  /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
++  timeline(sheetId: string, id: number): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/claims/${id}/timeline`));
++  }
++
+   /** Remind an open or pending claim: refused for a claim in any other status, and for one already
+    *  reminded on the sheet's today. */
+   remind(sheetId: string, id: number): Promise<ClaimView> {
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 34c4a268..8b17dbba 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -194,6 +194,15 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
+           @if (editingId() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           }
++          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
++            [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
++          @if (timelines().get(c.id); as lines) {
++            <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
++              @for (line of lines; track $index) {
++                <li data-testid="claim-timeline-line">{{ line }}</li>
++              }
++            </ol>
++          }
+           @if (claimError()?.id === c.id) {
+             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+           }
+@@ -266,6 +275,8 @@ export class PersonClaims {
+   /** The claims whose inline amount is being saved, so a second press stores one change, not two. */
+   private readonly inlineSaving = new Set<number>();
+   protected readonly error = signal('');
++  /** Each shown claim timeline, by claim: its audit lines, newest first. */
++  protected readonly timelines = signal<ReadonlyMap<number, string[]>>(new Map());
+   /** The refusal of the last action taken on a claim's row, shown on that row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+ 
+@@ -628,6 +639,31 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Show the claim's timeline afresh: the audit lines about it, newest first. */
++  protected async showTimeline(claim: ClaimView): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.claimError.set(null);
++    this.setTimeline(claim.id, null);
++    try {
++      const lines = await this.api.timeline(sheet.id, claim.id);
++      if (this.session.sheet()?.id === sheet.id) this.setTimeline(claim.id, lines);
++    } catch {
++      if (this.session.sheet()?.id === sheet.id) {
++        this.claimError.set({ id: claim.id, message: 'The timeline could not be loaded.' });
++      }
++    }
++  }
++
++  private setTimeline(id: number, lines: string[] | null): void {
++    this.timelines.update((all) => {
++      const next = new Map(all);
++      if (lines === null) next.delete(id);
++      else next.set(id, lines);
++      return next;
++    });
++  }
++
+   /** Remind an OPEN or PENDING claim; the store refuses a claim in any other status and one already
+    *  reminded on the sheet's today. */
+   protected async remind(claim: ClaimView): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index a531027b..1093ca7c 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -8,7 +8,9 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import java.util.ArrayList;
+ import java.util.Collections;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Set;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+@@ -123,6 +125,32 @@ public class Audit {
+         return false;
+     }
+ 
++    /** A record's field: its value runs up to the next field or the end. */
++    private static final Pattern FIELD = Pattern.compile(" ([a-z][a-z-]*)=(.*?)(?= [a-z][a-z-]*=|$)");
++
++    /**
++     * The sheet's records about one claim exactly as the file holds them, newest first: with a number, those
++     * carrying number=<the number>; without, those carrying no number that name its person (compared as names
++     * are compared), amount and date together.
++     */
++    public List<String> claimLines(String sheetId, String number, String person, String amount, String date) {
++        List<String> found = new ArrayList<>();
++        for (String line : lines(sheetId, null)) {
++            Matcher head = HEAD.matcher(line);
++            if (!head.find()) continue;
++            Map<String, String> fields = new HashMap<>();
++            Matcher field = FIELD.matcher(line.substring(head.end()));
++            while (field.find()) fields.putIfAbsent(field.group(1), field.group(2));
++            boolean about = number != null
++                    ? number.equals(fields.get("number"))
++                    : !fields.containsKey("number") && fields.containsKey("person")
++                            && Person.keyOf(fields.get("person")).equals(Person.keyOf(person))
++                            && amount.equals(fields.get("amount")) && date.equals(fields.get("date"));
++            if (about) found.add(line);
++        }
++        return found;
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 556b20ce..87a4b6c7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -144,6 +144,12 @@ public class ClaimController {
+         return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+     }
+ 
++    /** The claim's timeline: the audit lines about it, newest first. */
++    @GetMapping("/claims/{id}/timeline")
++    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id) {
++        return service.timeline(sheetId.trim(), id);
++    }
++
+     /** Every tag ever used on the sheet, by name. */
+     @GetMapping("/tags")
+     public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8c7421d6..fefecdab 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1011,6 +1011,16 @@ public class ClaimService {
+         return entry != null ? entry : sheets.today(sheetId);
+     }
+ 
++    /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
++    @Transactional(readOnly = true)
++    public List<String> timeline(String sheetId, long id) {
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        Person person = person(sheetId, claim.getPersonId());
++        return audit.claimLines(sheetId, claim.getNumber(), person.getName(),
++                claim.getAmount().toPlainString(), claim.getDate().toString());
++    }
++
+     /** Every tag ever used on the sheet, by name. */
+     @Transactional(readOnly = true)
+     public List<String> tags(String sheetId) {
