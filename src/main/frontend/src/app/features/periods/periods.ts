@@ -53,7 +53,7 @@ const YEAR = /^\d{4}$/;
       </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -65,6 +65,7 @@ const YEAR = /^\d{4}$/;
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -72,6 +73,10 @@ const YEAR = /^\d{4}$/;
                   [disabled]="closing() === p.id" [attr.aria-label]="'Soft-close period ' + p.name">Soft-close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+                <button type="button" data-testid="period-lock" (click)="lock(p, true)"
+                  [disabled]="closing() === p.id" [attr.aria-label]="'Lock period ' + p.name">Lock</button>
+                <button type="button" data-testid="period-unlock" (click)="lock(p, false)"
+                  [disabled]="closing() === p.id" [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -234,7 +239,30 @@ export class Periods {
         const status = e instanceof HttpErrorResponse ? e.status : 0;
         this.periodError.set({ id: period.id, message: status === 403
           ? 'Your role may not reopen a period on this sheet.'
-          : status === 409 ? 'This period is not closed.' : 'The period could not be reopened.' });
+          : status === 409 ? 'This period is locked, or not closed.' : 'The period could not be reopened.' });
+      }
+    } finally {
+      this.closing.set(null);
+    }
+  }
+
+  /** Lock (or unlock) a period; the store refuses anyone but a steward, a lock of a locked period and an
+   *  unlock of one not locked. */
+  protected async lock(period: PeriodView, locked: boolean): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.closing() !== null) return;
+    this.periodError.set(null);
+    this.closing.set(period.id);
+    try {
+      const changed = locked ? await this.api.lock(sheet.id, period.id) : await this.api.unlock(sheet.id, period.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(changed);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const status = e instanceof HttpErrorResponse ? e.status : 0;
+        this.periodError.set({ id: period.id, message: status === 403
+          ? 'Only a steward may lock or unlock a period.'
+          : status === 409 ? (locked ? 'This period is already locked.' : 'This period is not locked.')
+          : locked ? 'The period could not be locked.' : 'The period could not be unlocked.' });
       }
     } finally {
       this.closing.set(null);

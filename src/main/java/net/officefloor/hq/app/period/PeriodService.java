@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -236,12 +237,36 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
         settings.refuseUnlessPermitted(sheetId, user, "reopen", "Your role may not reopen a period on this sheet.");
+        if (period.isLocked()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is locked.");
+        }
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is not closed.");
         }
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
+        return saved;
+    }
+
+    /** Lock or unlock a period; a locked period cannot be reopened. Refused unless the user acts as a
+     *  steward, and when the period is already locked (or, to unlock, not locked). */
+    @Transactional
+    public Period setLocked(String sheetId, String user, long id, boolean locked) {
+        sheetRows.findForUpdate(sheetId);
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may lock or unlock a period.");
+        }
+        if (period.isLocked() == locked) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    locked ? "The period is already locked." : "The period is not locked.");
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                + " period=" + saved.getName());
         return saved;
     }
 

@@ -26,6 +26,8 @@ export interface PeriodView {
   /** Each person's opening balance for the period, with two decimals, by person id: part of their carried
    *  figure for it. A person missing from it has none. */
   personOpenings: Record<string, string>;
+  /** Whether a steward has locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 /** What pasting opening balances did: how many lines went through, and the sheet's periods now. */
@@ -102,5 +104,15 @@ export class PeriodsApi {
    *  is a steward and the period is closed or soft-closed. */
   reopen(sheetId: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/reopen`, {}));
+  }
+
+  /** Lock a period so it cannot be reopened: refused unless the user is a steward and the period is not locked. */
+  lock(sheetId: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/lock`, {}));
+  }
+
+  /** Unlock a locked period: refused unless the user is a steward and the period is locked. */
+  unlock(sheetId: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheetId)}/${id}/unlock`, {}));
   }
 }
