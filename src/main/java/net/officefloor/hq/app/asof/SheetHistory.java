@@ -131,18 +131,24 @@ public class SheetHistory {
 
     /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
      *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
-     *  back on. A parent kept nothing on a today on or before the date (its today runs apart from the
+     *  back on, then, for a cloned sheet, the sheet it was cloned from and so on up its parents and source. A parent kept nothing on a today on or before the date (its today runs apart from the
      *  sheet's) is put back to what it held when what the sheet is put back to was kept. Only for a
      *  transaction that is rolled back afterwards. */
     public void restoreWithParents(String sheet, LocalDate asOf) {
         List<String> parents = new ArrayList<>();
-        String at = sheet;
-        for (int level = 0; level < SettingService.PARENT_LEVELS; level++) {
-            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ?",
-                    String.class, at);
-            if (parent.isEmpty() || parent.get(0).equals(sheet) || parents.contains(parent.get(0))) break;
-            at = parent.get(0);
-            parents.add(at);
+        for (String from = sheet; from != null; from = sourceOf(from)) {
+            if (!from.equals(sheet)) {
+                if (parents.contains(from)) break;
+                parents.add(from);
+            }
+            String at = from;
+            for (int level = 0; level < SettingService.PARENT_LEVELS; level++) {
+                List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ?",
+                        String.class, at);
+                if (parent.isEmpty() || parent.get(0).equals(sheet) || parents.contains(parent.get(0))) break;
+                at = parent.get(0);
+                parents.add(at);
+            }
         }
         Long keptAt = keptSeq(sheet, asOf);
         restore(sheet, asOf);
@@ -150,6 +156,13 @@ public class SheetHistory {
             if (keptSeq(parent, asOf) == null && keptAt != null) restoreAsKeptBy(parent, keptAt, asOf);
             else restore(parent, asOf);
         }
+    }
+
+    /** The sheet the sheet was cloned from; null when it was not cloned. */
+    private String sourceOf(String sheet) {
+        List<String> source = jdbc.queryForList("SELECT source_id FROM sheet_source WHERE child_id = ?",
+                String.class, sheet);
+        return source.isEmpty() ? null : source.get(0);
     }
 
     /** The sequence of what the sheet kept last on a today on or before the date; null when it kept nothing then. */

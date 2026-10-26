@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -19,13 +21,16 @@ import org.springframework.web.server.ResponseStatusException;
  * in one transaction that first puts the sheet back to what {@link SheetHistory} kept for that date
  * (with the as-of date as its today) and is always rolled back, so the store and the audit file are
  * left as they were. Every other request on a sheet is marked as a change of it, so each of its
- * commits is kept in the sheet's history.
+ * commits is kept in the sheet's history. Putting a sheet back rewrites its rows until the rollback, so
+ * a read as of a date runs on its own: never alongside a change, which would deadlock with it on those rows.
  */
 @Component
 public class AsOfFilter extends OncePerRequestFilter {
 
     private final SheetHistory history;
     private final TransactionTemplate transactions;
+    /** Changes share it; a read as of a date holds it alone. */
+    private final ReentrantReadWriteLock asOfReads = new ReentrantReadWriteLock(true);
 
     public AsOfFilter(SheetHistory history, PlatformTransactionManager transactionManager) {
         this.history = history;
@@ -48,9 +53,21 @@ public class AsOfFilter extends OncePerRequestFilter {
             return;
         }
         if (asOf.isPresent() && AsOf.reads(request)) {
-            readAsOf(sheet.get(), asOf.get(), request, response, chain);
+            Lock alone = asOfReads.writeLock();
+            alone.lock();
+            try {
+                readAsOf(sheet.get(), asOf.get(), request, response, chain);
+            } finally {
+                alone.unlock();
+            }
         } else if (asOf.isEmpty() && !AsOf.reads(request)) {
-            history.changing(sheet.get(), () -> chain.doFilter(request, response));
+            Lock shared = asOfReads.readLock();
+            shared.lock();
+            try {
+                history.changing(sheet.get(), () -> chain.doFilter(request, response));
+            } finally {
+                shared.unlock();
+            }
         } else {
             chain.doFilter(request, response);
         }

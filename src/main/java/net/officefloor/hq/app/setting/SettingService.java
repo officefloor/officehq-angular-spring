@@ -663,14 +663,19 @@ public class SettingService implements ActingFor {
     }
 
     /** The sheets a rate is looked for in, nearest first: the sheet itself, then its parent, and so on up to
-     *  {@link #PARENT_LEVELS} levels up; within the caller's transaction. */
+     *  {@link #PARENT_LEVELS} levels up; then, for a cloned sheet, the sheet it was cloned from and so on up
+     *  that sheet's parents and source; each sheet once; within the caller's transaction. */
     public static List<String> lineageOf(SheetParentRepository parents, String sheetId) {
-        List<String> lineage = new ArrayList<>(List.of(sheetId));
-        String at = sheetId;
-        for (int level = 0; level < PARENT_LEVELS; level++) {
-            at = parentOf(parents, at);
-            if (at == null || lineage.contains(at)) break;
-            lineage.add(at);
+        List<String> lineage = new ArrayList<>();
+        for (String from = sheetId; from != null && !lineage.contains(from);
+                from = parents.findSourceOf(from).orElse(null)) {
+            lineage.add(from);
+            String at = from;
+            for (int level = 0; level < PARENT_LEVELS; level++) {
+                at = parentOf(parents, at);
+                if (at == null || lineage.contains(at)) break;
+                lineage.add(at);
+            }
         }
         return lineage;
     }

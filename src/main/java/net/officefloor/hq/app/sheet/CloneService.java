@@ -104,6 +104,9 @@ public class CloneService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The other sheet has already been used.");
         }
 
+        // Where a grade has no rate in force on the clone nor on its parents, the sheet's rates are used.
+        jdbc.update("INSERT INTO sheet_source (child_id, source_id) VALUES (?, ?)", toSheetId, sheetId);
+
         COPIED.forEach((table, columns) -> jdbc.update("INSERT INTO " + table + " (sheet_id, " + columns + ") SELECT ?, "
                 + columns + " FROM " + table + " WHERE sheet_id = ?" + (hasId(table) ? " ORDER BY id" : ""),
                 toSheetId, sheetId));
