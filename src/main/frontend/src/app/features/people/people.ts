@@ -76,7 +76,7 @@ interface Person {
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsBy().get(p.id) ?? []"
-                  [rate]="rates.rates().get(p.grade)"
+                  [rates]="rates.rates().get(p.grade) ?? []"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -111,10 +111,10 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
-  // Each person's due-total: their claimed times their grade's rate; null (n/a) with no rate.
+  // Each person's due-total: their claimed times their grade's rate in force today; null (n/a) with none.
   protected readonly dueBy = computed(() => {
     const by = new Map<number, string | null>();
-    const rates = this.rates.rates();
+    const rates = this.rates.current();
     for (const p of this.people()) by.set(p.id, dueOn(this.claimedBy().get(p.id) ?? '0.00', rates.get(p.grade)));
     return by;
   });

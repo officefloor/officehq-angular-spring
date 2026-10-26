@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { dueOn } from '../rates/rates';
+import { RateView, dueOn, rateOn } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -85,7 +85,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rate()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rateOn(rates(), c.date)) ?? 'n/a' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
@@ -120,8 +120,8 @@ export class Claims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  // The rate for the person's grade; undefined when the grade has none.
-  readonly rate = input<string | undefined>();
+  // Every rate set for the person's grade; a claim's due uses the one in force on its date.
+  readonly rates = input<readonly RateView[]>([]);
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -133,6 +133,7 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
 
   protected readonly dueOn = dueOn;
+  protected readonly rateOn = rateOn;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

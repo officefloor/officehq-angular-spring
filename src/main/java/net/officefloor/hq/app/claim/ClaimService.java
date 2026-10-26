@@ -83,8 +83,8 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         String due = null;
         if (next == ClaimStatus.SETTLED) {
-            // the due is fixed at the rate the person's grade has now; with no rate it stays live
-            BigDecimal fixed = rates.findBySheetIdAndGrade(sheetId, person.getGrade()).map(Rate::getPct)
+            // the due is fixed at the rate the person's grade has in force on the claim's date; with none it stays live
+            BigDecimal fixed = rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
                     .map(pct -> dueOn(claim.getAmount(), pct)).orElse(null);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
