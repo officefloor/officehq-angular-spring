@@ -1,0 +1,301 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index fea9ac00..cf60e4b5 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -8,6 +8,7 @@ import { SheetAsOf } from '../session/sheet-as-of';
+ import { SheetPicker } from '../session/sheet-picker';
+ import { SheetToday } from '../session/sheet-today';
+ import { SignIn } from '../session/sign-in';
++import { StewardDashboard } from '../summary/steward-dashboard';
+ import { UserLocaleChoice } from '../session/user-locale';
+ import { TemplatesList } from '../templates/templates';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+@@ -15,7 +16,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, VoidReasonsList, TemplatesList, People],
++  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, TemplatesList, People],
+   template: `
+     @if (session.user(); as user) {
+       <header>
+@@ -26,6 +27,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+       <app-sheet-today />
+       <app-sheet-as-of />
+       @if (session.sheet()) {
++        <app-steward-dashboard />
+         <app-settings />
+         <app-holidays />
+         <app-void-reasons />
+diff --git a/src/main/frontend/src/app/features/summary/dashboard-api.ts b/src/main/frontend/src/app/features/summary/dashboard-api.ts
+new file mode 100644
+index 00000000..3238e00f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/dashboard-api.ts
+@@ -0,0 +1,21 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** A steward's dashboard of a sheet; every count is null for a user who is not a steward. */
++export interface DashboardView {
++  pending: number | null;
++  review: number | null;
++  overdue: number | null;
++}
++
++// The signed-in user's steward dashboard of a sheet: while the screen shows the sheet as of a date, as it
++// stood then, for the role the user had then.
++@Injectable({ providedIn: 'root' })
++export class DashboardApi {
++  private readonly http = inject(HttpClient);
++
++  dashboard(sheetId: string): Promise<DashboardView> {
++    return firstValueFrom(this.http.get<DashboardView>(`/api/sheets/${encodeURIComponent(sheetId)}/dashboard`));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/summary/steward-dashboard.ts b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+new file mode 100644
+index 00000000..ae71c1ea
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+@@ -0,0 +1,41 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { DashboardApi, DashboardView } from './dashboard-api';
++
++// A steward's dashboard over the sheet: how many claims are PENDING, how many are in REVIEW, and how many
++// are overdue and count. A user who is not a steward sees the cells empty. Re-read each time a sheet is
++// loaded; while the screen shows the sheet as of a date, as it stood then, for the role the user had then.
++@Component({
++  selector: 'app-steward-dashboard',
++  template: `
++    <section aria-label="Steward dashboard" data-testid="steward-dashboard">
++      <dl>
++        <dt>Pending approval</dt>
++        <dd data-testid="dash-pending-count">{{ view()?.pending ?? '' }}</dd>
++        <dt>In review</dt>
++        <dd data-testid="dash-review-count">{{ view()?.review ?? '' }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="dash-overdue-count">{{ view()?.overdue ?? '' }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class StewardDashboard {
++  private readonly session = inject(Session);
++  private readonly api = inject(DashboardApi);
++
++  /** The loaded sheet's dashboard; null until read (or when the read failed). */
++  protected readonly view = signal<DashboardView | null>(null);
++
++  constructor() {
++    effect(() => {
++      // A new sheet view each time a sheet is loaded, so the dashboard is read again.
++      const sheet = this.session.sheet();
++      this.view.set(null);
++      if (sheet === null) return;
++      this.session.reading(this.api.dashboard(sheet.id)).then(
++        (view) => { if (this.session.sheet() === sheet) this.view.set(view); },
++        () => undefined);
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+index 00f9d84a..26b3b8b7 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+@@ -131,7 +131,9 @@ public class SheetHistory {
+ 
+     /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
+      *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
+-     *  back on. Only for a transaction that is rolled back afterwards. */
++     *  back on. A parent kept nothing on a today on or before the date (its today runs apart from the
++     *  sheet's) is put back to what it held when what the sheet is put back to was kept. Only for a
++     *  transaction that is rolled back afterwards. */
+     public void restoreWithParents(String sheet, LocalDate asOf) {
+         List<String> parents = new ArrayList<>();
+         String at = sheet;
+@@ -142,8 +144,20 @@ public class SheetHistory {
+             at = parent.get(0);
+             parents.add(at);
+         }
++        Long keptAt = keptSeq(sheet, asOf);
+         restore(sheet, asOf);
+-        for (String parent : parents) restore(parent, asOf);
++        for (String parent : parents) {
++            if (keptSeq(parent, asOf) == null && keptAt != null) restoreAsKeptBy(parent, keptAt, asOf);
++            else restore(parent, asOf);
++        }
++    }
++
++    /** The sequence of what the sheet kept last on a today on or before the date; null when it kept nothing then. */
++    private Long keptSeq(String sheet, LocalDate asOf) {
++        List<Long> seq = jdbc.queryForList(
++                "SELECT seq FROM sheet_history WHERE sheet_id = ? AND today <= ? ORDER BY seq DESC LIMIT 1",
++                Long.class, sheet, asOf);
++        return seq.isEmpty() ? null : seq.get(0);
+     }
+ 
+     /**
+@@ -152,9 +166,21 @@ public class SheetHistory {
+      * for a transaction that is rolled back afterwards.
+      */
+     public void restore(String sheet, LocalDate asOf) {
+-        List<byte[]> kept = jdbc.queryForList(
++        put(sheet, asOf, jdbc.queryForList(
+                 "SELECT rows_data FROM sheet_history WHERE sheet_id = ? AND today <= ? ORDER BY seq DESC LIMIT 1",
+-                byte[].class, sheet, asOf);
++                byte[].class, sheet, asOf));
++    }
++
++    /** Put the sheet back to what it kept last up to the sequence, with the date as its today, or an empty
++     *  sheet when it kept nothing by then. Only for a transaction that is rolled back afterwards. */
++    private void restoreAsKeptBy(String sheet, long seq, LocalDate asOf) {
++        put(sheet, asOf, jdbc.queryForList(
++                "SELECT rows_data FROM sheet_history WHERE sheet_id = ? AND seq <= ? ORDER BY seq DESC LIMIT 1",
++                byte[].class, sheet, seq));
++    }
++
++    /** Replace the sheet's rows with those kept (none: an empty sheet), with the date as its today. */
++    private void put(String sheet, LocalDate asOf, List<byte[]> kept) {
+         List<Table> all = tables();
+         for (int i = all.size() - 1; i >= 0; i--) {
+             Table table = all.get(i);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+new file mode 100644
+index 00000000..ab32d25e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardController.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class DashboardController {
++
++    private final DashboardService service;
++
++    public DashboardController(DashboardService service) {
++        this.service = service;
++    }
++
++    /** The signed-in user's steward dashboard of the sheet; empty unless they are a steward. Read from a
++     *  screen set to an as-of date, the sheet as it stood then, with the role the user had then. */
++    @GetMapping("/{id}/dashboard")
++    public DashboardService.Dashboard dashboard(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestHeader(name = SignedInUser.HEADER, required = false) String user) {
++        return service.dashboardOf(id.trim(), user == null ? null : SignedInUser.name(user));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+new file mode 100644
+index 00000000..bd65d651
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/DashboardService.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.rollup;
++
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** A steward's dashboard of the sheet: how many of its claims are PENDING, how many are in REVIEW, and how
++ *  many are overdue and count. Only a steward (by the role assigned, or by a delegation covering the
++ *  sheet's today) has one; anyone else's is empty. */
++@Service
++public class DashboardService {
++
++    /** The dashboard's counts; all null for a user who is not a steward. */
++    public record Dashboard(Integer pending, Integer review, Integer overdue) {
++        static final Dashboard EMPTY = new Dashboard(null, null, null);
++    }
++
++    private final SettingService settings;
++    private final ClaimRepository claims;
++    private final Rollup rollup;
++
++    public DashboardService(SettingService settings, ClaimRepository claims, Rollup rollup) {
++        this.settings = settings;
++        this.claims = claims;
++        this.rollup = rollup;
++    }
++
++    /** The user's dashboard of the sheet, as the store holds it now. */
++    @Transactional(readOnly = true)
++    public Dashboard dashboardOf(String sheetId, String user) {
++        if (user == null || user.isBlank() || settings.roleOf(sheetId, user) != Role.STEWARD) return Dashboard.EMPTY;
++        int pending = 0;
++        int review = 0;
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (claim.getStatus() == ClaimStatus.PENDING) pending++;
++            else if (claim.getStatus() == ClaimStatus.REVIEW) review++;
++        }
++        return new Dashboard(pending, review, rollup.overdueCount(sheetId));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 87ebe00f..7ab65116 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -161,6 +161,23 @@ public class Rollup {
+         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+     }
+ 
++    /** How many of the sheet's claims are overdue and count, over everyone on it, as the store holds them
++     *  now, within the caller's transaction. */
++    public int overdueCount(String sheetId) {
++        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        DatedSettings values = DatedSettings.of(dated, sheetId);
++        Map<Long, Person> byId = new LinkedHashMap<>();
++        for (Person person : people.findInListOrder(sheetId)) byId.put(person.getId(), person);
++        int count = 0;
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !counts(person, claim, today)) continue;
++            int grace = values.graceOn(person.gradeOn(claim.getDate()), claim.getDate());
++            if (isOverdue(claim, grace, today)) count++;
++        }
++        return count;
++    }
++
+     /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
+      *  in the order they were added, against the sheet's today: the day being left. */
+     public void recordSnapshot(String user, Snapshot before) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index b111078a..947f5827 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -26,14 +26,14 @@ public class StatementController {
+ 
+     /** What the screen shows of a person's statements: how many were taken, and the last one's
+      *  due-total (two decimals, or n/a) and its date: the date it was taken as of, else the sheet's today
+-     *  when it was taken; and a line for each, oldest first by its date (then in the order taken, those a
+-     *  merge or a transfer brought over among them): its date and due-total. */
++     *  when it was taken; and a line for each, oldest first by the sheet's today when it was taken (then in
++     *  the order taken, those a merge or a transfer brought over among them): its date and due-total. */
+     public record StatementView(long personId, int count, String lastDueTotal, LocalDate lastDate,
+             List<String> lines) {
+         static StatementView of(StatementService.Summary summary) {
+             Statement last = summary.last();
+             List<String> lines = summary.all().stream()
+-                    .sorted(Comparator.comparing(Statement::getStatedOn).thenComparing(Statement::getId))
++                    .sorted(Comparator.comparing(Statement::getTakenOn).thenComparing(Statement::getId))
+                     .map((s) -> s.getStatedOn() + " " + dueTotal(s)).toList();
+             return new StatementView(summary.personId(), summary.count(), dueTotal(last), last.getStatedOn(), lines);
+         }

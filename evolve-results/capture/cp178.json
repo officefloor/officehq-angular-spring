@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "541a97780646425fb7546578c5e5ffb4f0d59ba0",
+  "reset_sha": "",
+  "preagent_sha": "93fc5edac430f2ada947b5b1cef9b3c460c4e2cb",
+  "prev_sha": "93fc5edac430f2ada947b5b1cef9b3c460c4e2cb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1373796,
+    "input_tokens": 88,
+    "output_tokens": 23396,
+    "cache_read_tokens": 3667538,
+    "cache_creation_tokens": 116950,
+    "num_turns": 46,
+    "duration_ms": 1142831,
+    "duration_api_ms": 315250,
+    "model": "claude-opus-5-5",
+    "session_id": "38bbfa84-2ece-4019-b415-08bf3179d4fa",
+    "stop_reason": "success",
+    "result_text": "The steward dashboard is in, and `bin/e2e` now passes all 4 tests. Getting scenario 3 to pass also took two changes to existing behaviour, described below. Please check those two.\n\n**The dashboard**\n- **Server:** a new read endpoint, `GET /api/sheets/{id}/dashboard` (`rollup/DashboardController.java`, `rollup/DashboardService.java`). For a steward it returns the number of PENDING claims, REVIEW claims, and overdue claims that count. Anyone else gets empty values. \"Steward\" includes someone acting as steward through a delegation that covers the sheet's today.\n- **Overdue count:** I added `Rollup.overdueCount` (`rollup/Rollup.java`). It reuses the same \"counts\" and \"overdue\" rules the rollup totals use, so a held or retired person's claims drop out. That's why the first test goes from 2 to 1 after Ben is held.\n- **As-of dates:** the existing as-of handling already puts the whole sheet back as it stood, roles and delegations included. So the counts and the user's role are both as of that date, with no extra code.\n- **Screen:** a new `app-steward-dashboard` component (`features/summary/steward-dashboard.ts` and `dashboard-api.ts`), placed on the home screen. It has the cells `dash-pending-count`, `dash-review-count` and `dash-overdue-count`, and re-reads each time a sheet is loaded.\n\n**Two existing behaviours I changed.** Scenario 3 failed in two places outside the dashboard. I confirmed the first fails the same way with the dashboard taken off the screen. I didn't run that check for the second, but it comes from the existing sort order, not the dashboard.\n\n1. **A parent sheet's rates under an as-of date** (`asof/SheetHistory.java`). A sheet loaded fresh takes the real date (2026-10-26) as its today. So a parent sheet set up during the test had nothing stored on or before 03-20, and under as-of 03-20 it came back empty: its rates showed \"n/a\" where the test expects 12.50. Now, when a parent has nothing stored by that date, it is put back to what it held when the child sheet's restored state was saved. Every case that already found a parent state behaves as before. One limit: if the parent changes again later on the same today, the earlier version is overwritten, and the parent can still come back empty.\n2. **Order of statement lines** (`statement/StatementController.java`). The code sorted them by each statement's own date, which for an as-of statement is the date it was taken as of. That put the as-of-04-02 statement before one taken on 05-04. The test expects the order they were taken, so lines now sort by the sheet's today when each was taken, then by id. I updated the doc comment to match. This contradicts the comment that was there, so if the old order was relied on elsewhere, this is the change to look at.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1373796,
+        "num_turns": 46,
+        "duration_ms": 1142831,
+        "duration_api_ms": 315250,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
