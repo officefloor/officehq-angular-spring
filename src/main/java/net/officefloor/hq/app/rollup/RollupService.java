@@ -134,6 +134,14 @@ public class RollupService {
         return sum;
     }
 
+    /** Records, once the change commits, a SNAPSHOT line per person with their due-total in the given snapshot. */
+    public void recordSnapshot(String by, String sheetId, Snapshot snapshot) {
+        for (Figures f : snapshot.people().values()) {
+            audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + by + " name=" + f.name() + " due-total="
+                    + text(f.dueTotal()));
+        }
+    }
+
     /**
      * Records, once the change commits, a ROLLUP line for each person whose figures differ from the snapshot taken
      * before the change (a person new since then counts as changed), then a TOTALS line when the sheet's totals moved.

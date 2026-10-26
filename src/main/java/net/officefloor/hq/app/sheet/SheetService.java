@@ -27,12 +27,14 @@ public class SheetService {
 
     /**
      * Change the sheet's today; every date decision on the sheet follows it. It has no audit line of its own, only
-     * the figures it moves. What follows a today change (the periods it closes) runs before those are rolled up.
+     * the figures it moves, after a SNAPSHOT line per person with their due-total on the day being left. What follows
+     * a today change (the periods it closes) runs before those are rolled up.
      */
     @Transactional
     public Sheet setToday(String by, String id, LocalDate today) {
         Sheet sheet = load(id);
         RollupService.Snapshot before = rollup.snapshot(id);
+        rollup.recordSnapshot(by, id, before);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(by, saved));
