@@ -32,19 +32,25 @@ public class SettingsController {
     /**
      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
      * the floor carries two decimals, the terms are whole days, the late percent carries two decimals, and the
-     * policy date is null when blank (the sheet's today), and the period numbering from is null when blank (off).
+     * policy date is null when blank (the sheet's today), the period numbering from is null when blank (off), and the
+     * cap carries two decimals, or is null for none.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom) {
+            LocalDate periodNumberingFrom, String cap) {
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
-                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom());
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
         }
     }
 
     /** The clerk limit as the form submits it: 0.00 or more with up to two decimals, or null for no limit. */
     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
+    }
+
+    /** The cap as the form submits it: 0.00 or more with up to two decimals, or null for no cap. */
+    public record CapForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
     }
 
     /** The floor as the form submits it: 0.00 or more with up to two decimals. */
@@ -152,6 +158,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PeriodNumberingFromForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setPeriodNumberingFrom(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/cap")
+    public SettingsView setCap(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody CapForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setCap(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

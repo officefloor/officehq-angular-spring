@@ -15,6 +15,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -69,7 +70,8 @@ public class StatementService {
     public Summary take(String by, String sheetId, Long personId) {
         Person person = people.findWithLockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
-        LocalDate today = sheets.load(sheetId).getToday();
+        Sheet sheet = sheets.load(sheetId);
+        LocalDate today = sheet.getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean kept = false;
@@ -98,7 +100,8 @@ public class StatementService {
         // as on screen: with no rate in force today for any of those grades and no claim with a figure, the due-total
         // is n/a
         boolean current = grades.stream().anyMatch(g -> rates.findInForce(sheetId, g, today).isPresent());
-        BigDecimal dueTotal = current || kept ? total : null;
+        // held to the sheet's cap, as on screen
+        BigDecimal dueTotal = current || kept ? sheet.capped(total) : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);

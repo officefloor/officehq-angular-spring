@@ -184,6 +184,23 @@ public class SettingsService {
     }
 
     /**
+     * Sets the sheet's cap (null for none): the most a person's due-total can be. The due-totals it moves are rolled
+     * up.
+     */
+    @Transactional
+    public Sheet setCap(String by, String sheetId, BigDecimal cap) {
+        Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setCap(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=cap value="
+                + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
      * Whether the user settling a claim with the due (null for n/a) needs a steward's approval: they are a clerk and
      * the due is above the sheet's clerk limit. A steward settles anything, and an n/a due is within any limit.
      */

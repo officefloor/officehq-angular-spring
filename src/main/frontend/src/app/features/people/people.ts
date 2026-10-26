@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
-import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
+import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
 import { Summary, SummaryPerson } from '../summary/summary';
@@ -159,7 +159,7 @@ interface StatementView {
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -180,6 +180,7 @@ interface StatementView {
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -347,8 +348,8 @@ export class People {
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
   // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a
-  // settled or stated one, or one dated within a rate that has since ended).
-  protected readonly dueBy = computed(() => {
+  // settled or stated one, or one dated within a rate that has since ended). This is before the sheet's cap.
+  private readonly uncappedDueBy = computed(() => {
     const by = new Map<number, string | null>();
     const current = this.rates.current();
     const rates = this.rates.rates();
@@ -365,6 +366,20 @@ export class People {
       }
       by.set(p.id, sumSkippingNa(dues));
     }
+    return by;
+  });
+  // Each person's due-total held to the sheet's cap; everything that adds up due-totals uses it. n/a is not capped.
+  protected readonly dueBy = computed(() => {
+    const cap = this.settings.cap();
+    const by = new Map<number, string | null>();
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, cap));
+    return by;
+  });
+  // Each person's excess: what their due-total is above the sheet's cap, else 0.00.
+  protected readonly excessBy = computed(() => {
+    const cap = this.settings.cap();
+    const by = new Map<number, string>();
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
     return by;
   });
   // Every claim counted live: its date and the figure it totals, for the periods' due-totals.

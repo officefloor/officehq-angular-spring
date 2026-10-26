@@ -70,6 +70,16 @@ export function atLeast(value: string, floor: string): string {
   return cents(value) < cents(floor) ? formatCents(cents(floor)) : value;
 }
 
+/** The two-decimal value held to the cap when it is above it; n/a, or no cap (null), leaves it as it is. */
+export function atMost(value: string | null, cap: string | null): string | null {
+  return value !== null && cap !== null && cents(value) > cents(cap) ? formatCents(cents(cap)) : value;
+}
+
+/** What the two-decimal value is above the cap: 0.00 when it is not, is n/a, or there is no cap (null). */
+export function excessOver(value: string | null, cap: string | null): string {
+  return value !== null && cap !== null && cents(value) > cents(cap) ? formatCents(cents(value) - cents(cap)) : '0.00';
+}
+
 /** The sum of two-decimal values, skipping n/a. */
 export function sumSkippingNa(values: readonly (string | null)[]): string {
   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));

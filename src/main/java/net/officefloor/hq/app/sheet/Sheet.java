@@ -48,6 +48,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The most a person's due-total can be; null means no cap. */
+    @Column(name = "due_cap", precision = 14, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {
     }
 
@@ -119,6 +123,19 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** The due-total (null for n/a, which is not capped) held to the cap when it is above it. */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return cap != null && dueTotal != null && dueTotal.compareTo(cap) > 0 ? cap.setScale(2) : dueTotal;
     }
 
     /**

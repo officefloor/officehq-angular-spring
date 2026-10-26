@@ -22,6 +22,8 @@ interface SettingsView {
   policyDate: string | null;
   // The date from which claims opened are numbered within their period; null when blank: off.
   periodNumberingFrom: string | null;
+  // The most a person's due-total can be; null for no cap.
+  cap: string | null;
 }
 
 /** The terms set for one grade; a grade with none uses the sheet's terms. */
@@ -67,6 +69,8 @@ export class SettingsStore {
   readonly policyDate = signal<string | null>(null);
   /** The period numbering from as set; null when blank (off). */
   readonly periodNumberingFrom = signal<string | null>(null);
+  /** The cap as set; null when blank (none). */
+  readonly cap = signal<string | null>(null);
   /**
    * What an overdue claim's late charge follows: the sheet's today and the late percent; and the policy
    * date in force (the sheet's today when blank), which decides how live figures round.
@@ -87,6 +91,7 @@ export class SettingsStore {
     this.latePct.set(DEFAULT_LATE_PCT);
     this.policyDate.set(null);
     this.periodNumberingFrom.set(null);
+    this.cap.set(null);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings, gradeTerms] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -102,6 +107,7 @@ export class SettingsStore {
       this.latePct.set(settings.latePct);
       this.policyDate.set(settings.policyDate);
       this.periodNumberingFrom.set(settings.periodNumberingFrom);
+      this.cap.set(settings.cap);
     }
   }
 
@@ -170,9 +176,16 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.periodNumberingFrom.set(s.periodNumberingFrom);
   }
+
+  async setCap(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/cap`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.cap.set(s.cap);
+  }
 }
 
-// The sheet's settings: the clerk limit, the floor, the terms, the late percent, the policy date, the period numbering from, and the role each user name has.
+// The sheet's settings: the clerk limit, the floor, the terms, the late percent, the policy date, the period numbering from, the cap, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -253,6 +266,16 @@ export class SettingsStore {
           (keydown.delete)="periodNumberingFromChanged = true; settingsError.set(null)"
           (keydown.backspace)="periodNumberingFromChanged = true; settingsError.set(null)"
         />
+        <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="cap()"
+          (input)="cap.set(value($event)); capChanged = true; settingsError.set(null)"
+          (keydown.delete)="capChanged = true; settingsError.set(null)"
+          (keydown.backspace)="capChanged = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -273,6 +296,7 @@ export class SettingsStore {
         Period numbering from:
         <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
       </p>
+      <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -331,6 +355,7 @@ export class Settings {
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
+  protected readonly cap = signal('');
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
   // clearing one that already shows blank (as the clerk limit, for none) still saves it.
   protected limitChanged = false;
@@ -340,6 +365,7 @@ export class Settings {
   protected latePctChanged = false;
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
+  protected capChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -421,6 +447,11 @@ export class Settings {
       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
       return;
     }
+    const cap = this.cap().trim();
+    if (this.capChanged && cap && !LIMIT.test(cap)) {
+      this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     this.savingSettings = true;
     try {
       if (this.limitChanged) {
@@ -451,6 +482,10 @@ export class Settings {
       if (this.periodNumberingFromChanged) {
         await this.store.setPeriodNumberingFrom(sheet, periodNumberingFrom || null);
         this.periodNumberingFromChanged = this.periodNumberingFrom().trim() !== periodNumberingFrom;
+      }
+      if (this.capChanged) {
+        await this.store.setCap(sheet, cap || null);
+        this.capChanged = this.cap().trim() !== cap;
       }
     } catch {
       this.resubmit = false;

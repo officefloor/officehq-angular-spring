@@ -104,6 +104,10 @@ public class RollupService {
                     .allMatch(g -> Rate.inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
                 due = null;
             }
+            // the due-total is at most the sheet's cap
+            if (sheet != null) {
+                due = sheet.capped(due);
+            }
             figures.put(p.getId(), new Figures(p.getName(), claimed, due));
             claimedTotal = claimedTotal.add(claimed);
             if (due != null) {
