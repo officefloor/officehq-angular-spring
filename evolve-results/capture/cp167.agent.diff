@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9f8e22af..531bf88f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -51,7 +51,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+-      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" />
++      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()" />
+     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
+       [ownOverdueTotal]="money(sheetOverdue().cents)" />
+     <app-tree-search />
+@@ -545,6 +545,15 @@ export class People {
+     const mine = key(user);
+     return this.people().find((p) => key(p.name) === mine || p.aliases.some((a) => key(a) === mine)) ?? null;
+   });
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    if (me === null) return '';
++    const led = this.crews.crews().filter((c) => c.leadId === me.id);
++    if (led.length === 0) return '';
++    const dues = this.dueCents();
++    return money(led.reduce((t, c) => t + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
++  });
+   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
+   protected readonly sheetDueTotal = computed(() => {
+     const figures: number[] = [];
+diff --git a/src/main/frontend/src/app/features/summary/sheet-header.ts b/src/main/frontend/src/app/features/summary/sheet-header.ts
+index c4f5315d..bd82240e 100644
+--- a/src/main/frontend/src/app/features/summary/sheet-header.ts
++++ b/src/main/frontend/src/app/features/summary/sheet-header.ts
+@@ -4,7 +4,8 @@ import { StatusSummary } from './summary';
+ 
+ // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
+ // each status as the summary counts them, the sheet's due-total and overdue-total, and
+-// the signed-in user's own when a person on the sheet has their name or alias.
++// the signed-in user's own when a person on the sheet has their name or alias, and their crew total
++// when that person leads a crew.
+ @Component({
+   selector: 'app-sheet-header',
+   imports: [FigurePipe],
+@@ -25,6 +26,8 @@ import { StatusSummary } from './summary';
+         <dd data-testid="my-due-total">{{ myDueTotal() | figure }}</dd>
+         <dt>My overdue</dt>
+         <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
++        <dt>My crew due</dt>
++        <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</dd>
+       </dl>
+     </section>
+   `,
+@@ -37,4 +40,6 @@ export class SheetHeader {
+   /** The signed-in user's own due-total and overdue-total; blank when no one on the sheet has their name. */
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  readonly myCrewDueTotal = input.required<string>();
+ }
