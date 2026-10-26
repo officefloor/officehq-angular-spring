@@ -4,8 +4,10 @@ import { firstValueFrom } from 'rxjs';
 import { readAsOf } from '../../core/as-of.interceptor';
 import { ClaimView } from '../claims/claims-api';
 
-export const GRADES = ['A', 'B', 'C'] as const;
-export type Grade = (typeof GRADES)[number];
+/** A grade: a code of one to three capital letters. */
+export type Grade = string;
+/** The grades every sheet has; a sheet may add more of its own (see `Grades`). */
+export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
 
 /** A grade a person was given, in force from its from-date until their next grade. */
 export interface GradeView {

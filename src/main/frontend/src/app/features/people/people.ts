@@ -31,7 +31,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary 
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { Grades } from '../grades/grades-api';
-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, nameWithGrade } from './people-api';
+import { Grade, PeopleApi, PersonView, QuickAddView, gradeOn, nameWithGrade } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
@@ -76,7 +76,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
           <input id="person-form-name" data-testid="person-form-name" formControlName="name" />
           <label for="person-form-grade">Grade</label>
           <select id="person-form-grade" data-testid="person-form-grade" formControlName="grade">
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <option [value]="g">{{ g }}</option>
             }
           </select>
@@ -265,7 +265,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <p>
           <label for="bulk-grade">Grade for the selected people</label>
           <select id="bulk-grade" data-testid="bulk-grade" #bulkGrade (change)="bulkGradeError.set('')">
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <option [value]="g">{{ g }}</option>
             }
           </select>
@@ -333,7 +333,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
                   <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
                     (change)="clearPersonError(p.id)">
-                    @for (g of grades; track g) {
+                    @for (g of grades(); track g) {
                       <option [value]="g" [selected]="g === gradeToday(p)">{{ g }}</option>
                     }
                   </select>
@@ -547,7 +547,8 @@ export class People {
       policyDate: this.policyDate.date() ?? this.session.figuresToday(),
       rounding: (date: string) => this.rounding.modeOn(date) }));
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, in order. */
+  protected readonly grades = this.gradeStore.codes;
   protected readonly name = new FormControl('', { nonNullable: true });
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   /** The date an edit gives the grade from; blank means the sheet's today. */
@@ -918,7 +919,7 @@ export class People {
   });
   /** Per grade, the people on it today who are not retired, their due-totals added up, skipping
    *  those that are n/a, and how many of them are active. */
-  protected readonly gradeSummary = computed<GradeSummary[]>(() => GRADES.map((grade) => {
+  protected readonly gradeSummary = computed<GradeSummary[]>(() => this.grades().map((grade) => {
     const on = this.people().filter((p) => !p.retired && this.gradeToday(p) === grade);
     return { grade, count: on.length, dueTotal: money(on.reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)),
       active: on.filter((p) => this.activeIds().has(p.id)).length };
@@ -1313,8 +1314,8 @@ export class People {
     this.personError.set(null);
     this.patronError.set(null);
     const grade = gradeSelect.value as Grade;
-    if (!GRADES.includes(grade)) {
-      this.personError.set({ id: person.id, message: 'Choose a grade of A, B or C.' });
+    if (!this.grades().includes(grade)) {
+      this.personError.set({ id: person.id, message: 'Choose one of the grades.' });
       return;
     }
     if (this.gradeStore.retired().has(grade)) {
@@ -1665,7 +1666,7 @@ export class People {
   private sortValue(person: PersonView, by: Exclude<SortKey, 'added'>): string | number | null {
     switch (by) {
       case 'name': return person.name.trim().toLowerCase();
-      case 'grade': return GRADES.indexOf(this.gradeToday(person));
+      case 'grade': return this.grades().indexOf(this.gradeToday(person));
       case 'due-total': return this.dueCentsOf(person);
     }
   }
@@ -2019,8 +2020,8 @@ export class People {
     this.personError.set(null);
     const grade = gradeSelect.value as Grade;
     const from = fromInput.value.trim();
-    if (!GRADES.includes(grade)) {
-      this.bulkGradeError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.bulkGradeError.set('Choose one of the grades.');
       return;
     }
     if (from !== '' && !DATE.test(from)) {
@@ -2135,8 +2136,8 @@ export class People {
       this.error.set('Type a name for the person.');
       return;
     }
-    if (!GRADES.includes(value.grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(value.grade)) {
+      this.error.set('Choose one of the grades.');
       return;
     }
     if (this.gradeStore.retired().has(value.grade)) {

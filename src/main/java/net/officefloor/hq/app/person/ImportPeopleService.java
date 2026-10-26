@@ -108,7 +108,7 @@ public class ImportPeopleService {
         try {
             if (!fields[1].isBlank()) grade = Grade.valueOf(fields[1].trim());
         } catch (IllegalArgumentException e) {
-            throw refused(number, "the grade is not one of A, B or C");
+            throw refused(number, "the grade is not one to three capital letters");
         }
         String terms = fields.length > 2 ? fields[2].trim() : "";
         if (!terms.matches("\\d{0,5}")) throw refused(number, "the terms are not a whole number of days");

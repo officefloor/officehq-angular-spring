@@ -257,8 +257,7 @@ public class SettingController {
             @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Valid GradeTermsForm form) {
         String id = sheetId.trim();
-        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        Grade g = gradeOf(id, grade);
         service.setGradeTerms(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
@@ -269,8 +268,7 @@ public class SettingController {
             @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Valid GradeGraceForm form) {
         String id = sheetId.trim();
-        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        Grade g = gradeOf(id, grade);
         service.setGradeGrace(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
@@ -281,8 +279,7 @@ public class SettingController {
             @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Valid GradeClerkLimitForm form) {
         String id = sheetId.trim();
-        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        Grade g = gradeOf(id, grade);
         service.setGradeClerkLimit(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
@@ -338,8 +335,7 @@ public class SettingController {
             @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Valid GradeProofThresholdForm form) {
         String id = sheetId.trim();
-        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        Grade g = gradeOf(id, grade);
         service.setGradeProofThreshold(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
@@ -520,7 +516,7 @@ public class SettingController {
         LocalDate today = service.today(sheetId);
         DatedSettings dated = service.dated(sheetId);
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
-        for (Grade grade : Grade.values()) {
+        for (Grade grade : service.grades(sheetId)) {
             Integer own = dated.gradeTermsOn(grade, today);
             if (own != null) gradeTerms.put(grade.name(), own);
         }
@@ -540,6 +536,12 @@ public class SettingController {
                 service.escalateAfter(sheetId), service.reviewSla(sheetId), proofKinds(sheetId),
                 defaultGrade(sheetId), service.scoreMid(sheetId), service.scoreHigh(sheetId),
                 service.scoreLog(sheetId) ? "on" : null, service.maxOpen(sheetId));
+    }
+
+    /** The sheet's grade of the code; refused when it is not one of the sheet's grades. */
+    private Grade gradeOf(String sheetId, String code) {
+        return service.grades(sheetId).stream().filter((g) -> g.name().equals(code)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
     }
 
     private String proofKinds(String sheetId) {

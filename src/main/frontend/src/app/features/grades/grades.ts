@@ -2,10 +2,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, Grade } from '../people/people-api';
+import { Grade } from '../people/people-api';
 import { Grades } from './grades-api';
 
-// The sheet's grades, each showing whether it is retired, with a choice to retire one. The people on
+// The sheet's grades, each showing whether it is retired, with a choice to add one and to retire one. The people on
 // a retired grade keep it, but no one can be given it any more.
 @Component({
   selector: 'app-grades',
@@ -13,10 +13,18 @@ import { Grades } from './grades-api';
   template: `
     <section aria-labelledby="grades-heading">
       <h2 id="grades-heading">Grades</h2>
+      <form [formGroup]="addForm" (ngSubmit)="add()" aria-label="Add a grade">
+        <label for="grade-add-code">New grade (one to three capital letters)</label>
+        <input id="grade-add-code" data-testid="grade-add-code" formControlName="code" />
+        <button type="submit" data-testid="grade-add" [disabled]="adding()">Add grade</button>
+        @if (addError()) {
+          <p role="alert" data-testid="grade-error">{{ addError() }}</p>
+        }
+      </form>
       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Retire a grade">
         <label for="grade-retire-select">Grade</label>
         <select id="grade-retire-select" data-testid="grade-retire-select" formControlName="grade">
-          @for (g of choices; track g) {
+          @for (g of choices(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -28,13 +36,13 @@ import { Grades } from './grades-api';
       <form [formGroup]="mergeForm" (ngSubmit)="merge()" aria-label="Merge a grade into another">
         <label for="grade-merge-from">Merge grade</label>
         <select id="grade-merge-from" data-testid="grade-merge-from" formControlName="from">
-          @for (g of choices; track g) {
+          @for (g of choices(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
         <label for="grade-merge-into">into</label>
         <select id="grade-merge-into" data-testid="grade-merge-into" formControlName="into">
-          @for (g of choices; track g) {
+          @for (g of choices(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -68,9 +76,14 @@ export class GradesList {
   private readonly session = inject(Session);
   protected readonly store = inject(Grades);
 
-  protected readonly choices = GRADES;
+  protected readonly choices = this.store.codes;
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   protected readonly form = new FormGroup({ grade: this.grade });
+  protected readonly code = new FormControl('', { nonNullable: true });
+  protected readonly addForm = new FormGroup({ code: this.code });
+  protected readonly adding = signal(false);
+  protected readonly addError = signal('');
+
   protected readonly saving = signal(false);
   protected readonly error = signal('');
 
@@ -83,11 +96,14 @@ export class GradesList {
   protected readonly mergeError = signal('');
 
   constructor() {
+    this.code.valueChanges.subscribe(() => this.addError.set(''));
     this.grade.valueChanges.subscribe(() => this.error.set(''));
     this.mergeForm.valueChanges.subscribe(() => this.mergeError.set(''));
     // Each load of a sheet starts the choice afresh.
     effect(() => {
       this.session.loaded();
+      this.addError.set('');
+      this.code.reset('', { emitEvent: false });
       this.error.set('');
       this.grade.reset('A', { emitEvent: false });
       this.mergeError.set('');
@@ -96,15 +112,51 @@ export class GradesList {
     });
   }
 
+  /** The grade errors are shown one at a time: each grade action clears them all. */
+  private clearErrors(): void {
+    this.addError.set('');
+    this.error.set('');
+    this.mergeError.set('');
+  }
+
+  protected async add(): Promise<void> {
+    // A second press before the first has answered is ignored, so the grade is added once.
+    if (this.adding()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.clearErrors();
+    const grade = this.code.value.trim();
+    if (!/^[A-Z]{1,3}$/.test(grade)) {
+      this.addError.set('A grade is one to three capital letters.');
+      return;
+    }
+    if (this.store.codes().includes(grade)) {
+      this.addError.set(`Grade ${grade} is already a grade.`);
+      return;
+    }
+    this.adding.set(true);
+    try {
+      await this.store.add(sheet.id, grade);
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.addError.set(status === 409 ? `Grade ${grade} is already a grade.`
+        : status === 400 ? 'A grade is one to three capital letters.'
+        : status === 403 ? 'Your role may not add a grade on this sheet.' : 'The grade could not be added.');
+    } finally {
+      this.adding.set(false);
+    }
+  }
+
   protected async submit(): Promise<void> {
     // A second submit before the first has answered is ignored, so it stores one record, not two.
     if (this.saving()) return;
     const sheet = this.session.sheet();
     if (!sheet) return;
-    this.error.set('');
+    this.clearErrors();
     const grade = this.grade.value;
-    if (!GRADES.includes(grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.store.codes().includes(grade)) {
+      this.error.set('Choose one of the grades.');
       return;
     }
     if (this.store.retired().has(grade)) {
@@ -129,12 +181,13 @@ export class GradesList {
     if (this.merging()) return;
     const sheet = this.session.sheet();
     if (!sheet) return;
-    this.mergeError.set('');
+    this.clearErrors();
     this.merged.set(null);
     const from = this.mergeFrom.value;
     const into = this.mergeInto.value;
-    if (!GRADES.includes(from) || !GRADES.includes(into)) {
-      this.mergeError.set('Choose grades of A, B or C.');
+    const grades = this.store.codes();
+    if (!grades.includes(from) || !grades.includes(into)) {
+      this.mergeError.set('Choose two of the grades.');
       return;
     }
     if (from === into) {

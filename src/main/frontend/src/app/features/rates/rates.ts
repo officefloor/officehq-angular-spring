@@ -3,7 +3,8 @@ import { FigurePipe } from '../../core/figure.pipe';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, Grade } from '../people/people-api';
+import { Grades } from '../grades/grades-api';
+import { Grade } from '../people/people-api';
 import { RatePreview, RateView, RatesApi, rateInForce } from './rates-api';
 
 const PCT = /^\d{1,7}(\.\d{1,2})?$/;
@@ -21,7 +22,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set a rate">
         <label for="rate-form-grade">Grade</label>
         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -50,7 +51,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -72,7 +73,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <tr><th scope="col">Grade</th><th scope="col">Rate today (%)</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) | figure }}</td>
@@ -91,7 +92,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             </tr>
           </thead>
           <tbody>
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <tr>
                 <th scope="row">{{ g }}</th>
                 @for (m of calendarMonths(); track m) {
@@ -129,7 +130,8 @@ export class Rates {
   readonly rates = input.required<RateView[]>();
   readonly saved = output<RateView>();
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, in order. */
+  protected readonly grades = inject(Grades).codes;
   protected readonly grade = new FormControl<Grade>('A', { nonNullable: true });
   protected readonly pct = new FormControl('', { nonNullable: true });
   protected readonly from = new FormControl('', { nonNullable: true });
@@ -198,8 +200,8 @@ export class Rates {
     if (!sheet) return;
     this.error.set('');
     const { grade, pct, from, to } = this.form.getRawValue();
-    if (!GRADES.includes(grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.error.set('Choose one of the grades.');
       return;
     }
     if (!PCT.test(pct.trim())) {
@@ -269,8 +271,8 @@ export class Rates {
     this.previewError.set('');
     this.previewed.set(null);
     const { grade, pct } = this.previewForm.getRawValue();
-    if (!GRADES.includes(grade)) {
-      this.previewError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.previewError.set('Choose one of the grades.');
       return;
     }
     if (!PCT.test(pct.trim())) {

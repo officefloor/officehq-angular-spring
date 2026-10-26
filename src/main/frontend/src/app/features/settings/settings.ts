@@ -3,7 +3,11 @@ import { FigurePipe } from '../../core/figure.pipe';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { PROOF_KINDS } from '../claims/claims-api';
-import { GRADES, Grade } from '../people/people-api';
+import { Grades } from '../grades/grades-api';
+import { Grade } from '../people/people-api';
+
+/** The grades with their own settings: those every sheet has. */
+const GRADES = ['A', 'B', 'C'] as const;
 import { DatedValue, valueOn } from './dated';
 import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
 import { SheetCap } from './sheet-cap';
@@ -175,7 +179,7 @@ function settled(control: AbstractControl): void {
         <label for="setting-proof-kinds">Proof kinds (comma separated, of receipt and photo; a claim above the proof threshold needs a proof of each; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" />
         <p>Proof kinds now: <span data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</span></p>
-        <label for="setting-default-grade">Default grade (A, B or C; the grade quick add gives a new person, and an imported line with a blank grade takes; blank: A)</label>
+        <label for="setting-default-grade">Default grade (one of the grades; the grade quick add gives a new person, and an imported line with a blank grade takes; blank: A)</label>
         <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" />
         <p>Default grade now: <span data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</span></p>
         <label for="setting-alert-threshold">Alert threshold (a due-total going above it is alerted; blank: off)</label>
@@ -282,6 +286,7 @@ export class Settings {
   private readonly sheetFiscal = inject(SheetFiscal);
   private readonly sheetReviewSla = inject(SheetReviewSla);
   private readonly sheetScoreBands = inject(SheetScoreBands);
+  private readonly gradeStore = inject(Grades);
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
@@ -641,8 +646,8 @@ export class Settings {
       this.settingsError.set('Type proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
-    if (changed(defaultGrade) && defaultGradeValue !== '' && !(GRADES as readonly string[]).includes(defaultGradeValue)) {
-      this.settingsError.set('Type a default grade of A, B or C, or leave it blank for A.');
+    if (changed(defaultGrade) && defaultGradeValue !== '' && !this.gradeStore.codes().includes(defaultGradeValue)) {
+      this.settingsError.set('Type a default grade that is one of the grades, or leave it blank for A.');
       return;
     }
     if (changed(parent) && parentValue === sheet.id) {

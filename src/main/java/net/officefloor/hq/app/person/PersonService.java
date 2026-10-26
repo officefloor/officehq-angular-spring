@@ -40,12 +40,14 @@ public class PersonService {
     private final SheetTagRepository sheetTags;
     private final ObjectProvider<SettingService> settings;
     private final RetiredGradeRepository retiredGrades;
+    private final SheetGradeRepository sheetGrades;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
             PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit,
             SheetTagRepository sheetTags, ObjectProvider<SettingService> settings,
-            RetiredGradeRepository retiredGrades) {
+            RetiredGradeRepository retiredGrades, SheetGradeRepository sheetGrades) {
         this.retiredGrades = retiredGrades;
+        this.sheetGrades = sheetGrades;
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -157,8 +159,12 @@ public class PersonService {
         return person;
     }
 
-    /** Refuse a grade retired on the sheet: it cannot be given to anyone, by an add or an edit. */
+    /** Refuse a grade that is not one of the sheet's, or is retired on it: it cannot be given to anyone, by an
+     *  add or an edit. */
     private void refuseRetired(String sheetId, Grade grade) {
+        if (grade != null && !sheetGrades.isGradeOf(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "There is no grade " + grade + ".");
+        }
         if (grade != null && retiredGrades.existsBySheetIdAndGrade(sheetId, grade)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Grade " + grade + " is retired; choose another grade.");

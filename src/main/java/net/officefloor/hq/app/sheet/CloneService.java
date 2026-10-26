@@ -43,6 +43,7 @@ public class CloneService {
         COPIED.put("sheet_setting_dated", "setting_key, from_date, setting_value");
         COPIED.put("setting_change", "setting_key, from_date, setting_value, made_on");
         COPIED.put("sheet_role", "user_name, role");
+        COPIED.put("sheet_grade", "grade");
         COPIED.put("rate", "grade, pct, from_date, to_date, version, forward_after");
         COPIED.put("rate_change", "grade, from_date, to_date, pct, made_on, version, forward_after");
         COPIED.put("holiday", "holiday_date");

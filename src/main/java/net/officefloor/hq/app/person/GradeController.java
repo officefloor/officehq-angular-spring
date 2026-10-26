@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
@@ -30,6 +29,10 @@ public class GradeController {
     public record RetireForm(@NotNull Grade grade) {
     }
 
+    /** The code of a grade to add, as typed on the screen. */
+    public record AddForm(@Size(max = 100) String grade) {
+    }
+
     /** The grade to merge and the grade to merge it into, as chosen on the screen. */
     public record MergeForm(@NotNull Grade from, @NotNull Grade into) {
     }
@@ -48,7 +51,15 @@ public class GradeController {
     @GetMapping
     public List<GradeView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         Set<Grade> retired = service.retired(sheetId.trim());
-        return Arrays.stream(Grade.values()).map((g) -> new GradeView(g, retired.contains(g))).toList();
+        return service.gradesOf(sheetId.trim()).stream().map((g) -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** Add a grade to the sheet. */
+    @PostMapping
+    public List<GradeView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid AddForm form) {
+        service.add(sheetId.trim(), SignedInUser.name(user), form.grade());
+        return list(sheetId);
     }
 
     /** Retire a grade on the sheet. */

@@ -2,8 +2,6 @@ package net.officefloor.hq.app.rate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,7 +25,6 @@ public class Rate {
     @Column(name = "sheet_id", nullable = false)
     private String sheetId;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "grade", nullable = false)
     private Grade grade;
 

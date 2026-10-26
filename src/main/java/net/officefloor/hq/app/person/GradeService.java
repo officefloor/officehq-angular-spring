@@ -23,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class GradeService {
 
     private final RetiredGradeRepository retired;
+    private final SheetGradeRepository added;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final Audit audit;
@@ -31,10 +32,11 @@ public class GradeService {
     private final ObjectProvider<SettingService> settings;
     private final Rollup rollup;
 
-    public GradeService(RetiredGradeRepository retired, SheetService sheets, SheetRepository sheetRows, Audit audit,
+    public GradeService(RetiredGradeRepository retired, SheetGradeRepository added, SheetService sheets, SheetRepository sheetRows, Audit audit,
             PersonRepository people, PersonService persons, ObjectProvider<SettingService> settings,
             Rollup rollup) {
         this.rollup = rollup;
+        this.added = added;
         this.people = people;
         this.persons = persons;
         this.settings = settings;
@@ -50,11 +52,40 @@ public class GradeService {
         return retired.findBySheetId(sheetId).stream().map(RetiredGrade::getGrade).collect(Collectors.toSet());
     }
 
+    /** The sheet's grades in order: A, B and C, then those added to it. */
+    @Transactional(readOnly = true)
+    public List<Grade> gradesOf(String sheetId) {
+        return added.gradesOf(sheetId);
+    }
+
+    /** Add a grade to the sheet: its code trimmed, refused unless one to three capital letters, and when it is
+     *  already one of the sheet's grades. */
+    @Transactional
+    public Grade add(String sheetId, String user, String code) {
+        String trimmed = code == null ? "" : code.trim();
+        if (!Grade.isCode(trimmed)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A grade is one to three capital letters.");
+        }
+        Grade grade = Grade.valueOf(trimmed);
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        if (added.isGradeOf(sheetId, grade)) throw alreadyAGrade(grade);
+        try {
+            added.saveAndFlush(new SheetGrade(sheetId, grade));
+        } catch (DataIntegrityViolationException raced) {
+            throw alreadyAGrade(grade);
+        }
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return grade;
+    }
+
     /** Retire the grade on the sheet, refused when it is already retired. The people on it keep it. */
     @Transactional
     public Grade retire(String sheetId, String user, Grade grade) {
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
+        if (!added.isGradeOf(sheetId, grade)) throw noSuchGrade(grade);
         if (retired.existsBySheetIdAndGrade(sheetId, grade)) throw alreadyRetired(grade);
         try {
             retired.saveAndFlush(new RetiredGrade(sheetId, grade));
@@ -77,6 +108,8 @@ public class GradeService {
         if (settings.getObject().roleOf(sheetId, user) != Role.STEWARD) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge grades.");
         }
+        if (!added.isGradeOf(sheetId, from)) throw noSuchGrade(from);
+        if (!added.isGradeOf(sheetId, into)) throw noSuchGrade(into);
         if (from == into) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose two different grades to merge.");
         }
@@ -94,6 +127,14 @@ public class GradeService {
         }
         rollup.recordChanges(user, before);
         return changed;
+    }
+
+    private static ResponseStatusException alreadyAGrade(Grade grade) {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is already a grade.");
+    }
+
+    private static ResponseStatusException noSuchGrade(Grade grade) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no grade " + grade + ".");
     }
 
     private static ResponseStatusException alreadyRetired(Grade grade) {

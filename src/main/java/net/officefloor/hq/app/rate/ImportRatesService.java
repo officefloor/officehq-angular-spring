@@ -52,7 +52,7 @@ public class ImportRatesService {
         try {
             grade = Grade.valueOf(fields[0].trim());
         } catch (IllegalArgumentException e) {
-            throw refused(number, "the grade is not A, B or C");
+            throw refused(number, "the grade is not one to three capital letters");
         }
         BigDecimal pct;
         try {

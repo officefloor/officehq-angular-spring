@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Grade } from '../people/people-api';
+import { GRADES, Grade } from '../people/people-api';
 
 export interface GradeView {
   grade: Grade;
@@ -22,6 +22,11 @@ export class GradesApi {
   /** Every grade in order, with whether it is retired. */
   list(sheetId: string): Promise<GradeView[]> {
     return firstValueFrom(this.http.get<GradeView[]>(this.url(sheetId)));
+  }
+
+  /** Add a grade: refused unless one to three capital letters not yet a grade. Answers every grade as it is now. */
+  add(sheetId: string, grade: string): Promise<GradeView[]> {
+    return firstValueFrom(this.http.post<GradeView[]>(this.url(sheetId), { grade }));
   }
 
   /** Retire a grade: refused when it is already retired. Answers every grade as it is now. */
@@ -44,6 +49,11 @@ export class Grades {
 
   private readonly state = signal<GradeView[]>([]);
   readonly grades = this.state.asReadonly();
+  /** The active sheet's grade codes in order: A, B and C until the sheet's own are read, then the sheet's. */
+  readonly codes = computed<readonly Grade[]>(() => {
+    const list = this.state();
+    return list.length === 0 ? GRADES : list.map((g) => g.grade);
+  });
   /** The grades retired on the active sheet: none can be chosen for a new person or in an edit. */
   readonly retired = computed(() => new Set(this.state().filter((g) => g.retired).map((g) => g.grade)));
   /** The refusal of the last loading of the grades, or blank. */
@@ -67,6 +77,12 @@ export class Grades {
     } catch {
       if (this.session.sheet()?.id === sheetId) this.loadError.set('The grades could not be loaded.');
     }
+  }
+
+  /** Add a grade to the active sheet; the store's answer replaces the grades. */
+  async add(sheetId: string, grade: string): Promise<void> {
+    const list = await this.api.add(sheetId, grade);
+    if (this.session.sheet()?.id === sheetId) this.state.set(list);
   }
 
   /** Retire a grade on the active sheet; the store's answer replaces the grades. */

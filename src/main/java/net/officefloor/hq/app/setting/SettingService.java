@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.RetiredGradeRepository;
+import net.officefloor.hq.app.person.SheetGradeRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -168,9 +169,12 @@ public class SettingService implements ActingFor {
     private final Rollup rollup;
     private final Audit audit;
 
+    private final SheetGradeRepository grades;
+
     public SettingService(SheetSettingRepository settings, SheetSettingDatedRepository dated,
             SettingChangeRepository changes, SheetRoleRepository roles, DelegationRepository delegations,
-            SheetParentRepository parents, SheetService sheets, Rollup rollup, Audit audit) {
+            SheetParentRepository parents, SheetService sheets, Rollup rollup, Audit audit, SheetGradeRepository grades) {
+        this.grades = grades;
         this.settings = settings;
         this.dated = dated;
         this.changes = changes;
@@ -730,9 +734,9 @@ public class SettingService implements ActingFor {
             try {
                 value = Grade.valueOf(grade.trim());
             } catch (IllegalArgumentException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "\"" + grade.trim() + "\" is not a grade; the default grade is A, B or C.");
+                throw notAGrade(grade);
             }
+            if (!grades.isGradeOf(sheetId, value)) throw notAGrade(grade);
         }
         sheets.load(sheetId);
         SheetSetting setting = settings.findBySheetIdAndKey(sheetId, DEFAULT_GRADE).orElse(null);
@@ -754,6 +758,17 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + DEFAULT_GRADE
                 + " value=" + (value == null ? "" : value.name()));
         return value;
+    }
+
+    private static ResponseStatusException notAGrade(String grade) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "\"" + grade.trim() + "\" is not a grade; the default grade is one of the sheet's grades.");
+    }
+
+    /** The sheet's grades in order: A, B and C, then those added to it. */
+    @Transactional(readOnly = true)
+    public List<Grade> grades(String sheetId) {
+        return grades.gradesOf(sheetId);
     }
 
     /** The sheet's proof kinds, in the order set; empty when none are set. */

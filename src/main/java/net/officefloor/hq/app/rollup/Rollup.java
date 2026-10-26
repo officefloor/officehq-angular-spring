@@ -127,14 +127,13 @@ public class Rollup {
         // Each grade's rates on the sheet, then on each of its parents in turn.
         List<String> lineage = SettingService.lineageOf(parents, sheetId);
         Map<Grade, List<List<Rate>>> ratesByGrade = new LinkedHashMap<>();
-        for (Grade grade : Grade.values()) {
-            List<List<Rate>> levels = new ArrayList<>();
-            for (int i = 0; i < lineage.size(); i++) levels.add(new ArrayList<>());
-            ratesByGrade.put(grade, levels);
-        }
         for (int level = 0; level < lineage.size(); level++) {
             for (Rate rate : rates.findBySheetIdInOrder(lineage.get(level))) {
-                ratesByGrade.get(rate.getGrade()).get(level).add(rate);
+                ratesByGrade.computeIfAbsent(rate.getGrade(), (g) -> {
+                    List<List<Rate>> levels = new ArrayList<>();
+                    for (int i = 0; i < lineage.size(); i++) levels.add(new ArrayList<>());
+                    return levels;
+                }).get(level).add(rate);
             }
         }
         // A forward-only version of a rate applies only to the claims added after it was saved.

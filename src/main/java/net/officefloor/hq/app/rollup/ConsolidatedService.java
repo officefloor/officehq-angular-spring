@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.SheetGradeRepository;
 import net.officefloor.hq.app.setting.SheetParentLink;
 import net.officefloor.hq.app.setting.SheetParentRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -60,9 +61,12 @@ public class ConsolidatedService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final SheetRepository sheets;
+    private final SheetGradeRepository grades;
 
     public ConsolidatedService(SheetParentRepository parents, Rollup rollup, SheetHistory history,
-            EntityManager entityManager, PersonRepository people, ClaimRepository claims, SheetRepository sheets) {
+            EntityManager entityManager, PersonRepository people, ClaimRepository claims, SheetRepository sheets,
+            SheetGradeRepository grades) {
+        this.grades = grades;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -81,7 +85,10 @@ public class ConsolidatedService {
         BigDecimal due = BigDecimal.ZERO;
         BigDecimal overdue = BigDecimal.ZERO;
         Map<Grade, BigDecimal> gradeDue = new LinkedHashMap<>();
-        for (Grade grade : Grade.values()) gradeDue.put(grade, BigDecimal.ZERO);
+        for (Grade grade : grades.gradesOf(sheetId)) gradeDue.put(grade, BigDecimal.ZERO);
+        for (String sheet : found) {
+            for (Grade grade : grades.gradesOf(sheet)) gradeDue.putIfAbsent(grade, BigDecimal.ZERO);
+        }
         Map<ClaimStatus, Integer> statusCount = new LinkedHashMap<>();
         for (ClaimStatus status : ClaimStatus.values()) {
             if (status != ClaimStatus.DELETED) statusCount.put(status, 0);
@@ -131,7 +138,7 @@ public class ConsolidatedService {
         if (today == null) return totals;
         Rollup.Snapshot figures = rollup.snapshot(sheetId);
         Map<Grade, BigDecimal> gradeDue = new LinkedHashMap<>();
-        for (Grade grade : Grade.values()) gradeDue.put(grade, BigDecimal.ZERO);
+        for (Grade grade : grades.gradesOf(sheetId)) gradeDue.put(grade, BigDecimal.ZERO);
         for (Person person : people.findInListOrder(sheetId)) {
             if (person.isRetired()) continue;
             Grade grade = person.gradeOn(today);

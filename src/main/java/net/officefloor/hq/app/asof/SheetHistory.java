@@ -57,7 +57,9 @@ public class SheetHistory {
     private static final ThreadLocal<Changing> CHANGING = new ThreadLocal<>();
 
     private static final String SHEET = "SHEET";
-    private static final Set<String> NOT_KEPT = Set.of("SHEET_HISTORY", "FLYWAY_SCHEMA_HISTORY");
+    /** The tables not kept: besides the history itself, the grades added to a sheet, which are listed at
+     *  every date, as of it too. */
+    private static final Set<String> NOT_KEPT = Set.of("SHEET_HISTORY", "FLYWAY_SCHEMA_HISTORY", "SHEET_GRADE");
 
     /** The rows of one table, as kept. */
     private record Rows(String table, String[] columns, List<Object[]> rows) implements Serializable {

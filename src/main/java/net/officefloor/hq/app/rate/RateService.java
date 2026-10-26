@@ -9,6 +9,7 @@ import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Grade;
+import net.officefloor.hq.app.person.SheetGradeRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.setting.SheetParentRepository;
@@ -29,9 +30,11 @@ public class RateService {
     private final ClaimRepository claims;
     private final Rollup rollup;
     private final Audit audit;
+    private final SheetGradeRepository grades;
 
     public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets,
-            SheetParentRepository parents, ClaimRepository claims, Rollup rollup, Audit audit) {
+            SheetParentRepository parents, ClaimRepository claims, Rollup rollup, Audit audit, SheetGradeRepository grades) {
+        this.grades = grades;
         this.claims = claims;
         this.rates = rates;
         this.changes = changes;
@@ -145,6 +148,9 @@ public class RateService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
         }
         sheets.load(sheetId);
+        if (!grades.isGradeOf(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "There is no grade " + grade + ".");
+        }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheets.today(sheetId);
         Long forwardAfter = from != null && today != null && !from.isBefore(today) ? claims.maxId() : null;
