@@ -11,6 +11,8 @@ export interface StatementView {
   lastDueTotal: string;
   /** yyyy-mm-dd: the last statement's date: the date it was taken as of, else the sheet's today then. */
   lastDate: string;
+  /** One line per statement, oldest first by date: `<statement date> <due-total>`. */
+  lines: string[];
 }
 
 /** A statement just taken: the person's statements after it, and their claims as it bound them. */

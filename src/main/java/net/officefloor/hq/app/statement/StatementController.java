@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
@@ -25,12 +26,20 @@ public class StatementController {
 
     /** What the screen shows of a person's statements: how many were taken, and the last one's
      *  due-total (two decimals, or n/a) and its date: the date it was taken as of, else the sheet's today
-     *  when it was taken. */
-    public record StatementView(long personId, int count, String lastDueTotal, LocalDate lastDate) {
+     *  when it was taken; and a line for each, oldest first by its date (then in the order taken, those a
+     *  merge or a transfer brought over among them): its date and due-total. */
+    public record StatementView(long personId, int count, String lastDueTotal, LocalDate lastDate,
+            List<String> lines) {
         static StatementView of(StatementService.Summary summary) {
             Statement last = summary.last();
-            return new StatementView(summary.personId(), summary.count(),
-                    last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(), last.getStatedOn());
+            List<String> lines = summary.all().stream()
+                    .sorted(Comparator.comparing(Statement::getStatedOn).thenComparing(Statement::getId))
+                    .map((s) -> s.getStatedOn() + " " + dueTotal(s)).toList();
+            return new StatementView(summary.personId(), summary.count(), dueTotal(last), last.getStatedOn(), lines);
+        }
+
+        private static String dueTotal(Statement s) {
+            return s.getDueTotal() == null ? "n/a" : s.getDueTotal().toPlainString();
         }
     }
 

@@ -360,6 +360,11 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   @if (cols.shown('statement-count')) { <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                   taken; } @if (cols.shown('stated-total')) { last <span data-testid="person-stated-total">{{ (statementOf(p.id)?.lastDueTotal ?? '') | figure }}</span> }
                   @if (cols.shown('statement-date')) { on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span> }
+                  <ul [attr.aria-label]="'Statements of ' + p.name">
+                    @for (line of statementOf(p.id)?.lines ?? []; track $index) {
+                      <li data-testid="person-statement-line-line">{{ line }}</li>
+                    }
+                  </ul>
                   <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take {{ p.name }}'s statement as of</label>
                   <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
                     #statementAsOf (input)="clearPersonError(p.id)" />

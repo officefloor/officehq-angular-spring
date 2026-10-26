@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,8 +32,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StatementService {
 
-    /** A person's statements: how many were taken, and the last one (none when none was). */
-    public record Summary(long personId, int count, Statement last) {
+    /** A person's statements: how many were taken, the last one (none when none was), and all of them in
+     *  the order they were taken. */
+    public record Summary(long personId, int count, Statement last, List<Statement> all) {
     }
 
     /** A statement just taken: the person's summary after it, and their claims as it bound them, newest first. */
@@ -66,20 +68,18 @@ public class StatementService {
     /** The statement summary of each person on the sheet who has had a statement taken. */
     @Transactional(readOnly = true)
     public List<Summary> list(String sheetId) {
-        Map<Long, Summary> by = new LinkedHashMap<>();
+        Map<Long, List<Statement>> by = new LinkedHashMap<>();
         for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
-            Summary was = by.get(s.getPersonId());
-            by.put(s.getPersonId(), was == null ? new Summary(s.getPersonId(), 1, s)
-                    : new Summary(s.getPersonId(), was.count() + 1, later(was.last(), s)));
+            by.computeIfAbsent(s.getPersonId(), (id) -> new ArrayList<>()).add(s);
         }
-        return List.copyOf(by.values());
+        return by.entrySet().stream().map((e) -> summarise(e.getKey(), e.getValue())).toList();
     }
 
     /** A person's summary from their statements in the order they were taken; none when they have none. */
     private static Summary summarise(long personId, List<Statement> all) {
         Statement last = null;
         for (Statement s : all) last = last == null ? s : later(last, s);
-        return last == null ? null : new Summary(personId, all.size(), last);
+        return last == null ? null : new Summary(personId, all.size(), last, List.copyOf(all));
     }
 
     /** Of a person's last statement so far and one taken after it, which is now their last: their own
