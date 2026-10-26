@@ -73,6 +73,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** The user whose open editor holds the claim, so no one else may edit it; null while none does. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     /** Whether the claim is bound by its person's last statement. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -289,6 +293,14 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     public boolean isStated() {

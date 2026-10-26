@@ -49,4 +49,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The claim, locked until the transaction ends, so two status changes to it never interleave. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Claim> findWithLockByIdAndSheetId(Long id, String sheetId);
+
+    /** The sheet's claims an editor holds. */
+    List<Claim> findBySheetIdAndLockedByNotNull(String sheetId);
 }

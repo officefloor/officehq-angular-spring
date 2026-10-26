@@ -34,15 +34,18 @@ public class ClaimController {
      * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
      * the date of the claim it corrects. Deferred-until is the date it was deferred until, or null; it is deferred
      * while it is OPEN and the sheet's today is before that date. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
+     * Locked-by is the user whose open editor holds it, or null.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, int proofs, String splitFrom, List<LogLineView> log) {
+            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, int proofs, String splitFrom, List<LogLineView> log,
+            String lockedBy) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList());
+                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
+                    c.getLockedBy());
         }
     }
 
@@ -101,6 +104,22 @@ public class ClaimController {
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.update(user, sheetId, id, form.amount(), form.date(), form.note(),
                 form.corrects()));
+    }
+
+    /** Opens the user's editor on the claim, holding it for them until it is saved or cancelled. */
+    @PostMapping("/claims/{id}/lock")
+    public ClaimView lock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.lock(user, sheetId, id));
+    }
+
+    /** Cancels the user's editor on the claim, releasing it. */
+    @PostMapping("/claims/{id}/unlock")
+    public ClaimView unlock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.unlock(user, sheetId, id));
     }
 
     @PostMapping("/claims/{id}/open")

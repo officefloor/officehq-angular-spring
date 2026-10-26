@@ -17,6 +17,8 @@ import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -100,6 +102,7 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
         }
+        refuseLockedByOther(by, claim);
         refuseInClosedPeriod(sheetId, claim.getDate());
         refuseInClosedPeriod(sheetId, on);
         refuseAfterRetirement(person(sheetId, claim.getPersonId()), on);
@@ -110,10 +113,62 @@ public class ClaimService {
         claim.setDate(on);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setNote(noteOf(note));
+        // the save closes the editor, which releases the claim
+        claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", by, person(sheetId, saved.getPersonId()), saved));
         rollup.recordChanges(by, sheetId, before);
         return saved;
+    }
+
+    /**
+     * Opens the user's editor on a claim, which holds it for them: no one else may edit it until the editor is saved
+     * or cancelled, or the sheet's today changes. Refused unless it is a draft, when it is dated in a closed period,
+     * and when another user's editor holds it. An editor the user had open on another claim of the sheet is closed.
+     */
+    @Transactional
+    public Claim lock(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
+        }
+        refuseLockedByOther(by, claim);
+        for (Claim held : claims.findBySheetIdAndLockedByNotNull(sheetId)) {
+            if (by.equals(held.getLockedBy()) && !held.getId().equals(claim.getId())) {
+                held.setLockedBy(null);
+            }
+        }
+        claim.setLockedBy(by);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Closes the user's editor on a claim (cancelled), releasing it; a claim it does not hold is left as it is. */
+    @Transactional
+    public Claim unlock(String by, String sheetId, Long id) {
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (by.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            claim = claims.saveAndFlush(claim);
+        }
+        return claim;
+    }
+
+    /** Once the sheet's today changes, every editor open on its claims is closed, releasing what they held. */
+    @EventListener
+    @Transactional
+    public void unlockAll(TodayChanged change) {
+        for (Claim held : claims.findBySheetIdAndLockedByNotNull(change.sheet().getId())) {
+            held.setLockedBy(null);
+        }
+        claims.flush();
+    }
+
+    private static void refuseLockedByOther(String by, Claim claim) {
+        if (claim.getLockedBy() != null && !claim.getLockedBy().equals(by)) {
+            throw new ResponseStatusException(HttpStatus.LOCKED,
+                    "That claim is being edited by " + claim.getLockedBy() + ".");
+        }
     }
 
     /**

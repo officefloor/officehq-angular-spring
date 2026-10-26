@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
@@ -38,6 +38,8 @@ export interface Claim {
   splitFrom: string | null;
   // The claim's status log, oldest first: a line for each status it has had, from its DRAFT on.
   log: ClaimLogLine[];
+  // The user whose open editor holds the claim, so no one else may edit it; null while none does.
+  lockedBy: string | null;
 }
 
 // A status the claim came to have: who made the change, the sheet's today then, and the claim's due then (null
@@ -177,6 +179,7 @@ export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late
 }
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
+const LOCKED = 'Another user is editing this claim; try again once they are done.';
 
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
@@ -358,7 +361,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
                 Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               @if (editingId() === c.id) {
-                <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+                <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
               }
               @if (rowErrors()[c.id]; as err) {
                 <p role="alert" data-testid="claim-error">{{ err }}</p>
@@ -399,6 +402,9 @@ export class Claims {
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
   private submitting = false;
+  // The store's answer to the edit button while it is awaited: whether the claim is held for this user. The editor
+  // opens at once; a save waits for it, and a refusal closes the editor.
+  private locking: Promise<boolean> | null = null;
   // Each claim's refused status change, by claim id.
   protected readonly rowErrors = signal<Record<number, string>>({});
   // The reason typed to reject each pending claim, by claim id.
@@ -413,6 +419,30 @@ export class Claims {
   protected readonly reassignTo = signal<Record<number, string>>({});
 
   protected readonly dueOf = dueOf;
+
+  constructor() {
+    // The store says which claim this user's editor holds: a re-read sheet shows it open again, and an editor whose
+    // claim it no longer holds (released when the sheet's today changed) is closed.
+    effect(() => {
+      const user = this.session.user();
+      const claims = this.claims();
+      untracked(() => {
+        const editing = this.editingId();
+        const mine = claims.find((c) => c.lockedBy !== null && c.lockedBy === user);
+        if (editing !== null && !this.locking && claims.some((c) => c.id === editing && c.lockedBy !== user)) {
+          this.reset();
+        }
+        if (this.editingId() === null && mine) this.openEditor(mine);
+      });
+    });
+    // A today change releases every claim, so an open editor is closed with it.
+    let today: string | null | undefined;
+    effect(() => {
+      const now = this.session.sheetToday();
+      if (today !== undefined && now !== today) untracked(() => this.reset());
+      today = now;
+    });
+  }
 
   /** Every rate set for the person's grade in force on the date. */
   protected ratesOn(date: string): readonly RateView[] {
@@ -434,13 +464,63 @@ export class Claims {
     return periodOn(this.periods.list(), date)?.name ?? '';
   }
 
-  protected edit(c: Claim): void {
+  /** Opens the claim's editor, which holds the claim for this user until it is saved or cancelled. */
+  protected async edit(c: Claim): Promise<void> {
     this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = this.session.user();
+    if (this.session.sheetArchived() || this.settings.roles().some((r) => r.user === user && r.role === 'viewer')) {
+      this.setRowError(c.id, 'Your role may not edit a claim on this sheet.');
+      return;
+    }
     if (c.status !== 'DRAFT') {
       // an open claim is changed by voiding it and adding a new one
       this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
       return;
     }
+    if (inClosedPeriod(this.periods.list(), c.date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    if (c.lockedBy !== null && c.lockedBy !== user) {
+      this.setRowError(c.id, LOCKED);
+      return;
+    }
+    const was = this.editingId();
+    this.openEditor(c);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lock`;
+    const locking = firstValueFrom(this.http.post<Claim>(url, null)).then(
+      (held) => {
+        // the store released the claim this user's editor held before
+        const prev = was !== null && was !== c.id ? this.claims().find((x) => x.id === was) : undefined;
+        if (prev) this.saved.emit({ ...prev, lockedBy: null });
+        this.saved.emit(held);
+        return true;
+      },
+      (e: unknown) => {
+        this.refuseEdit(c, e);
+        return false;
+      },
+    );
+    this.locking = locking;
+    await locking;
+    if (this.locking === locking) this.locking = null;
+  }
+
+  private refuseEdit(c: Claim, e: unknown): void {
+    if (this.editingId() === c.id) this.reset();
+    const status = e instanceof HttpErrorResponse ? e.status : 0;
+    const err =
+      status === 403
+        ? 'Your role may not edit a claim on this sheet.'
+        : status === 423
+          ? LOCKED
+          : `This ${c.status} claim cannot be edited, or its period is closed.`;
+    this.setRowError(c.id, err);
+  }
+
+  private openEditor(c: Claim): void {
     this.editingId.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
@@ -675,6 +755,19 @@ export class Claims {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
+  /** Cancels the open editor, releasing the claim it held. */
+  protected async cancel(): Promise<void> {
+    const editing = this.editingId();
+    this.reset();
+    const sheet = this.session.sheetId();
+    if (editing === null || !sheet) return;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${editing}/unlock`, null)));
+    } catch {
+      // the editor is closed either way; a hold the store keeps is released when the sheet's today changes
+    }
+  }
+
   protected reset(): void {
     this.editingId.set(null);
     this.amount.set('');
@@ -705,6 +798,12 @@ export class Claims {
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.error.set('Enter a date as yyyy-mm-dd.');
       return;
+    }
+    if (this.locking) {
+      // the editor is saved only once the store holds its claim for this user
+      this.submitting = true;
+      const held = await this.locking.finally(() => (this.submitting = false));
+      if (!held) return;
     }
     const editing = this.editingId();
     const was = this.claims().find((c) => c.id === editing);
