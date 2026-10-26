@@ -1,0 +1,133 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f495e7aa..d5a676ac 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -15,6 +15,8 @@ export interface Claim {
+   number: number | null;
+   // The due fixed when the claim was settled; null while its due is live.
+   settledDue: string | null;
++  // The user who opened the claim; null for a claim never opened. That user cannot settle it.
++  openedBy: string | null;
+ }
+ 
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+@@ -74,7 +76,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
+       <thead>
+         <tr>
+-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th>
++          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th>
+           <th scope="col"><span class="visually-hidden">Actions</span></th>
+         </tr>
+       </thead>
+@@ -87,6 +89,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+             <td data-testid="claim-note">{{ c.note }}</td>
+             <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rateOn(rates(), c.date)) ?? 'n/a' }}</td>
+             <td data-testid="claim-status">{{ c.status }}</td>
++            <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+             <td>
+               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
+                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+@@ -156,7 +159,11 @@ export class Claims {
+     try {
+       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+     } catch {
+-      this.rowErrors.update((e) => ({ ...e, [c.id]: `A ${c.status} claim cannot be changed that way.` }));
++      const err =
++        action === 'settle' && c.openedBy !== null && c.openedBy === this.session.user()
++          ? 'You opened this claim, so another user must settle it.'
++          : `A ${c.status} claim cannot be changed that way.`;
++      this.rowErrors.update((e) => ({ ...e, [c.id]: err }));
+     }
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index acffdaa0..2be97dd2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** The user who opened the claim; null for a claim never opened. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -117,4 +121,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 99b2ab76..c1fe4259 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -28,13 +28,14 @@ public class ClaimController {
+ 
+     /**
+      * A claim as the screen shows it; the amount always carries two decimals. The settled due is the figure fixed
+-     * when it was settled, or null while its due is live.
++     * when it was settled, or null while its due is live. Opened-by is the user who opened it, or null.
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Long number, String settledDue) {
++            Long number, String settledDue, String openedBy) {
+         static ClaimView of(Claim c) {
+             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
+-                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString());
++                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
++                    c.getOpenedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 12cd60dd..369e5d8b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -62,7 +62,10 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Moves the claim to the status; a change its status does not allow is refused. */
++    /**
++     * Moves the claim to the status; a change its status does not allow is refused, as is settling by the user
++     * who opened it.
++     */
+     @Transactional
+     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+         Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+@@ -71,11 +74,15 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
++        if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
++        }
+         Long number = claim.getNumber();
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
++            claim.setOpenedBy(by);
+         } else if (next == ClaimStatus.VOID) {
+             // the number is cleared, never given to another claim; the audit line still carries it
+             claim.setNumber(null);
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 00000000..e1168bc0
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,2 @@
++-- The user who opened a claim; null for a claim never opened. That user may not settle it.
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(100);
