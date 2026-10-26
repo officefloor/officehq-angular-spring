@@ -83,6 +83,13 @@ public class Claim {
     private LocalDate roundsOn;
 
     /**
+     * The date the claim is due by: fixed when it is added, from the terms in force for its person's grade on its
+     * date; later changes to the terms or to its date leave it as it is.
+     */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
+    /**
      * The claim's place in the list, newest first: the next place when it is added or moved to another person. The
      * store gives it; a move takes the next through {@link ClaimRepository#relist}.
      */
@@ -99,6 +106,14 @@ public class Claim {
         this.date = date;
         this.roundsOn = date;
         this.note = note;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public LocalDate getRoundsOn() {

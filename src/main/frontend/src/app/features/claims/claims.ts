@@ -27,6 +27,8 @@ export interface Claim {
   corrects: string | null;
   // The date the claim's rounding follows: its own, or for a correction the date of the claim it corrects.
   roundsOn: string;
+  // The date the claim is due by: fixed when it was added, from the terms for its person's grade on its date.
+  dueBy: string;
 }
 
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING, for a steward to approve (SETTLED)
@@ -81,28 +83,16 @@ export function keepsFigure(c: Claim): boolean {
   return c.settledDue !== null || (isBound(c) && c.statedDue !== null);
 }
 
-/** The date (yyyy-mm-dd) the given number of days after the date. */
-export function addDays(date: string, days: number): string {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
-
-/** The date a claim is due by: its date plus the sheet's terms. */
-export function dueByOf(c: Claim, terms: number): string {
-  return addDays(c.date, terms);
-}
-
 /** Whether a claim is overdue: open (or pending), and due by a date before the sheet's today. */
-export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueByOf(c, terms) < today;
+export function overdue(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && c.dueBy < today;
 }
 
 /**
- * What the late charge follows: the sheet's terms, its today and its late percent; and the policy date in force
+ * What the late charge follows: the sheet's today and its late percent; and the policy date in force
  * (the sheet's today when the setting is blank), which decides how a claim's live figures round.
  */
 export interface Lateness {
-  terms: number;
   today: string | null;
   latePct: string;
   policyDate: string | null;
@@ -124,8 +114,8 @@ function daysBetween(from: string, to: string): number {
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: string, late: Lateness): string | null {
   const figure = figureOf(c, rates, floor, late.policyDate);
-  if (figure === null || isCorrection(c) || !overdue(c, late.terms, late.today)) return figure;
-  const periods = Math.floor(daysBetween(dueByOf(c, late.terms), late.today!) / 30);
+  if (figure === null || isCorrection(c) || !overdue(c, late.today)) return figure;
+  const periods = Math.floor(daysBetween(c.dueBy, late.today!) / 30);
   return withPctPer(figure, late.latePct, periods, roundsHalfUp(c, late.policyDate));
 }
 
@@ -211,8 +201,8 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness()) ?? 'n/a' }}</td>
-            <td data-testid="claim-due-by">{{ dueByOf(c, settings.terms()) }}</td>
-            <td data-testid="claim-overdue">{{ overdue(c, settings.terms(), session.sheetToday()) ? 'yes' : 'no' }}</td>
+            <td data-testid="claim-due-by">{{ c.dueBy }}</td>
+            <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
@@ -315,7 +305,6 @@ export class Claims {
   protected ratesOn(date: string): readonly RateView[] {
     return this.rateStore.rates().get(gradeOn(this.grades(), date)) ?? [];
   }
-  protected readonly dueByOf = dueByOf;
   protected readonly overdue = overdue;
 
   protected value(e: Event): string {

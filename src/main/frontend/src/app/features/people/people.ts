@@ -369,9 +369,8 @@ export class People {
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
   // The claims counted live that are overdue: open and due by a date before the sheet's today.
   protected readonly overdueClaims = computed(() => {
-    const terms = this.settings.terms();
     const today = this.session.sheetToday();
-    return this.liveClaims().filter((c) => overdue(c, terms, today));
+    return this.liveClaims().filter((c) => overdue(c, today));
   });
   protected readonly overdueBy = computed(() => {
     const by = new Map<number, Claim[]>();

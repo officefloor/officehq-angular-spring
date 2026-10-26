@@ -73,6 +73,7 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
+        claim.setDueBy(on.plusDays(settings.termsFor(sheetId, person.gradeOn(on))));
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
@@ -312,14 +313,14 @@ public class ClaimService {
 
     /**
      * The figure (null for n/a) of the claim, with the sheet's late percent of it added for every full 30 days it is
-     * overdue by the sheet's today, rounded like its due. The charge is never bound by a statement: it keeps
+     * overdue (past its due-by) by the sheet's today, rounded like its due. The charge is never bound by a statement: it keeps
      * following the sheet's today and its policy date.
      */
     public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Sheet sheet) {
         if (figure == null || sheet == null || sheet.getToday() == null) {
             return figure;
         }
-        long overdue = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
+        long overdue = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday());
         long periods = overdue > 0 ? overdue / 30 : 0;
         if (periods == 0 || sheet.getLatePct().signum() == 0) {
             return figure;

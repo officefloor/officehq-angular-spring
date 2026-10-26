@@ -20,14 +20,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class SettingsService {
 
     private final SheetRoleRepository roles;
+    private final GradeTermsRepository gradeTerms;
     private final SheetRepository sheetRepository;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public SettingsService(SheetRoleRepository roles, SheetRepository sheetRepository, SheetService sheets,
-            RollupService rollup, Audit audit) {
+    public SettingsService(SheetRoleRepository roles, GradeTermsRepository gradeTerms, SheetRepository sheetRepository,
+            SheetService sheets, RollupService rollup, Audit audit) {
         this.roles = roles;
+        this.gradeTerms = gradeTerms;
         this.sheetRepository = sheetRepository;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -85,6 +87,35 @@ public class SettingsService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
         return saved;
+    }
+
+    /** The terms set per grade on the sheet, by grade; a grade not listed uses the sheet's terms. */
+    @Transactional(readOnly = true)
+    public List<GradeTerms> gradeTerms(String sheetId) {
+        return gradeTerms.findBySheetIdOrderByGradeAsc(sheetId);
+    }
+
+    /**
+     * Sets the terms for one grade: the days after its date a claim is due by when its person has the grade on its
+     * date. Claims already added keep the due-by they were given.
+     */
+    @Transactional
+    public GradeTerms setGradeTerms(String by, String sheetId, String grade, int terms) {
+        sheets.lock(sheetId);
+        GradeTerms t = gradeTerms.findBySheetIdAndGrade(sheetId, grade)
+                .orElseGet(() -> new GradeTerms(sheetId, grade, terms));
+        t.setTerms(terms);
+        GradeTerms saved = gradeTerms.saveAndFlush(t);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms-" + grade + " value="
+                + terms);
+        return saved;
+    }
+
+    /** The terms in force for the grade: its own, else the sheet's. */
+    @Transactional(readOnly = true)
+    public int termsFor(String sheetId, String grade) {
+        return gradeTerms.findBySheetIdAndGrade(sheetId, grade).map(GradeTerms::getTerms)
+                .orElseGet(() -> sheets.load(sheetId).getTerms());
     }
 
     /**

@@ -67,6 +67,13 @@ public class SettingsController {
     public record PeriodNumberingFromForm(LocalDate value) {
     }
 
+    /** The terms set for one grade, in whole days. */
+    public record GradeTermsView(String grade, int terms) {
+        static GradeTermsView of(GradeTerms t) {
+            return new GradeTermsView(t.getGrade(), t.getTerms());
+        }
+    }
+
     public record RoleView(String user, String role) {
         static RoleView of(SheetRole r) {
             return new RoleView(r.getUser(), r.getRole());
@@ -109,6 +116,21 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody TermsForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setTerms(user, sheetId, form.value()));
+    }
+
+    /** The terms set per grade, by grade; a grade not listed uses the sheet's terms. */
+    @GetMapping("/settings/grade-terms")
+    public List<GradeTermsView> gradeTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.gradeTerms(sheetId).stream().map(GradeTermsView::of).toList();
+    }
+
+    @PutMapping("/settings/grade-terms/{grade}")
+    public GradeTermsView setGradeTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody TermsForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return GradeTermsView.of(service.setGradeTerms(user, sheetId, grade, form.value()));
     }
 
     @PutMapping("/settings/late-pct")

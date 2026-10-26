@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { GRADES } from '../rates/rates';
 
 export interface RoleView {
   user: string;
@@ -21,6 +22,12 @@ interface SettingsView {
   policyDate: string | null;
   // The date from which claims opened are numbered within their period; null when blank: off.
   periodNumberingFrom: string | null;
+}
+
+/** The terms set for one grade; a grade with none uses the sheet's terms. */
+interface GradeTermsView {
+  grade: string;
+  terms: number;
 }
 
 export const ROLES = ['clerk', 'steward'];
@@ -53,17 +60,18 @@ export class SettingsStore {
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal<string>(DEFAULT_FLOOR);
   readonly terms = signal<number>(DEFAULT_TERMS);
+  /** The terms set per grade, by grade; a grade not in it uses the sheet's terms. */
+  readonly gradeTerms = signal<ReadonlyMap<string, number>>(new Map());
   readonly latePct = signal<string>(DEFAULT_LATE_PCT);
   /** The policy date as set; null when blank. */
   readonly policyDate = signal<string | null>(null);
   /** The period numbering from as set; null when blank (off). */
   readonly periodNumberingFrom = signal<string | null>(null);
   /**
-   * What an overdue claim's late charge follows: the terms, the sheet's today and the late percent; and the policy
+   * What an overdue claim's late charge follows: the sheet's today and the late percent; and the policy
    * date in force (the sheet's today when blank), which decides how live figures round.
    */
   readonly lateness = computed(() => ({
-    terms: this.terms(),
     today: this.session.sheetToday(),
     latePct: this.latePct(),
     policyDate: this.policyDate() ?? this.session.sheetToday(),
@@ -75,19 +83,22 @@ export class SettingsStore {
     this.clerkLimit.set(null);
     this.floor.set(DEFAULT_FLOOR);
     this.terms.set(DEFAULT_TERMS);
+    this.gradeTerms.set(new Map());
     this.latePct.set(DEFAULT_LATE_PCT);
     this.policyDate.set(null);
     this.periodNumberingFrom.set(null);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [roles, settings] = await Promise.all([
+    const [roles, settings, gradeTerms] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
       firstValueFrom(this.http.get<SettingsView>(`${base}/settings`)),
+      firstValueFrom(this.http.get<GradeTermsView[]>(`${base}/settings/grade-terms`)),
     ]);
     if (this.session.sheetId() === sheet) {
       this.roles.set(roles);
       this.clerkLimit.set(settings.clerkLimit);
       this.floor.set(settings.floor);
       this.terms.set(settings.terms);
+      this.gradeTerms.set(new Map(gradeTerms.map((t) => [t.grade, t.terms])));
       this.latePct.set(settings.latePct);
       this.policyDate.set(settings.policyDate);
       this.periodNumberingFrom.set(settings.periodNumberingFrom);
@@ -122,6 +133,21 @@ export class SettingsStore {
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/terms`, { value }),
     );
     if (this.session.sheetId() === sheet) this.terms.set(s.terms);
+  }
+
+  async setGradeTerms(sheet: string, grade: string, value: number): Promise<void> {
+    const t = await firstValueFrom(
+      this.http.put<GradeTermsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/grade-terms/${encodeURIComponent(grade)}`,
+        { value },
+      ),
+    );
+    if (this.session.sheetId() === sheet) this.gradeTerms.update((m) => new Map(m).set(t.grade, t.terms));
+  }
+
+  /** The terms in force for the grade: its own, else the sheet's. */
+  termsFor(grade: string): number {
+    return this.gradeTerms().get(grade) ?? this.terms();
   }
 
   async setLatePct(sheet: string, value: string): Promise<void> {
@@ -183,6 +209,18 @@ export class SettingsStore {
           (keydown.delete)="termsChanged = true; settingsError.set(null)"
           (keydown.backspace)="termsChanged = true; settingsError.set(null)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; the sheet's terms until set)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTerms()[g] ?? ''"
+            (input)="setGradeTermsField(g, value($event))"
+            (keydown.delete)="gradeTermsChanged.add(g); settingsError.set(null)"
+            (keydown.backspace)="gradeTermsChanged.add(g); settingsError.set(null)"
+          />
+        }
         <label for="setting-late-pct">Late percent (added for every full 30 days a claim is overdue)</label>
         <input
           id="setting-late-pct"
@@ -223,6 +261,12 @@ export class SettingsStore {
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floor() }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
+      @for (g of grades; track g) {
+        <p>
+          Terms in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ store.termsFor(g) }}</strong> days
+        </p>
+      }
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
       <p>
@@ -279,9 +323,11 @@ export class Settings {
   protected readonly store = inject(SettingsStore);
 
   protected readonly roles = ROLES;
+  protected readonly grades = GRADES;
   protected readonly limit = signal('');
   protected readonly floor = signal('');
   protected readonly terms = signal('');
+  protected readonly gradeTerms = signal<Readonly<Record<string, string>>>({});
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
@@ -290,6 +336,7 @@ export class Settings {
   protected limitChanged = false;
   protected floorChanged = false;
   protected termsChanged = false;
+  protected readonly gradeTermsChanged = new Set<string>();
   protected latePctChanged = false;
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
@@ -320,6 +367,12 @@ export class Settings {
     return (e.target as HTMLInputElement).value;
   }
 
+  protected setGradeTermsField(grade: string, v: string): void {
+    this.gradeTerms.update((t) => ({ ...t, [grade]: v }));
+    this.gradeTermsChanged.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected async saveSettings(e: Event): Promise<void> {
     e.preventDefault();
     if (this.savingSettings) {
@@ -344,6 +397,14 @@ export class Settings {
     if (this.termsChanged && !DAYS.test(terms)) {
       this.settingsError.set('Enter terms as a whole number of days, 0 or more.');
       return;
+    }
+    const gradeTerms = new Map<string, string>();
+    for (const g of this.gradeTermsChanged) gradeTerms.set(g, (this.gradeTerms()[g] ?? '').trim());
+    for (const [g, t] of gradeTerms) {
+      if (!DAYS.test(t)) {
+        this.settingsError.set(`Enter terms for grade ${g} as a whole number of days, 0 or more.`);
+        return;
+      }
     }
     const latePct = this.latePct().trim();
     if (this.latePctChanged && !PCT.test(latePct)) {
@@ -374,6 +435,10 @@ export class Settings {
       if (this.termsChanged) {
         await this.store.setTerms(sheet, Number(terms));
         this.termsChanged = this.terms().trim() !== terms;
+      }
+      for (const [g, t] of gradeTerms) {
+        await this.store.setGradeTerms(sheet, g, Number(t));
+        if ((this.gradeTerms()[g] ?? '').trim() === t) this.gradeTermsChanged.delete(g);
       }
       if (this.latePctChanged) {
         await this.store.setLatePct(sheet, latePct);
