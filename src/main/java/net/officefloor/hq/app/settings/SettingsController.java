@@ -17,6 +17,7 @@ import java.util.Map;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetController.SheetView;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -281,5 +282,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody DelegationForm form, @SessionAttribute(SessionController.USER) String user) {
         return DelegationView.of(service.delegate(user, sheetId, form.user().trim(), form.from(), form.to()));
+    }
+
+    /** Archives the sheet; only a steward may. */
+    @PostMapping("/archive")
+    public SheetView archive(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @SessionAttribute(SessionController.USER) String user) {
+        return SheetView.of(service.archive(user, sheetId));
     }
 }

@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today) {
-        static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+    public record SheetView(String id, LocalDate today, boolean archived) {
+        public static SheetView of(Sheet sheet) {
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
         }
     }
 

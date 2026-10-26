@@ -127,6 +127,19 @@ public class SettingsService implements Audit.OnBehalf {
         return saved;
     }
 
+    /** Archives the sheet, after which every change on it is refused. Refused unless the one archiving is a steward. */
+    @Transactional
+    public Sheet archive(String by, String sheetId) {
+        Sheet sheet = sheets.lock(sheetId);
+        if (!isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can archive the sheet.");
+        }
+        sheet.archive();
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + sheetId + " by=" + by);
+        return saved;
+    }
+
     /** Sets the user's role on the sheet; refused unless it is clerk, steward or viewer. */
     @Transactional
     public SheetRole setRole(String by, String sheetId, String user, String role) {
@@ -340,5 +353,17 @@ public class SettingsService implements Audit.OnBehalf {
     @Transactional(readOnly = true)
     public boolean isSteward(String sheetId, String user) {
         return SheetRole.STEWARD.equals(roleOf(sheetId, user));
+    }
+
+    /** Whether the sheet has been archived, which refuses every change on it. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String sheetId) {
+        return sheetRepository.findById(sheetId).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Whether the user may change nothing on the sheet: they are a viewer, or the sheet is archived. */
+    @Transactional(readOnly = true)
+    public boolean isReadOnly(String sheetId, String user) {
+        return isArchived(sheetId) || isViewer(sheetId, user);
     }
 }

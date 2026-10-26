@@ -30,6 +30,7 @@ import { Delegation } from '../delegation/delegation';
       @if (session.sheetId(); as id) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
         <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
+        <p>Archived: <strong data-testid="sheet-archived">{{ session.sheetArchived() ? 'yes' : 'no' }}</strong></p>
 
         <form (submit)="saveToday($event)" aria-label="Change today">
           <label for="sheet-today">New today</label>
@@ -41,10 +42,11 @@ import { Delegation } from '../delegation/delegation';
             (input)="todayInput.set(value($event)); todayError.set(null)"
           />
           <button type="submit" data-testid="sheet-today-save">Set today</button>
-          @if (todayError(); as err) {
-            <p role="alert" data-testid="sheet-error">{{ err }}</p>
-          }
         </form>
+        <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+        @if (todayError(); as err) {
+          <p role="alert" data-testid="sheet-error">{{ err }}</p>
+        }
 
         <app-rates />
         <app-settings />
@@ -75,6 +77,7 @@ export class Home {
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = signal('');
+  // The sheet's own error: a refused today change or archive.
   protected readonly todayError = signal<string | null>(null);
 
   protected value(e: Event): string {
@@ -123,6 +126,15 @@ export class Home {
       await this.session.setToday(today);
     } catch {
       this.todayError.set('Could not change the date.');
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    this.todayError.set(null);
+    try {
+      await this.session.archive();
+    } catch {
+      this.todayError.set('Could not archive the sheet.');
     }
   }
 }

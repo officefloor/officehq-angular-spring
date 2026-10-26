@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Guards the API: a viewer is refused every change. */
+/** Guards the API: a viewer, or anyone on an archived sheet, is refused every change. */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 

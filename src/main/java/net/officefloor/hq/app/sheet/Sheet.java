@@ -80,6 +80,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -205,6 +209,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void archive() {
+        this.archived = true;
     }
 
     /** The due-total (null for n/a, which is not capped) held to the cap when it is above it. */

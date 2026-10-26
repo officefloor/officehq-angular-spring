@@ -14,8 +14,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 
 /**
- * Refuses a viewer every request that changes a sheet, before it reaches its handler, so it writes nothing. A
- * handler marked {@link ViewerPasses} is let through.
+ * Refuses a viewer, and anyone on an archived sheet, every request that changes a sheet, before it reaches its
+ * handler, so it writes nothing. A handler marked {@link ViewerPasses} is let through.
  */
 @Component
 public class ViewerGuard implements HandlerInterceptor {
@@ -35,6 +35,9 @@ public class ViewerGuard implements HandlerInterceptor {
         HttpSession session = request.getSession(false);
         Object user = session == null ? null : session.getAttribute(SessionController.USER);
         String sheetId = sheetId(request);
+        if (sheetId != null && settings.isArchived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived; nothing on it can change.");
+        }
         if (user instanceof String name && sheetId != null && settings.isViewer(sheetId, name)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything.");
         }

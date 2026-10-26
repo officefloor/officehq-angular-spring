@@ -54,10 +54,10 @@ public class ClaimBulkService {
 
     /**
      * Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. A
-     * viewer changes none: every one is refused.
+     * viewer, or anyone on an archived sheet, changes none: every one is refused.
      */
     private Result each(String by, String sheetId, Set<Long> ids, Function<Long, Claim> change) {
-        if (settings.isViewer(sheetId, by)) {
+        if (settings.isReadOnly(sheetId, by)) {
             return new Result(List.of(), ids.size());
         }
         Map<Long, Integer> personOrder = new HashMap<>();
