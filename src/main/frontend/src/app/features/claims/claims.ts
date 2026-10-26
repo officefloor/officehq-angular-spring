@@ -96,16 +96,14 @@ export function roundsHalfUp(c: Claim, policyDate: string | null): boolean {
 }
 
 /**
- * The figure a claim shows and totals: its settled due, else the one a statement bound it to (not while it is
- * pending), else its live due
- * at the rate in force on its date and at least the floor in force on its date (a correction has none), rounded as
- * the policy date decides for it; null (n/a) with none.
+ * The figure of a claim: its settled due, else the one a statement bound it to (not while it is pending), else its
+ * rate figure at the rate in force on its date (no floor), rounded as the policy date decides for it; null (n/a)
+ * with none.
  */
-export function figureOf(c: Claim, rates: readonly RateView[], floor: FloorOn, policyDate: string | null): string | null {
+export function figureOf(c: Claim, rates: readonly RateView[], policyDate: string | null): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (isBound(c)) return c.statedDue;
-  const due = dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, policyDate));
-  return due === null || isCorrection(c) ? due : atLeast(due, floor(c.date));
+  return dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, policyDate));
 }
 
 /** Whether the claim keeps a figure whatever the rates: a settled or bound one with a figure. */
@@ -155,20 +153,22 @@ function plusDays(date: string, days: number): string {
 }
 
 /**
- * The due a claim shows and totals: its figure, and for an overdue claim, for each full 30 days it is overdue, the
- * late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of that figure, rounded like
- * the claim, added on top; a boundary whose percent is 0.00 adds nothing. The charge is never bound by a statement; a settled claim's
- * due already holds it. A correction gains no late charge.
+ * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
+ * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
+ * the late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, rounded like
+ * the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
+ * statement. A correction has neither.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness): string | null {
-  const figure = figureOf(c, rates, floor, late.policyDate);
-  if (figure === null || isCorrection(c) || !overdue(c, late.today)) return figure;
+  const figure = figureOf(c, rates, late.policyDate);
+  if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
+  if (!overdue(c, late.today)) return atLeast(figure, floor(c.date));
   const periods = Math.floor(daysBetween(c.dueBy, late.today!) / 30);
   const halfUp = roundsHalfUp(c, late.policyDate);
   const charges = Array.from({ length: Math.max(periods, 0) }, (_, k) =>
     dueOn(figure, late.latePct(plusDays(c.dueBy, 30 * (k + 1))), halfUp),
   );
-  return sumSkippingNa([figure, ...charges]);
+  return atLeast(sumSkippingNa([figure, ...charges]), floor(c.date));
 }
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';

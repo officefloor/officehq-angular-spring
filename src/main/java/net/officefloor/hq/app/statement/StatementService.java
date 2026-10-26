@@ -87,7 +87,7 @@ public class StatementService {
             // a settled or already bound claim keeps its figure even with no rate in force today
             grades.add(person.gradeOn(c.getDate()));
             kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
-            // the statement binds the figure under the late charge; the charge keeps following the sheet's today
+            // the statement binds the rate figure under the late charge and the floor; both keep following the sheet
             BigDecimal due = claimService.due(sheetId, person, c);
             c.bind(claimService.figure(sheetId, person, c));
             count++;

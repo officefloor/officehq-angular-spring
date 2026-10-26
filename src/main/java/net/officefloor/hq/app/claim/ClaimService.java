@@ -157,11 +157,11 @@ public class ClaimService {
         String tail = "";
         if (next == ClaimStatus.SETTLED) {
             // the due is fixed at the figure a statement bound it to, else at the rate the person's grade has in
-            // force on the claim's date, with the late charge it has gained by today; with none it stays live
+            // force on the claim's date, with the late charge it has gained by today, and at least the floor in force
+            // on its date; with none it stays live
             BigDecimal figure = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
-                    : liveDue(sheetId, person, claim);
-            BigDecimal fixed = claim.isCorrection() ? figure
-                    : withLateCharge(figure, claim, sheets.load(sheetId));
+                    : rateFigure(sheetId, person, claim);
+            BigDecimal fixed = liveDue(figure, claim, sheets.load(sheetId), true);
             refuseWithoutProof(sheetId, claim, fixed);
             if (settings.aboveClerkLimit(sheetId, by, fixed)) {
                 next = ClaimStatus.PENDING;
@@ -278,8 +278,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal old = claim.getSettledDue();
-        BigDecimal live = liveDue(sheetId, person, claim);
-        BigDecimal fixed = claim.isCorrection() ? live : withLateCharge(live, claim, sheets.load(sheetId));
+        BigDecimal fixed = liveDue(rateFigure(sheetId, person, claim), claim, sheets.load(sheetId), true);
         claim.setSettledDue(fixed);
         logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -434,37 +433,48 @@ public class ClaimService {
     }
 
     /**
-     * The claim's live due: at the rate its person's grade in force on its date has in force on that date, and at least the sheet's
-     * floor in force on its date (a correction has none), rounded as the sheet's policy date decides for it; null (n/a) with none.
+     * The claim's rate figure: at the rate its person's grade in force on its date has in force on that date, rounded
+     * as the sheet's policy date decides for it, with no floor; null (n/a) with none.
      */
-    public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
+    public BigDecimal rateFigure(String sheetId, Person person, Claim claim) {
         Sheet sheet = sheets.load(sheetId);
-        BigDecimal floor = claim.isCorrection() ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = sheet.roundingOn(claim.getRoundsOn());
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
-                .map(pct -> floored(dueOn(claim.getAmount(), pct, rounding), floor)).orElse(null);
+                .map(pct -> dueOn(claim.getAmount(), pct, rounding)).orElse(null);
     }
 
     /**
-     * The figure the claim shows and totals: its settled due, else the one a statement bound it to (not while it is
-     * pending), else live.
+     * The figure of the claim: its settled due, else the one a statement bound it to (not while it is pending), else
+     * its rate figure. A statement binds this figure, under the late charge and the floor.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isBound() ? claim.getStatedDue() : liveDue(sheetId, person, claim);
+        return claim.isBound() ? claim.getStatedDue() : rateFigure(sheetId, person, claim);
     }
 
     /**
-     * The due the claim shows and totals: its figure, with the late charge an open (or pending) overdue claim has gained; a
-     * correction gains none.
+     * The due the claim shows and totals: its settled due as frozen, else its live due on its figure (the late charge
+     * only while it is open or pending).
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figure(sheetId, person, claim);
-        return claim.getStatus().isOpen() && !claim.isCorrection()
-                ? withLateCharge(figure, claim, sheets.load(sheetId))
-                : figure;
+        return claim.getSettledDue() != null ? figure
+                : liveDue(figure, claim, sheets.load(sheetId), claim.getStatus().isOpen());
+    }
+
+    /**
+     * The live due of a claim on its (unfloored) figure: the greater of the floor in force on its date and the figure
+     * plus the late charge it has gained (when charged); a correction has neither floor nor charge. Null (n/a) for an
+     * n/a figure.
+     */
+    public static BigDecimal liveDue(BigDecimal figure, Claim claim, Sheet sheet, boolean charged) {
+        if (figure == null || claim.isCorrection()) {
+            return figure;
+        }
+        BigDecimal due = charged ? withLateCharge(figure, claim, sheet) : figure;
+        return sheet == null ? due : floored(due, sheet.floorOn(claim.getDate()));
     }
 
     /**
