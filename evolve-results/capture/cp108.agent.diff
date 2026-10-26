@@ -1,0 +1,112 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 64c000a8..3d443e61 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
+-import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
++import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ import { Header } from '../header/header';
+ import { Summary, SummaryPerson } from '../summary/summary';
+@@ -755,20 +755,39 @@ export class People {
+       .filter((c) => c.status === 'VOID')
+       .map((c) => c.voidReason),
+   );
+-  // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
++  // Each person's patron ids, in the order they were named; a person with none is not in the map.
++  private readonly patronIdsBy = computed(() => {
++    const lists = new Map<number, number[]>();
++    for (const r of this.patrons()) lists.set(r.personId, [...(lists.get(r.personId) ?? []), r.patronId]);
++    return lists;
++  });
++  // Each person's patrons with their shares: 100.00 split equally in the order they were named, the remainder to
++  // the first; a person with none is not in the map.
++  private readonly patronSharesBy = computed(() => {
++    const by = new Map<number, { patronId: number; share: string }[]>();
++    for (const [id, list] of this.patronIdsBy()) {
++      const shares = equalShares(list.length);
++      by.set(id, list.map((patronId, i) => ({ patronId, share: shares[i] })));
++    }
++    return by;
++  });
++  // Each person's patrons as "<name> <share>", sorted by name and comma separated; a person with none is not in
++  // the map.
+   protected readonly patronNamesBy = computed(() => {
+     const names = new Map(this.people().map((p) => [p.id, p.name]));
+-    const lists = new Map<number, string[]>();
+-    for (const r of this.patrons()) {
+-      const name = names.get(r.patronId);
+-      if (name !== undefined) lists.set(r.personId, [...(lists.get(r.personId) ?? []), name]);
+-    }
+     const by = new Map<number, string>();
+-    for (const [id, list] of lists) by.set(id, [...list].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', '));
++    for (const [id, list] of this.patronSharesBy()) {
++      const named = list
++        .filter((r) => names.has(r.patronId))
++        .map((r) => ({ name: names.get(r.patronId)!, share: r.share }))
++        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
++      by.set(id, named.map((r) => `${r.name} ${r.share}`).join(', '));
++    }
+     return by;
+   });
+-  // Each person's backing: their patrons' settled claims dated within the 90 days up to and including the sheet's
+-  // today, each at its frozen figure, added up skipping n/a; a person with no patrons is not in the map.
++  // Each person's backing: over their patrons, the patron's figure (their settled claims dated within the 90 days
++  // up to and including the sheet's today, each at its frozen figure, added up skipping n/a) times their share
++  // divided by 100, added up and rounded half to even; a person with no patrons is not in the map.
+   protected readonly backingBy = computed(() => {
+     const today = this.session.sheetToday();
+     const settled = new Map<number, (string | null)[]>();
+@@ -776,12 +795,10 @@ export class People {
+       if (c.status !== 'SETTLED' || today === null || c.date < plusDays(today, -89) || c.date > today) continue;
+       settled.set(c.personId, [...(settled.get(c.personId) ?? []), c.settledDue]);
+     }
+-    const lists = new Map<number, (string | null)[]>();
+-    for (const r of this.patrons()) {
+-      lists.set(r.personId, [...(lists.get(r.personId) ?? []), ...(settled.get(r.patronId) ?? [])]);
+-    }
+     const by = new Map<number, string>();
+-    for (const [id, list] of lists) by.set(id, sumSkippingNa(list));
++    for (const [id, list] of this.patronSharesBy()) {
++      by.set(id, sharedSum(list.map((r) => ({ figure: sumSkippingNa(settled.get(r.patronId) ?? []), share: r.share }))));
++    }
+     return by;
+   });
+   // The sheet's due-total: trimmed of the highest and lowest person's figure when three or more have one.
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index d7019131..69434de2 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -83,6 +83,29 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
+   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));
+ }
+ 
++/**
++ * 100.00 split equally into the given number of two-decimal shares, each rounded half to even, with the remainder
++ * (100.00 minus the shares added up) given to the first.
++ */
++export function equalShares(count: number): string[] {
++  if (count <= 0) return [];
++  const n = BigInt(count);
++  let share = 10000n / n;
++  const rest = 10000n % n;
++  if (rest * 2n > n || (rest * 2n === n && share % 2n === 1n)) share += 1n;
++  return Array.from({ length: count }, (_, i) => formatCents(i === 0 ? 10000n - share * (n - 1n) : share));
++}
++
++/** The sum of each two-decimal figure times its two-decimal share divided by 100, rounded half to even. */
++export function sharedSum(parts: readonly { figure: string; share: string }[]): string {
++  const product = parts.reduce((sum, p) => sum + cents(p.figure) * cents(p.share), 0n);
++  const size = product < 0n ? -product : product;
++  let total = size / 10000n;
++  const rest = size % 10000n;
++  if (rest > 5000n || (rest === 5000n && total % 2n === 1n)) total += 1n;
++  return formatCents(product < 0n ? -total : total);
++}
++
+ /**
+  * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
+  * single lowest are left out.
