@@ -12,11 +12,12 @@ import { StewardDashboard } from '../summary/steward-dashboard';
 import { UserLocaleChoice } from '../session/user-locale';
 import { TemplatesList } from '../templates/templates';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
+import { NotesList } from '../notes/notes';
 
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, TemplatesList, People],
+  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -31,6 +32,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
         <app-settings />
         <app-holidays />
         <app-void-reasons />
+        <app-notes />
         <app-templates />
         <app-audit-viewer />
       }
