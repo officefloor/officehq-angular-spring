@@ -1,0 +1,64 @@
+{
+  "checkpoint": 169,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp169_person-terms-dated",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person's own terms can be dated: the person form gains a terms from-date. A save with terms and\na from-date records those terms from that date, keeping the ones already recorded (a save for a\nfrom-date already recorded replaces it); a save with terms and no from-date records them, or clears\nthem when blank, from the beginning of time, as before. A claim's due-by uses the person's terms in\nforce on the claim's date (the latest from-date on or before it; none in force means the grade's or\nthe sheet's terms); the row shows the terms in force on the sheet's today.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's own terms can be dated: the person form gains a terms from-date. A save with terms and\na from-date records those terms from that date, keeping the ones already recorded (a save for a\nfrom-date already recorded replaces it); a save with terms and no from-date records them, or clears\nthem when blank, from the beginning of time, as before. A claim's due-by uses the person's terms in\nforce on the claim's date (the latest from-date on or before it; none in force means the grade's or\nthe sheet's terms); the row shows the terms in force on the sheet's today.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a6a4fc4c2ab3ecea997348ac9e00d6207413b8aa",
+  "reset_sha": "",
+  "preagent_sha": "4e79594ad45159470c8dcc0ee865df3d68effbd0",
+  "prev_sha": "4e79594ad45159470c8dcc0ee865df3d68effbd0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4767055999999998,
+    "input_tokens": 66,
+    "output_tokens": 16915,
+    "cache_read_tokens": 2147028,
+    "cache_creation_tokens": 88592,
+    "num_turns": 34,
+    "duration_ms": 737623,
+    "duration_api_ms": 228078,
+    "model": "claude-opus-5-5",
+    "session_id": "3eb13dc7-e929-4cd3-bf2e-22d1dfd7d5e5",
+    "stop_reason": "success",
+    "result_text": "A person's terms can now be dated, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- **Stored data:** a new migration `V80__person_terms_dated.sql` adds a `person_terms` table holding terms (blank allowed) and the date they apply from, at most one per date. The existing `person.terms` column still holds the terms that apply from the beginning of time.\n- **Saving (`Person`, `PersonService`, `PersonController`):** the person form now has a terms from-date. A save with a from-date records the terms from that date and keeps the others; saving the same from-date again replaces that entry. Blank terms with a from-date mean no own terms from then on, so the grade's or the sheet's apply. A save without a from-date sets or clears the beginning-of-time terms, as before. Adding a person takes a from-date too.\n- **Due-by (`ClaimService`):** uses the person's terms in force on the claim's date (the latest from-date on or before it). If none are in force, it falls back to the grade's terms, then the sheet's.\n- **Row and audit:** the row's terms cell shows the terms in force on the sheet's today. The `terms=` field in the `PERSON_ADDED` / `PERSON_EDITED` audit records shows the same value, which is what the spec expects. Any save that gives a from-date writes a `terms=` field, even if nothing changes.\n- **Front end:** the form has a new \"Terms from\" date field (`person-form-terms-from`), shown when adding and when editing.\n\n**Decision for you:** when the editor opens, its terms field shows the beginning-of-time terms and its from-date is blank. That way, saving without touching the terms changes nothing, and the spec needs the from-date blank. The catch is that the editor can show a different number from the row: for example, the editor shows 5 while the row shows the 3 in force today. If you'd rather the editor matched the row, that needs a different design.\n\n**Unrelated fix outside the request:** scenario 1 was failing in the claims screen, not in the terms code. When a second user tried to open a claim another user had locked, the editor stayed open even though the open was refused. Their next \"add claim\" then tried to save that claim instead, was refused, and showed no form error. Re-dating a claim now closes an editor open on that same claim, which is what moving a claim to another person already did (`person-claims.ts`, `redate`).\n\nI added a temporary debug spec to find that failure and deleted it afterwards. None of the protected files were edited.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4767055999999998,
+        "num_turns": 34,
+        "duration_ms": 737623,
+        "duration_api_ms": 228078,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp169.agent.jsonl",
+  "agent_diff_file": "cp169.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
