@@ -1,0 +1,185 @@
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
+index d2238671..8bac190b 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
+@@ -8,6 +8,8 @@ import java.io.IOException;
+ import java.io.UncheckedIOException;
+ import java.time.LocalDate;
+ import java.util.Optional;
++import java.util.concurrent.locks.Lock;
++import java.util.concurrent.locks.ReentrantReadWriteLock;
+ import org.springframework.stereotype.Component;
+ import org.springframework.transaction.PlatformTransactionManager;
+ import org.springframework.transaction.support.TransactionTemplate;
+@@ -19,13 +21,16 @@ import org.springframework.web.server.ResponseStatusException;
+  * in one transaction that first puts the sheet back to what {@link SheetHistory} kept for that date
+  * (with the as-of date as its today) and is always rolled back, so the store and the audit file are
+  * left as they were. Every other request on a sheet is marked as a change of it, so each of its
+- * commits is kept in the sheet's history.
++ * commits is kept in the sheet's history. Putting a sheet back rewrites its rows until the rollback, so
++ * a read as of a date runs on its own: never alongside a change, which would deadlock with it on those rows.
+  */
+ @Component
+ public class AsOfFilter extends OncePerRequestFilter {
+ 
+     private final SheetHistory history;
+     private final TransactionTemplate transactions;
++    /** Changes share it; a read as of a date holds it alone. */
++    private final ReentrantReadWriteLock asOfReads = new ReentrantReadWriteLock(true);
+ 
+     public AsOfFilter(SheetHistory history, PlatformTransactionManager transactionManager) {
+         this.history = history;
+@@ -48,9 +53,21 @@ public class AsOfFilter extends OncePerRequestFilter {
+             return;
+         }
+         if (asOf.isPresent() && AsOf.reads(request)) {
+-            readAsOf(sheet.get(), asOf.get(), request, response, chain);
++            Lock alone = asOfReads.writeLock();
++            alone.lock();
++            try {
++                readAsOf(sheet.get(), asOf.get(), request, response, chain);
++            } finally {
++                alone.unlock();
++            }
+         } else if (asOf.isEmpty() && !AsOf.reads(request)) {
+-            history.changing(sheet.get(), () -> chain.doFilter(request, response));
++            Lock shared = asOfReads.readLock();
++            shared.lock();
++            try {
++                history.changing(sheet.get(), () -> chain.doFilter(request, response));
++            } finally {
++                shared.unlock();
++            }
+         } else {
+             chain.doFilter(request, response);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+index 26b3b8b7..95525845 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+@@ -131,18 +131,24 @@ public class SheetHistory {
+ 
+     /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
+      *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
+-     *  back on. A parent kept nothing on a today on or before the date (its today runs apart from the
++     *  back on, then, for a cloned sheet, the sheet it was cloned from and so on up its parents and source. A parent kept nothing on a today on or before the date (its today runs apart from the
+      *  sheet's) is put back to what it held when what the sheet is put back to was kept. Only for a
+      *  transaction that is rolled back afterwards. */
+     public void restoreWithParents(String sheet, LocalDate asOf) {
+         List<String> parents = new ArrayList<>();
+-        String at = sheet;
+-        for (int level = 0; level < SettingService.PARENT_LEVELS; level++) {
+-            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ?",
+-                    String.class, at);
+-            if (parent.isEmpty() || parent.get(0).equals(sheet) || parents.contains(parent.get(0))) break;
+-            at = parent.get(0);
+-            parents.add(at);
++        for (String from = sheet; from != null; from = sourceOf(from)) {
++            if (!from.equals(sheet)) {
++                if (parents.contains(from)) break;
++                parents.add(from);
++            }
++            String at = from;
++            for (int level = 0; level < SettingService.PARENT_LEVELS; level++) {
++                List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ?",
++                        String.class, at);
++                if (parent.isEmpty() || parent.get(0).equals(sheet) || parents.contains(parent.get(0))) break;
++                at = parent.get(0);
++                parents.add(at);
++            }
+         }
+         Long keptAt = keptSeq(sheet, asOf);
+         restore(sheet, asOf);
+@@ -152,6 +158,13 @@ public class SheetHistory {
+         }
+     }
+ 
++    /** The sheet the sheet was cloned from; null when it was not cloned. */
++    private String sourceOf(String sheet) {
++        List<String> source = jdbc.queryForList("SELECT source_id FROM sheet_source WHERE child_id = ?",
++                String.class, sheet);
++        return source.isEmpty() ? null : source.get(0);
++    }
++
+     /** The sequence of what the sheet kept last on a today on or before the date; null when it kept nothing then. */
+     private Long keptSeq(String sheet, LocalDate asOf) {
+         List<Long> seq = jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 40839073..6a9ecac2 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -663,14 +663,19 @@ public class SettingService implements ActingFor {
+     }
+ 
+     /** The sheets a rate is looked for in, nearest first: the sheet itself, then its parent, and so on up to
+-     *  {@link #PARENT_LEVELS} levels up; within the caller's transaction. */
++     *  {@link #PARENT_LEVELS} levels up; then, for a cloned sheet, the sheet it was cloned from and so on up
++     *  that sheet's parents and source; each sheet once; within the caller's transaction. */
+     public static List<String> lineageOf(SheetParentRepository parents, String sheetId) {
+-        List<String> lineage = new ArrayList<>(List.of(sheetId));
+-        String at = sheetId;
+-        for (int level = 0; level < PARENT_LEVELS; level++) {
+-            at = parentOf(parents, at);
+-            if (at == null || lineage.contains(at)) break;
+-            lineage.add(at);
++        List<String> lineage = new ArrayList<>();
++        for (String from = sheetId; from != null && !lineage.contains(from);
++                from = parents.findSourceOf(from).orElse(null)) {
++            lineage.add(from);
++            String at = from;
++            for (int level = 0; level < PARENT_LEVELS; level++) {
++                at = parentOf(parents, at);
++                if (at == null || lineage.contains(at)) break;
++                lineage.add(at);
++            }
+         }
+         return lineage;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java b/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
+index 4cc96483..e5433376 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetParentRepository.java
+@@ -1,10 +1,16 @@
+ package net.officefloor.hq.app.setting;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface SheetParentRepository extends JpaRepository<SheetParentLink, String> {
+ 
+     /** The links of the sheets naming the sheet as their parent: its children. */
+     List<SheetParentLink> findByParentId(String parentId);
++
++    /** The sheet the sheet was cloned from; empty when it was not cloned. */
++    @Query(value = "SELECT source_id FROM sheet_source WHERE child_id = ?1", nativeQuery = true)
++    Optional<String> findSourceOf(String sheetId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 65e3f1cc..b147f92f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -104,6 +104,9 @@ public class CloneService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The other sheet has already been used.");
+         }
+ 
++        // Where a grade has no rate in force on the clone nor on its parents, the sheet's rates are used.
++        jdbc.update("INSERT INTO sheet_source (child_id, source_id) VALUES (?, ?)", toSheetId, sheetId);
++
+         COPIED.forEach((table, columns) -> jdbc.update("INSERT INTO " + table + " (sheet_id, " + columns + ") SELECT ?, "
+                 + columns + " FROM " + table + " WHERE sheet_id = ?" + (hasId(table) ? " ORDER BY id" : ""),
+                 toSheetId, sheetId));
+diff --git a/src/main/resources/db/migration/V90__sheet_source.sql b/src/main/resources/db/migration/V90__sheet_source.sql
+new file mode 100644
+index 00000000..de2d63c0
+--- /dev/null
++++ b/src/main/resources/db/migration/V90__sheet_source.sql
+@@ -0,0 +1,7 @@
++-- The sheet a sheet was cloned from: where a grade has no rate in force on the sheet nor on its parents,
++-- the source's rates are used (then its parents', then its own source's, and so on). Kept by child_id, like
++-- sheet_parent, so it is not part of the sheet's as-of history.
++CREATE TABLE sheet_source (
++    child_id  VARCHAR(100) PRIMARY KEY,
++    source_id VARCHAR(100) NOT NULL
++);
