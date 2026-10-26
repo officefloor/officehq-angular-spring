@@ -188,6 +188,34 @@ public class ClaimService {
     }
 
     /**
+     * A steward re-settles a settled claim: its due is frozen again at the figure it would have today as an open
+     * claim bound by no statement (today's rates, grades and floor, with the late charge it has gained by today; a
+     * correction gains none). Refused unless the user is a steward, unless it is settled, and in a closed period.
+     */
+    @Transactional
+    public Claim resettle(String by, String sheetId, Long id) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal live = liveDue(sheetId, person, claim);
+        BigDecimal fixed = claim.isCorrection() ? live : withLateCharge(live, claim, sheets.load(sheetId));
+        claim.setSettledDue(fixed);
+        logStatus(by, sheetId, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_RESETTLED", by, person, saved) + " old=" + text(old) + " new="
+                + text(fixed));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
      * A steward rejects a pending claim with a reason: it is open again, bound again by its person's last statement
      * when that included it. Refused unless it is pending, unless the user is a steward, without a reason, and in a
      * closed period.
@@ -408,6 +436,10 @@ public class ClaimService {
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
         return date != null ? date : sheets.load(sheetId).getToday();
+    }
+
+    private static String text(BigDecimal value) {
+        return value == null ? "n/a" : value.toPlainString();
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

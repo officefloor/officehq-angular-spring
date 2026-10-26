@@ -135,6 +135,13 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
     }
 
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.resettle(user, sheetId, id));
+    }
+
     /** A steward's reason for rejecting a pending claim. */
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }

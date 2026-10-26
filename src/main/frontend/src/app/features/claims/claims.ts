@@ -46,7 +46,7 @@ export interface ClaimLogLine {
 // or reject (OPEN again).
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void';
 
 /** Only open, pending and settled claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
@@ -233,6 +233,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">
+                Re-settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">
                 Approve<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -384,9 +387,11 @@ export class Claims {
           ? 'You opened this claim, so another user must settle it.'
           : (action === 'approve' || action === 'reject') && forbidden
             ? 'Only a steward can approve or reject a pending claim.'
-            : action === 'approve' && opener
-              ? 'You opened this claim, so another steward must approve it.'
-              : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+            : action === 'resettle' && forbidden
+              ? 'Only a steward can re-settle a claim.'
+              : action === 'approve' && opener
+                ? 'You opened this claim, so another steward must approve it.'
+                : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
     }
   }
