@@ -6,6 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -98,6 +102,47 @@ public class Audit {
             return "";
         }
         return who.forOf(m.group(2), m.group(3)).map(f -> " for=" + f).orElse("");
+    }
+
+    /** A field of a record: its key and value, the value running to the next field or the end. */
+    private static final Pattern FIELD = Pattern.compile("(?<=^| )([a-z][a-z-]*)=(.*?)(?= [a-z][a-z-]*=|$)");
+
+    /**
+     * The records of a sheet exactly as the file holds them, newest first. With a name, only those about that person:
+     * carrying name= or person= that name, compared as names are (case and surrounding spaces ignored).
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        if (!Files.exists(file)) {
+            return List.of();
+        }
+        List<String> all;
+        try {
+            all = Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String key = name == null ? "" : name.strip().toLowerCase(Locale.ROOT);
+        List<String> found = new ArrayList<>();
+        for (String line : all) {
+            Matcher m = HEAD.matcher(line);
+            if (m.find() && m.group(2).equals(sheetId) && (key.isEmpty() || about(line, key))) {
+                found.add(line);
+            }
+        }
+        Collections.reverse(found);
+        return found;
+    }
+
+    /** Whether a record carries name= or person= the given name key. */
+    private static boolean about(String line, String key) {
+        Matcher f = FIELD.matcher(line);
+        while (f.find()) {
+            String k = f.group(1);
+            if ((k.equals("name") || k.equals("person")) && f.group(2).strip().toLowerCase(Locale.ROOT).equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */

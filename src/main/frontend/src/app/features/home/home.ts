@@ -6,11 +6,12 @@ import { Settings } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
 import { Holidays } from '../holidays/holidays';
 import { VoidReasons } from '../void-reasons/void-reasons';
+import { AuditViewer } from '../audit-viewer/audit-viewer';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons],
+  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -73,6 +74,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         <app-holidays />
         <app-void-reasons />
         <app-people />
+        <app-audit-viewer />
       }
     } @else {
       <form (submit)="signIn($event)" aria-label="Sign in">
