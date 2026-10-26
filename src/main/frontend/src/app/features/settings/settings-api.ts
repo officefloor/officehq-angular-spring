@@ -82,6 +82,9 @@ export interface SettingsView {
   /** The days since a claim's previous reminder after which reminding it escalates it, or null when off.
    *  Not dated. */
   escalateAfter: number | null;
+  /** The days a REVIEW claim may wait from its review day before it is review-late, or null when none.
+   *  Not dated. */
+  reviewSla: number | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -190,6 +193,11 @@ export class SettingsApi {
   /** Set the parent sheet; null clears it, leaving no parent. */
   setParent(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/parent`, { value }));
+  }
+
+  /** Set the review SLA in days; null clears it, leaving none. */
+  setReviewSla(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/review-sla`, { value }));
   }
 
   /** Set the escalation gap in days; null clears it, turning escalation off. */

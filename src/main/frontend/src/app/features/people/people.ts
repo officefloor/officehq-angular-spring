@@ -4,7 +4,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isCorrection, isDeferred, isOpen, isOverdue, keepsFigure, money, statusAsOf } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, isBound, isCorrection, isDeferred, isOpen, isOverdue, isReviewLate, keepsFigure, money, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -17,6 +17,7 @@ import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
+import { SheetReviewSla } from '../settings/sheet-review-sla';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetParent } from '../settings/sheet-parent';
 import { SheetPot } from '../settings/sheet-pot';
@@ -250,7 +251,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         @if (bulkRetireError()) {
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
-        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+        <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLate]="reviewLateCount()" />
         <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
         <app-people-columns />
         <table data-testid="people-list">
@@ -460,6 +461,7 @@ export class People {
   private readonly cap = inject(SheetCap);
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
+  private readonly reviewSla = inject(SheetReviewSla);
   private readonly sheetParent = inject(SheetParent);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly rounding = inject(SheetRounding);
@@ -797,6 +799,9 @@ export class People {
   /** How many of the sheet's claims have each status. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
+  /** How many of the sheet's claims are review-late. */
+  protected readonly reviewLateCount = computed(() =>
+    this.claims().filter((c) => isReviewLate(c, this.session.sheet()?.today, this.reviewSla.days())).length);
   protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
     this.voidReasons.reasons().map(({ reason }) => ({
       reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length })));

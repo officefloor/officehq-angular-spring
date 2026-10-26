@@ -92,6 +92,10 @@ public class SettingService implements ActingFor {
      *  before the sheet's today escalates it, once per claim ever; no value means off. Not dated. */
     public static final String ESCALATE_AFTER = "escalate-after";
 
+    /** The key of the review SLA: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
+     *  plus these days is before the sheet's today is review-late; no value means none. Not dated. */
+    public static final String REVIEW_SLA = "review-sla";
+
     /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
      *  no value means 1 (January). Not dated. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
@@ -457,6 +461,38 @@ public class SettingService implements ActingFor {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + ESCALATE_AFTER
+                + " value=" + (days == null ? "" : days.toString()));
+        return days;
+    }
+
+    /** The sheet's review SLA in days, or null when it is blank (none). */
+    @Transactional(readOnly = true)
+    public Integer reviewSla(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, REVIEW_SLA).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's review SLA; null clears it, leaving none. */
+    @Transactional
+    public Integer setReviewSla(String sheetId, String user, Integer days) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, REVIEW_SLA).orElse(null);
+        try {
+            if (days == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, REVIEW_SLA, days.toString()));
+            } else {
+                setting.setValue(days.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + REVIEW_SLA
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
     }

@@ -42,14 +42,15 @@ public class SettingController {
      *  and the note threshold, null when there is none;
      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off);
-     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated); the parent is the sheet whose rates are used where this one has none, null when none (not dated); the fiscal start month is the month, 1 to 12, each fiscal year starts on (not dated); the alert threshold has two decimals, or is null when off (not dated); the escalation gap is whole days, or null when off (not dated). Each of these figures is the one in force on the
+     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated); the parent is the sheet whose rates are used where this one has none, null when none (not dated); the fiscal start month is the month, 1 to 12, each fiscal year starts on (not dated); the alert threshold has two decimals, or is null when off (not dated); the escalation gap is whole days, or null when off (not dated); the review SLA is whole days, or null when none (not dated). Each of these figures is the one in force on the
      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
      *  delegations are the stewards' delegations of their role, in the order they were made. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             List<RoleView> roles, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
             Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate,
-            String pot, String parent, int fiscalStartMonth, String alertThreshold, Integer escalateAfter) {
+            String pot, String parent, int fiscalStartMonth, String alertThreshold, Integer escalateAfter,
+            Integer reviewSla) {
     }
 
     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
@@ -154,6 +155,10 @@ public class SettingController {
 
     /** The escalation gap as entered: whole days; none means off. */
     public record EscalateAfterForm(@Min(0) @Max(36500) Integer value) {
+    }
+
+    /** The review SLA as entered: whole days; none means none. */
+    public record ReviewSlaForm(@Min(0) @Max(36500) Integer value) {
     }
 
     /** The fiscal year start month as entered: 1 to 12. */
@@ -363,6 +368,15 @@ public class SettingController {
         return view(id);
     }
 
+    /** Set the sheet's review SLA, or clear it to have none. */
+    @PutMapping("/settings/review-sla")
+    public SettingsView setReviewSla(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ReviewSlaForm form) {
+        String id = sheetId.trim();
+        service.setReviewSla(id, SignedInUser.name(user), form.value());
+        return view(id);
+    }
+
     /** Set the month the sheet's fiscal years start on. */
     @PutMapping("/settings/fiscal-start-month")
     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -430,7 +444,7 @@ public class SettingController {
                 text(dated.noteThresholdOn(today)), service.entryDate(sheetId),
                 text(service.pot(sheetId)), service.parent(sheetId),
                 service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
-                service.escalateAfter(sheetId));
+                service.escalateAfter(sheetId), service.reviewSla(sheetId));
     }
 
     private static String text(BigDecimal value) {

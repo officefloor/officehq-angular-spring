@@ -264,6 +264,22 @@ export function isOverdue(claim: ClaimView, today: string | undefined, graceDays
   return isOpen(claim) && !isDeferred(claim, today) && today !== undefined && lateFrom(claim, graceDays) < today;
 }
 
+/** The day a REVIEW claim went to REVIEW: the sheet's today then, as its status log records it; null
+ *  when the claim is not REVIEW. */
+export function reviewDay(claim: ClaimView): string | null {
+  if (claim.status !== 'REVIEW') return null;
+  let day: string | null = null;
+  for (const line of claim.log) if (line.status === 'REVIEW') day = line.on;
+  return day;
+}
+
+/** Whether the claim is review-late: REVIEW, with its review day plus the review SLA's `slaDays` before
+ *  the sheet's today; never when there is no SLA (null). */
+export function isReviewLate(claim: ClaimView, today: string | undefined, slaDays: number | null): boolean {
+  const day = reviewDay(claim);
+  return day !== null && slaDays !== null && today !== undefined && dateOfEpochDay(epochDay(day) + slaDays) < today;
+}
+
 /** The days a claim must be overdue for each step of the late charge. */
 export const DAYS_PER_CHARGE = 30;
 
