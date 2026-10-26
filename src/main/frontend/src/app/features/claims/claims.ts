@@ -10,13 +10,23 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Only open and settled claims count toward what is claimed and due. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
-/** The sum of the claims' amounts, with two decimals; added in whole cents so nothing drifts. */
+/** The sum of the counted claims' amounts, with two decimals; added in whole cents so nothing drifts. */
 export function claimedTotal(claims: readonly Claim[]): string {
-  const cents = claims.reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
+  const cents = claims.filter(counts).reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
   return (cents / 100).toFixed(2);
 }
 
@@ -60,7 +70,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
+          <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -71,12 +81,25 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-due">{{ dueOn(c.amount, rate()) ?? 'n/a' }}</td>
+            <td data-testid="claim-status">{{ c.status }}</td>
             <td>
+              <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
+                Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
+                Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
+                Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <button type="button" data-testid="claim-edit" (click)="edit(c)">
                 Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               @if (editingId() === c.id) {
                 <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+              }
+              @if (rowErrors()[c.id]; as err) {
+                <p role="alert" data-testid="claim-error">{{ err }}</p>
               }
             </td>
           </tr>
@@ -101,6 +124,8 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  // Each claim's refused status change, by claim id.
+  protected readonly rowErrors = signal<Record<number, string>>({});
 
   protected readonly dueOn = dueOn;
 
@@ -109,11 +134,28 @@ export class Claims {
   }
 
   protected edit(c: Claim): void {
+    this.clearRowError(c.id);
     this.editingId.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
     this.error.set(null);
+  }
+
+  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+    } catch {
+      this.rowErrors.update((e) => ({ ...e, [c.id]: `A ${c.status} claim cannot be changed that way.` }));
+    }
+  }
+
+  private clearRowError(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   protected reset(): void {

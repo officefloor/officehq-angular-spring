@@ -27,9 +27,10 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount always carries two decimals. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
         static ClaimView of(Claim c) {
-            return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote());
+            return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
+                    c.getStatus());
         }
     }
 
@@ -65,5 +66,26 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody ClaimForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.update(user, sheetId, id, form.amount(), form.date(), form.note()));
+    }
+
+    @PostMapping("/claims/{id}/open")
+    public ClaimView open(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/{id}/settle")
+    public ClaimView settle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{id}/void")
+    public ClaimView voidClaim(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.VOID));
     }
 }
