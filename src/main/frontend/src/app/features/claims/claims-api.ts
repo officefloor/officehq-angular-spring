@@ -330,7 +330,7 @@ export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lat
 
 /** What is due on the claim now, in cents: the due fixed when it was settled; else the due as shown that its
  *  person's last statement bound it to, late charge and floor included; else its figure (see
- *  claimFigureCents) with the late charge on it while it is open and overdue, and at least `floorCents` (the floor in force on its date), the floor applied last; a correction
+ *  claimFigureCents) held to at least `floorCents` (the floor in force on its date), with the late charge on that floored figure while it is open and overdue; a correction
  *  has no floor and no charge. Both round as roundsHalfUp decides by the rounding mode and the policy date, `claims` holding the
  *  claim a correction corrects. Null when the figure is n/a. */
 export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness,
@@ -341,7 +341,8 @@ export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[]
   const figure = claimFigureCents(claim, gradeRates, halfUp);
   if (figure === null) return null;
   if (isCorrection(claim)) return figure;
-  return Math.max(floorCents, figure + lateChargeCents(claim, figure, late, halfUp));
+  const floored = Math.max(floorCents, figure);
+  return floored + lateChargeCents(claim, floored, late, halfUp);
 }
 
 // The claims on a sheet, as the store holds them.
