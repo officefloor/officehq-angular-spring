@@ -1,0 +1,64 @@
+{
+  "checkpoint": 67,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp67_active-people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c7e881b96b3d43bc500e66f3b9479d6892d8d1f1",
+  "reset_sha": "",
+  "preagent_sha": "01a8b7536fda61da10297e15577cf1f9eb7ff3d6",
+  "prev_sha": "01a8b7536fda61da10297e15577cf1f9eb7ff3d6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.47790379999999993,
+    "input_tokens": 26,
+    "output_tokens": 4296,
+    "cache_read_tokens": 394799,
+    "cache_creation_tokens": 39115,
+    "num_turns": 13,
+    "duration_ms": 138171,
+    "duration_api_ms": 43213,
+    "model": "claude-opus-5-5",
+    "session_id": "006aa1f0-77b5-4780-a0fa-0f5b2a9c2581",
+    "stop_reason": "success",
+    "result_text": "Each person row now shows whether they are active, and the summary shows how many active people are on each grade. All 4 tests in `bin/e2e` pass.\n\n**How it works:** a person is active when they have an OPEN or PENDING claim dated from today minus 29 days through the sheet's today, which is 30 days including today. Only claims that already count toward the person's totals are looked at, so claims that are deferred, or open and dated within a hold, don't make anyone active. In the summary, retired people are left out of the active count, the same way they're left out of the people count.\n\n**What changed** (front end only; the stored data and the server didn't need anything new):\n- `claims/claims.ts`: a new `activeOn(claim, today)` check. I also made the existing `plusDays` date helper public so the check can use it.\n- `people/people.ts`: an `activeIds` list of active people, and a new \"Active\" column (`person-active`, showing yes/no).\n- `summary/summary.ts`: an `active` flag on each person in the summary, and an \"Active\" column per grade (`summary-grade-<G>-active`).\n\nThe test expects no audit records for this change, so none were added.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.47790379999999993,
+        "num_turns": 13,
+        "duration_ms": 138171,
+        "duration_api_ms": 43213,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp67.agent.jsonl",
+  "agent_diff_file": "cp67.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,135 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 34764048..9af24067 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -119,6 +119,11 @@ export function deferred(c: Claim, today: string | null): boolean {
+   return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+ }
+ 
++/** Whether a claim makes its person active: open (or pending) and dated within the 30 days up to and including today. */
++export function activeOn(c: Claim, today: string | null): boolean {
++  return isOpen(c) && today !== null && plusDays(today, -29) <= c.date && c.date <= today;
++}
++
+ /** Whether a claim is overdue: open (or pending), not deferred, and due by a date before the sheet's today. */
+ export function overdue(c: Claim, today: string | null): boolean {
+   return isOpen(c) && today !== null && !deferred(c, today) && c.dueBy < today;
+@@ -147,7 +152,7 @@ function daysBetween(from: string, to: string): number {
+ }
+ 
+ /** The date (yyyy-mm-dd) the given whole days after another. */
+-function plusDays(date: string, days: number): string {
++export function plusDays(date: string, days: number): string {
+   const [y, m, d] = date.split('-').map(Number);
+   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5a134c09..1cd327d0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, Claims, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
++import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
+ import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+@@ -196,7 +196,7 @@ interface StatementView {
+             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
++            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
+             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
+             @for (pd of periods.list(); track pd.id) {
+               <th scope="col">Due in {{ pd.name }}</th>
+@@ -220,6 +220,7 @@ interface StatementView {
+               <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
+               <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
+@@ -486,13 +487,20 @@ export class People {
+     const figures = this.countedFigures();
+     return new Map(this.people().map((p) => [p.id, personPeriodDueTotals(periods, p.id, figures)]));
+   });
+-  // Each person as the summary counts them: grade today, due-total and whether retired.
++  // The people who are active: with an open or pending counted claim dated within the 30 days up to today.
++  protected readonly activeIds = computed(() => {
++    const today = this.session.sheetToday();
++    return new Set(this.liveClaims().filter((c) => activeOn(c, today)).map((c) => c.personId));
++  });
++  // Each person as the summary counts them: grade today, due-total, whether retired and whether active.
+   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
+     const due = this.dueBy();
++    const active = this.activeIds();
+     return this.people().map((p) => ({
+       grade: this.gradeToday(p),
+       dueTotal: due.get(p.id) ?? null,
+       retired: p.retiredFrom !== null,
++      active: active.has(p.id),
+     }));
+   });
+   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index e682c753..b3dcfe79 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -2,11 +2,15 @@ import { Component, computed, inject, input } from '@angular/core';
+ import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
+ import { GRADES, sumSkippingNa } from '../rates/rates';
+ 
+-/** A person as the summary counts them: their grade today, their due-total (null for n/a) and whether retired. */
++/**
++ * A person as the summary counts them: their grade today, their due-total (null for n/a), whether retired and
++ * whether active.
++ */
+ export interface SummaryPerson {
+   grade: string;
+   dueTotal: string | null;
+   retired: boolean;
++  active: boolean;
+ }
+ 
+ // Every status a claim's count is shown for.
+@@ -21,7 +25,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+       <table>
+         <caption>By grade</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of byGrade(); track g.grade) {
+@@ -29,6 +33,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -73,11 +78,17 @@ export class Summary {
+   // The status of every claim on the sheet.
+   readonly statuses = input<readonly string[]>([]);
+ 
+-  // Per grade: the people on it today, leaving out retired ones, and their due-totals added up, skipping n/a.
++  // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
++  // many of them are active.
+   protected readonly byGrade = computed(() =>
+     GRADES.map((grade) => {
+       const on = this.people().filter((p) => !p.retired && p.grade === grade);
+-      return { grade, count: on.length, dueTotal: sumSkippingNa(on.map((p) => p.dueTotal)) };
++      return {
++        grade,
++        count: on.length,
++        dueTotal: sumSkippingNa(on.map((p) => p.dueTotal)),
++        active: on.filter((p) => p.active).length,
++      };
+     }),
+   );
+   protected readonly byPeriod = computed(() => {
