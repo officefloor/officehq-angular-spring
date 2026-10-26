@@ -1,0 +1,64 @@
+{
+  "checkpoint": 62,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp62_archive-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b08a9570263194fbd2792fcee6267dd303614b93",
+  "reset_sha": "",
+  "preagent_sha": "fc022dc6195f23bea0c5f85c2abf17e15ce98e44",
+  "prev_sha": "fc022dc6195f23bea0c5f85c2abf17e15ce98e44",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7827382,
+    "input_tokens": 36,
+    "output_tokens": 8975,
+    "cache_read_tokens": 726591,
+    "cache_creation_tokens": 57222,
+    "num_turns": 20,
+    "duration_ms": 257042,
+    "duration_api_ms": 90536,
+    "model": "claude-opus-5-5",
+    "session_id": "5752fec2-c355-445e-8e1d-76181b4a3e31",
+    "stop_reason": "success",
+    "result_text": "A steward can now archive a sheet, and an archived sheet refuses every change. `bin/e2e` passes all 4 tests.\n\n**How it works**\n- **Stored data:** a new migration, `V43__sheet_archived.sql`, adds an `archived` yes/no column to the sheet, defaulting to no.\n- **Archiving:** the button calls a new archive endpoint. It only works for a steward, including someone acting as steward through a delegation. Anyone else is refused, and so is archiving a sheet that's already archived. A successful archive writes `SHEET_ARCHIVED sheet=<id> by=<user>` to the audit file. A refused one writes nothing.\n- **Blocking changes:** I extended the existing check that already stops viewers from changing anything. It now also refuses every change request on an archived sheet before it reaches its handler, so nothing is written. That covers changing today, adding and editing people and claims, claim actions, statements, holds, settings, rates, roles, periods, paste and quick-add, so each shows its usual error. Loading the sheet still works. The two bulk actions (bulk open and bulk settle) don't fail outright: they complete with nothing changed and every selected claim counted as refused, the same as for a viewer.\n- **Screen:** the sheet shows `Archived: yes/no` (`sheet-archived`) and an archive button (`sheet-archive`). Changing today and archiving now share one `sheet-error` element. The test needs a single element with that id, and the error clears when either action is used again.\n\n**Two things to know**\n- Nothing can undo an archive yet, because the request didn't ask for it.\n- For the bulk actions, the code only covers bulk open and bulk settle, which are the ones that report counts. Plan generation and person bulk actions don't exist on the server here; plan generation and any future bulk action will be refused by the same check like any other change, unless it is marked to let viewers through.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7827382,
+        "num_turns": 20,
+        "duration_ms": 257042,
+        "duration_api_ms": 90536,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp62.agent.jsonl",
+  "agent_diff_file": "cp62.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
