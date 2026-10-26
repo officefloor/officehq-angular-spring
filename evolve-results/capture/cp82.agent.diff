@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5e2fabef..b5551aa5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -166,6 +166,8 @@ interface StatementView {
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
+       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
++      <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+ 
+       <div role="group" aria-label="Selected claims">
+         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+@@ -223,6 +225,7 @@ interface StatementView {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
++            <th scope="col">Settled total</th><th scope="col">Open total</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+@@ -251,6 +254,8 @@ interface StatementView {
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
++              <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
++              <td data-testid="person-open-total">{{ splitBy().get(p.id)?.open ?? '0.00' }}</td>
+               <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
+               <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-aged-0-30">{{ agedBy().get(p.id)?.[0] ?? '0.00' }}</td>
+@@ -514,6 +519,28 @@ export class People {
+     }
+     return by;
+   });
++  // Each person's settled-total and open-total: the figures of their counted settled claims (frozen, corrections
++  // included) and of their counted open and pending claims, each skipping n/a. Together they make the due-total
++  // before the cap.
++  protected readonly splitBy = computed(() => {
++    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
++    const rates = this.rates.rates();
++    const floor = this.settings.floor();
++    const late = this.settings.lateness();
++    const by = new Map<number, { settled: string; open: string }>();
++    for (const [id, list] of this.liveBy()) {
++      const own = grades.get(id) ?? [];
++      const due = (c: Claim) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late);
++      by.set(id, {
++        settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
++        open: sumSkippingNa(list.filter(isOpen).map(due)),
++      });
++    }
++    return by;
++  });
++  // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.
++  protected readonly settledTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.settled)));
++  protected readonly openTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.open)));
+   // Each person's due-total held to the sheet's cap; everything that adds up due-totals uses it. n/a is not capped.
+   protected readonly dueBy = computed(() => {
+     const cap = this.settings.cap();
