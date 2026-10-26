@@ -1,0 +1,135 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3eaae0f6..67136b03 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -116,8 +116,8 @@ export class People {
+     this.error.set(null);
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+-    const form = { name: this.name(), grade: this.grade() };
+-    if (!form.name.trim()) {
++    const form = { name: this.name().trim(), grade: this.grade() };
++    if (!form.name) {
+       this.error.set('Enter a name.');
+       return;
+     }
+@@ -136,7 +136,11 @@ export class People {
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+-    } catch {
++    } catch (err) {
++      if (err instanceof HttpErrorResponse && err.status === 409) {
++        this.error.set('That name is already in use on this sheet.');
++        return;
++      }
+       this.error.set(editing === null ? 'Could not add that person.' : 'Could not save that person.');
+     }
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 79405eaf..cb0961b3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A person on a sheet, with a name and a grade (A, B or C). */
++/** A person on a sheet, with a name (unique on the sheet, ignoring case) and a grade (A, B or C). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 977156e2..0c1b0dbc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -26,7 +26,7 @@ public class PersonController {
+         }
+     }
+ 
+-    /** A person's fields as the form submits them; the name is kept as entered. */
++    /** A person's fields as the form submits them; the name is stored without surrounding spaces. */
+     public record PersonForm(@NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 31d6ec83..18691ac3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -9,4 +9,8 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
++
++    boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 1613ff2b..c2e12a14 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -27,15 +28,36 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String name, String grade) {
+         sheets.load(sheetId);
+-        return people.saveAndFlush(new Person(sheetId, name, grade));
++        String trimmed = name.strip();
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
++            throw nameInUse();
++        }
++        return save(new Person(sheetId, trimmed, grade));
+     }
+ 
+     @Transactional
+     public Person update(String sheetId, Long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+-        person.setName(name);
++        String trimmed = name.strip();
++        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
++            throw nameInUse();
++        }
++        person.setName(trimmed);
+         person.setGrade(grade);
+-        return people.saveAndFlush(person);
++        return save(person);
++    }
++
++    /** Saves the person; the store's unique index refuses a name another request took meanwhile. */
++    private Person save(Person person) {
++        try {
++            return people.saveAndFlush(person);
++        } catch (DataIntegrityViolationException e) {
++            throw nameInUse();
++        }
++    }
++
++    private static ResponseStatusException nameInUse() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
+     }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_name_unique.sql b/src/main/resources/db/migration/V4__person_name_unique.sql
+new file mode 100644
+index 00000000..604dc5d4
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_name_unique.sql
+@@ -0,0 +1,4 @@
++-- A person's name is unique on its sheet, ignoring case and surrounding spaces.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
