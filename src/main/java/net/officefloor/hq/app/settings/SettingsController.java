@@ -26,15 +26,23 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingsController {
 
-    /** The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none. */
-    public record SettingsView(String clerkLimit) {
+    /**
+     * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
+     * the floor carries two decimals.
+     */
+    public record SettingsView(String clerkLimit, String floor) {
         static SettingsView of(Sheet sheet) {
-            return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString());
+            return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+                    sheet.getFloor().toPlainString());
         }
     }
 
     /** The clerk limit as the form submits it: 0.00 or more with up to two decimals, or null for no limit. */
     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
+    }
+
+    /** The floor as the form submits it: 0.00 or more with up to two decimals. */
+    public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
     }
 
     public record RoleView(String user, String role) {
@@ -65,6 +73,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ClerkLimitForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setClerkLimit(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/floor")
+    public SettingsView setFloor(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody FloorForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setFloor(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

@@ -3,7 +3,8 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
-import { RateView, dueOn, rateOn } from '../rates/rates';
+import { RateView, atLeast, dueOn, rateOn } from '../rates/rates';
+import { SettingsStore } from '../settings/settings';
 
 export interface Claim {
   id: number;
@@ -34,11 +35,13 @@ export function counts(c: Claim): boolean {
 
 /**
  * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
- * at the rate in force on its date; null (n/a) with none.
+ * at the rate in force on its date and at least the floor; null (n/a) with none.
  */
-export function figureOf(c: Claim, rates: readonly RateView[]): string | null {
+export function figureOf(c: Claim, rates: readonly RateView[], floor: string): string | null {
   if (c.settledDue !== null) return c.settledDue;
-  return c.stated ? c.statedDue : dueOn(c.amount, rateOn(rates, c.date));
+  if (c.stated) return c.statedDue;
+  const due = dueOn(c.amount, rateOn(rates, c.date));
+  return due === null ? null : atLeast(due, floor);
 }
 
 /** Whether the claim keeps a figure whatever the rates: a settled or stated one with a figure. */
@@ -107,7 +110,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ figureOf(c, rates()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ figureOf(c, rates(), settings.floor()) ?? 'n/a' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
@@ -142,6 +145,7 @@ export class Claims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
+  protected readonly settings = inject(SettingsStore);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();

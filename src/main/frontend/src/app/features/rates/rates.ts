@@ -34,6 +34,11 @@ export function dueOn(amount: string, pct: string | undefined): string | null {
   return formatCents(due);
 }
 
+/** The two-decimal value, raised to the floor when it is below it. */
+export function atLeast(value: string, floor: string): string {
+  return cents(value) < cents(floor) ? formatCents(cents(floor)) : value;
+}
+
 /** The sum of two-decimal values, skipping n/a. */
 export function sumSkippingNa(values: readonly (string | null)[]): string {
   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));

@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
+import { SettingsStore } from '../settings/settings';
 
 interface Person {
   id: number;
@@ -169,6 +170,7 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
+  private readonly settings = inject(SettingsStore);
   private readonly periods = inject(PeriodStore);
 
   protected readonly grades = GRADES;
@@ -228,6 +230,7 @@ export class People {
     const by = new Map<number, string | null>();
     const current = this.rates.current();
     const rates = this.rates.rates();
+    const floor = this.settings.floor();
     for (const p of this.people()) {
       const counted = this.liveBy().get(p.id) ?? [];
       if (!current.has(p.grade) && !counted.some(keepsFigure)) {
@@ -235,7 +238,7 @@ export class People {
         continue;
       }
       const list = rates.get(p.grade) ?? [];
-      by.set(p.id, sumSkippingNa(counted.map((c) => figureOf(c, list))));
+      by.set(p.id, sumSkippingNa(counted.map((c) => figureOf(c, list, floor))));
     }
     return by;
   });
@@ -243,8 +246,9 @@ export class People {
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const rates = this.rates.rates();
+    const floor = this.settings.floor();
     return this.liveClaims()
-      .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? []) }));
+      .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor) }));
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
 

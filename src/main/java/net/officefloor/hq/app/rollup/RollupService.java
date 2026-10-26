@@ -57,7 +57,9 @@ public class RollupService {
     /** The sheet's figures as the store holds them now (as the screen computes them). */
     public Snapshot snapshot(String sheetId) {
         claims.flush();
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        BigDecimal floor = sheet == null ? null : sheet.getFloor();
         Map<String, List<Rate>> byGrade = new HashMap<>();
         for (Rate r : rates.findBySheetIdOrderByGradeAscFromAsc(sheetId)) {
             byGrade.computeIfAbsent(r.getGrade(), g -> new ArrayList<>()).add(r);
@@ -82,7 +84,7 @@ public class RollupService {
             for (Claim c : counted) {
                 claimed = claimed.add(c.getAmount());
                 kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
-                BigDecimal figure = figure(c, list);
+                BigDecimal figure = figure(c, list, floor);
                 if (figure != null) {
                     due = due.add(figure);
                 }
@@ -122,8 +124,8 @@ public class RollupService {
         }
     }
 
-    /** The figure a claim totals: its settled due, else the one a statement bound it to, else live. */
-    private static BigDecimal figure(Claim c, List<Rate> rates) {
+    /** The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored). */
+    private static BigDecimal figure(Claim c, List<Rate> rates, BigDecimal floor) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
@@ -131,7 +133,7 @@ public class RollupService {
             return c.getStatedDue();
         }
         Rate rate = inForce(rates, c.getDate());
-        return rate == null ? null : ClaimService.dueOn(c.getAmount(), rate.getPct());
+        return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct()), floor);
     }
 
     /** The rate in force on the date: the one with the latest from-date on or before it; null with none. */

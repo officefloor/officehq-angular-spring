@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -20,13 +21,15 @@ public class SettingsService {
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRepository;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public SettingsService(SheetRoleRepository roles, SheetRepository sheetRepository, SheetService sheets,
-            Audit audit) {
+            RollupService rollup, Audit audit) {
         this.roles = roles;
         this.sheetRepository = sheetRepository;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -70,6 +73,23 @@ public class SettingsService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=clerk-limit value="
                 + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's floor: the least a claim's live due can be. Settled, stated and closed-period figures keep
+     * what they were; the live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setFloor(String by, String sheetId, BigDecimal floor) {
+        Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setFloor(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
+                + scaled.toPlainString());
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 

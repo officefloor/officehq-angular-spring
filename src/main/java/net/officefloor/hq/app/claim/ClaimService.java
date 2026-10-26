@@ -142,10 +142,14 @@ public class ClaimService {
         return saved;
     }
 
-    /** The claim's live due: at the rate its person's grade has in force on its date; null (n/a) with none. */
+    /**
+     * The claim's live due: at the rate its person's grade has in force on its date, and at least the sheet's
+     * floor; null (n/a) with none.
+     */
     public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
+        BigDecimal floor = sheets.load(sheetId).getFloor();
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
-                .map(pct -> dueOn(claim.getAmount(), pct)).orElse(null);
+                .map(pct -> floored(dueOn(claim.getAmount(), pct), floor)).orElse(null);
     }
 
     /** The figure the claim shows and totals: its settled due, else the one a statement bound it to, else live. */
@@ -194,6 +198,11 @@ public class ClaimService {
     /** The due on an amount at a rate: amount times rate divided by 100, rounded half to even to two decimals. */
     public static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
         return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /** The due raised to the floor when it is below it. */
+    public static BigDecimal floored(BigDecimal due, BigDecimal floor) {
+        return floor != null && due.compareTo(floor) < 0 ? floor.setScale(2) : due;
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
