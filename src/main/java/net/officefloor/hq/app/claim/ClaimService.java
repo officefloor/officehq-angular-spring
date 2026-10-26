@@ -78,11 +78,12 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** The terms a claim of the person dated on the date is due by: the person's own, else those of their
-     *  grade in force on the date, else the sheet's in force on the date. */
-    private int termsOf(String sheetId, Person person, LocalDate date) {
-        Integer own = person.termsOn(date);
-        return own != null ? own : settings.terms(sheetId, person.gradeOn(date), date);
+    /** The terms a claim of the person created now is due by, whatever its date: those in force on the
+     *  sheet's today, the person's own, else those of their grade, else the sheet's, each looked up on it. */
+    private int termsOf(String sheetId, Person person) {
+        LocalDate today = sheets.today(sheetId);
+        Integer own = person.termsOn(today);
+        return own != null ? own : settings.terms(sheetId, person.gradeOn(today), today);
     }
 
     /** Add a claim to a person; a claim with no date is dated the sheet's entry date while it is set,
@@ -94,8 +95,8 @@ public class ClaimService {
             String corrects, String ref, String tags) {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : entryDateOr(sheetId);
-        // The terms are fixed now, those in force on the claim's date; the due-by counts them in business days.
-        int terms = termsOf(sheetId, person, dated);
+        // The terms are fixed now, those in force on the sheet's today; the due-by counts them in business days.
+        int terms = termsOf(sheetId, person);
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
@@ -204,7 +205,7 @@ public class ClaimService {
         refuseIfLocked(claim, user);
         Person person = person(sheetId, claim.getPersonId());
         refuseIfRetired(person, dated);
-        refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person, dated)));
+        refuseIfClosed(sheetId, holidays.dueBy(sheetId, dated, termsOf(sheetId, person)));
         if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A claim with lines has the total of its lines as its amount.");
@@ -429,8 +430,8 @@ public class ClaimService {
                     "The amount split off must be more than 0.00 and less than the claim's amount.");
         }
         Person person = person(sheetId, claim.getPersonId());
-        // The terms are fixed now, those in force on the claim's date; the due-by counts them in business days.
-        int terms = termsOf(sheetId, person, claim.getDate());
+        // The terms are fixed now, those in force on the sheet's today; the due-by counts them in business days.
+        int terms = termsOf(sheetId, person);
         LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate(), terms);
         refuseIfClosed(sheetId, dueBy);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
@@ -606,7 +607,7 @@ public class ClaimService {
      *  its new person's next statement). Refused unless the sheet's permission matrix allows the user's
      *  role to reassign (by default, a steward), and for a
      *  settled or voided claim, a claim dated inside a closed period, a move to the claim's own person,
-     *  to a person retired by the claim's date, or to a person by whose terms a claim added on its date
+     *  to a person retired by the claim's date, or to a person by whose terms a claim added on its date now
      *  would be due inside a closed period (the claim's own due-by stays as it was fixed). */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
@@ -633,7 +634,7 @@ public class ClaimService {
         }
         refuseIfRetired(to, claim.getDate());
         if (!from.getId().equals(to.getId())) {
-            refuseIfClosed(sheetId, holidays.dueBy(sheetId, claim.getDate(), termsOf(sheetId, to, claim.getDate())));
+            refuseIfClosed(sheetId, holidays.dueBy(sheetId, claim.getDate(), termsOf(sheetId, to)));
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         claim.moveTo(to.getId(), claims.lastListed(sheetId) + 1, sheets.today(sheetId));

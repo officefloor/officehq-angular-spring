@@ -216,13 +216,13 @@ public class PersonController {
         return new ImportView(result.added(), result.updated(), people);
     }
 
-    /** Edit a person. */
+    /** Edit a person; a grade given from a from-date is recorded from it even when already in force then. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
                 form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.termsFrom(),
-                form.contact(), form.tags(), false), user);
+                form.contact(), form.tags(), form.gradeFrom() != null), user);
     }
 
     /** Give a person a grade from the sheet's today, as the person form would. */
