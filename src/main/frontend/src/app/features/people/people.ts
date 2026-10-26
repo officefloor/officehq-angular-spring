@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { FigurePipe } from '../../core/figure.pipe';
+import { FigurePipe, showFigure } from '../../core/figure.pipe';
+import { UserLocale } from '../../core/user-locale';
 import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -138,6 +139,17 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
           31–60 days: <strong data-testid="rollup-aged-31-60">{{ money(sheetAged().upTo60) | figure }}</strong>,
           61+ days: <strong data-testid="rollup-aged-61">{{ money(sheetAged().over60) | figure }}</strong></p>
         <p>Cut in total: <strong data-testid="rollup-cut-total">{{ sheetCutTotal() | figure }}</strong></p>
+        <div role="group" aria-label="Compare snapshots">
+          <label>From <input data-testid="snapshot-from" type="date" [formControl]="snapshotFrom" /></label>
+          <label>To <input data-testid="snapshot-to" type="date" [formControl]="snapshotTo" aria-describedby="snapshot-to-hint" /></label>
+          <span id="snapshot-to-hint">Blank: due now</span>
+          <button type="button" data-testid="snapshot-compare" (click)="compareSnapshots()">Compare snapshots</button>
+        </div>
+        <ul aria-label="Snapshot comparison">
+          @for (line of snapshotLines(); track $index) {
+            <li data-testid="snapshot-line">{{ line }}</li>
+          }
+        </ul>
         @if (tagTotals().length > 0) {
           <table aria-label="Due by tag">
             <thead>
@@ -501,6 +513,7 @@ export class People {
   protected readonly cols = inject(PeopleColumns);
   protected readonly voidReasons = inject(VoidReasons);
   private readonly api = inject(PeopleApi);
+  private readonly userLocale = inject(UserLocale);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly statementsApi = inject(StatementsApi);
@@ -542,6 +555,29 @@ export class People {
 
   /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
+  /** The from-date and to-date of a snapshot comparison, and its lines. */
+  protected readonly snapshotFrom = new FormControl('', { nonNullable: true });
+  protected readonly snapshotTo = new FormControl('', { nonNullable: true });
+  /** The dates last compared, or null before the first comparison on this sheet. */
+  private readonly snapshotsCompared = signal<{ from: string; to: string } | null>(null);
+  /** Each person in list order with their due-total in the snapshot written when the sheet's today
+   *  left the from-date, and in the one for the to-date (their due-total now when it is blank); a figure
+   *  with no snapshot is empty, and an empty figure leaves no trailing space. */
+  protected readonly snapshotLines = computed(() => {
+    const compared = this.snapshotsCompared();
+    if (compared === null) return [];
+    // The last snapshot written for the day.
+    const on = (person: PersonView, day: string) => {
+      const line = person.snapshots.filter((l) => l.startsWith(day + ' ')).at(-1);
+      return line === undefined ? '' : line.slice(day.length + 1);
+    };
+    const shown = (figure: string) => showFigure(figure, this.userLocale.locale());
+    return this.people().map((p) => {
+      const then = compared.from === '' ? '' : on(p, compared.from);
+      const now = compared.to === '' ? this.personDueTotal(p) : on(p, compared.to);
+      return `${p.name} ${shown(then)} ${shown(now)}`.trim();
+    });
+  });
   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /** The people listed: the retired ones only while show retired is on. */
@@ -960,7 +996,18 @@ export class People {
       this.bulkGradeError.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set('');
+      this.snapshotsCompared.set(null);
       if (sheet) void this.reload(sheet.id);
+    });
+    // A change of the sheet's today writes a snapshot of everyone, so their snapshots are re-read.
+    let seen: { id: string; today: string } | null = null;
+    effect(() => {
+      const sheet = this.session.sheet();
+      const was = seen;
+      seen = sheet ? { id: sheet.id, today: sheet.today } : null;
+      if (sheet && was !== null && was.id === sheet.id && was.today !== sheet.today) {
+        void untracked(() => this.reloadSnapshots(sheet.id));
+      }
     });
     // A change of the sheet's parent changes the rates its dues fall back on, so they are re-read.
     effect(() => {
@@ -1596,6 +1643,25 @@ export class People {
   protected personDueTotal(person: PersonView): string {
     const due = this.dueCentsOf(person);
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** Compare the snapshots of the dates entered. */
+  protected compareSnapshots(): void {
+    this.snapshotsCompared.set({ from: this.snapshotFrom.value.trim(), to: this.snapshotTo.value.trim() });
+  }
+
+  /** Re-read each person's snapshots from the store, keeping the rest of what the screen holds. */
+  private async reloadSnapshots(sheetId: string): Promise<void> {
+    try {
+      const fresh = new Map((await this.api.list(sheetId)).map((p) => [p.id, p.snapshots]));
+      if (this.session.sheet()?.id !== sheetId) return;
+      this.people.update((list) => list.map((p) => {
+        const snapshots = fresh.get(p.id);
+        return snapshots === undefined ? p : { ...p, snapshots };
+      }));
+    } catch {
+      this.error.set('The snapshots could not be loaded.');
+    }
   }
 
   /** Downloads everyone on the sheet, retired or not, in list order: their name, grade in force today,
