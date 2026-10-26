@@ -23,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
  * left as they were. Every other request on a sheet is marked as a change of it, so each of its
  * commits is kept in the sheet's history. Putting a sheet back rewrites its rows until the rollback, so
  * a read as of a date runs on its own: never alongside a change, which would deadlock with it on those rows.
+ * A read from a screen set to a preview date (see {@link Preview}) runs the same way, over the sheet's
+ * current rows with only its today set to the preview date.
  */
 @Component
 public class AsOfFilter extends OncePerRequestFilter {
@@ -46,8 +48,10 @@ public class AsOfFilter extends OncePerRequestFilter {
             return;
         }
         Optional<LocalDate> asOf;
+        Optional<LocalDate> preview;
         try {
             asOf = AsOf.of(request);
+            preview = Preview.of(request);
         } catch (ResponseStatusException e) {
             response.sendError(e.getStatusCode().value(), e.getReason());
             return;
@@ -57,6 +61,14 @@ public class AsOfFilter extends OncePerRequestFilter {
             alone.lock();
             try {
                 readAsOf(sheet.get(), asOf.get(), request, response, chain);
+            } finally {
+                alone.unlock();
+            }
+        } else if (asOf.isEmpty() && preview.isPresent() && Preview.previews(request)) {
+            Lock alone = asOfReads.writeLock();
+            alone.lock();
+            try {
+                readRolledBack(() -> history.preview(sheet.get(), preview.get()), request, response, chain);
             } finally {
                 alone.unlock();
             }
@@ -75,10 +87,16 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     private void readAsOf(String sheet, LocalDate asOf, HttpServletRequest request, HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
+        readRolledBack(() -> history.restoreWithParents(sheet, asOf), request, response, chain);
+    }
+
+    /** Serve the read in one transaction that first sets the sheet up and is always rolled back. */
+    private void readRolledBack(Runnable setUp, HttpServletRequest request, HttpServletResponse response,
+            FilterChain chain) throws ServletException, IOException {
         try {
             transactions.executeWithoutResult((status) -> {
                 status.setRollbackOnly();
-                history.restoreWithParents(sheet, asOf);
+                setUp.run();
                 try {
                     chain.doFilter(request, response);
                 } catch (IOException e) {

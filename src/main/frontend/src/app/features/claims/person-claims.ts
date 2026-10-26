@@ -358,21 +358,21 @@ export class PersonClaims {
   protected due(claim: ClaimView): string {
     const grade = gradeOn(this.grades(), claim.date);
     const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.centsOn(claim.date),
-      { today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
+      { today: this.session.figuresToday(), latePct: (date: string) => this.latePct.pctOn(date),
         grace: (c: ClaimView) => this.graceOf(c),
-        policyDate: this.policyDate.date() ?? this.session.sheet()?.today,
+        policyDate: this.policyDate.date() ?? this.session.figuresToday(),
         rounding: (date: string) => this.rounding.modeOn(date) }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
 
   /** Whether the claim is open and its due-by plus its grace days is before the sheet's today. */
   protected overdue(claim: ClaimView): boolean {
-    return isOverdue(claim, this.session.sheet()?.today, this.graceOf(claim));
+    return isOverdue(claim, this.session.figuresToday(), this.graceOf(claim));
   }
 
   /** Whether the claim is review-late: REVIEW past the sheet's review SLA from the day it went to REVIEW. */
   protected reviewLate(claim: ClaimView): boolean {
-    return isReviewLate(claim, this.session.sheet()?.today, this.reviewSla.days());
+    return isReviewLate(claim, this.session.figuresToday(), this.reviewSla.days());
   }
 
   /** The grace days of the claim: those of the person's grade in force on its date, in force on that date. */
@@ -382,13 +382,13 @@ export class PersonClaims {
 
   /** Whether the claim is OPEN and deferred until a date the sheet's today has not reached. */
   protected deferred(claim: ClaimView): boolean {
-    return isDeferred(claim, this.session.sheet()?.today);
+    return isDeferred(claim, this.session.figuresToday());
   }
 
   /** Whether the row shows the claim as deferred: deferred until a date the sheet's today has not
    *  reached, whatever its status now. */
   protected deferredShown(claim: ClaimView): boolean {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     return claim.deferredUntil !== null && today !== undefined && today < claim.deferredUntil;
   }
 

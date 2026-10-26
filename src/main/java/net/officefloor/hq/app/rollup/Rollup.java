@@ -63,6 +63,13 @@ public class Rollup {
     /** The sheet's figures at one moment: each person's, by id in the order they were added, and the totals. */
     public record Snapshot(String sheetId, Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
+
+        /** The person's due-total as the screen shows it, parts of shared claims included; null when it is n/a
+         *  or they are not on the sheet. */
+        public BigDecimal dueTotalOf(Long personId) {
+            Figures figures = people.get(personId);
+            return figures == null ? null : figures.dueTotal();
+        }
     }
 
     private final PersonRepository people;

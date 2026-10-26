@@ -542,9 +542,9 @@ export class People {
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
-    ({ today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
+    ({ today: this.session.figuresToday(), latePct: (date: string) => this.latePct.pctOn(date),
       grace: (claim: ClaimView) => this.graceOf(claim),
-      policyDate: this.policyDate.date() ?? this.session.sheet()?.today,
+      policyDate: this.policyDate.date() ?? this.session.figuresToday(),
       rounding: (date: string) => this.rounding.modeOn(date) }));
 
   protected readonly grades = GRADES;
@@ -706,7 +706,7 @@ export class People {
   private readonly overdueByPerson = computed(() => {
     const by = new Map<number, { count: number; cents: number }>();
     const byId = new Map(this.people().map((p) => [p.id, p]));
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     for (const c of this.claims()) {
       const person = byId.get(c.personId);
       if (person === undefined || !this.countsLive(c) || !isOverdue(c, today, this.graceOf(c))) continue;
@@ -724,7 +724,7 @@ export class People {
   private readonly agedByPerson = computed(() => {
     const by = new Map<number, Aged>();
     const byId = new Map(this.people().map((p) => [p.id, p]));
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     if (today === undefined) return by;
     const from30 = daysBefore(today, 30);
     const from60 = daysBefore(today, 60);
@@ -836,7 +836,7 @@ export class People {
   protected readonly dueCents = computed(() => new Map(this.people().map((p) => [p.id, this.dueCentsOf(p)])));
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */
   private readonly cutTotals = computed(() => personCutTotals(poolsWithCrews(this.pools.pools(), this.crews.crews()), this.people(), this.sheetPot.pot(),
-    this.session.sheet()?.today));
+    this.session.figuresToday()));
   /** The person's cut total, with two decimals. */
   protected personCutTotal(p: PersonView): string {
     return money(this.cutTotals().get(p.id) ?? 0);
@@ -907,7 +907,7 @@ export class People {
   /** The ids of the people who are active: those with an open (PENDING included) claim that counts,
    *  dated within the 30 days up to and including the sheet's today. */
   protected readonly activeIds = computed(() => {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     const ids = new Set<number>();
     if (today === undefined) return ids;
     const from = daysBefore(today, 29);
@@ -957,7 +957,7 @@ export class People {
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
   /** How many of the sheet's claims are review-late. */
   protected readonly reviewLateCount = computed(() =>
-    this.claims().filter((c) => isReviewLate(c, this.session.sheet()?.today, this.reviewSla.days())).length);
+    this.claims().filter((c) => isReviewLate(c, this.session.figuresToday(), this.reviewSla.days())).length);
   protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
     this.voidReasons.reasons().map(({ reason }) => ({
       reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length })));
@@ -1392,14 +1392,14 @@ export class People {
    *  statement binds, and claims deferred on the sheet's today. A hold, the person's or the claim's,
    *  leaves a claim in every total. */
   private countsLive(claim: ClaimView): boolean {
-    return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
+    return counts(claim) && !isDeferred(claim, this.session.figuresToday()) && !(isOpen(claim) && !isBound(claim)
       && this.retired(claim));
   }
 
   /** Whether the claim's person's retirement date is reached by the sheet's today. */
   private retired(claim: ClaimView): boolean {
     const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     return retiredFrom !== null && today !== undefined && retiredFrom <= today;
   }
 
@@ -1410,7 +1410,7 @@ export class People {
     const status = statusAsOf(claim, end);
     if (status === null) return false;
     const then: ClaimView = { ...claim, status };
-    return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && isOpen(claim) && !isBound(then)
+    return counts(then) && !isDeferred(claim, this.session.figuresToday()) && !(isOpen(then) && isOpen(claim) && !isBound(then)
       && this.retired(claim));
   }
 
@@ -1425,14 +1425,14 @@ export class People {
 
   /** The person's name as the screen shows it, with their grade in force on the sheet's today. */
   protected shownName(person: PersonView): string {
-    return nameWithGrade(person, this.session.sheet()?.today);
+    return nameWithGrade(person, this.session.figuresToday());
   }
 
   /** The person's backing: over their patrons, the patron's settled figure (their SETTLED claims dated
    *  within the 90 days up to and including the sheet's today, each at its frozen figure) times their
    *  share over 100, added up and rounded half to even; 0.00 with none. */
   protected backing(person: PersonView): string {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     if (today === undefined) return money(0);
     const from = daysBefore(today, 89);
     const shares = new Map(sharesOf(person.patronIds));
@@ -1672,13 +1672,13 @@ export class People {
 
   /** The person's grade in force on the sheet's today. */
   protected gradeToday(person: PersonView): Grade {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     return (today === undefined ? null : gradeOn(person.grades, today)) ?? person.grade;
   }
 
   /** The grade's rate in force on the sheet's today, or null when none is. */
   private rateOf(grade: Grade): string | null {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
   }
 
@@ -1702,7 +1702,7 @@ export class People {
    *  its date, in cents; null (n/a) when no rate of their grade in force today is in force today and
    *  none of their claims keeps a figure. */
   private figureCentsOf(person: PersonView): number | null {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     const gradeToday = this.gradeToday(person);
     let total = 0;
     let keptFigure = false;

@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 export interface SheetView {
@@ -24,6 +24,7 @@ export class Session {
   private readonly sheetState = signal<SheetView | null>(null);
   private readonly loadState = signal<SheetView | null>(null);
   private readonly asOfState = signal<string | null>(null);
+  private readonly previewState = signal<string | null>(null);
   /** The re-reads of the active sheet under way: the load itself, and what each load sets off. */
   private readonly reads = new Set<Promise<unknown>>();
 
@@ -36,6 +37,16 @@ export class Session {
    *  belongs to this screen only: it is sent with each request, and every change is refused while
    *  it is set. */
   readonly asOf = this.asOfState.asReadonly();
+  /** The date this screen shows every figure as of, as if it were the sheet's today (yyyy-mm-dd), or
+   *  null for the sheet's today. It belongs to this screen only: it is sent with each read, over the
+   *  sheet's current records; every change still uses the sheet's real today. */
+  readonly preview = this.previewState.asReadonly();
+  /** The today the screen's figures are worked out on: the preview date while one is set, else the
+   *  sheet's today. Default dates and changes use the sheet's real today ({@link sheet}). */
+  readonly figuresToday = computed(() => {
+    const sheet = this.sheetState();
+    return sheet ? (this.previewState() ?? sheet.today) : undefined;
+  });
 
   signIn(name: string): void {
     this.userState.set(name);
@@ -78,6 +89,21 @@ export class Session {
       await this.loadSheet(current.id);
     } catch (e) {
       this.asOfState.set(was);
+      throw e;
+    }
+  }
+
+  /** Show the active sheet's figures as if its today were a date, or as they are (null): it is re-read
+   *  from the store. */
+  async setPreview(date: string | null): Promise<void> {
+    const was = this.previewState();
+    this.previewState.set(date);
+    const current = this.sheetState();
+    if (!current) return;
+    try {
+      await this.loadSheet(current.id);
+    } catch (e) {
+      this.previewState.set(was);
       throw e;
     }
   }

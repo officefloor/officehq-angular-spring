@@ -69,7 +69,7 @@ export class CrewRow {
   protected readonly leadName = computed(() => {
     const id = this.crew().leadId;
     const lead = id === null ? undefined : this.people().find((p) => p.id === id);
-    return lead === undefined ? '' : nameWithGrade(lead, this.session.sheet()?.today);
+    return lead === undefined ? '' : nameWithGrade(lead, this.session.figuresToday());
   });
 
   protected nameOf(id: number | null): string {

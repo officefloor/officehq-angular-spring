@@ -131,6 +131,9 @@ public class StatementService {
         boolean noRate = (asOf != null ? rates.inForceAsOf(sheetId, grade, on, asOf) : rates.inForce(sheetId, grade, on)) == null;
         BigDecimal dueTotal = SettingService.capped(noRate && !keptFigure ? null : total, dated.capOn(on),
                 rollup.cutTotals(sheetId).get(personId));
+        // A claim shared with others, or another's claim shared with them, moves parts of what is owed between
+        // people: taken now, the due-total is the one the screen shows, those parts included.
+        if (asOf == null && sharesWith(sheetId, personId, theirs)) dueTotal = before.dueTotalOf(personId);
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, on, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
@@ -139,6 +142,13 @@ public class StatementService {
         rollup.recordChanges(user, before);
         return new Taken(summarise(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)),
                 theirs);
+    }
+
+    /** Whether any of the person's claims is shared, or a claim on the sheet is shared with them. */
+    private boolean sharesWith(String sheetId, long personId, List<Claim> theirs) {
+        if (theirs.stream().anyMatch((c) -> !c.getShares().isEmpty())) return true;
+        return claims.findBySheetIdOrderByIdDesc(sheetId).stream().flatMap((c) -> c.getShares().stream())
+                .anyMatch((share) -> share.getPersonId() == personId);
     }
 
     /** How a counting claim stood for a statement: its figure (before late charge and floor; null: n/a), its

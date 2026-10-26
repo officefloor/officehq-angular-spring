@@ -192,6 +192,12 @@ public class SheetHistory {
                 byte[].class, sheet, seq));
     }
 
+    /** Show the sheet with the date as its today over the rows it holds now; nothing else of it is
+     *  touched, so nothing a change of today does happens. Only inside a transaction that is rolled back. */
+    public void preview(String sheet, LocalDate date) {
+        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheet);
+    }
+
     /** Replace the sheet's rows with those kept (none: an empty sheet), with the date as its today. */
     private void put(String sheet, LocalDate asOf, List<byte[]> kept) {
         List<Table> all = tables();

@@ -188,7 +188,7 @@ export class PoolRow {
 
   private readonly poolsById = computed(() => new Map(this.pools().map((p) => [p.id, p])));
   protected readonly members = computed(() => membersOf(this.pool(), this.people(), this.poolsById(),
-    this.session.sheet()?.today));
+    this.session.figuresToday()));
   protected readonly total = computed(() => money(totalCents(this.members())));
   protected readonly balanced = computed(() => totalCents(this.members()) === 10000);
 
@@ -410,7 +410,7 @@ export class PoolsList {
   /** The periods whose to-date is on or before the sheet's today, or that are closed or soft-closed, in
    *  date order. */
   protected readonly ended = computed(() => {
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     return today === undefined ? [] : this.periods().filter((q) => q.to <= today || fixed(q));
   });
 
@@ -445,7 +445,7 @@ export class PoolsList {
 
   /** Each pool's cuts, with two decimals, by member key, by pool id. */
   protected readonly cuts = computed(() => new Map([...allCuts(this.all(), this.people(), this.sheetPot.pot(),
-    this.session.sheet()?.today)]
+    this.session.figuresToday())]
     .map(([id, cuts]) => [id, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))])));
 
   protected readonly name = new FormControl('', { nonNullable: true });
@@ -500,7 +500,7 @@ export class PoolsList {
     const pools = this.all();
     const poolsById = new Map(pools.map((p) => [p.id, p]));
     const cuts = this.cuts();
-    const today = this.session.sheet()?.today;
+    const today = this.session.figuresToday();
     const lines = [['pool', 'member', 'share', 'cut'],
       ...pools.flatMap((p) => membersOf(p, this.people(), poolsById, today)
         .map((m) => [p.name, m.name, m.share, cuts.get(p.id)?.get(m.key) ?? '']))];

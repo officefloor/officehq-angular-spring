@@ -295,7 +295,7 @@ export class Settings {
   private readonly dated = signal<Partial<Record<string, DatedValue[]>>>({});
   /** The value of a dated setting in force on the sheet's today, or null when it has none. */
   protected now(key: string): string | null {
-    return valueOn(this.dated()[key] ?? [], this.session.sheet()?.today);
+    return valueOn(this.dated()[key] ?? [], this.session.figuresToday());
   }
   protected readonly clerkLimit = computed(() => this.now('clerk-limit'));
   protected readonly floor = computed(() => this.now('floor') ?? (DEFAULT_FLOOR_CENTS / 100).toFixed(2));

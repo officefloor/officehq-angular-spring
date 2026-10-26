@@ -13,7 +13,7 @@ export class SheetCap {
 
   /** The cap in force on the sheet's today in cents, or null when there is no cap. */
   readonly cents = computed(() => {
-    const value = valueOn(this.history(), this.session.sheet()?.today);
+    const value = valueOn(this.history(), this.session.figuresToday());
     return value === null ? null : Math.round(Number(value) * 100);
   });
 }

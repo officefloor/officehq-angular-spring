@@ -171,7 +171,7 @@ export class Rates {
   /** The sheet's own rates, leaving out those of its parents. */
   protected readonly ownRates = computed(() => this.rates().filter((r) => r.level === 0));
 
-  private readonly today = computed(() => this.session.sheet()?.today ?? null);
+  private readonly today = computed(() => this.session.figuresToday() ?? null);
 
   /** The grade's rate in force on the sheet's today (its own, else its nearest parent's), or n/a when none is. */
   protected currentOf(grade: Grade): string {

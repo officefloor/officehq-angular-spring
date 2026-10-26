@@ -7,6 +7,7 @@ import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
 import { SheetAsOf } from '../session/sheet-as-of';
+import { SheetPreview } from '../session/sheet-preview';
 import { SheetPicker } from '../session/sheet-picker';
 import { SheetToday } from '../session/sheet-today';
 import { SignIn } from '../session/sign-in';
@@ -19,7 +20,7 @@ import { NotesList } from '../notes/notes';
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, Activity, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, GradesList, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
+  imports: [AuditViewer, Activity, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, SheetPreview, StewardDashboard, Settings, GradesList, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -29,6 +30,7 @@ import { NotesList } from '../notes/notes';
       <app-sheet-picker />
       <app-sheet-today />
       <app-sheet-as-of />
+      <app-sheet-preview />
       @if (session.sheet()) {
         <app-steward-dashboard />
         <app-settings />
