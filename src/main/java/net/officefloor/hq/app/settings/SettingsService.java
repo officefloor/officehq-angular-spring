@@ -122,6 +122,20 @@ public class SettingsService {
     }
 
     /**
+     * Sets the sheet's period numbering from (null for blank: off): while it is set and the sheet's today is on or
+     * after it, a claim opened is numbered within its period. Claims already numbered keep their numbers.
+     */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String by, String sheetId, LocalDate from) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
+                + (from == null ? "" : from.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's floor: the least a claim's live due can be. Settled, stated and closed-period figures keep
      * what they were; the live figures it moves are rolled up.
      */

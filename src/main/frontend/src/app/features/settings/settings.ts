@@ -19,6 +19,8 @@ interface SettingsView {
   latePct: string;
   // The date claims round by (before it half up, on or after it half to even); null when blank: the sheet's today.
   policyDate: string | null;
+  // The date from which claims opened are numbered within their period; null when blank: off.
+  periodNumberingFrom: string | null;
 }
 
 export const ROLES = ['clerk', 'steward'];
@@ -41,7 +43,7 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The active sheet's settings: the role set for each user name (any other name is a clerk), the clerk limit and
-// the floor, the terms, the late percent and the policy date.
+// the floor, the terms, the late percent, the policy date and the period numbering from.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -54,6 +56,8 @@ export class SettingsStore {
   readonly latePct = signal<string>(DEFAULT_LATE_PCT);
   /** The policy date as set; null when blank. */
   readonly policyDate = signal<string | null>(null);
+  /** The period numbering from as set; null when blank (off). */
+  readonly periodNumberingFrom = signal<string | null>(null);
   /**
    * What an overdue claim's late charge follows: the terms, the sheet's today and the late percent; and the policy
    * date in force (the sheet's today when blank), which decides how live figures round.
@@ -73,6 +77,7 @@ export class SettingsStore {
     this.terms.set(DEFAULT_TERMS);
     this.latePct.set(DEFAULT_LATE_PCT);
     this.policyDate.set(null);
+    this.periodNumberingFrom.set(null);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -85,6 +90,7 @@ export class SettingsStore {
       this.terms.set(settings.terms);
       this.latePct.set(settings.latePct);
       this.policyDate.set(settings.policyDate);
+      this.periodNumberingFrom.set(settings.periodNumberingFrom);
     }
   }
 
@@ -131,9 +137,16 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.policyDate.set(s.policyDate);
   }
+
+  async setPeriodNumberingFrom(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/period-numbering-from`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.periodNumberingFrom.set(s.periodNumberingFrom);
+  }
 }
 
-// The sheet's settings: the clerk limit, the floor, the terms, the late percent, the policy date, and the role each user name has.
+// The sheet's settings: the clerk limit, the floor, the terms, the late percent, the policy date, the period numbering from, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -191,6 +204,17 @@ export class SettingsStore {
           (keydown.delete)="policyDateChanged = true; settingsError.set(null)"
           (keydown.backspace)="policyDateChanged = true; settingsError.set(null)"
         />
+        <label for="setting-period-numbering-from">Period numbering from (claims opened from it are numbered within their period; blank for off)</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          type="date"
+          [value]="periodNumberingFrom()"
+          (input)="periodNumberingFrom.set(value($event)); periodNumberingFromChanged = true; settingsError.set(null)"
+          (change)="periodNumberingFrom.set(value($event)); periodNumberingFromChanged = true; settingsError.set(null)"
+          (keydown.delete)="periodNumberingFromChanged = true; settingsError.set(null)"
+          (keydown.backspace)="periodNumberingFromChanged = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -201,6 +225,10 @@ export class SettingsStore {
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
+      <p>
+        Period numbering from:
+        <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
+      </p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -256,6 +284,7 @@ export class Settings {
   protected readonly terms = signal('');
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
+  protected readonly periodNumberingFrom = signal('');
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
   // clearing one that already shows blank (as the clerk limit, for none) still saves it.
   protected limitChanged = false;
@@ -263,6 +292,7 @@ export class Settings {
   protected termsChanged = false;
   protected latePctChanged = false;
   protected policyDateChanged = false;
+  protected periodNumberingFromChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -325,6 +355,11 @@ export class Settings {
       this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
       return;
     }
+    const periodNumberingFrom = this.periodNumberingFrom().trim();
+    if (this.periodNumberingFromChanged && periodNumberingFrom && !DATE.test(periodNumberingFrom)) {
+      this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
+      return;
+    }
     this.savingSettings = true;
     try {
       if (this.limitChanged) {
@@ -347,6 +382,10 @@ export class Settings {
       if (this.policyDateChanged) {
         await this.store.setPolicyDate(sheet, policyDate || null);
         this.policyDateChanged = this.policyDate().trim() !== policyDate;
+      }
+      if (this.periodNumberingFromChanged) {
+        await this.store.setPeriodNumberingFrom(sheet, periodNumberingFrom || null);
+        this.periodNumberingFromChanged = this.periodNumberingFrom().trim() !== periodNumberingFrom;
       }
     } catch {
       this.resubmit = false;

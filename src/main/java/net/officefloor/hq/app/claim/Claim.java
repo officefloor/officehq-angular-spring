@@ -42,9 +42,21 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number given when the claim is opened; kept when it is voided, never reused; null for a claim never opened. */
+    /**
+     * The number given when the claim is opened: the sheet's next (1, 2, ...), or while the sheet numbers by period
+     * its period's next (P1-1, X-1 for no period); kept when it is voided, never reused; null for a claim never
+     * opened.
+     */
     @Column(name = "claim_number")
-    private Long number;
+    private String number;
+
+    /** The sequence a period-numbered claim was counted in: its period's name, or X; null otherwise. */
+    @Column(name = "number_sequence")
+    private String numberSequence;
+
+    /** The claim's place in its number sequence; null unless period-numbered. */
+    @Column(name = "number_in_sequence")
+    private Long numberInSequence;
 
     /** The due fixed when the claim was settled; null while it is live. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -64,7 +76,7 @@ public class Claim {
 
     /** The number of the settled claim a correction corrects; null for a claim that is not a correction. */
     @Column(name = "corrects")
-    private Long corrects;
+    private String corrects;
 
     /** The date the claim's rounding follows: its own date, or for a correction the date of the claim it corrects. */
     @Column(name = "rounds_on", nullable = false)
@@ -95,11 +107,11 @@ public class Claim {
         return amount.signum() < 0;
     }
 
-    public Long getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Long corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -147,12 +159,19 @@ public class Claim {
         this.status = status;
     }
 
-    public Long getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Long number) {
+    public void setNumber(String number) {
         this.number = number;
+    }
+
+    /** Numbers the claim in the sequence (a period's name, or X) at the place: the number shown is sequence-place. */
+    public void numberIn(String sequence, long place) {
+        this.number = sequence + "-" + place;
+        this.numberSequence = sequence;
+        this.numberInSequence = place;
     }
 
     public BigDecimal getSettledDue() {

@@ -32,13 +32,14 @@ public class SettingsController {
     /**
      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
      * the floor carries two decimals, the terms are whole days, the late percent carries two decimals, and the
-     * policy date is null when blank (the sheet's today).
+     * policy date is null when blank (the sheet's today), and the period numbering from is null when blank (off).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            LocalDate periodNumberingFrom) {
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
-                    sheet.getPolicyDate());
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom());
         }
     }
 
@@ -60,6 +61,10 @@ public class SettingsController {
 
     /** The policy date as the form submits it: a date, or null for blank (the sheet's today). */
     public record PolicyDateForm(LocalDate value) {
+    }
+
+    /** The period numbering from as the form submits it: a date, or null for blank (off). */
+    public record PeriodNumberingFromForm(LocalDate value) {
     }
 
     public record RoleView(String user, String role) {
@@ -118,6 +123,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PolicyDateForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setPolicyDate(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody PeriodNumberingFromForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setPeriodNumberingFrom(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

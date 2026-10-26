@@ -13,8 +13,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  // Given when the claim is opened; null for a draft or voided claim.
-  number: number | null;
+  // Given when the claim is opened: the sheet's next (1, 2, ...) or, while the sheet numbers by period, its
+  // period's next (P1-1; X-1 for no period); null for a claim never opened.
+  number: string | null;
   // The due fixed when the claim was settled; null while its due is live.
   settledDue: string | null;
   // The user who opened the claim; null for a claim never opened. That user cannot settle it.
@@ -23,7 +24,7 @@ export interface Claim {
   stated: boolean;
   statedDue: string | null;
   // The number of the settled claim a correction (a negative amount) corrects; null for any other claim.
-  corrects: number | null;
+  corrects: string | null;
   // The date the claim's rounding follows: its own, or for a correction the date of the claim it corrects.
   roundsOn: string;
 }
@@ -293,7 +294,7 @@ export class Claims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
-    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
+    this.corrects.set(c.corrects ?? '');
     this.error.set(null);
   }
 
@@ -349,7 +350,7 @@ export class Claims {
     }
     const corrects = this.corrects().trim();
     const correction = amount.startsWith('-');
-    if (correction && !/^[1-9]\d*$/.test(corrects)) {
+    if (correction && !/^([1-9]\d*|.+-[1-9]\d*)$/.test(corrects)) {
       this.error.set('A negative amount is a correction: enter the number of the settled claim it corrects.');
       return;
     }
@@ -371,7 +372,7 @@ export class Claims {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
-    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? Number(corrects) : null };
+    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? corrects : null };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;
     try {

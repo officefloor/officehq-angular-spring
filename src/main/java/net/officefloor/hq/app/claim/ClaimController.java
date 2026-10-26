@@ -5,7 +5,6 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,7 +34,7 @@ public class ClaimController {
      * the date of the claim it corrects.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects,
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
@@ -50,7 +49,7 @@ public class ClaimController {
      * correction, and corrects names the number of the settled claim it corrects.
      */
     public record ClaimForm(@NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount, LocalDate date,
-            @Size(max = 500) String note, @Positive Long corrects) {
+            @Size(max = 500) String note, @Size(max = 140) String corrects) {
     }
 
     /** The claims a bulk action is to change, by id. */
