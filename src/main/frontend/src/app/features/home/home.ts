@@ -4,11 +4,12 @@ import { People } from '../people/people';
 import { Rates } from '../rates/rates';
 import { Settings } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
+import { Holidays } from '../holidays/holidays';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, Rates, Settings, Delegation],
+  imports: [People, Rates, Settings, Delegation, Holidays],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -68,6 +69,7 @@ import { Delegation } from '../delegation/delegation';
         <app-rates />
         <app-settings />
         <app-delegation />
+        <app-holidays />
         <app-people />
       }
     } @else {
