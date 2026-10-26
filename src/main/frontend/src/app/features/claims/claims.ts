@@ -6,6 +6,7 @@ import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
+import { ClaimTemplateStore } from '../claim-templates/claim-templates';
 
 export interface Claim {
   id: number;
@@ -294,6 +295,22 @@ export function claimedTotal(claims: readonly Claim[]): string {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
       }
     </form>
+    <div role="group" [attr.aria-label]="'Add a claim from a template for ' + personName()">
+      <label [for]="'claim-template-' + personId()">Template</label>
+      <select
+        [id]="'claim-template-' + personId()"
+        data-testid="claim-template-select"
+        (change)="template.set(value($event)); error.set(null)"
+      >
+        <option value="" [selected]="template() === ''">Choose a template</option>
+        @for (t of templates.list(); track t.id) {
+          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">
+        Add claim from template<span class="visually-hidden"> for {{ personName() }}</span>
+      </button>
+    </div>
 
     <table>
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
@@ -488,6 +505,7 @@ export class Claims {
   protected readonly settings = inject(SettingsStore);
   protected readonly voidReasons = inject(VoidReasonStore);
   private readonly rateStore = inject(RateStore);
+  protected readonly templates = inject(ClaimTemplateStore);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -511,6 +529,8 @@ export class Claims {
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
   protected readonly tags = signal('');
+  // The template chosen to add a claim from, by name.
+  protected readonly template = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
@@ -1037,6 +1057,35 @@ export class Claims {
     this.ref.set('');
     this.tags.set('');
     this.error.set(null);
+  }
+
+  /**
+   * Adds a draft claim from the chosen template: the store takes its amount and note as they are now and dates it as
+   * a claim with no date, by every rule of the claim form.
+   */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const name = this.template();
+    if (!this.templates.list().some((t) => t.name === name)) {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    // the store dates it and judges the period and the person's retirement, as for a claim with no date
+    this.submitting = true;
+    try {
+      const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/from-template`;
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, { template: name })));
+    } catch (e) {
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.error.set(
+        status === 409 ? CLOSED : status === 403 ? 'Your role may not add a claim on this sheet.' : 'Could not add a claim from that template.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async submit(e: Event): Promise<void> {
