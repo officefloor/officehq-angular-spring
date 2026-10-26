@@ -1,0 +1,247 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ac2a69c3..ec5e0c38 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,6 +14,8 @@ interface Person {
+   version: number;
+   // The date the person is retired from; null while not retired. A person with one set is retired at once.
+   retiredFrom: string | null;
++  // Whether the person is on hold: while held, their open claims count in no live total.
++  held: boolean;
+ }
+ 
+ // A person's statements: how many have been taken, and the last one's due-total (null for n/a) and date.
+@@ -104,7 +106,7 @@ interface StatementView {
+           <tr>
+             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+-            <th scope="col">Retired</th><th scope="col">Retired from</th>
++            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+           </tr>
+         </thead>
+@@ -120,6 +122,7 @@ interface StatementView {
+               <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
++              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+@@ -138,6 +141,9 @@ interface StatementView {
+                 <button type="button" data-testid="person-retire" (click)="retire(p)">
+                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
++                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
++                </button>
+                 @if (rowErrors()[p.id]; as err) {
+                   <p role="alert" data-testid="person-error">{{ err }}</p>
+                 }
+@@ -199,12 +205,22 @@ export class People {
+     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+     return by;
+   });
++  // The claims that count in the live totals: open and settled ones, leaving out a held person's open ones.
++  protected readonly liveClaims = computed(() => {
++    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
++    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
++  });
++  protected readonly liveBy = computed(() => {
++    const by = new Map<number, Claim[]>();
++    for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
++    return by;
++  });
+   protected readonly claimedBy = computed(() => {
+     const by = new Map<number, string>();
+-    for (const [id, list] of this.claimsBy()) by.set(id, claimedTotal(list));
++    for (const [id, list] of this.liveBy()) by.set(id, claimedTotal(list));
+     return by;
+   });
+-  protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
++  protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
+   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
+   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
+   // it is null (n/a), unless a settled or stated claim keeps a figure.
+@@ -213,7 +229,7 @@ export class People {
+     const current = this.rates.current();
+     const rates = this.rates.rates();
+     for (const p of this.people()) {
+-      const counted = (this.claimsBy().get(p.id) ?? []).filter(counts);
++      const counted = this.liveBy().get(p.id) ?? [];
+       if (!current.has(p.grade) && !counted.some(keepsFigure)) {
+         by.set(p.id, null);
+         continue;
+@@ -223,12 +239,11 @@ export class People {
+     }
+     return by;
+   });
+-  // Every counted claim's date and the figure it totals, for the periods' due-totals.
++  // Every claim counted live: its date and the figure it totals, for the periods' due-totals.
+   protected readonly countedFigures = computed<DatedFigure[]>(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+     const rates = this.rates.rates();
+-    return this.claims()
+-      .filter(counts)
++    return this.liveClaims()
+       .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? []) }));
+   });
+   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
+@@ -288,6 +303,22 @@ export class People {
+     }
+   }
+ 
++  /** Puts the person on hold, or releases them when held. */
++  protected async toggleHold(p: Person): Promise<void> {
++    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`;
++    try {
++      const saved = await firstValueFrom(this.http.post<Person>(url, null));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
++      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
++    } catch {
++      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not change the hold on this person.' }));
++    }
++  }
++
+   protected statedTotal(s: StatementView | undefined): string {
+     return s === undefined ? '' : (s.dueTotal ?? 'n/a');
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 139600b8..c1dec6c9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -93,7 +93,7 @@ public class PeriodService {
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(c.getPersonId());
+-            if (person == null || !c.getStatus().counts() || !period.contains(c.getDate())) {
++            if (person == null || !person.countsLive(c.getStatus()) || !period.contains(c.getDate())) {
+                 continue;
+             }
+             BigDecimal figure = claimService.figure(sheetId, person, c);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 09ad58ae..65e2e8cf 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ 
+ /** A person on a sheet, with a name (unique on the sheet, ignoring case) and a grade (A, B or C). */
+ @Entity
+@@ -30,6 +31,9 @@ public class Person {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
++    @Column(name = "held", nullable = false)
++    private boolean held;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -81,6 +85,20 @@ public class Person {
+         return retiredFrom != null;
+     }
+ 
++    /** Whether the person is on hold: while held, their open claims count in no live total. */
++    public boolean isHeld() {
++        return held;
++    }
++
++    public void setHeld(boolean held) {
++        this.held = held;
++    }
++
++    /** Whether the claim of the given status counts toward the person's live totals: an open one not while held. */
++    public boolean countsLive(ClaimStatus status) {
++        return status.counts() && !(held && status == ClaimStatus.OPEN);
++    }
++
+     /** The version of the person as stored, raised on each save. */
+     public long getVersion() {
+         return version;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index f4b8cf93..d77e04b0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -23,9 +23,11 @@ import org.springframework.web.bind.annotation.SessionAttribute;
+ @RequestMapping("/api/sheets/{sheetId}/people")
+ public class PersonController {
+ 
+-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom) {
++    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
++            boolean held) {
+         public static PersonView of(Person p) {
+-            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), p.getRetiredFrom());
++            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), p.getRetiredFrom(),
++                    p.isHeld());
+         }
+     }
+ 
+@@ -79,4 +81,12 @@ public class PersonController {
+             @SessionAttribute(SessionController.USER) String user) {
+         return PersonView.of(service.retire(user, sheetId, id, form.from()));
+     }
++
++    /** Puts the person on hold, or takes them off hold when they are held. */
++    @PostMapping("/{id}/hold")
++    public PersonView hold(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
++        return PersonView.of(service.toggleHold(user, sheetId, id));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 749be561..61628c91 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -83,6 +83,20 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Puts the person on hold, or releases them when held. While held, their open claims count in no live total. */
++    @Transactional
++    public Person toggleHold(String by, String sheetId, Long id) {
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
++        person.setHeld(!person.isHeld());
++        Person saved = save(person);
++        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + by
++                + " name=" + saved.getName());
++        rollup.recordChanges(by, sheetId, before);
++        return saved;
++    }
++
+     /** Saves the person; the store's unique index refuses a name another request took meanwhile. */
+     private Person save(Person person) {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 5c19fa33..d49eadaa 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -73,7 +73,9 @@ public class RollupService {
+         BigDecimal dueTotal = ZERO;
+         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Rate> list = byGrade.getOrDefault(p.getGrade(), List.of());
+-            List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of());
++            // while the person is held, their open claims count in no live total
++            List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
++                    .filter(c -> p.countsLive(c.getStatus())).toList();
+             BigDecimal claimed = ZERO;
+             BigDecimal due = ZERO;
+             boolean kept = false;
+diff --git a/src/main/resources/db/migration/V17__person_held.sql b/src/main/resources/db/migration/V17__person_held.sql
+new file mode 100644
+index 00000000..4d9f1835
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__person_held.sql
+@@ -0,0 +1,2 @@
++-- Whether a person is on hold. While held, their open claims count in no live total; their settled ones still do.
++ALTER TABLE person ADD COLUMN held BOOLEAN NOT NULL DEFAULT FALSE;
