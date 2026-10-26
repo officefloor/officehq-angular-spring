@@ -1,0 +1,64 @@
+{
+  "checkpoint": 105,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp105_pools",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share (a member with a retirement date set, whatever\nthe date) counts as 0.00 toward the total. A person can be in several pools. Show each member's\nshare on the member's line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share (a member with a retirement date set, whatever\nthe date) counts as 0.00 toward the total. A person can be in several pools. Show each member's\nshare on the member's line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d7f04c0d7171f2aebade590345519a352e3296d7",
+  "reset_sha": "",
+  "preagent_sha": "782d8ab933908778827f0e3408ca54a0787179d0",
+  "prev_sha": "782d8ab933908778827f0e3408ca54a0787179d0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8397889999999997,
+    "input_tokens": 78,
+    "output_tokens": 25799,
+    "cache_read_tokens": 2821565,
+    "cache_creation_tokens": 94898,
+    "num_turns": 41,
+    "duration_ms": 1236068,
+    "duration_api_ms": 297014,
+    "model": "claude-opus-5-5",
+    "session_id": "83c8dc0d-c236-4f0f-9fad-b03f82b5a9b5",
+    "stop_reason": "success",
+    "result_text": "Pools are in, and the Playwright spec passes all 4 tests on two runs in a row.\n\n**What a user can now do**\n- Add a pool by name. Surrounding spaces are removed, and a blank name or one already used is refused with an error.\n- Add a member from the pool's row: pick a person and give a share. The share must have at most two decimals, be more than 0.00 and be at most 100.00. A bad share, or a person already in that pool, is refused with an error on the pool. A person can be in several pools.\n- Each pool shows its total share and whether it is balanced (yes when the total is exactly 100.00). Each member's line shows their share. A member with any retirement date set counts as 0.00 toward the total.\n- Adding a pool or a member writes `POOL_ADDED` and `POOL_MEMBER_ADDED` audit lines in the form the spec expects. Refused attempts write nothing.\n\n**Where the code is**\n- **Stored data:** a new migration, `V64__pool.sql`, adds a `pool` table and a `pool_member` table. Pool names are unique per sheet, a person can be in a pool only once, and the database also checks the share range. Both tables carry `sheet_id`, so the existing \"show as of a date\" snapshots include pools without extra work.\n- **Server:** a new `pool` package with `PoolService` and `PoolController`, which work out the totals and the balanced flag.\n- **Front end:** a new `features/pools/pools.ts` component on the home screen. The people list now passes its current people to it, so the person choice and the retired status stay current without reloading.\n\n**One change outside pools.** Test \"pools scenario 2\" failed the same way twice, on a step that has nothing to do with pools: a viewer tries to edit a claim, which should be refused. The refusal did happen, but the claim's error and the claim form's error ended up on screen together. The test helper looks for either error, and when it finds two at once it treats that as no error, so it read the step as having gone through. I changed `claims.ts` so that submitting the claim form clears any errors left on that person's claim rows, and it passed on both runs after that. I didn't check whether that test also failed before my pool changes, since it has no pool steps.\n\nI removed the temporary debug spec I used to track that down. The test, `bin/*`, `e2e/support` and the docs are unchanged.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8397889999999997,
+        "num_turns": 41,
+        "duration_ms": 1236068,
+        "duration_api_ms": 297014,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp105.agent.jsonl",
+  "agent_diff_file": "cp105.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
