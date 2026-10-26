@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -516,12 +516,18 @@ export class People {
     for (const [id, list] of lists) by.set(id, [...list].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', '));
     return by;
   });
-  // Each person's backing: their patrons' due-totals added up, skipping n/a; a person with none is not in the map.
+  // Each person's backing: their patrons' settled claims dated within the 90 days up to and including the sheet's
+  // today, each at its frozen figure, added up skipping n/a; a person with no patrons is not in the map.
   protected readonly backingBy = computed(() => {
-    const due = this.dueBy();
+    const today = this.session.sheetToday();
+    const settled = new Map<number, (string | null)[]>();
+    for (const c of this.claims()) {
+      if (c.status !== 'SETTLED' || today === null || c.date < plusDays(today, -89) || c.date > today) continue;
+      settled.set(c.personId, [...(settled.get(c.personId) ?? []), c.settledDue]);
+    }
     const lists = new Map<number, (string | null)[]>();
     for (const r of this.patrons()) {
-      lists.set(r.personId, [...(lists.get(r.personId) ?? []), due.get(r.patronId) ?? null]);
+      lists.set(r.personId, [...(lists.get(r.personId) ?? []), ...(settled.get(r.patronId) ?? [])]);
     }
     const by = new Map<number, string>();
     for (const [id, list] of lists) by.set(id, sumSkippingNa(list));
