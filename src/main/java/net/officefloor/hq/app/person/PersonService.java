@@ -293,8 +293,11 @@ public class PersonService {
         boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms)
                 || !Objects.equals(person.termsOn(sheets.today(sheetId)), terms);
         person.setName(name);
+        // An edit that leaves the grade in force today as it is, with no from-date, records no grade, so it
+        // does not hide a grade given later from an earlier date.
+        boolean gradeGiven = gradeFrom != null || person.gradeOn(sheets.today(sheetId)) != grade;
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId),
-                explicitGrade);
+                explicitGrade && gradeGiven);
         if (termsFrom == null) person.setTerms(terms);
         else person.setTerms(terms, termsFrom);
         person.setContact(contactKey);

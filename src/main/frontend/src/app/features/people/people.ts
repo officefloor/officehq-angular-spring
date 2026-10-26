@@ -132,6 +132,9 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
           open in total: <strong data-testid="rollup-open-total">{{ money(sheetSettledOpen().open) | figure }}</strong></p>
         <p>Overdue: <strong data-testid="rollup-overdue-count">{{ sheetOverdue().count }}</strong>
           claims, due <strong data-testid="rollup-overdue-total">{{ money(sheetOverdue().cents) | figure }}</strong></p>
+        <p>Due aged 0–30 days: <strong data-testid="rollup-aged-0-30">{{ money(sheetAged().upTo30) | figure }}</strong>,
+          31–60 days: <strong data-testid="rollup-aged-31-60">{{ money(sheetAged().upTo60) | figure }}</strong>,
+          61+ days: <strong data-testid="rollup-aged-61">{{ money(sheetAged().over60) | figure }}</strong></p>
         <p>Cut in total: <strong data-testid="rollup-cut-total">{{ sheetCutTotal() | figure }}</strong></p>
         @if (tagTotals().length > 0) {
           <table aria-label="Due by tag">
@@ -710,6 +713,18 @@ export class People {
       open += o?.open ?? 0;
     }
     return { settled, open };
+  });
+  /** The sheet's open (PENDING included) claims that count, by age: everyone's age buckets added up,
+   *  not trimmed. */
+  protected readonly sheetAged = computed(() => {
+    const sum: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
+    for (const p of this.people()) {
+      const a = this.agedByPerson().get(p.id);
+      sum.upTo30 += a?.upTo30 ?? 0;
+      sum.upTo60 += a?.upTo60 ?? 0;
+      sum.over60 += a?.over60 ?? 0;
+    }
+    return sum;
   });
   /** The sheet's overdue claims that count: how many, and everyone's overdue-total added up, trimmed. */
   protected readonly sheetOverdue = computed(() => {
