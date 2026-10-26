@@ -34,6 +34,8 @@ export interface Claim {
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none.
   proofs: number;
+  // The number of the claim this one was split off; null for a claim not split off another.
+  splitFrom: string | null;
   // The claim's status log, oldest first: a line for each status it has had, from its DRAFT on.
   log: ClaimLogLine[];
 }
@@ -230,7 +232,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -261,6 +263,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-period">{{ periodName(c.date) }}</td>
             <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
             <td data-testid="claim-proofs">{{ c.proofs }}</td>
+            <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
             <td>
               <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
                 @for (l of c.log; track $index) {
@@ -301,6 +304,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
               />
               <button type="button" data-testid="claim-defer" (click)="defer(c)">
                 Defer<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
+              <input
+                [id]="'claim-split-amount-' + c.id"
+                inputmode="decimal"
+                data-testid="claim-split-amount"
+                [value]="splitAmounts()[c.id] ?? ''"
+                (input)="setSplitAmount(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-split" (click)="split(c)">
+                Split<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-proof" (click)="addProof(c)">
                 Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
@@ -375,6 +389,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   // The date typed to defer each claim until, by claim id.
   protected readonly deferDates = signal<Record<number, string>>({});
+  // The amount typed to split off each claim, by claim id.
+  protected readonly splitAmounts = signal<Record<number, string>>({});
   // The person (by id) chosen to move each claim to, by claim id.
   protected readonly reassignTo = signal<Record<number, string>>({});
 
@@ -514,6 +530,47 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot be deferred until ${until}.`);
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((a) => ({ ...a, [id]: amount }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Splits the typed amount (more than 0.00 and less than the claim's) off an OPEN claim that is not deferred: the
+   * claim keeps the rest, and a new OPEN claim with the amount is listed as its person's newest.
+   */
+  protected async split(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || Number(amount) <= 0 || Number(amount) >= Number(c.amount)) {
+      this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to split off this claim.`);
+      return;
+    }
+    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
+      this.setRowError(c.id, `Only an OPEN claim that is not deferred can be split.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/split`;
+    try {
+      const result = await firstValueFrom(this.http.post<{ original: Claim; split: Claim }>(url, { amount }));
+      this.splitAmounts.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(result.original);
+      this.saved.emit(result.split);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.setRowError(
+        c.id,
+        forbidden ? 'Your role may not open a claim, so it may not split one.' : `This ${c.status} claim cannot be split.`,
+      );
     }
   }
 

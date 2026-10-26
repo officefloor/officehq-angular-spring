@@ -334,6 +334,53 @@ public class ClaimService {
         return saved;
     }
 
+    /** An OPEN claim after a split, and the new OPEN claim split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
+    /**
+     * Splits an amount (more than 0.00 and less than the claim's) off an OPEN claim: the claim keeps the rest and
+     * loses any figure a statement bound it to; a new OPEN claim with the amount, the same date and note, the next
+     * number, opened by the user, with a due-by from the terms in force on the date, and split from the original's
+     * number, is listed as its person's newest. Refused unless the user's role may open a claim, for a claim that is
+     * not OPEN or is deferred, for an amount out of range, and in a closed period.
+     */
+    @Transactional
+    public Split split(String by, String sheetId, Long id, BigDecimal amount) {
+        settings.refuseUnlessMay(sheetId, by, "open");
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN claim can be split.");
+        }
+        if (claim.isDeferredOn(sheets.load(sheetId).getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ".");
+        }
+        if (amount == null || amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The amount split off must be more than 0.00 and less than the claim's.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setAmount(claim.getAmount().subtract(scaled(amount)));
+        claim.unbind();
+        Claim original = claims.saveAndFlush(claim);
+        Claim part = new Claim(sheetId, claim.getPersonId(), scaled(amount), claim.getDate(), claim.getNote());
+        part.setRoundsOn(claim.getRoundsOn());
+        part.setDueBy(claim.getDate()
+                .plusDays(sheets.load(sheetId).termsFor(person.gradeOn(claim.getDate()), claim.getDate())));
+        part.setSplitFrom(claim.getNumber());
+        part.setStatus(ClaimStatus.OPEN);
+        number(sheetId, part);
+        part.setOpenedBy(by);
+        logStatus(by, sheetId, person, part);
+        Claim added = claims.saveAndFlush(part);
+        audit.recordOnCommit(record("CLAIM_SPLIT", by, person, original) + " into=" + added.getNumber());
+        audit.recordOnCommit(record("CLAIM_OPENED", by, person, added));
+        rollup.recordChanges(by, sheetId, before);
+        return new Split(original, added);
+    }
+
     /** Logs the status the claim now has: by the user, on the sheet's today, at the due it shows now. */
     private void logStatus(String by, String sheetId, Person person, Claim claim) {
         claim.logStatus(by, sheets.load(sheetId).getToday(), due(sheetId, person, claim));

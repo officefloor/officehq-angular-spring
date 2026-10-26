@@ -85,6 +85,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The number of the claim this one was split off; null for a claim not split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** The date the claim's rounding follows: its own date, or for a correction the date of the claim it corrects. */
     @Column(name = "rounds_on", nullable = false)
     private LocalDate roundsOn;
@@ -185,6 +189,14 @@ public class Claim {
 
     public void setCorrects(String corrects) {
         this.corrects = corrects;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public Long getId() {
