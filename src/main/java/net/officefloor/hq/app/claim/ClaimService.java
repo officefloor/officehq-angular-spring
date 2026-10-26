@@ -69,7 +69,7 @@ public class ClaimService {
 
     /**
      * Adds a claim for the person; a missing date takes the sheet's entry date, or its today when that is blank. Its
-     * due-by is fixed from its date and the terms it gets, moved past the sheet's holidays then, and its period is the one its due-by falls in: one whose
+     * due-by is fixed as the terms-th business day after its date, skipping weekends and the sheet's holidays then, and its period is the one its due-by falls in: one whose
      * due-by falls in a soft-closed period is a late entry. Refused when its due-by falls in a closed period or when
      * it is dated after the person's retirement date, and a correction (a negative amount) unless it corrects a settled claim of
      * the person.
@@ -79,7 +79,7 @@ public class ClaimService {
             String corrects) {
         LocalDate on = dateOrEntryDate(sheetId, date);
         Person person = person(sheetId, personId);
-        LocalDate dueBy = holidays.pastHolidays(sheetId, on.plusDays(termsFor(sheetId, person, on)));
+        LocalDate dueBy = holidays.dueBy(sheetId, on, termsFor(sheetId, person, on));
         refuseInClosedPeriod(sheetId, dueBy);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseAfterRetirement(person, on);
@@ -515,7 +515,7 @@ public class ClaimService {
         Claim original = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, claim.getPersonId(), scaled(amount), claim.getDate(), claim.getNote());
         part.setRoundsOn(claim.getRoundsOn());
-        part.setDueBy(holidays.pastHolidays(sheetId, claim.getDate().plusDays(termsFor(sheetId, person, claim.getDate()))));
+        part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), termsFor(sheetId, person, claim.getDate())));
         part.setSplitFrom(claim.getNumber());
         // a split is judged by the original alone: the part is a late entry when the original is
         part.setLateEntry(claim.isLateEntry());

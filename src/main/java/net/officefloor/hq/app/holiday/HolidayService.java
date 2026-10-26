@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -12,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The sheet's list of holidays. A claim's due-by, when fixed at its creation, is moved past the holidays on the sheet
- * then; a holiday added later leaves existing due-by dates as they are.
+ * The sheet's list of holidays. A claim's due-by, when fixed at its creation, counts business days that skip the
+ * weekends and the holidays on the sheet then; a holiday added later leaves existing due-by dates as they are.
  */
 @Service
 public class HolidayService {
@@ -46,14 +47,27 @@ public class HolidayService {
         return added;
     }
 
-    /** The date, or when it falls on one of the sheet's holidays, the next day that is not a holiday. */
+    /**
+     * The terms-th business day after the date: counting forward from the day after it, skipping every Saturday,
+     * Sunday and holiday on the sheet. Terms of 0 is the date itself.
+     */
     @Transactional(readOnly = true)
-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
+    public LocalDate dueBy(String sheetId, LocalDate date, int terms) {
         Set<LocalDate> days = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(Holiday::getDate)
                 .collect(Collectors.toSet());
-        while (days.contains(date)) {
-            date = date.plusDays(1);
+        return businessDaysAfter(date, terms, days);
+    }
+
+    /** The terms-th day after the date that is neither a Saturday, a Sunday nor one of the holidays. */
+    public static LocalDate businessDaysAfter(LocalDate date, int terms, Set<LocalDate> holidays) {
+        LocalDate day = date;
+        for (int counted = 0; counted < terms;) {
+            day = day.plusDays(1);
+            if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY
+                    && !holidays.contains(day)) {
+                counted++;
+            }
         }
-        return date;
+        return day;
     }
 }

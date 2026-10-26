@@ -143,7 +143,7 @@ public class Person {
         grades.add(new DatedGrade(grade, from, madeOn));
     }
 
-    /** The person's own terms in days: a claim of theirs is due by its date plus these; null for none. */
+    /** The person's own terms in business days: a claim of theirs is due by that many business days after its date; null for none. */
     public Integer getTerms() {
         return terms;
     }

@@ -8,8 +8,8 @@ interface HolidayView {
   date: string;
 }
 
-// The active sheet's holidays: a claim's due-by, fixed when the claim is created, is moved past the holidays on the
-// sheet then. A date already on the list is refused.
+// The active sheet's holidays: a claim's due-by, fixed when the claim is created, counts business days that skip
+// weekends and the holidays on the sheet then. A date already on the list is refused.
 @Component({
   selector: 'app-holidays',
   template: `
