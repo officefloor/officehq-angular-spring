@@ -26,7 +26,7 @@ public class PersonController {
         }
     }
 
-    /** A person's fields as the form submits them; the name is kept as entered. */
+    /** A person's fields as the form submits them; the name is stored without surrounding spaces. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }

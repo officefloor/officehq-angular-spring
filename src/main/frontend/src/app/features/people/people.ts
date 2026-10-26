@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -116,8 +116,8 @@ export class People {
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const form = { name: this.name(), grade: this.grade() };
-    if (!form.name.trim()) {
+    const form = { name: this.name().trim(), grade: this.grade() };
+    if (!form.name) {
       this.error.set('Enter a name.');
       return;
     }
@@ -136,7 +136,11 @@ export class People {
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
-    } catch {
+    } catch (err) {
+      if (err instanceof HttpErrorResponse && err.status === 409) {
+        this.error.set('That name is already in use on this sheet.');
+        return;
+      }
       this.error.set(editing === null ? 'Could not add that person.' : 'Could not save that person.');
     }
   }

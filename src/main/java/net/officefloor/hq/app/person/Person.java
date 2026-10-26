@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A person on a sheet, with a name and a grade (A, B or C). */
+/** A person on a sheet, with a name (unique on the sheet, ignoring case) and a grade (A, B or C). */
 @Entity
 @Table(name = "person")
 public class Person {
