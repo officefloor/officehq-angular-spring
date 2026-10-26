@@ -34,6 +34,15 @@ export function dueOn(amount: string, pct: string | undefined): string | null {
   return formatCents(due);
 }
 
+/**
+ * The value with the given percent of it added for each of the periods: value times percent times periods divided
+ * by 100, rounded half to even to two decimals and added on top.
+ */
+export function withPctPer(value: string, pct: string, periods: number): string {
+  if (periods <= 0) return value;
+  return formatCents(cents(value) + cents(dueOn(value, formatCents(cents(pct) * BigInt(periods)))!));
+}
+
 /** The two-decimal value, raised to the floor when it is below it. */
 export function atLeast(value: string, floor: string): string {
   return cents(value) < cents(floor) ? formatCents(cents(floor)) : value;

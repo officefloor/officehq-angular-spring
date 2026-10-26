@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
-import { RateView, atLeast, dueOn, rateOn } from '../rates/rates';
+import { RateView, atLeast, dueOn, rateOn, withPctPer } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
 export interface Claim {
@@ -63,6 +63,34 @@ export function dueByOf(c: Claim, terms: number): string {
 /** Whether a claim is overdue: open, and due by a date before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
   return c.status === 'OPEN' && today !== null && dueByOf(c, terms) < today;
+}
+
+/** What the late charge follows: the sheet's terms, its today and its late percent. */
+export interface Lateness {
+  terms: number;
+  today: string | null;
+  latePct: string;
+}
+
+/** The whole days from one date (yyyy-mm-dd) to another. */
+function daysBetween(from: string, to: string): number {
+  const utc = (d: string) => {
+    const [y, m, day] = d.split('-').map(Number);
+    return Date.UTC(y, m - 1, day);
+  };
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
+/**
+ * The due a claim shows and totals: its figure, and for an overdue claim the late percent of that figure for
+ * every full 30 days it is overdue, added on top. The charge is never bound by a statement; a settled claim's
+ * due already holds it.
+ */
+export function dueOf(c: Claim, rates: readonly RateView[], floor: string, late: Lateness): string | null {
+  const figure = figureOf(c, rates, floor);
+  if (figure === null || !overdue(c, late.terms, late.today)) return figure;
+  const periods = Math.floor(daysBetween(dueByOf(c, late.terms), late.today!) / 30);
+  return withPctPer(figure, late.latePct, periods);
 }
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
@@ -126,7 +154,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ figureOf(c, rates(), settings.floor()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ dueOf(c, rates(), settings.floor(), settings.lateness()) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ dueByOf(c, settings.terms()) }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, settings.terms(), session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
@@ -184,7 +212,7 @@ export class Claims {
   // Each claim's refused status change, by claim id.
   protected readonly rowErrors = signal<Record<number, string>>({});
 
-  protected readonly figureOf = figureOf;
+  protected readonly dueOf = dueOf;
   protected readonly dueByOf = dueByOf;
   protected readonly overdue = overdue;
 

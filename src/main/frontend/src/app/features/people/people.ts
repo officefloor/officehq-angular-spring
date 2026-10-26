@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -236,6 +236,7 @@ export class People {
     const current = this.rates.current();
     const rates = this.rates.rates();
     const floor = this.settings.floor();
+    const late = this.settings.lateness();
     for (const p of this.people()) {
       const counted = this.liveBy().get(p.id) ?? [];
       if (!current.has(p.grade) && !counted.some(keepsFigure)) {
@@ -243,7 +244,7 @@ export class People {
         continue;
       }
       const list = rates.get(p.grade) ?? [];
-      by.set(p.id, sumSkippingNa(counted.map((c) => figureOf(c, list, floor))));
+      by.set(p.id, sumSkippingNa(counted.map((c) => dueOf(c, list, floor, late))));
     }
     return by;
   });
@@ -252,8 +253,9 @@ export class People {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
+    const late = this.settings.lateness();
     return this.liveClaims()
-      .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor) }));
+      .map((c) => ({ date: c.date, figure: dueOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor, late) }));
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
   // The claims counted live that are overdue: open and due by a date before the sheet's today.
@@ -272,10 +274,11 @@ export class People {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
+    const late = this.settings.lateness();
     const by = new Map<number, string>();
     for (const [id, list] of this.overdueBy()) {
       const own = rates.get(grades.get(id) ?? '') ?? [];
-      by.set(id, sumSkippingNa(list.map((c) => figureOf(c, own, floor))));
+      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, own, floor, late))));
     }
     return by;
   });

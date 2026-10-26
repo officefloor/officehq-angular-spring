@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -15,6 +15,8 @@ interface SettingsView {
   floor: string;
   // The days a claim has to be settled in: its due-by is its date plus these.
   terms: number;
+  // The percent of an overdue claim's figure added for every full 30 days it is overdue, with two decimals.
+  latePct: string;
 }
 
 export const ROLES = ['clerk', 'steward'];
@@ -29,8 +31,13 @@ export const DEFAULT_TERMS = 14;
 
 const DAYS = /^\d{1,5}$/;
 
+/** The late percent a sheet starts with. */
+export const DEFAULT_LATE_PCT = '0.00';
+
+const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+
 // The active sheet's settings: the role set for each user name (any other name is a clerk), the clerk limit and
-// the floor and the terms.
+// the floor, the terms and the late percent.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -40,6 +47,13 @@ export class SettingsStore {
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal<string>(DEFAULT_FLOOR);
   readonly terms = signal<number>(DEFAULT_TERMS);
+  readonly latePct = signal<string>(DEFAULT_LATE_PCT);
+  /** What an overdue claim's late charge follows: the terms, the sheet's today and the late percent. */
+  readonly lateness = computed(() => ({
+    terms: this.terms(),
+    today: this.session.sheetToday(),
+    latePct: this.latePct(),
+  }));
 
   /** Re-read the sheet's settings from the store. */
   async load(sheet: string): Promise<void> {
@@ -47,6 +61,7 @@ export class SettingsStore {
     this.clerkLimit.set(null);
     this.floor.set(DEFAULT_FLOOR);
     this.terms.set(DEFAULT_TERMS);
+    this.latePct.set(DEFAULT_LATE_PCT);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -57,6 +72,7 @@ export class SettingsStore {
       this.clerkLimit.set(settings.clerkLimit);
       this.floor.set(settings.floor);
       this.terms.set(settings.terms);
+      this.latePct.set(settings.latePct);
     }
   }
 
@@ -89,9 +105,16 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.terms.set(s.terms);
   }
+
+  async setLatePct(sheet: string, value: string): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/late-pct`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.latePct.set(s.latePct);
+  }
 }
 
-// The sheet's settings: the clerk limit, the floor, the terms, and the role each user name has.
+// The sheet's settings: the clerk limit, the floor, the terms, the late percent, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -105,6 +128,8 @@ export class SettingsStore {
           inputmode="decimal"
           [value]="limit()"
           (input)="limit.set(value($event)); limitChanged = true; settingsError.set(null)"
+          (keydown.delete)="limitChanged = true; settingsError.set(null)"
+          (keydown.backspace)="limitChanged = true; settingsError.set(null)"
         />
         <label for="setting-floor">Floor (the least a live due can be)</label>
         <input
@@ -113,6 +138,8 @@ export class SettingsStore {
           inputmode="decimal"
           [value]="floor()"
           (input)="floor.set(value($event)); floorChanged = true; settingsError.set(null)"
+          (keydown.delete)="floorChanged = true; settingsError.set(null)"
+          (keydown.backspace)="floorChanged = true; settingsError.set(null)"
         />
         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
         <input
@@ -121,6 +148,18 @@ export class SettingsStore {
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); termsChanged = true; settingsError.set(null)"
+          (keydown.delete)="termsChanged = true; settingsError.set(null)"
+          (keydown.backspace)="termsChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-late-pct">Late percent (added for every full 30 days a claim is overdue)</label>
+        <input
+          id="setting-late-pct"
+          data-testid="setting-late-pct"
+          inputmode="decimal"
+          [value]="latePct()"
+          (input)="latePct.set(value($event)); latePctChanged = true; settingsError.set(null)"
+          (keydown.delete)="latePctChanged = true; settingsError.set(null)"
+          (keydown.backspace)="latePctChanged = true; settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
@@ -130,6 +169,7 @@ export class SettingsStore {
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floor() }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
+      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong></p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -183,10 +223,13 @@ export class Settings {
   protected readonly limit = signal('');
   protected readonly floor = signal('');
   protected readonly terms = signal('');
-  // Which settings were typed into since the last save; a save stores only those.
+  protected readonly latePct = signal('');
+  // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
+  // clearing one that already shows blank (as the clerk limit, for none) still saves it.
   protected limitChanged = false;
   protected floorChanged = false;
   protected termsChanged = false;
+  protected latePctChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -232,6 +275,11 @@ export class Settings {
       this.settingsError.set('Enter terms as a whole number of days, 0 or more.');
       return;
     }
+    const latePct = this.latePct().trim();
+    if (this.latePctChanged && !PCT.test(latePct)) {
+      this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals.');
+      return;
+    }
     this.submitting = true;
     try {
       if (this.limitChanged) {
@@ -245,6 +293,10 @@ export class Settings {
       if (this.termsChanged) {
         await this.store.setTerms(sheet, Number(terms));
         this.termsChanged = false;
+      }
+      if (this.latePctChanged) {
+        await this.store.setLatePct(sheet, latePct);
+        this.latePctChanged = false;
       }
     } catch {
       this.settingsError.set('Could not save the settings.');

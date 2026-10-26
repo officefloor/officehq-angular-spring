@@ -30,12 +30,12 @@ public class SettingsController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
-     * the floor carries two decimals, and the terms are whole days.
+     * the floor carries two decimals, the terms are whole days, and the late percent carries two decimals.
      */
-    public record SettingsView(String clerkLimit, String floor, int terms) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString());
         }
     }
 
@@ -49,6 +49,10 @@ public class SettingsController {
 
     /** The terms as the form submits them: a whole number of days, 0 or more. */
     public record TermsForm(@NotNull @Min(0) @Max(99999) Integer value) {
+    }
+
+    /** The late percent as the form submits it: 0.00 or more with up to two decimals. */
+    public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal value) {
     }
 
     public record RoleView(String user, String role) {
@@ -93,6 +97,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody TermsForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setTerms(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/late-pct")
+    public SettingsView setLatePct(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody LatePctForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setLatePct(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

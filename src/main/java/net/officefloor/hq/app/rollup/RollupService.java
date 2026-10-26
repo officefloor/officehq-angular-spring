@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -85,6 +86,9 @@ public class RollupService {
                 claimed = claimed.add(c.getAmount());
                 kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
                 BigDecimal figure = figure(c, list, floor);
+                if (c.getStatus() == ClaimStatus.OPEN) {
+                    figure = ClaimService.withLateCharge(figure, c.getDate(), sheet);
+                }
                 if (figure != null) {
                     due = due.add(figure);
                 }

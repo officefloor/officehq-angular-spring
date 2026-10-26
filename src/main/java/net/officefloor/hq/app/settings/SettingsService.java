@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, the clerk limit, the floor and the terms. */
+/** A sheet's settings: the role each user name has, the clerk limit, the floor, the terms and the late percent. */
 @Service
 public class SettingsService {
 
@@ -83,6 +83,23 @@ public class SettingsService {
         sheet.setTerms(terms);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's late percent: the percent of an overdue claim's figure added for every full 30 days it is
+     * overdue. Settled figures keep what they were; the live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setLatePct(String by, String sheetId, BigDecimal latePct) {
+        Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setLatePct(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
+                + scaled.toPlainString());
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 

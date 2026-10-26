@@ -60,8 +60,8 @@ public class StatementService {
     }
 
     /**
-     * Takes a statement for the person: records their due-total now and binds each of their claims that counts to
-     * the figure it has now; a claim that does not count is freed (live again).
+     * Takes a statement for the person: records their due-total now (late charges included) and binds each of their claims that counts to
+     * the figure it has now; a claim that does not count (as a held person's open one) is freed (live again).
      */
     @Transactional
     public Summary take(String by, String sheetId, Long personId) {
@@ -73,17 +73,18 @@ public class StatementService {
         boolean kept = false;
         int count = 0;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
-            if (!c.getStatus().counts()) {
+            if (!person.countsLive(c.getStatus())) {
                 c.unbind();
                 continue;
             }
             // a settled or already bound claim keeps its figure even with no rate in force today
             kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
-            BigDecimal figure = claimService.figure(sheetId, person, c);
-            c.bind(figure);
+            // the statement binds the figure under the late charge; the charge keeps following the sheet's today
+            BigDecimal due = claimService.due(sheetId, person, c);
+            c.bind(claimService.figure(sheetId, person, c));
             count++;
-            if (figure != null) {
-                total = total.add(figure);
+            if (due != null) {
+                total = total.add(due);
             }
         }
         claims.flush();

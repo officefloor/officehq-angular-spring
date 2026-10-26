@@ -96,7 +96,7 @@ public class PeriodService {
             if (person == null || !person.countsLive(c.getStatus()) || !period.contains(c.getDate())) {
                 continue;
             }
-            BigDecimal figure = claimService.figure(sheetId, person, c);
+            BigDecimal figure = claimService.due(sheetId, person, c);
             if (figure != null) {
                 total = total.add(figure);
             }
