@@ -1,0 +1,64 @@
+{
+  "checkpoint": 73,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp73_statement-as-of",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "72f6e08a1e9cdd59d6861e436ee39d8c22b3a77f",
+  "reset_sha": "",
+  "preagent_sha": "8a98bd619549cdfe74f1aa48c46de6e05a992547",
+  "prev_sha": "8a98bd619549cdfe74f1aa48c46de6e05a992547",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.3169724,
+    "input_tokens": 66,
+    "output_tokens": 35288,
+    "cache_read_tokens": 2931382,
+    "cache_creation_tokens": 128084,
+    "num_turns": 36,
+    "duration_ms": 430696,
+    "duration_api_ms": 343616,
+    "model": "claude-opus-5-5",
+    "session_id": "870b8f33-9f0b-4ce6-a32a-d77bd75c7d09",
+    "stop_reason": "success",
+    "result_text": "I added \"statement as of a date\", and all 4 tests in `e2e/specs/acceptance.spec.ts` pass under `bin/e2e`, including the audit-file checks.\n\n**What it does**\n- **Screen:** each person's row has a date box (`person-statement-asof`) beside the Statement button. Leave it blank and the button takes a statement now, as before. After a statement succeeds the box is cleared, so the next plain press doesn't reuse the old date.\n- **Refusals:** a date after the sheet's today shows `person-error` and writes nothing. So does a date before the person was added: the request didn't spell that out, but the three later test cases expect a refusal there and that's the only reason that fits them.\n- **Row:** shows the as-of date as the statement date and that day's due-total as the stated total. The audit line is `STATEMENT \u2026 claims=N asof=<date>`, with `asof` added only when a date was given.\n- **What counts:** a claim counts if it counted at the end of that date. A settled claim uses the due it was settled at; others use the rates, grades, settings, holds and retirement recorded by then. The date stands in for today for late charges, the floor and the cap. All the person's other claims are unstated.\n\n**How \"changes made by then\" is known**\nThe app didn't record which sheet-today a change was made under, so migration `V48__statement_as_of.sql` adds that:\n- the person gets `added_on` and `retired_on`, and each grade and hold gets `made_on`;\n- a claim gets `deferred_on`;\n- a statement gets `as_of`;\n- two new logs keep every rate (`rate_change`) and every dated setting (`sheet_setting_change`) as it was set, so a value that was later overwritten can be read back.\n\n`Sheet.asOf(day)` and `Person.asOf(day)` build a read-only copy as it stood that day, and `StatementService.takeAsOf` uses those copies. Statements taken now work exactly as before.\n\n**Gaps:** some cases are approximated rather than replayed exactly, and none of them is tested:\n- **Earlier statement's binding:** it counts only if the person's last statement was taken on or before the date. If that statement came later, the claims are treated as not bound. The binding from an even earlier statement isn't stored per claim, so it can't be restored.\n- **Grades:** if a grade was replaced later for the same start date, the old grade is lost.\n- **Not tracked:** a later split, move to another person, or re-date of a claim, a later change to the policy date, and a later deferral's effect on late charges.\n- **Closed periods:** they don't change any statement figure in this app. Closing a period only freezes period totals, so there was nothing to replay for them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.3169724,
+        "num_turns": 36,
+        "duration_ms": 430696,
+        "duration_api_ms": 343616,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp73.agent.jsonl",
+  "agent_diff_file": "cp73.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
