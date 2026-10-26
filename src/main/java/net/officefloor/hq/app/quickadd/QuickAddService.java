@@ -33,7 +33,7 @@ public class QuickAddService {
         String trimmed = name.strip();
         Person found = people.findBySheetIdAndNameIgnoreCase(sheetId, trimmed).orElse(null);
         Person person = found != null ? found : personService.add(by, sheetId, trimmed, "A");
-        Claim claim = claimService.add(by, sheetId, person.getId(), amount, null, "");
+        Claim claim = claimService.add(by, sheetId, person.getId(), amount, null, "", null);
         return new Added(person, found == null, claim);
     }
 }

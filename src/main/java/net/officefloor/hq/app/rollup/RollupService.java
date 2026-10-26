@@ -92,7 +92,7 @@ public class RollupService {
                 kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
                 BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor);
-                if (c.getStatus() == ClaimStatus.OPEN) {
+                if (c.getStatus() == ClaimStatus.OPEN && !c.isCorrection()) {
                     figure = ClaimService.withLateCharge(figure, c.getDate(), sheet);
                 }
                 if (figure != null) {
@@ -135,7 +135,10 @@ public class RollupService {
         }
     }
 
-    /** The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored). */
+    /**
+     * The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored, unless
+     * it is a correction).
+     */
     private static BigDecimal figure(Claim c, List<Rate> rates, BigDecimal floor) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
@@ -144,7 +147,8 @@ public class RollupService {
             return c.getStatedDue();
         }
         Rate rate = inForce(rates, c.getDate());
-        return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct()), floor);
+        return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct()),
+                c.isCorrection() ? null : floor);
     }
 
     /** The rate in force on the date: the one with the latest from-date on or before it; null with none. */

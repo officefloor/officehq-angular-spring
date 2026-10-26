@@ -54,16 +54,21 @@ public class ClaimService {
 
     /**
      * Adds a claim for the person; a missing date takes the sheet's today. Refused when dated in a closed period or
-     * after the person's retirement date.
+     * after the person's retirement date, and a correction (a negative amount) unless it corrects a settled claim of
+     * the person.
      */
     @Transactional
-    public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         LocalDate on = dateOrToday(sheetId, date);
         refuseInClosedPeriod(sheetId, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, personId);
         refuseAfterRetirement(person, on);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
+        Long corrected = correctedNumber(sheetId, personId, amount, corrects);
+        Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
+        claim.setCorrects(corrected);
+        Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
         return added;
@@ -74,7 +79,8 @@ public class ClaimService {
      * it in one. An open claim is changed by voiding it and adding a new one.
      */
     @Transactional
-    public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         LocalDate on = dateOrToday(sheetId, date);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -84,8 +90,10 @@ public class ClaimService {
         refuseInClosedPeriod(sheetId, claim.getDate());
         refuseInClosedPeriod(sheetId, on);
         refuseAfterRetirement(person(sheetId, claim.getPersonId()), on);
+        Long corrected = correctedNumber(sheetId, claim.getPersonId(), amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(scaled(amount));
+        claim.setCorrects(corrected);
         claim.setDate(on);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -128,7 +136,8 @@ public class ClaimService {
             // force on the claim's date, with the late charge it has gained by today; with none it stays live
             BigDecimal figure = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
                     : liveDue(sheetId, person, claim);
-            BigDecimal fixed = withLateCharge(figure, claim.getDate(), sheets.load(sheetId));
+            BigDecimal fixed = claim.isCorrection() ? figure
+                    : withLateCharge(figure, claim.getDate(), sheets.load(sheetId));
             settings.refuseAboveClerkLimit(sheetId, by, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
@@ -147,10 +156,10 @@ public class ClaimService {
 
     /**
      * The claim's live due: at the rate its person's grade in force on its date has in force on that date, and at least the sheet's
-     * floor; null (n/a) with none.
+     * floor (a correction has none); null (n/a) with none.
      */
     public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = sheets.load(sheetId).getFloor();
+        BigDecimal floor = claim.isCorrection() ? null : sheets.load(sheetId).getFloor();
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> floored(dueOn(claim.getAmount(), pct), floor)).orElse(null);
     }
@@ -163,10 +172,14 @@ public class ClaimService {
         return claim.isStated() ? claim.getStatedDue() : liveDue(sheetId, person, claim);
     }
 
-    /** The due the claim shows and totals: its figure, with the late charge an open overdue claim has gained. */
+    /**
+     * The due the claim shows and totals: its figure, with the late charge an open overdue claim has gained; a
+     * correction gains none.
+     */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figure(sheetId, person, claim);
-        return claim.getStatus() == ClaimStatus.OPEN ? withLateCharge(figure, claim.getDate(), sheets.load(sheetId))
+        return claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection()
+                ? withLateCharge(figure, claim.getDate(), sheets.load(sheetId))
                 : figure;
     }
 
@@ -196,6 +209,22 @@ public class ClaimService {
         if (periods.existsBySheetIdAndClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(sheetId, date, date)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is dated in a closed period.");
         }
+    }
+
+    /**
+     * The number a claim with the amount corrects: for a correction (a negative amount), the number of a settled
+     * claim of the person, else refused; null for any other claim.
+     */
+    private Long correctedNumber(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+        if (amount.signum() >= 0) {
+            return null;
+        }
+        if (corrects == null || !claims.existsBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects,
+                ClaimStatus.SETTLED)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A negative amount must correct a settled claim of the person, named by its number.");
+        }
+        return corrects;
     }
 
     /** Refuses a claim for the person dated after their retirement date; one on or before it is allowed. */

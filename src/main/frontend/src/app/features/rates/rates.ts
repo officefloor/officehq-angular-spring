@@ -32,8 +32,10 @@ const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 /** Whole cents of a two-decimal value. */
 function cents(value: string): bigint {
-  const [whole, frac = ''] = value.split('.');
-  return BigInt(whole) * 100n + BigInt((frac + '00').slice(0, 2));
+  const negative = value.startsWith('-');
+  const [whole, frac = ''] = (negative ? value.slice(1) : value).split('.');
+  const c = BigInt(whole) * 100n + BigInt((frac + '00').slice(0, 2));
+  return negative ? -c : c;
 }
 
 /**
@@ -44,10 +46,12 @@ function cents(value: string): bigint {
 export function dueOn(amount: string, pct: string | undefined): string | null {
   if (pct === undefined) return null;
   const product = cents(amount) * cents(pct);
-  let due = product / 10000n;
-  const rest = product % 10000n;
+  // rounded on the size, so a negative amount (a correction) rounds like its positive
+  const size = product < 0n ? -product : product;
+  let due = size / 10000n;
+  const rest = size % 10000n;
   if (rest > 5000n || (rest === 5000n && due % 2n === 1n)) due += 1n;
-  return formatCents(due);
+  return formatCents(product < 0n ? -due : due);
 }
 
 /**
@@ -84,7 +88,8 @@ export function rateOn(rates: readonly RateView[], date: string | null): string 
 }
 
 function formatCents(c: bigint): string {
-  return `${c / 100n}.${(c % 100n).toString().padStart(2, '0')}`;
+  const size = c < 0n ? -c : c;
+  return `${c < 0n ? '-' : ''}${size / 100n}.${(size % 100n).toString().padStart(2, '0')}`;
 }
 
 /** Orders rates by grade, then from-date with no from-date first. */

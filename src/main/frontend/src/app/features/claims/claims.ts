@@ -22,6 +22,8 @@ export interface Claim {
   // Whether the person's last statement binds the claim, and the figure it binds it to (null for n/a).
   stated: boolean;
   statedDue: string | null;
+  // The number of the settled claim a correction (a negative amount) corrects; null for any other claim.
+  corrects: number | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -33,15 +35,20 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** Whether the claim is a correction: one with a negative amount. */
+export function isCorrection(c: Claim): boolean {
+  return c.amount.startsWith('-');
+}
+
 /**
  * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
- * at the rate in force on its date and at least the floor; null (n/a) with none.
+ * at the rate in force on its date and at least the floor (a correction has none); null (n/a) with none.
  */
 export function figureOf(c: Claim, rates: readonly RateView[], floor: string): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (c.stated) return c.statedDue;
   const due = dueOn(c.amount, rateOn(rates, c.date));
-  return due === null ? null : atLeast(due, floor);
+  return due === null || isCorrection(c) ? due : atLeast(due, floor);
 }
 
 /** Whether the claim keeps a figure whatever the rates: a settled or stated one with a figure. */
@@ -84,11 +91,11 @@ function daysBetween(from: string, to: string): number {
 /**
  * The due a claim shows and totals: its figure, and for an overdue claim the late percent of that figure for
  * every full 30 days it is overdue, added on top. The charge is never bound by a statement; a settled claim's
- * due already holds it.
+ * due already holds it. A correction gains no late charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: string, late: Lateness): string | null {
   const figure = figureOf(c, rates, floor);
-  if (figure === null || !overdue(c, late.terms, late.today)) return figure;
+  if (figure === null || isCorrection(c) || !overdue(c, late.terms, late.today)) return figure;
   const periods = Math.floor(daysBetween(dueByOf(c, late.terms), late.today!) / 30);
   return withPctPer(figure, late.latePct, periods);
 }
@@ -96,6 +103,9 @@ export function dueOf(c: Claim, rates: readonly RateView[], floor: string, late:
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
 
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+
+/** A claim form's amount: a negative one is a correction. */
+const SIGNED_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 
 /** The sum of the counted claims' amounts, with two decimals; added in whole cents so nothing drifts. */
 export function claimedTotal(claims: readonly Claim[]): string {
@@ -131,6 +141,14 @@ export function claimedTotal(claims: readonly Claim[]): string {
         [value]="note()"
         (input)="note.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-corrects-' + personId()">Corrects claim no. (for a negative amount)</label>
+      <input
+        [id]="'claim-corrects-' + personId()"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -143,7 +161,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -161,6 +179,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td data-testid="claim-period">{{ periodName(c.date) }}</td>
+            <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -206,6 +225,7 @@ export class Claims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  protected readonly corrects = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
@@ -242,6 +262,7 @@ export class Claims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
+    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
     this.error.set(null);
   }
 
@@ -280,6 +301,7 @@ export class Claims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -290,8 +312,14 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const amount = this.amount().trim();
-    if (!AMOUNT.test(amount)) {
-      this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+    if (!SIGNED_AMOUNT.test(amount)) {
+      this.error.set('Enter an amount with up to two decimals.');
+      return;
+    }
+    const corrects = this.corrects().trim();
+    const correction = amount.startsWith('-');
+    if (correction && !/^[1-9]\d*$/.test(corrects)) {
+      this.error.set('A negative amount is a correction: enter the number of the settled claim it corrects.');
       return;
     }
     const date = this.date().trim();
@@ -312,7 +340,7 @@ export class Claims {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
-    const form = { amount, date: date || null, note: this.note().trim() };
+    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? Number(corrects) : null };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;
     try {
@@ -323,7 +351,11 @@ export class Claims {
       this.saved.emit(claim);
       this.reset();
     } catch {
-      this.error.set(editing === null ? 'Could not add that claim.' : 'Could not save that claim.');
+      this.error.set(
+        correction
+          ? `Claim no. ${corrects} is not a settled claim of ${this.personName()}, so it cannot be corrected.`
+          : editing === null ? 'Could not add that claim.' : 'Could not save that claim.',
+      );
     } finally {
       this.submitting = false;
     }
