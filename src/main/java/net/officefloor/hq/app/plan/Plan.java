@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -64,6 +65,12 @@ public class Plan {
     @CollectionTable(name = "person_plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
     @OrderBy("pausedOn")
     private List<PlanPause> pauses = new ArrayList<>();
+
+    /** The changes of its amount, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_plan_change", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderColumn(name = "position")
+    private List<PlanChange> changes = new ArrayList<>();
 
     protected Plan() {
     }
@@ -125,6 +132,17 @@ public class Plan {
     /** Resume the plan on the date; the caller has checked it is paused. */
     void resume(LocalDate on) {
         pauses.stream().filter(PlanPause::isOpen).forEach((p) -> p.resume(on));
+    }
+
+    /** Change the amount on the date, for the claims generated from then on. */
+    void changeAmount(LocalDate on, BigDecimal newAmount) {
+        amount = newAmount;
+        changes.add(new PlanChange(on, newAmount));
+    }
+
+    /** The lines of its amount changes, oldest first: the day, then amount=the new amount. */
+    public List<String> changeLines() {
+        return changes.stream().map(PlanChange::line).toList();
     }
 
     public Long getId() {

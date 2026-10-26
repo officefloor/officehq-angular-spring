@@ -26,6 +26,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             Pause</button>
           <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)" [disabled]="pausing() === pl.id">
             Resume</button>
+          <label [for]="'plan-amount-' + pl.id">New amount</label>
+          <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" inputmode="decimal"
+            [value]="amounts()[pl.id] ?? ''" (input)="amountInput(pl.id, $event)" />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)"
+            [disabled]="pausing() === pl.id">Save amount</button>
+          <ul [attr.aria-label]="'Amount changes'">
+            @for (line of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ line }}</li>
+            }
+          </ul>
           @if (rowError()?.planId === pl.id) {
             <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
           }
@@ -70,6 +80,8 @@ export class PersonPlans {
   protected readonly error = signal('');
   protected readonly pausing = signal<number | null>(null);
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+  /** The new amount typed on each plan, by plan id. */
+  protected readonly amounts = signal<Record<number, string>>({});
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -78,6 +90,7 @@ export class PersonPlans {
       this.session.loaded();
       this.error.set('');
       this.rowError.set(null);
+      this.amounts.set({});
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
   }
@@ -94,6 +107,36 @@ export class PersonPlans {
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.rowError.set({ planId, message: on ? 'The plan could not be paused.' : 'The plan could not be resumed.' });
+      }
+    } finally {
+      this.pausing.set(null);
+    }
+  }
+
+  protected amountInput(planId: number, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.amounts.update((a) => ({ ...a, [planId]: value }));
+    if (this.rowError()?.planId === planId) this.rowError.set(null);
+  }
+
+  /** Change a plan's amount to the one typed on its row; a refusal shows on its row. */
+  protected async changeAmount(planId: number): Promise<void> {
+    if (this.pausing() !== null) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rowError.set(null);
+    const amount = (this.amounts()[planId] ?? '').trim();
+    if (!AMOUNT.test(amount) || Number(amount) <= 0) {
+      this.rowError.set({ planId, message: 'Enter an amount above 0.00 with up to two decimals.' });
+      return;
+    }
+    this.pausing.set(planId);
+    try {
+      await this.store.changeAmount(sheet.id, planId, amount);
+      if (this.session.sheet()?.id === sheet.id) this.amounts.update((a) => ({ ...a, [planId]: '' }));
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.rowError.set({ planId, message: 'The amount could not be changed.' });
       }
     } finally {
       this.pausing.set(null);

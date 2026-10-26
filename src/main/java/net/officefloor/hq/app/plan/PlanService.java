@@ -100,6 +100,25 @@ public class PlanService {
         return plan;
     }
 
+    /** Change the plan's amount on the sheet's today, for the claims generated from then on: refused for an
+     *  amount not above 0.00 or with more than two decimals. */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        Plan plan = plans.findForUpdate(planId).filter((p) -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan."));
+        if (amount.signum() <= 0) throw refused("The amount must be more than 0.00.");
+        if (amount.stripTrailingZeros().scale() > 2) throw refused("The amount has at most two decimals.");
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        plan.changeAmount(sheets.today(sheetId), amount.setScale(2));
+        plans.saveAndFlush(plan);
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " start=" + plan.getStart() + " amount=" + plan.getAmount().toPlainString());
+        return plan;
+    }
+
     /** For every plan on the sheet, in the order they were added, make a DRAFT claim of its amount, dated
      *  the plan date with an empty note, for each plan date up to its end and the sheet's today that has
      *  none yet and no pause skips. Each claim is added by the claim form's rules, on its own: a date the form refuses is

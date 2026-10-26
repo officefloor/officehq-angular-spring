@@ -22,6 +22,8 @@ export interface PlanView {
   generated: number;
   nextDates: string[];
   paused: boolean;
+  /** Its amount changes, oldest first, each as `<date> amount=<amount>`. */
+  changes: string[];
 }
 
 /** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */
@@ -68,6 +70,12 @@ export class PlansApi {
     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheetId)}/${planId}/${on ? 'pause' : 'resume'}`, {}));
   }
 
+  /** Change a plan's amount on the sheet's today: refused for an amount not above 0.00 with up to two
+   *  decimals. */
+  changeAmount(sheetId: string, planId: number, amount: string): Promise<PlanView> {
+    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheetId)}/${planId}/amount`, { amount }));
+  }
+
   /** Make every plan's claims due by the sheet's today. */
   generate(sheetId: string): Promise<GenerateView> {
     return firstValueFrom(this.http.post<GenerateView>(`${this.url(sheetId)}/generate`, {}));
@@ -110,6 +118,13 @@ export class Plans {
   /** Pause (true) or resume (false) a plan of the active sheet. */
   async pause(sheetId: string, planId: number, on: boolean): Promise<void> {
     const changed = await this.api.pause(sheetId, planId, on);
+    if (this.session.sheet()?.id !== sheetId) return;
+    this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+  }
+
+  /** Change the amount of a plan of the active sheet. */
+  async changeAmount(sheetId: string, planId: number, amount: string): Promise<void> {
+    const changed = await this.api.changeAmount(sheetId, planId, amount);
     if (this.session.sheet()?.id !== sheetId) return;
     this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
   }
