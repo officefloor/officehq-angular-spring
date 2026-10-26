@@ -5,6 +5,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,14 +18,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class CrewService {
 
     private final CrewRepository crews;
+    private final PoolRepository pools;
     private final PersonRepository people;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final Audit audit;
 
-    public CrewService(CrewRepository crews, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
+    public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
             Audit audit) {
         this.crews = crews;
+        this.pools = pools;
         this.people = people;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -38,7 +41,7 @@ public class CrewService {
     }
 
     /** Add a crew under its name (trimmed) with a person of the sheet as its lead, refused when the name is
-     *  blank or the sheet has a crew of that name. */
+     *  blank or the sheet has a crew or a pool of that name (a crew is also a pool under its name). */
     @Transactional
     public Crew add(String sheetId, String user, String name, Long leadId) {
         String key = name == null ? "" : name.trim();
@@ -49,6 +52,9 @@ public class CrewService {
         sheetRows.findForUpdate(sheetId);
         Person lead = personOf(sheetId, leadId);
         if (crews.existsBySheetIdAndName(sheetId, key)) throw alreadyCrew(key);
+        if (pools.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet already has a pool \"" + key + "\".");
+        }
         Crew saved;
         try {
             saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));

@@ -7,6 +7,7 @@ import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { PersonView, heldOn } from '../people/people-api';
 import { SheetPot } from '../settings/sheet-pot';
+import { CrewView, Crews } from '../crews/crews-api';
 import { PoolMemberView, Pools, PoolView } from './pools-api';
 
 /** A share percent as typed: up to two decimals. */
@@ -41,6 +42,34 @@ function inForceOn(m: PoolMemberView, today: string | undefined): boolean {
 /** The member's key: the person's id, or pool-<name> for a pool. */
 function memberKey(m: PoolMemberView, poolsById: ReadonlyMap<number, PoolView>): string {
   return m.personId !== null ? String(m.personId) : `pool-${poolsById.get(m.poolId ?? -1)?.name ?? m.poolId}`;
+}
+
+/** A whole number divided by another, rounded half to even. */
+function divideHalfEven(value: bigint, by: bigint): bigint {
+  const quotient = value / by;
+  const twice = 2n * (value % by);
+  return twice > by || (twice === by && quotient % 2n !== 0n) ? quotient + 1n : quotient;
+}
+
+/** Each crew as a pool under its name, given the crew's id negated so it never meets a pool's: the lead
+ *  and then the members as its members, without dates, at equal shares of 100.00 split as patrons' shares
+ *  are (each rounded half to even, the remainder on the lead). */
+export function crewPools(crews: readonly CrewView[]): PoolView[] {
+  return crews.map((crew) => {
+    const ids = [crew.leadId, ...crew.memberIds];
+    const count = BigInt(ids.length);
+    const each = divideHalfEven(10000n, count);
+    return {
+      id: -crew.id, name: crew.name,
+      members: ids.map((personId, i) => ({ personId, poolId: null, from: null, to: null,
+        share: money(Number(i === 0 ? 10000n - each * (count - 1n) : each)) })),
+    };
+  });
+}
+
+/** The sheet's pools and then its crews as pools. */
+export function poolsWithCrews(pools: readonly PoolView[], crews: readonly CrewView[]): PoolView[] {
+  return [...pools, ...crewPools(crews)];
 }
 
 /** The pool each member pool is in, by the member pool's id. */
@@ -100,6 +129,7 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
         </li>
       }
     </ul>
+    @if (!crew()) {
     <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="'Add a member to ' + pool().name">
       <label [for]="'pool-member-select-' + pool().id">Person or pool</label>
       <select [id]="'pool-member-select-' + pool().id" data-testid="pool-member-select" formControlName="personId">
@@ -122,6 +152,7 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
         <p role="alert" data-testid="pool-error">{{ error() }}</p>
       }
     </form>
+    }
   `,
 })
 export class PoolRow {
@@ -131,8 +162,10 @@ export class PoolRow {
   readonly pool = input.required<PoolView>();
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
-  /** The sheet's pools. */
+  /** The sheet's pools, without its crews. */
   readonly pools = input.required<PoolView[]>();
+  /** Whether the pool is a crew's: its members are the crew's, so it has no form to add one. */
+  readonly crew = input(false);
   /** Each member's cut, with two decimals, by member key; null for an unbalanced pool or no pot. */
   readonly cuts = input.required<ReadonlyMap<string, string> | null>();
 
@@ -288,13 +321,6 @@ export function personCutTotals(pools: readonly PoolView[], people: readonly Per
   return totals;
 }
 
-/** A whole number divided by another, rounded half to even. */
-function divideHalfEven(value: bigint, by: bigint): bigint {
-  const quotient = value / by;
-  const twice = 2n * (value % by);
-  return twice > by || (twice === by && quotient % 2n !== 0n) ? quotient + 1n : quotient;
-}
-
 /** The cuts of a pot (in cents) among members in the order they were added, by person: each the pot times
  *  their share over the shares of the members with a cut added up, half to even (a retired or held
  *  member's 0); the remainder to the smallest non-zero cut, the latest added on a tie, or with no
@@ -315,7 +341,8 @@ function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigin
   return members.map((m, i) => [m.key, cuts[i]]);
 }
 
-// The sheet's pools, with a form to add one and a button that downloads them as a CSV file.
+// The sheet's pools and then its crews as pools (see crewPools), with a form to add a pool and a button that
+// downloads them all as a CSV file. A crew's pool has no form to add a member: its members are the crew's.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule, PoolRow],
@@ -332,8 +359,9 @@ function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigin
       </form>
       <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
       <div role="list" aria-label="Pools">
-        @for (p of store.pools(); track p.id) {
-          <app-pool-row [pool]="p" [people]="people()" [pools]="store.pools()" [cuts]="cuts().get(p.id) ?? null" />
+        @for (p of all(); track p.id) {
+          <app-pool-row [pool]="p" [people]="people()" [pools]="store.pools()" [crew]="p.id < 0"
+            [cuts]="cuts().get(p.id) ?? null" />
         }
       </div>
     </section>
@@ -344,12 +372,16 @@ export class PoolsList {
   protected readonly store = inject(Pools);
   private readonly sheetPot = inject(SheetPot);
   private readonly document = inject(DOCUMENT);
+  private readonly crews = inject(Crews);
 
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
 
+  /** The sheet's pools and then its crews as pools. */
+  protected readonly all = computed(() => poolsWithCrews(this.store.pools(), this.crews.crews()));
+
   /** Each pool's cuts, with two decimals, by member key, by pool id. */
-  protected readonly cuts = computed(() => new Map([...allCuts(this.store.pools(), this.people(), this.sheetPot.pot(),
+  protected readonly cuts = computed(() => new Map([...allCuts(this.all(), this.people(), this.sheetPot.pot(),
     this.session.sheet()?.today)]
     .map(([id, cuts]) => [id, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))])));
 
@@ -366,7 +398,7 @@ export class PoolsList {
    *  were added, a pool member as pool:<name>, and the cut as its row shows it (empty when none). */
   protected async exportCsv(): Promise<void> {
     await this.session.settled();
-    const pools = this.store.pools();
+    const pools = this.all();
     const poolsById = new Map(pools.map((p) => [p.id, p]));
     const cuts = this.cuts();
     const today = this.session.sheet()?.today;
@@ -398,6 +430,10 @@ export class PoolsList {
       this.error.set(`The sheet already has a pool "${name}".`);
       return;
     }
+    if (this.crews.crews().some((c) => c.name === name)) {
+      this.error.set(`The sheet already has a crew "${name}".`);
+      return;
+    }
     this.saving.set(true);
     try {
       await this.store.add(sheet.id, name);
@@ -406,7 +442,7 @@ export class PoolsList {
       if (this.session.sheet()?.id !== sheet.id) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       this.error.set(status === 403 ? 'Your role may not add a pool on this sheet.'
-        : status === 409 ? `The sheet already has a pool "${name}".`
+        : status === 409 ? `The sheet already has a pool or crew "${name}".`
         : status === 422 ? 'Type a pool name.'
         : 'The pool could not be added.');
     } finally {

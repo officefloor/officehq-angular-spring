@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -27,14 +28,16 @@ public class PoolService {
     private static final int MAX_DEPTH = 3;
 
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PersonRepository people;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final Audit audit;
 
-    public PoolService(PoolRepository pools, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
+    public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
             Audit audit) {
         this.pools = pools;
+        this.crews = crews;
         this.people = people;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -47,7 +50,8 @@ public class PoolService {
         return pools.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a pool under its name (trimmed), refused when it is blank or the sheet has a pool of that name. */
+    /** Add a pool under its name (trimmed), refused when it is blank or the sheet has a pool or a crew (which is
+     *  also a pool) of that name. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         String key = name == null ? "" : name.trim();
@@ -57,6 +61,9 @@ public class PoolService {
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         if (pools.existsBySheetIdAndName(sheetId, key)) throw alreadyPool(key);
+        if (crews.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet already has a crew \"" + key + "\".");
+        }
         Pool saved;
         try {
             saved = pools.saveAndFlush(new Pool(sheetId, key));

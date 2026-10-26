@@ -8,7 +8,7 @@ import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, count
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
-import { PoolsList, personCutTotals } from '../pools/pools';
+import { PoolsList, personCutTotals, poolsWithCrews } from '../pools/pools';
 import { Pools } from '../pools/pools-api';
 import { CrewsList } from '../crews/crews';
 import { Crews } from '../crews/crews-api';
@@ -675,7 +675,7 @@ export class People {
   /** Each person's due-total in cents, by person id; null when it is n/a. */
   protected readonly dueCents = computed(() => new Map(this.people().map((p) => [p.id, this.dueCentsOf(p)])));
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a member of. */
-  private readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.sheetPot.pot(),
+  private readonly cutTotals = computed(() => personCutTotals(poolsWithCrews(this.pools.pools(), this.crews.crews()), this.people(), this.sheetPot.pot(),
     this.session.sheet()?.today));
   /** The person's cut total, with two decimals. */
   protected personCutTotal(p: PersonView): string {

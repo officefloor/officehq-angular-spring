@@ -5,6 +5,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { PersonView } from '../people/people-api';
+import { Pools } from '../pools/pools-api';
 import { CrewView, Crews } from './crews-api';
 
 // One crew: its lead, its members, its due-total (the lead's and the members' due-totals added up, n/a
@@ -137,6 +138,7 @@ export class CrewRow {
 export class CrewsList {
   private readonly session = inject(Session);
   protected readonly store = inject(Crews);
+  private readonly pools = inject(Pools);
 
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
@@ -168,6 +170,10 @@ export class CrewsList {
       this.error.set(`The sheet already has a crew "${name}".`);
       return;
     }
+    if (this.pools.pools().some((p) => p.name === name)) {
+      this.error.set(`The sheet already has a pool "${name}".`);
+      return;
+    }
     if (this.leadId.value === '' || !Number.isInteger(leadId)) {
       this.error.set('Choose a lead.');
       return;
@@ -180,7 +186,7 @@ export class CrewsList {
       if (this.session.sheet()?.id !== sheet.id) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       this.error.set(status === 403 ? 'Your role may not add a crew on this sheet.'
-        : status === 409 ? `The sheet already has a crew "${name}".`
+        : status === 409 ? `The sheet already has a crew or pool "${name}".`
         : status === 422 ? 'Type a crew name and choose a lead.'
         : 'The crew could not be added.');
     } finally {
