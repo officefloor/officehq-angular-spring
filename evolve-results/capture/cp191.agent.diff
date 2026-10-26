@@ -1,0 +1,290 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 2357f6d1..cdd07b97 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -56,7 +56,7 @@ export interface SettingsView {
+   proofThreshold: string | null;
+   /** The due above which a claim needs a note to be opened, with two decimals, or null when there is none. */
+   noteThreshold: string | null;
+-  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>,
++  /** By key, the values the dated settings (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap, proof-threshold, proof-threshold-<grade>,
+    *  note-threshold) take
+    *  from their from-dates, in date order. */
+   dated: Partial<Record<string, DatedValue[]>>;
+@@ -123,6 +123,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }));
+   }
+ 
++  /** Record a grade's own clerk limit from a date (null: the sheet's today); null clears it from then, leaving the sheet's. */
++  setGradeClerkLimit(sheetId: string, grade: Grade, value: string | null, from: string | null): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/clerk-limit/${grade}`, { value, from }));
++  }
++
+   /** Record a grade's own proof threshold from a date (null: the sheet's today); null clears it from then, leaving the sheet's. */
+   setGradeProofThreshold(sheetId: string, grade: Grade, value: string | null, from: string | null): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-threshold/${grade}`, { value, from }));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 915bd2e4..17c62027 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -42,7 +42,8 @@ function settled(control: AbstractControl): void {
+   control.markAsUntouched();
+ }
+ 
+-// The sheet's settings, with the clerk limit (the highest due a clerk may settle) and the floor (the
++// The sheet's settings, with the clerk limit (the highest due a clerk may settle) and each grade's own clerk
++// limit (a claim whose person's grade on the sheet's today has one in force then uses it instead; blank: the sheet's) and the floor (the
+ // least a claim's live due can be) and the terms (the business days after a claim's date it is due by, fixed when the
+ // claim is added) and each grade's own terms (blank: the sheet's terms) and the late
+ // percent (what an overdue claim gains of its figure for every full 30 days overdue) and each grade's grace
+@@ -55,7 +56,7 @@ function settled(control: AbstractControl): void {
+ // threshold (a claim whose person's grade on its date has one in force then uses it instead; blank: the sheet's), and the roles it assigns user names, with one form for each.
+ // A steward can delegate the steward role to a user from a date (blank: the sheet's today) to a date, inclusive;
+ // while the sheet's today is inside the range the user acts as a steward.
+-// The settings that carry a figure (the clerk limit, the floor, the rounding mode (half-up or half-even; blank: the policy date decides), the terms, each grade's terms, the late
++// The settings that carry a figure (the clerk limit, each grade's clerk limit, the floor, the rounding mode (half-up or half-even; blank: the policy date decides), the terms, each grade's terms, the late
+ // percent, each grade's grace, the cap, the proof threshold and each grade's proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
+ // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
+ // the sheet's today.
+@@ -86,6 +87,13 @@ function settled(control: AbstractControl): void {
+         <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd; blank: the sheet's today)</label>
+         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" />
+         <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span></p>
++        @for (g of grades; track g) {
++          <label [for]="'setting-clerk-limit-' + g">Clerk limit of grade {{ g }} (blank: the sheet's)</label>
++          <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g" [formControl]="gradeClerkLimitForm.controls[g]" inputmode="decimal" />
++          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit of grade {{ g }} from (yyyy-mm-dd; blank: the sheet's today)</label>
++          <input [id]="'setting-clerk-limit-' + g + '-from'" [attr.data-testid]="'setting-clerk-limit-' + g + '-from'" [formControl]="gradeClerkLimitFromForm.controls[g]" />
++          <p>Clerk limit of grade {{ g }} now: <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (now('clerk-limit-' + g) ?? '') | figure }}</span></p>
++        }
+         <label for="setting-floor">Floor (the least a claim's live due can be)</label>
+         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+         <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: the sheet's today)</label>
+@@ -355,6 +363,18 @@ export class Settings {
+     B: new FormControl('', { nonNullable: true }),
+     C: new FormControl('', { nonNullable: true }),
+   } satisfies Record<Grade, FormControl<string>>);
++  /** Each grade's own clerk limit, a field per grade; part of the settings form. */
++  protected readonly gradeClerkLimitForm = new FormGroup({
++    A: new FormControl('', { nonNullable: true }),
++    B: new FormControl('', { nonNullable: true }),
++    C: new FormControl('', { nonNullable: true }),
++  } satisfies Record<Grade, FormControl<string>>);
++  /** The date each grade's clerk limit is recorded from, a field per grade; blank: the sheet's today. */
++  protected readonly gradeClerkLimitFromForm = new FormGroup({
++    A: new FormControl('', { nonNullable: true }),
++    B: new FormControl('', { nonNullable: true }),
++    C: new FormControl('', { nonNullable: true }),
++  } satisfies Record<Grade, FormControl<string>>);
+   /** Each grade's own proof threshold, a field per grade; part of the settings form. */
+   protected readonly gradeProofThresholdForm = new FormGroup({
+     A: new FormControl('', { nonNullable: true }),
+@@ -398,6 +418,8 @@ export class Settings {
+     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+     this.gradeGraceForm.valueChanges.subscribe(() => this.settingsError.set(''));
+     this.gradeGraceFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
++    this.gradeClerkLimitForm.valueChanges.subscribe(() => this.settingsError.set(''));
++    this.gradeClerkLimitFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+     this.gradeProofThresholdForm.valueChanges.subscribe(() => this.settingsError.set(''));
+     this.gradeProofThresholdFromForm.valueChanges.subscribe(() => this.settingsError.set(''));
+     this.permissionsForm.valueChanges.subscribe(() => this.settingsError.set(''));
+@@ -420,6 +442,10 @@ export class Settings {
+       this.gradeGraceForm.markAsUntouched();
+       this.gradeGraceFromForm.markAsPristine();
+       this.gradeGraceFromForm.markAsUntouched();
++      this.gradeClerkLimitForm.markAsPristine();
++      this.gradeClerkLimitForm.markAsUntouched();
++      this.gradeClerkLimitFromForm.markAsPristine();
++      this.gradeClerkLimitFromForm.markAsUntouched();
+       this.gradeProofThresholdForm.markAsPristine();
+       this.gradeProofThresholdForm.markAsUntouched();
+       this.gradeProofThresholdFromForm.markAsPristine();
+@@ -456,6 +482,7 @@ export class Settings {
+       { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
+       { label: 'note threshold', control: noteThresholdFrom },
+       { label: 'review threshold', control: reviewThresholdFrom },
++      ...GRADES.map((g) => ({ label: `clerk limit of grade ${g}`, control: this.gradeClerkLimitFromForm.controls[g] })),
+       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
+       ...GRADES.map((g) => ({ label: `grace of grade ${g}`, control: this.gradeGraceFromForm.controls[g] })),
+       ...GRADES.map((g) => ({ label: `proof threshold of grade ${g}`, control: this.gradeProofThresholdFromForm.controls[g] })),
+@@ -494,6 +521,14 @@ export class Settings {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    const gradeClerkLimitValues = GRADES.map((g) => ({ grade: g, control: this.gradeClerkLimitForm.controls[g],
++      from: this.gradeClerkLimitFromForm.controls[g], value: this.gradeClerkLimitForm.controls[g].value.trim() }));
++    for (const { grade, control, from, value } of gradeClerkLimitValues) {
++      if (dirty(control, from) && value !== '' && !MONEY.test(value)) {
++        this.settingsError.set(`Type the clerk limit of grade ${grade} as 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
++        return;
++      }
++    }
+     if (dirty(floor, floorFrom) && !MONEY.test(floorValue)) {
+       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+       return;
+@@ -616,6 +651,13 @@ export class Settings {
+         settled(clerkLimitFrom);
+         if (this.session.sheet()?.id === sheet.id) this.show(settings);
+       }
++      for (const { grade, control, from, value } of gradeClerkLimitValues) {
++        if (!dirty(control, from)) continue;
++        const settings = await this.api.setGradeClerkLimit(sheet.id, grade, value === '' ? null : value, fromOf(from));
++        settled(control);
++        settled(from);
++        if (this.session.sheet()?.id === sheet.id) this.show(settings);
++      }
+       if (dirty(floor, floorFrom)) {
+         const settings = await this.api.setFloor(sheet.id, floorValue, fromOf(floorFrom));
+         settled(floor);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index f4881f84..18258e21 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -229,8 +229,8 @@ public class ClaimService {
+ 
+     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
+      *  by the user who opened or last edited the claim, and an action the sheet's permission matrix does
+-     *  not allow the user's role. A clerk's settling of a claim whose due is above the sheet's
+-     *  clerk limit leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
++     *  not allow the user's role. A clerk's settling of a claim whose due is above the clerk
++     *  limit in force (its person's grade's own, else the sheet's) leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
+      *  steward settles anything). */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+@@ -308,7 +308,7 @@ public class ClaimService {
+         if (next == ClaimStatus.OPEN && isAboveReviewThreshold(sheetId, claim, dueOpening)) next = ClaimStatus.REVIEW;
+         // Settled one at a time until a bulk settle marks it with its batch.
+         if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
+-        if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
++        if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, person, dueNow)) next = ClaimStatus.PENDING;
+         Rollup.Snapshot before = rollup.snapshot(sheetId);
+         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
+         claim.setStatus(next);
+@@ -410,7 +410,7 @@ public class ClaimService {
+      *  by the terms in force on the date; the claim keeps the rest and loses any figure a statement bound
+      *  it to; it is a late entry when its due-by falls inside a soft-closed period. Refused for a claim that
+      *  is not OPEN (a PENDING one included), a deferred claim, and a claim whose due-by, or the new claim's,
+-     *  is inside a closed period. */
++     *  is inside a closed period, or when the sheet's permission matrix does not let the user open. */
+     @Transactional
+     public Split split(String sheetId, String user, long id, BigDecimal part) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+@@ -420,6 +420,9 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot be split; only an OPEN one can.");
+         }
++        // The claim split off is opened by the user, so the permission matrix must let them open.
++        settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(ClaimStatus.OPEN),
++                "Your role may not " + ACTIONS.get(ClaimStatus.OPEN) + " a claim on this sheet.");
+         if (claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be split.");
+@@ -935,10 +938,11 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** Whether the user is a clerk settling a claim whose due is above the sheet's clerk limit. */
+-    private boolean isAboveClerkLimit(String sheetId, String user, BigDecimal due) {
++    /** Whether the user is a clerk settling a claim whose due is above the clerk limit in force: its person's
++     *  grade's own on the sheet's today when set, else the sheet's. */
++    private boolean isAboveClerkLimit(String sheetId, String user, Person person, BigDecimal due) {
+         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
+-        BigDecimal limit = settings.clerkLimit(sheetId);
++        BigDecimal limit = settings.clerkLimit(sheetId, person.gradeOn(sheets.today(sheetId)));
+         return limit != null && due.compareTo(limit) > 0;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/DatedSettings.java b/src/main/java/net/officefloor/hq/app/setting/DatedSettings.java
+index 88b122d5..961277e2 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/setting/DatedSettings.java
+@@ -15,7 +15,7 @@ import net.officefloor.hq.app.person.Grade;
+  * their from-dates, in date order. The value in force on a date is the one of the latest from-date on or
+  * before it; before every from-date, and from a blank value, a key has its starting value (the floor
+  * {@link SettingService#DEFAULT_FLOOR}, the late percent {@link SettingService#DEFAULT_LATE_PCT}, the terms
+- * {@link SettingService#DEFAULT_TERMS}; none for the rounding mode, the clerk limit, the proof threshold, a grade's own proof threshold, the note threshold, the review threshold, the cap, a grade's own terms and a grade's grace days).
++ * {@link SettingService#DEFAULT_TERMS}; none for the rounding mode, the clerk limit, a grade's own clerk limit, the proof threshold, a grade's own proof threshold, the note threshold, the review threshold, the cap, a grade's own terms and a grade's grace days).
+  */
+ public final class DatedSettings {
+ 
+@@ -112,6 +112,13 @@ public final class DatedSettings {
+         return decimalOn(SettingService.CLERK_LIMIT, date);
+     }
+ 
++    /** The clerk limit of a grade in force on the date: its own when set then, else the sheet's; null
++     *  when there is none. */
++    public BigDecimal clerkLimitOn(Grade grade, LocalDate date) {
++        BigDecimal own = grade == null ? null : decimalOn(SettingService.clerkLimitKey(grade), date);
++        return own != null ? own : clerkLimitOn(date);
++    }
++
+     /** The sheet's terms in force on the date, in days. */
+     public int termsOn(LocalDate date) {
+         String value = on(SettingService.TERMS, date);
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 557da431..f857515a 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -80,6 +80,11 @@ public class SettingController {
+     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+     }
+ 
++    /** A grade's own clerk limit as entered; none means the sheet's. */
++    public record GradeClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
++            LocalDate from) {
++    }
++
+     /** The cap as entered; none means no cap. */
+     public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+     }
+@@ -257,6 +262,18 @@ public class SettingController {
+         return view(id);
+     }
+ 
++    /** Set a grade's own clerk limit, or clear it to use the sheet's. */
++    @PutMapping("/settings/clerk-limit/{grade}")
++    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Valid GradeClerkLimitForm form) {
++        String id = sheetId.trim();
++        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
++        service.setGradeClerkLimit(id, SignedInUser.name(user), g, form.value(), form.from());
++        return view(id);
++    }
++
+     /** Set the sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */
+     @PutMapping("/settings/late-pct")
+     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 89dfa3f1..5a3b8388 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -815,6 +815,27 @@ public class SettingService implements ActingFor {
+         return value;
+     }
+ 
++    /** The clerk limit of a grade in force on the sheet's today: its own when set then, else the sheet's;
++     *  null when there is none. */
++    @Transactional(readOnly = true)
++    public BigDecimal clerkLimit(String sheetId, Grade grade) {
++        return dated(sheetId).clerkLimitOn(grade, sheets.today(sheetId));
++    }
++
++    /** The key of a grade's own clerk limit. */
++    public static String clerkLimitKey(Grade grade) {
++        return CLERK_LIMIT + "-" + grade.name();
++    }
++
++    /** Record a grade's own clerk limit, kept to two decimals, from a date; null clears it from then,
++     *  leaving the sheet's. */
++    @Transactional
++    public BigDecimal setGradeClerkLimit(String sheetId, String user, Grade grade, BigDecimal limit, LocalDate from) {
++        BigDecimal value = limit == null ? null : limit.setScale(2);
++        record(sheetId, user, clerkLimitKey(grade), value == null ? "" : value.toPlainString(), from);
++        return value;
++    }
++
+     /** The proof threshold in force on the date, with two decimals, or null when there is none. */
+     @Transactional(readOnly = true)
+     public BigDecimal proofThreshold(String sheetId, LocalDate date) {
