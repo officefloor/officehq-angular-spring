@@ -137,8 +137,8 @@ public class SettingService implements ActingFor {
 
     /** The roles that may take an action whose permission is blank: the standing rule. */
     private static final Map<String, Set<Role>> STANDING_PERMISSIONS = Map.of(
-            "open", EnumSet.of(Role.CLERK, Role.STEWARD), "settle", EnumSet.of(Role.CLERK, Role.STEWARD),
-            "void", EnumSet.of(Role.CLERK, Role.STEWARD), "close", EnumSet.of(Role.CLERK, Role.STEWARD),
+            "open", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "settle", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
+            "void", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "close", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
             "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD));
 
     private final SheetSettingRepository settings;
@@ -934,7 +934,7 @@ public class SettingService implements ActingFor {
         Set<Role> roles = EnumSet.noneOf(Role.class);
         for (String label : value.split(",")) {
             roles.add(Role.of(label.trim()).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Name the roles as a comma separated list of clerk and steward.")));
+                    "Name the roles as a comma separated list of clerk, steward, viewer and restricted.")));
         }
         return roles;
     }

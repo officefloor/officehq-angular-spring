@@ -10,6 +10,8 @@ export interface SheetView {
   archived: boolean;
   /** The number of the sheet's last bulk settle batch; null when it has had none. */
   lastSettleBatch: number | null;
+  /** The role the signed-in user acts in on the sheet: clerk, steward, viewer or restricted. */
+  role: string;
 }
 
 // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the

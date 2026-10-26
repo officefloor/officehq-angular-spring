@@ -208,7 +208,7 @@ function settled(control: AbstractControl): void {
       <form [formGroup]="roleForm" (ngSubmit)="saveRole()" aria-label="Assign a role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
         <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
         <datalist id="role-options">
           @for (r of roles; track r) {
@@ -855,7 +855,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role as Role)) {
-      this.roleError.set('Choose a role of clerk, steward or viewer.');
+      this.roleError.set('Choose a role of clerk, steward, viewer or restricted.');
       return;
     }
     this.savingRole.set(true);

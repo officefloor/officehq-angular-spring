@@ -579,8 +579,25 @@ export class People {
   });
   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
-  /** The people listed: the retired ones only while show retired is on. */
-  protected readonly listedPeople = computed(() => this.people().filter((p) => this.showRetired() || !p.retired));
+  /** The people a restricted user may see listed: the people of the crews their person leads or
+   *  belongs to, and that person; null (everyone) for any other role. */
+  private readonly visibleIds = computed<Set<number> | null>(() => {
+    if (this.session.sheet()?.role !== 'restricted') return null;
+    const me = this.me();
+    if (me === null) return new Set();
+    const ids = new Set([me.id]);
+    for (const c of this.crews.crews()) {
+      const crew = crewIds(c);
+      if (crew.includes(me.id)) for (const id of crew) ids.add(id);
+    }
+    return ids;
+  });
+  /** The people listed: the retired ones only while show retired is on, and for a restricted user only
+   *  those they may see. Every total is still over everyone. */
+  protected readonly listedPeople = computed(() => {
+    const visible = this.visibleIds();
+    return this.people().filter((p) => (this.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
+  });
   /** What this screen sorts the listed people by; added (list order) when the screen opens, and kept as
    *  it is by loading a sheet. Sorting changes only what is shown, never the list order. */
   protected readonly sortKey = signal<SortKey>('added');

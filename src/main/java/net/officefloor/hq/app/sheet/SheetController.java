@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,10 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** What the screen shows of a sheet. Last settle batch is the number of its last bulk settle
-     *  batch, or null when it has had none. */
-    public record SheetView(String id, LocalDate today, boolean archived, Integer lastSettleBatch) {
-        static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastSettleBatch());
+     *  batch, or null when it has had none. Role is the role the signed-in user acts in on the sheet
+     *  (a clerk when no one is signed in). */
+    public record SheetView(String id, LocalDate today, boolean archived, Integer lastSettleBatch, String role) {
+        static SheetView of(Sheet sheet, Role role) {
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastSettleBatch(),
+                    role.label());
         }
     }
 
@@ -42,30 +46,38 @@ public class SheetController {
 
     private final SheetService service;
     private final CloneService clones;
+    private final SettingService settings;
 
-    public SheetController(SheetService service, CloneService clones) {
+    public SheetController(SheetService service, CloneService clones, SettingService settings) {
         this.service = service;
         this.clones = clones;
+        this.settings = settings;
+    }
+
+    private SheetView view(Sheet sheet, String user) {
+        Role role = user == null || user.isBlank() ? Role.CLERK : settings.roleOf(sheet.getId(), SignedInUser.name(user));
+        return SheetView.of(sheet, role);
     }
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
     @PostMapping("/{id}/load")
-    public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id) {
-        return SheetView.of(service.load(id.trim()));
+    public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader(value = SignedInUser.HEADER, required = false) String user) {
+        return view(service.load(id.trim()), user);
     }
 
     /** Change the sheet's today. */
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid TodayChange change) {
-        return SheetView.of(service.setToday(id.trim(), SignedInUser.name(user), change.today()));
+        return view(service.setToday(id.trim(), SignedInUser.name(user), change.today()), user);
     }
 
     /** Archive the sheet; a steward only. */
     @PostMapping("/{id}/archive")
     public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return SheetView.of(service.archive(id.trim(), SignedInUser.name(user)));
+        return view(service.archive(id.trim(), SignedInUser.name(user)), user);
     }
 
     /** Clone the sheet to another id that was never used; a steward only. */
