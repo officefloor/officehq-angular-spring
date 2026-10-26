@@ -1,0 +1,64 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp02_sheet-today",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "644dcf9cb7446ab65591f7d6541d5a251659d60e",
+  "reset_sha": "",
+  "preagent_sha": "fbf90baffccba2f94f80e81dce33c8e3c35de077",
+  "prev_sha": "fbf90baffccba2f94f80e81dce33c8e3c35de077",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3699482,
+    "input_tokens": 14,
+    "output_tokens": 4729,
+    "cache_read_tokens": 182001,
+    "cache_creation_tokens": 29864,
+    "num_turns": 8,
+    "duration_ms": 73345,
+    "duration_api_ms": 40413,
+    "model": "claude-opus-5-5",
+    "session_id": "93f4d820-f43f-4025-bd13-52bff5e9a957",
+    "stop_reason": "success",
+    "result_text": "The test passes: `bin/e2e` runs the acceptance spec and it's green (1 passed).\n\nEach sheet now has its own \"today\" date. A new sheet starts on the real date, and the screen shows it and lets you change it.\n\n- **Stored data:** a new migration, `V2__sheet_today.sql`, adds a `today` column to the sheet table. Sheets that already exist get the current date.\n- **Server:** loading a sheet now returns its today along with its id. A new request, `PUT /api/sheets/{id}/today`, changes it, and the server turns away a missing or invalid date.\n- **Front end:** the screen shows the sheet's today and has a date field with a \"Set today\" button. A malformed or refused date shows the sheet error message, which clears as soon as you edit the field or try again.\n\nThe rest of the request \u2014 every date-based decision and default date using the sheet's today instead of the real clock \u2014 has nothing to apply to yet. The app currently only does sign-in and sheet loading, with no claims, holds or other dated features. Any of those added later should read the date from the sheet (or from the front end's copy of it), never from the system clock.\n\nChanging today doesn't write an audit record, because the test doesn't expect one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3699482,
+        "num_turns": 8,
+        "duration_ms": 73345,
+        "duration_api_ms": 40413,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
