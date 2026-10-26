@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e666c73a..dc640461 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -59,7 +59,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()"
+-      [myReviewsCount]="myReviewsCount()" />
++      [myReviewsCount]="myReviewsCount()" [watchedDueTotal]="watchedDueTotal()" />
+     <app-consolidated [ownPeople]="treeFigures()" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
+     <app-tree-search />
+     <app-duplicates />
+@@ -687,6 +687,9 @@ export class People {
+     const dues = this.dueCents();
+     return money(led.reduce((t, c) => t + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+   });
++  /** The due-totals of the people the signed-in user watches, added up, skipping those that are n/a. */
++  protected readonly watchedDueTotal = computed(() =>
++    money(this.people().filter((p) => p.watched).reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)));
+   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
+   protected readonly sheetDueTotal = computed(() => {
+     const figures: number[] = [];
+diff --git a/src/main/frontend/src/app/features/summary/sheet-header.ts b/src/main/frontend/src/app/features/summary/sheet-header.ts
+index a3c7427b..68b8fa2a 100644
+--- a/src/main/frontend/src/app/features/summary/sheet-header.ts
++++ b/src/main/frontend/src/app/features/summary/sheet-header.ts
+@@ -5,7 +5,7 @@ import { StatusSummary } from './summary';
+ // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
+ // each status as the summary counts them, the sheet's due-total and overdue-total, and
+ // the signed-in user's own when a person on the sheet has their name or alias, and their crew total
+-// when that person leads a crew, and how many REVIEW claims are assigned to the signed-in user.
++// when that person leads a crew, and how many REVIEW claims are assigned to the signed-in user, and the due-totals of the people they watch added up.
+ @Component({
+   selector: 'app-sheet-header',
+   imports: [FigurePipe],
+@@ -30,6 +30,8 @@ import { StatusSummary } from './summary';
+         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</dd>
+         <dt>My reviews</dt>
+         <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
++        <dt>Watched due</dt>
++        <dd data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</dd>
+       </dl>
+     </section>
+   `,
+@@ -46,4 +48,6 @@ export class SheetHeader {
+   readonly myCrewDueTotal = input.required<string>();
+   /** How many REVIEW claims are assigned to the signed-in user. */
+   readonly myReviewsCount = input.required<number>();
++  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
++  readonly watchedDueTotal = input.required<string>();
+ }
