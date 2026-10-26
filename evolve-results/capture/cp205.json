@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5d5ac21e42aeda797d2009160e66bfef40891b41",
+  "reset_sha": "",
+  "preagent_sha": "66750434e5be0156093884819d01f42f9cf76024",
+  "prev_sha": "66750434e5be0156093884819d01f42f9cf76024",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.616856,
+    "input_tokens": 28,
+    "output_tokens": 8293,
+    "cache_read_tokens": 476060,
+    "cache_creation_tokens": 44459,
+    "num_turns": 15,
+    "duration_ms": 248922,
+    "duration_api_ms": 79573,
+    "model": "claude-opus-5-5",
+    "session_id": "e7c5859e-408a-4860-99d5-6625c4edbf90",
+    "stop_reason": "success",
+    "result_text": "Plans can now have their amount changed, and `bin/e2e` passes all 4 acceptance tests.\n\n**How it works**\n- Each plan row has a new-amount entry (`plan-amount`) and a save button (`plan-amount-save`).\n- A save sets the plan's amount from the sheet's current date. Plan claims generated after that use the new amount; claims already generated keep theirs.\n- Each save writes `PLAN_CHANGED sheet=<id> by=<user> name=<person> start=<plan start> amount=<new amount>` to the audit file.\n- Each plan lists its changes oldest first as `<date> amount=<amount>` (`plan-change-line`).\n- An amount that isn't above 0.00 or has more than two decimals (e.g. `1.005`) is refused. The error shows on that plan's row (`plan-error`) and clears when you type in the entry or take the next action on the row. A refused change writes nothing.\n\n**What changed**\n- **Stored data:** a new migration, `V93__plan_change.sql`, adds a `person_plan_change` table that keeps each change in order with its date and new amount.\n- **Server:**\n  - `PlanChange.java` is new; `Plan.java` gains a `changeAmount` method and its list of changes.\n  - `PlanService.changeAmount` handles the change, its checks and the audit record.\n  - `PlanController` has a new endpoint, `POST /api/sheets/{sheetId}/plans/{planId}/amount`, and plan responses now include their change lines.\n- **Front end:** `plans-api.ts` gets the new call, and `person-plans.ts` gets the entry, save button, change list and error handling.\n\nA refused amount is caught on the screen before it reaches the server, and the server refuses it again if it gets through.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.616856,
+        "num_turns": 15,
+        "duration_ms": 248922,
+        "duration_api_ms": 79573,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
