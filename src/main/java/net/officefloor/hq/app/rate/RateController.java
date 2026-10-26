@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -82,7 +83,8 @@ public class RateController {
         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
     }
 
-    /** Previews the grade's rate at a candidate percent on every date; nothing is saved or audited. */
+    /** Previews the grade's rate at a candidate percent on every date; nothing is saved or audited, so a viewer may too. */
+    @ViewerPasses
     @PostMapping("/{grade}/preview")
     public PreviewView preview(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

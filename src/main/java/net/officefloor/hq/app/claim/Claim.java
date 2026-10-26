@@ -117,10 +117,15 @@ public class Claim {
 
     /**
      * The date the claim is due by: fixed when it is added, from the terms in force for its person's grade on its
-     * date; later changes to the terms or to its date leave it as it is.
+     * date; later changes to the terms or to its date leave it as it is. A holiday added on or before it re-fixes it
+     * from its date with the terms it was fixed with, unless the claim is SETTLED or VOID.
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms (business days) the claim's due-by was fixed with. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     /**
      * The date the claim is deferred until; null for one never deferred. While the sheet's today is before it an
@@ -183,6 +188,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRemindedOn() {

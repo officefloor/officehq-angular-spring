@@ -105,7 +105,8 @@ public class ClaimService {
             String corrects, String ref, String tagged) {
         LocalDate on = dateOrEntryDate(sheetId, date);
         Person person = person(sheetId, personId);
-        LocalDate dueBy = holidays.dueBy(sheetId, on, termsFor(sheetId, person, on));
+        int terms = termsFor(sheetId, person, on);
+        LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
         refuseInClosedPeriod(sheetId, dueBy);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseAfterRetirement(person, on);
@@ -117,6 +118,7 @@ public class ClaimService {
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setDueBy(dueBy);
+        claim.setTerms(terms);
         claim.setLateEntry(periods.existsBySheetIdAndSoftClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(sheetId,
                 dueBy, dueBy));
         logStatus(by, sheetId, person, claim);
@@ -608,7 +610,9 @@ public class ClaimService {
         Claim original = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, claim.getPersonId(), scaled(amount), claim.getDate(), claim.getNote());
         part.setRoundsOn(claim.getRoundsOn());
-        part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), termsFor(sheetId, person, claim.getDate())));
+        int terms = termsFor(sheetId, person, claim.getDate());
+        part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
+        part.setTerms(terms);
         part.setSplitFrom(claim.getNumber());
         part.setTags(claim.getTags());
         // a split is judged by the original alone: the part is a late entry when the original is

@@ -6,7 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a changing request a viewer may still make: loading a sheet, which changes nothing, or a bulk or generate
+ * Marks a changing request a viewer may still make: loading a sheet or previewing a rate, which change nothing, or a bulk or generate
  * action, which goes through for a viewer with nothing done and every item refused.
  */
 @Target(ElementType.METHOD)
