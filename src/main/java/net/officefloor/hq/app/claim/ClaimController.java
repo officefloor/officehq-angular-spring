@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,10 +53,20 @@ public class ClaimController {
             @Size(max = 500) String note, @Positive Long corrects) {
     }
 
-    private final ClaimService service;
+    /** The claims a bulk action is to change, by id. */
+    public record BulkForm(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {
+    }
 
-    public ClaimController(ClaimService service) {
+    /** The claims a bulk open opened, in the order it numbered them, and how many it refused. */
+    public record BulkOpenView(List<ClaimView> opened, int refused) {
+    }
+
+    private final ClaimService service;
+    private final ClaimBulkService bulk;
+
+    public ClaimController(ClaimService service, ClaimBulkService bulk) {
         this.service = service;
+        this.bulk = bulk;
     }
 
     /** All the claims on the sheet, newest first. */
@@ -88,6 +99,14 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenView bulkOpen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {
+        ClaimBulkService.Result result = bulk.open(user, sheetId, form.ids());
+        return new BulkOpenView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
     @PostMapping("/claims/{id}/settle")

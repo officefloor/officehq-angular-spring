@@ -124,6 +124,19 @@ interface StatementView {
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
 
+      <div role="group" aria-label="Selected claims">
+        <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+        @if (bulkOpened(); as result) {
+          <p role="status">
+            Opened: <strong data-testid="bulk-opened">{{ result.opened }}</strong>
+            Refused: <strong data-testid="bulk-refused">{{ result.refused }}</strong>
+          </p>
+        }
+        @if (bulkError(); as err) {
+          <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
+        }
+      </div>
+
       <table>
         <thead>
           <tr>
@@ -203,6 +216,8 @@ interface StatementView {
                   [claims]="claimsBy().get(p.id) ?? []"
                   [grades]="p.grades"
                   [retiredFrom]="p.retiredFrom"
+                  [selected]="selectedClaims()"
+                  (selectedChange)="selectClaim($event.id, $event.checked)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -262,6 +277,11 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
+  // The claims selected for a bulk open, by id, and the last bulk open's counts (none while one runs).
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkError = signal<string | null>(null);
+  private bulkOpening = false;
   // The claims that count in the live totals: open and settled ones, leaving out a held person's open ones.
   protected readonly liveClaims = computed(() => {
     const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
@@ -552,6 +572,45 @@ export class People {
     );
   }
 
+  protected selectClaim(id: number, checked: boolean): void {
+    this.selectedClaims.update((selected) => {
+      const next = new Set(selected);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Opens the selected claims together: the store opens and numbers each that can be opened in list order and
+   * leaves each that cannot as it is; shows how many were opened and how many refused.
+   */
+  protected async bulkOpen(): Promise<void> {
+    if (this.bulkOpening) return;
+    this.bulkOpened.set(null);
+    this.bulkError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    this.bulkOpening = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ opened: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-open`,
+          { ids },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.opened) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkOpened.set({ opened: result.opened.length, refused: result.refused });
+    } catch {
+      this.bulkError.set('Could not open the selected claims.');
+    } finally {
+      this.bulkOpening = false;
+    }
+  }
+
   protected reset(): void {
     this.editingId.set(null);
     this.name.set('');
@@ -677,6 +736,9 @@ export class People {
       // a later load may have moved to another sheet while this one was in flight
       if (this.session.sheetId() === sheet) {
         this.claims.set(claims);
+        // a selected claim no longer on the sheet stays out of the next bulk action
+        const ids = new Set(claims.map((c) => c.id));
+        this.selectedClaims.update((selected) => new Set([...selected].filter((id) => ids.has(id))));
         this.statements.set(statements);
         this.patrons.set(patrons);
         this.people.set(list);

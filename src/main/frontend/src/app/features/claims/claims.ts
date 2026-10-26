@@ -176,13 +176,22 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
         @for (c of claims(); track c.id) {
           <tr [attr.data-testid]="'claim-row-' + c.id">
+            <td>
+              <input
+                type="checkbox"
+                data-testid="claim-select"
+                [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+                [checked]="selected().has(c.id)"
+                (change)="selectedChange.emit({ id: c.id, checked: checked($event) })"
+              />
+            </td>
             <td data-testid="claim-number">{{ c.number ?? '' }}</td>
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
@@ -236,6 +245,9 @@ export class Claims {
   // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
   readonly retiredFrom = input<string | null>(null);
   readonly saved = output<Claim>();
+  // The claims selected for a bulk action, by id; a checkbox's change is reported, not kept here.
+  readonly selected = input<ReadonlySet<number>>(new Set());
+  readonly selectedChange = output<{ id: number; checked: boolean }>();
 
   protected readonly amount = signal('');
   protected readonly date = signal('');
@@ -259,6 +271,10 @@ export class Claims {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected checked(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
   }
 
   /** The name of the period the date falls in; empty when none does. */
