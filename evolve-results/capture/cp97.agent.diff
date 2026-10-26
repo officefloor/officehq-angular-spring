@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f83b745f..b9b9ed5e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -189,6 +189,22 @@ interface StatementView {
+           </tbody>
+         </table>
+       }
++      @if (monthDueTotals().length > 0) {
++        <table>
++          <caption>Due by month</caption>
++          <thead>
++            <tr><th scope="col">Month</th><th scope="col">Due</th></tr>
++          </thead>
++          <tbody>
++            @for (m of monthDueTotals(); track m.month) {
++              <tr>
++                <th scope="row">{{ m.month }}</th>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+ 
+       <div role="group" aria-label="Selected claims">
+         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+@@ -511,6 +527,24 @@ export class People {
+       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+       .map((tag) => ({ tag, dueTotal: sumSkippingNa(dues.get(tag) ?? []) }));
+   });
++  // For every month (yyyy-mm) any claim on the sheet is dated in, sorted: the due of the claims counted live dated
++  // in it, skipping n/a.
++  protected readonly monthDueTotals = computed(() => {
++    const all = new Set(this.claims().map((c) => c.date.slice(0, 7)));
++    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
++    const rates = this.rates.rates();
++    const floor = this.settings.floor();
++    const late = this.settings.lateness();
++    const dues = new Map<string, (string | null)[]>();
++    for (const c of this.liveClaims()) {
++      const own = grades.get(c.personId) ?? [];
++      const month = c.date.slice(0, 7);
++      dues.set(month, [...(dues.get(month) ?? []), dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late))]);
++    }
++    return [...all]
++      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
++      .map((month) => ({ month, dueTotal: sumSkippingNa(dues.get(month) ?? []) }));
++  });
+   // The claims selected for a bulk open, by id, and the last bulk open's counts (none while one runs).
+   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
