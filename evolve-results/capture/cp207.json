@@ -1,0 +1,64 @@
+{
+  "checkpoint": 207,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp207_year-end-rollover",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8a7a84c9f67df45ea134b1485041e752c32187ca",
+  "reset_sha": "",
+  "preagent_sha": "3dfb7de1b0dfbdb812f4ca0a6b5f3655b1f2a3bc",
+  "prev_sha": "3dfb7de1b0dfbdb812f4ca0a6b5f3655b1f2a3bc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7954356000000001,
+    "input_tokens": 28,
+    "output_tokens": 9426,
+    "cache_read_tokens": 589418,
+    "cache_creation_tokens": 61115,
+    "num_turns": 15,
+    "duration_ms": 310251,
+    "duration_api_ms": 102837,
+    "model": "claude-opus-5-5",
+    "session_id": "6bd226e2-6ba3-42c9-87a5-2ebb823b587f",
+    "stop_reason": "success",
+    "result_text": "The year-end rollover is in, and all 4 acceptance tests pass under `bin/e2e`.\n\n**Server**\n- The new `PeriodService.rollover` (in `period/PeriodService.java`) is open to stewards only. It takes the old fiscal year to be the twelve months from the sheet's fiscal start month in the year typed. It refuses if no periods fall inside those months.\n- It works out each person's open figure at the end of the old year's last period. Only claims that count, belong to a period of the old year, and were OPEN or PENDING at that date are included. \"Counts\" uses the same test that closing a period uses; I moved that test into a shared `counts(...)` helper so close and rollover can't drift apart.\n- It then makes the next year's twelve periods using the same code as the fiscal year generator. Each person's figure is added to their opening balance for the new year's first period, written as `OPENING_SET` lines, followed by `ROLLOVER fy=FY<year> periods=<made>`.\n- A refused rollover changes nothing and writes no audit lines.\n- The endpoint is `POST /api/sheets/{id}/periods/rollover`. It accepts years 1\u20139997 and returns how many periods it made plus the sheet's periods as they now stand.\n\n**Front end**\n- The new box in `features/periods/rollover.ts` has the `rollover-year` entry, the `rollover` button, the `rollover-made` count and the `rollover-error` message. It sits next to the opening-balances paste box on the main screen.\n- It rejects a year that isn't four digits before calling the server, and shows the server's reason when the server refuses.\n\n**Choices the request didn't settle**\n- **Zero figures:** a person whose open figure is 0.00 gets no `OPENING_SET` line.\n- **First period:** the new year's first period is its earliest period, even if it already existed and the generator skipped it. If there is none, no openings are written but the `ROLLOVER` line still is.\n\nThe tests only exercise a rollover where both people have figures above zero. If you want a 0.00 line written for everyone, it's a small change in `rollover`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7954356000000001,
+        "num_turns": 15,
+        "duration_ms": 310251,
+        "duration_api_ms": 102837,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp207.agent.jsonl",
+  "agent_diff_file": "cp207.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

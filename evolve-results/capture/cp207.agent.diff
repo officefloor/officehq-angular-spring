@@ -1,0 +1,268 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 28928716..5b95cf1b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -37,6 +37,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+ import { QuickAdd } from './quick-add';
+ import { PasteClaims } from '../claims/paste-claims';
+ import { ImportOpenings } from '../periods/import-openings';
++import { Rollover } from '../periods/rollover';
+ import { ImportPeople } from './import-people';
+ import { Consolidated } from '../summary/consolidated';
+ import { TreeSearch } from '../summary/tree-search';
+@@ -51,7 +52,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+ // their counting claims to the figures they show then.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
++  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, Rollover, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+@@ -110,6 +111,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+         <app-quick-add (added)="quickAdded($event)" />
+         <app-paste-claims (added)="pasted($event)" />
+         <app-import-openings (pasted)="periods.set($event)" />
++        <app-rollover (rolled)="periods.set($event)" />
+         <app-generate-plans (generated)="pasted($event)" />
+         <app-import-people (added)="imported($event)" />
+         <label>
+diff --git a/src/main/frontend/src/app/features/periods/periods-api.ts b/src/main/frontend/src/app/features/periods/periods-api.ts
+index 575ac9f0..9e396957 100644
+--- a/src/main/frontend/src/app/features/periods/periods-api.ts
++++ b/src/main/frontend/src/app/features/periods/periods-api.ts
+@@ -36,6 +36,12 @@ export interface OpeningsView {
+   periods: PeriodView[];
+ }
+ 
++/** What a rollover did: how many periods it made, and the sheet's periods now. */
++export interface RolloverView {
++  made: number;
++  periods: PeriodView[];
++}
++
+ export interface PeriodForm {
+   name: string;
+   from: string;
+@@ -82,6 +88,13 @@ export class PeriodsApi {
+     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-fy`, { year }));
+   }
+ 
++  /** Roll the fiscal year starting in a calendar year over: generate the next fiscal year's periods and
++   *  carry each person's open figure into its first period. Refused unless the user is a steward, and when
++   *  the year has no periods. */
++  rollover(sheetId: string, year: number): Promise<RolloverView> {
++    return firstValueFrom(this.http.post<RolloverView>(`${this.url(sheetId)}/rollover`, { year }));
++  }
++
+   /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, leaving out those whose
+    *  name is in use or that overlap a period: the periods made. */
+   generateQuarters(sheetId: string, year: number): Promise<PeriodView[]> {
+diff --git a/src/main/frontend/src/app/features/periods/rollover.ts b/src/main/frontend/src/app/features/periods/rollover.ts
+new file mode 100644
+index 00000000..8c054c79
+--- /dev/null
++++ b/src/main/frontend/src/app/features/periods/rollover.ts
+@@ -0,0 +1,81 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, effect, inject, output, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { PeriodView, PeriodsApi } from './periods-api';
++
++const YEAR = /^\d{4}$/;
++
++// A steward's year-end rollover: generates the next fiscal year's twelve monthly periods and carries each
++// person's open figure at the end of the typed year into the new year's first period as opening balances.
++@Component({
++  selector: 'app-rollover',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Roll the fiscal year over">
++      <label for="rollover-year">Fiscal year to roll over (yyyy, the calendar year it starts in)</label>
++      <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
++      <button type="submit" data-testid="rollover" [disabled]="saving()">Roll year over</button>
++      @if (made() !== null) {
++        <p role="status">Periods made: <span data-testid="rollover-made">{{ made() }}</span></p>
++      }
++      @if (error()) {
++        <p role="alert" data-testid="rollover-error">{{ error() }}</p>
++      }
++    </form>
++  `,
++})
++export class Rollover {
++  private readonly session = inject(Session);
++  private readonly api = inject(PeriodsApi);
++
++  /** The sheet's periods, as they stand once the year is rolled over. */
++  readonly rolled = output<PeriodView[]>();
++
++  protected readonly form = new FormGroup({
++    year: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly saving = signal(false);
++  protected readonly error = signal('');
++  /** How many periods the last rollover made; null before one, and while one runs. */
++  protected readonly made = signal<number | null>(null);
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++    // Each load of a sheet starts the box afresh.
++    effect(() => {
++      this.session.loaded();
++      this.error.set('');
++      this.made.set(null);
++      this.form.reset({ year: '' }, { emitEvent: false });
++    });
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.saving()) return;
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.error.set('');
++    this.made.set(null);
++    const year = this.form.getRawValue().year.trim();
++    if (!YEAR.test(year) || Number(year) < 1 || Number(year) > 9997) {
++      this.error.set('Type the fiscal year as the four-digit calendar year it starts in.');
++      return;
++    }
++    this.saving.set(true);
++    try {
++      const result = await this.api.rollover(sheet.id, Number(year));
++      if (this.session.sheet()?.id === sheet.id) {
++        this.made.set(result.made);
++        this.rolled.emit(result.periods);
++      }
++    } catch (e) {
++      if (this.session.sheet()?.id !== sheet.id) return;
++      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
++        ? ' ' + e.error.message : '';
++      this.error.set('The year was not rolled over.' + reason);
++    } finally {
++      this.saving.set(false);
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 2cf49d0d..b78b74ff 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -61,6 +61,14 @@ public class PeriodController {
+     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
+     }
+ 
++    /** The calendar year the fiscal year rolled over starts in, as entered. */
++    public record RolloverForm(@NotNull @Min(1) @Max(9997) Integer year) {
++    }
++
++    /** What a rollover did: how many periods it made, and the sheet's periods now. */
++    public record RolloverView(int made, List<PeriodView> periods) {
++    }
++
+     /** The calendar year whose quarters are generated, as entered. */
+     public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
+     }
+@@ -103,6 +111,16 @@ public class PeriodController {
+                 .map(PeriodView::of).toList();
+     }
+ 
++    /** Roll a fiscal year over into the next, carrying each person's open figure into its first period;
++     *  a steward only. */
++    @PostMapping("/rollover")
++    public RolloverView rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RolloverForm form) {
++        String sheet = sheetId.trim();
++        int made = service.rollover(sheet, SignedInUser.name(user), form.year()).size();
++        return new RolloverView(made, service.list(sheet).stream().map(PeriodView::of).toList());
++    }
++
+     /** Generate the four calendar quarters of a year, leaving out those whose name is in use or whose days
+      *  overlap a period; the periods made. */
+     @PostMapping("/generate-quarters")
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index faa592a7..1e87cdbb 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -224,10 +224,7 @@ public class PeriodService {
+             // Counted by the status the claim had at the end of the period's last day; a reached retirement
+             // only leaves out a claim still open now, as it touches only live claims. A hold leaves none out.
+             ClaimStatus then = claim.statusAsOf(period.getTo());
+-            boolean bound = claim.isStated();
+-            boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
+-                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isRetiredBy(today))));
+-            if (!counts) continue;
++            if (!counts(claim, person, then, today)) continue;
+             // Carried: still open at the end of this period, belonging to a period ending before it starts.
+             boolean carried = then.isOpen() && all.stream()
+                     .anyMatch((p) -> p.contains(claim.getDueBy()) && p.getTo().isBefore(period.getFrom()));
+@@ -249,6 +246,68 @@ public class PeriodService {
+         return saved;
+     }
+ 
++    /** Whether a claim counts toward a period's figures, by the status it had at the end of the period's
++     *  last day: open or settled then, not deferred on the sheet's today, and, when unbound and open still,
++     *  its person's retirement date not reached. */
++    private static boolean counts(Claim claim, Person person, ClaimStatus then, LocalDate today) {
++        return then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
++                || (then.isOpen() && (claim.isStated() || !claim.getStatus().isOpen() || !person.isRetiredBy(today))));
++    }
++
++    /** Roll a fiscal year over: generate the next fiscal year's twelve monthly periods as
++     *  {@link #generateFiscalYear} does, then add to each person's opening balance for the new year's first
++     *  period their open figure at the end of the old year's last period: the due of their claims that
++     *  count, belonging to a period of the old year, and OPEN or PENDING at that period's end. Refused unless
++     *  the user acts as a steward, and when the old year has no periods. The periods made, in date order. */
++    @Transactional
++    public List<Period> rollover(String sheetId, String user, int year) {
++        sheets.load(sheetId);
++        sheetRows.findForUpdate(sheetId);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may roll the year over.");
++        }
++        YearMonth first = YearMonth.of(year, settings.fiscalStartMonth(sheetId));
++        LocalDate oldFrom = first.atDay(1);
++        LocalDate oldTo = first.plusMonths(11).atEndOfMonth();
++        List<Period> oldYear = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter((p) -> !p.getFrom().isBefore(oldFrom) && !p.getTo().isAfter(oldTo)).toList();
++        if (oldYear.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year FY" + year + " has no periods.");
++        }
++        Period last = oldYear.stream().max(Comparator.comparing(Period::getTo)).orElseThrow();
++        LocalDate today = sheets.today(sheetId);
++        List<Person> listed = people.findInListOrder(sheetId);
++        Map<Long, Person> peopleById = listed.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
++        Map<Long, BigDecimal> open = new HashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            Person person = peopleById.get(claim.getPersonId());
++            if (person == null) continue;
++            ClaimStatus then = claim.statusAsOf(last.getTo());
++            if (!counts(claim, person, then, today) || !then.isOpen()) continue;
++            if (oldYear.stream().noneMatch((p) -> p.contains(claim.getDueBy()))) continue;
++            BigDecimal due = claimService.due(sheetId, person, claim);
++            if (due != null) open.merge(person.getId(), due, BigDecimal::add);
++        }
++
++        List<Period> made = generateMonths(sheetId, user, first.plusMonths(12), first.plusMonths(23));
++        LocalDate newFrom = first.plusMonths(12).atDay(1);
++        LocalDate newTo = first.plusMonths(23).atEndOfMonth();
++        Period opening = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter((p) -> !p.getFrom().isBefore(newFrom) && !p.getTo().isAfter(newTo)).findFirst().orElse(null);
++        if (opening != null) {
++            for (Person person : listed) {
++                BigDecimal amount = open.get(person.getId());
++                if (amount == null || amount.signum() == 0) continue;
++                opening.addOpening(person.getId(), amount);
++                audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                        + " period=" + opening.getName() + " amount=" + amount.setScale(2).toPlainString());
++            }
++            periods.saveAndFlush(opening);
++        }
++        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
++        return made;
++    }
++
+     /** Reopen a closed or soft-closed period, making its due-total live again. Refused when the sheet's permission
+      *  matrix does not allow the user's role to reopen (by default, only a steward), or the period is not closed. */
+     @Transactional
