@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { dueOn } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -59,7 +60,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th>
+          <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -69,6 +70,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
+            <td data-testid="claim-due">{{ dueOn(c.amount, rate()) ?? 'n/a' }}</td>
             <td>
               <button type="button" data-testid="claim-edit" (click)="edit(c)">
                 Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -90,6 +92,8 @@ export class Claims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
+  // The rate for the person's grade; undefined when the grade has none.
+  readonly rate = input<string | undefined>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -97,6 +101,8 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+
+  protected readonly dueOn = dueOn;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

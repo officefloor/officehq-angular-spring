@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
+import { Rates } from '../rates/rates';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People],
+  imports: [People, Rates],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -43,6 +44,7 @@ import { People } from '../people/people';
           }
         </form>
 
+        <app-rates />
         <app-people />
       }
     } @else {

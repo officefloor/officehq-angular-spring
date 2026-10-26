@@ -3,14 +3,13 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, claimedTotal } from '../claims/claims';
+import { GRADES, RateStore, dueOn, sumSkippingNa } from '../rates/rates';
 
 interface Person {
   id: number;
   name: string;
   grade: string;
 }
-
-const GRADES = ['A', 'B', 'C'];
 
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
@@ -51,11 +50,12 @@ const GRADES = ['A', 'B', 'C'];
       </form>
 
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
 
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -65,6 +65,7 @@ const GRADES = ['A', 'B', 'C'];
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -75,6 +76,7 @@ const GRADES = ['A', 'B', 'C'];
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsBy().get(p.id) ?? []"
+                  [rate]="rates.rates().get(p.grade)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -88,6 +90,7 @@ const GRADES = ['A', 'B', 'C'];
 export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  protected readonly rates = inject(RateStore);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -108,6 +111,14 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
+  // Each person's due-total: their claimed times their grade's rate; null (n/a) with no rate.
+  protected readonly dueBy = computed(() => {
+    const by = new Map<number, string | null>();
+    const rates = this.rates.rates();
+    for (const p of this.people()) by.set(p.id, dueOn(this.claimedBy().get(p.id) ?? '0.00', rates.get(p.grade)));
+    return by;
+  });
+  protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
 
   constructor() {
     // Re-read the people from the store each time a sheet is loaded.
@@ -189,6 +200,7 @@ export class People {
       const [list, claims] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
         firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
+        this.rates.load(sheet),
       ]);
       // a later load may have moved to another sheet while this one was in flight
       if (this.session.sheetId() === sheet) {
