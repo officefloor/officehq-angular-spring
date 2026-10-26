@@ -13,6 +13,8 @@ export interface RateView {
   to: string | null;
   /** How many parents up the rate's sheet is: 0 for the sheet's own rate, 1 for its parent's, and so on. */
   level: number;
+  /** How many versions the rate has had; the percent is the newest's, the one in force. */
+  version: number;
 }
 
 /** Of one grade's rates on one sheet, the one in force on a date: the one with the latest from-date on
@@ -84,7 +86,7 @@ export class RatesApi {
   }
 
   /** Set the grade's rate from a from-date (null: from the beginning of time) through a to-date
-   *  (null: until the grade's next rate), replacing the one it had for that from-date. */
+   *  (null: until the grade's next rate); setting one it already has for that from-date adds a new version. */
   set(sheetId: string, grade: Grade, pct: string, from: string | null, to: string | null): Promise<RateView> {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheetId)}/${grade}`, { pct, from, to }));
   }

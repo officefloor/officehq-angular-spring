@@ -30,14 +30,16 @@ public class RateController {
 
     /** What the screen shows of a rate; the percent always has two decimals. No from-date means the
      *  rate applies from the beginning of time; no to-date, until the grade's next rate. Level is how many
-     *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. */
-    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level) {
+     *  parents up the rate's sheet is: 0 for the sheet's own, 1 for its parent's, and so on. Version is how
+     *  many versions the rate has had; the percent is the newest's. */
+    public record RateView(Grade grade, String pct, LocalDate from, LocalDate to, int level, int version) {
         static RateView of(Rate rate) {
             return of(0, rate);
         }
 
         static RateView of(int level, Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level);
+            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFrom(), rate.getTo(), level,
+                    rate.getVersion());
         }
     }
 
@@ -95,7 +97,8 @@ public class RateController {
         return service.listInherited(sheetId.trim()).stream().map((r) -> RateView.of(r.level(), r.rate())).toList();
     }
 
-    /** Set the rate for a grade from a from-date through a to-date, replacing the one it had for that from-date. */
+    /** Set the rate for a grade from a from-date through a to-date, adding a new version when it
+     *  already has one for that from-date. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RateForm form) {

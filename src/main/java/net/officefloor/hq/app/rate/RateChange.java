@@ -42,6 +42,10 @@ public class RateChange {
     @Column(name = "made_on")
     private LocalDate madeOn;
 
+    /** The version of the rate this change made; null when made before versions were kept. */
+    @Column(name = "version")
+    private Integer version;
+
     protected RateChange() {
     }
 
@@ -52,6 +56,7 @@ public class RateChange {
         this.to = rate.getTo();
         this.pct = rate.getPct();
         this.madeOn = madeOn;
+        this.version = rate.getVersion();
     }
 
     public Grade getGrade() {

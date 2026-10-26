@@ -40,6 +40,10 @@ public class Rate {
     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal pct;
 
+    /** How many versions the rate has had: 1 when first set, one more each time it is set again. */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -84,6 +88,19 @@ public class Rate {
     /** Change the percent; it is kept to two decimals. */
     public void setPct(BigDecimal pct) {
         this.pct = pct.setScale(2);
+    }
+
+    /** How many versions the rate has had; the one it holds is the newest. */
+    public int getVersion() {
+        return version;
+    }
+
+    /** Set the rate again: the value it held stays as an older version (its change), and this becomes
+     *  the newest version, the one in force. */
+    public void newVersion(BigDecimal pct, LocalDate to) {
+        setPct(pct);
+        setTo(to);
+        version++;
     }
 
     /** Whether the rate is in force on or before this date. */

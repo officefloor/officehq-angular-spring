@@ -80,7 +80,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </table>
       <table data-testid="rates-list" aria-label="All rates">
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of ownRates(); track r.grade + (r.from ?? 'start')) {
@@ -89,6 +89,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

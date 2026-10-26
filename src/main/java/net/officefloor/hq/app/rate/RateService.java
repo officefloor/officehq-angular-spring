@@ -98,7 +98,8 @@ public class RateService {
     }
 
     /** Set the sheet's rate for a grade from a from-date (none: from the beginning of time) through
-     *  a to-date (none: until the grade's next rate), replacing the rate it had for that from-date. A
+     *  a to-date (none: until the grade's next rate). When the grade already has a rate for that from-date, the
+     *  value it held is kept as an older version and the new one becomes its newest version, the one in force. A
      *  to-date before the from-date is refused. */
     @Transactional
     public Rate set(String sheetId, String user, Grade grade, LocalDate from, LocalDate to, BigDecimal pct) {
@@ -112,8 +113,7 @@ public class RateService {
         if (rate == null) {
             rate = new Rate(sheetId, grade, from, to, pct);
         } else {
-            rate.setPct(pct);
-            rate.setTo(to);
+            rate.newVersion(pct, to);
         }
         Rate saved;
         try {
