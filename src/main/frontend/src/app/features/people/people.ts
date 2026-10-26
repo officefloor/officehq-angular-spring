@@ -28,7 +28,7 @@ import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn, nameWithGrade } from './people-api';
+import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, nameWithGrade } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
@@ -575,8 +575,6 @@ export class People {
   protected readonly settingApprover = signal<number | null>(null);
   /** The person a flag is being put on. */
   protected readonly flagging = signal<number | null>(null);
-  /** The holds of each person, by id. */
-  private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The retirement date of each retired person, by id. */
   private readonly retiredFromById = computed(() => new Map(this.people().map((p) => [p.id, p.retiredFrom])));
   /** The sheet's claims, newest first. */
@@ -1281,21 +1279,12 @@ export class People {
   }
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
-   *  except open claims dated within a hold of their person, or of a person whose retirement date the
-   *  sheet's today has reached, and held open claims, that no statement binds, and claims
-   *  deferred on the sheet's today. */
+   *  except open claims of a person whose retirement date the sheet's today has reached, that no
+   *  statement binds, and claims deferred on the sheet's today. A hold, the person's or the claim's,
+   *  leaves a claim in every total. */
   private countsLive(claim: ClaimView): boolean {
     return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
-      && this.leftOut(claim));
-  }
-
-  /** Whether the claim, open and unbound, leaves the live totals: held itself, dated within a hold of its
-   *  person, or its person's retirement date reached by the sheet's today. */
-  private leftOut(claim: ClaimView): boolean {
-    const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
-    const today = this.session.sheet()?.today;
-    return claim.held || heldOn(this.holdsById().get(claim.personId) ?? [], claim.date)
-      || (retiredFrom !== null && today !== undefined && retiredFrom <= today);
+      && this.retired(claim));
   }
 
   /** Whether the claim's person's retirement date is reached by the sheet's today. */
@@ -1306,14 +1295,14 @@ export class People {
   }
 
   /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
-   *  its log records at the end of that day (none when added after it); deferral is as today, and a hold
-   *  only leaves out a claim that is still open now, as holds touch only live claims. */
+   *  its log records at the end of that day (none when added after it); deferral is as today, and a
+   *  reached retirement only leaves out a claim that is still open now, as it touches only live claims. */
   private countsAt(claim: ClaimView, end: string): boolean {
     const status = statusAsOf(claim, end);
     if (status === null) return false;
     const then: ClaimView = { ...claim, status };
     return counts(then) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(then) && isOpen(claim) && !isBound(then)
-      && this.leftOut(claim));
+      && this.retired(claim));
   }
 
   /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
@@ -1521,11 +1510,9 @@ export class People {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
   }
 
-  /** Whether the claim counts toward what is claimed: it counts, a hold (the person's or the claim's)
-   *  notwithstanding, and is not a correction. */
+  /** Whether the claim counts toward what is claimed: it counts live and is not a correction. */
   private countsClaimed(claim: ClaimView): boolean {
-    return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
-      && this.retired(claim)) && !isCorrection(claim);
+    return this.countsLive(claim) && !isCorrection(claim);
   }
 
   /** The sum of the person's open and settled claims, leaving out corrections, with two decimals. */

@@ -114,7 +114,7 @@ export interface ClaimView {
   lines: ClaimLine[];
   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
   waived: boolean;
-  /** Whether the claim is held: while held, an open claim no statement binds counts in no live total. */
+  /** Whether the claim is held; a held claim still counts in every total. */
   held: boolean;
 }
 

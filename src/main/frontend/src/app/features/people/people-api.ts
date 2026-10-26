@@ -65,8 +65,8 @@ export interface PersonView {
   retirements: RetirementView[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
-  /** Every hold put on the person, by from-date: their open claims dated within one, unless a
-   *  statement binds them, count in no live total. */
+  /** Every hold put on the person, by from-date: while one is in force they get no cut of a pool;
+   *  their claims still count in every total. */
   holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as patrons, in the order named. */
   patronIds: number[];

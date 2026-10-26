@@ -160,7 +160,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
-     *  due by a date in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today; and each person's carried figure for it: the figures as shown now of their claims counted so that belong to a period ending before it starts and were still open (PENDING included) at its end, with their opening balance for it. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
+     *  due by a date in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims of a person whose retirement date is reached, and the claims deferred on the sheet's today; and each person's carried figure for it: the figures as shown now of their claims counted so that belong to a period ending before it starts and were still open (PENDING included) at its end, with their opening balance for it. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -221,12 +221,12 @@ public class PeriodService {
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
-            // Counted by the status the claim had at the end of the period's last day; a hold only leaves
-            // out a claim still open now, as holds touch only live claims; so does a reached retirement.
+            // Counted by the status the claim had at the end of the period's last day; a reached retirement
+            // only leaves out a claim still open now, as it touches only live claims. A hold leaves none out.
             ClaimStatus then = claim.statusAsOf(period.getTo());
             boolean bound = claim.isStated();
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
-                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today)))));
+                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isRetiredBy(today))));
             if (!counts) continue;
             // Carried: still open at the end of this period, belonging to a period ending before it starts.
             boolean carried = then.isOpen() && all.stream()

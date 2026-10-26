@@ -125,11 +125,9 @@ public class Rollup {
             boolean keptFigure = false;
             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
             for (Claim claim : theirs) {
-                if (!countsClaimed(person, claim, today)) continue;
+                if (!counts(person, claim, today)) continue;
                 // A correction counts toward what is due, but not toward what is claimed.
                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
-                // A hold leaves the claim in what is claimed, but takes it out of what is due.
-                if (!counts(person, claim, today)) continue;
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
                 LocalDate roundsBy = Rounding.dateOf(claim, corrected(claim, theirs));
@@ -260,22 +258,14 @@ public class Rollup {
                 && LateCharge.lateFrom(claim, grace).isBefore(today);
     }
 
-    /** What counts toward what is claimed: as counts decides, except that a hold (the person's or the
-     *  claim's) does not take a claim out of it. */
-    private static boolean countsClaimed(Person person, Claim claim, LocalDate today) {
-        return claim.getStatus() == ClaimStatus.SETTLED
-                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isRetiredBy(today)));
-    }
-
     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's
-     *  open claims dated within one of their holds, or all of them once their retirement date is reached,
-     *  and a held claim do not, unless a statement binds them; nor does a
+     *  open claims, once their retirement date is reached, do not, unless a statement binds them (a hold,
+     *  the person's or the claim's, leaves them in); nor does a
      *  claim deferred on the sheet's today. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
                 || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today))));
+                        && (claim.isBound() || !person.isRetiredBy(today)));
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due

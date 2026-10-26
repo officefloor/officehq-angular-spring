@@ -558,7 +558,7 @@ public class ClaimService {
     }
 
     /** Hold an OPEN or PENDING claim, writing CLAIM_HELD, or release a held one, writing CLAIM_RELEASED:
-     *  while held, unless a statement binds it, it counts in no live total, as a held person's claims do.
+     *  a held claim still counts in every total.
      *  Refused for a claim in any other status. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long id) {

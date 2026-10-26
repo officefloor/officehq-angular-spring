@@ -60,8 +60,8 @@ public class Person {
     @Column(name = "added_on")
     private LocalDate addedOn;
 
-    /** Every hold put on the person; their open claims dated within one, unless bound by a statement,
-     *  count in no live total. */
+    /** Every hold put on the person; a person with a hold in force gets no cut of a pool, their share
+     *  spread over the others. Their claims still count in every total. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "person_id", nullable = false)
     private Set<PersonHold> holds = new LinkedHashSet<>();
@@ -305,20 +305,12 @@ public class Person {
         return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
     }
 
-    /** Whether the person's unbound open claim of this date leaves the live totals: dated within one of
-     *  their holds, or the person's retirement date is reached by the sheet's today. */
-    public boolean isLeftOut(LocalDate date, LocalDate today) {
-        return isHeldOn(date) || isRetiredBy(today);
-    }
-
-    /** Whether the person's unbound open claim of this date left the totals at the end of another date
-     *  (asOf), which stands in for the sheet's today: dated within one of the holds put on them while the
-     *  sheet's today was on or before it, or their retirement then made reached by it. */
-    public boolean isLeftOutAsOf(LocalDate date, LocalDate asOf) {
-        boolean held = holds.stream().anyMatch(h -> h.madeBy(asOf) && h.covers(date));
+    /** Whether the person's unbound open claims left the totals at the end of a date (asOf), which stands
+     *  in for the sheet's today: their retirement then made reached by it. A hold leaves no claim out. */
+    public boolean isRetiredAsOf(LocalDate asOf) {
         boolean retired = retiredFrom != null && (retiredMadeOn == null || !retiredMadeOn.isAfter(asOf))
                 && !asOf.isBefore(retiredFrom);
-        return held || retired || retirements.stream().anyMatch(r -> r.inForceAsOf(asOf));
+        return retired || retirements.stream().anyMatch(r -> r.inForceAsOf(asOf));
     }
 
     /** Put a hold on the person from a date to a date (none: no end), while the sheet's today is the date

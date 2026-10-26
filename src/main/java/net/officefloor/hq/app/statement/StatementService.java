@@ -160,7 +160,7 @@ public class StatementService {
     }
 
     /** How the claim stood at the end of the date (asOf), which stands in for the sheet's today: its status,
-     *  settled due and binding then, the grade, rate, floor, late percent and holds and retirement in force
+     *  settled due and binding then, the grade, rate, floor, late percent and retirement in force
      *  as they stood then; null when it did not count then (or was not yet added). */
     private Stood stoodAsOf(String sheetId, Person person, Claim claim, LocalDate asOf, DatedSettings dated) {
         ClaimStatus status = claim.statusAsOf(asOf);
@@ -170,7 +170,7 @@ public class StatementService {
         boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
                 && asOf.isBefore(claim.getDeferredUntil());
         boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
-                && (binding != null || !(claim.heldAsOf(asOf) || person.isLeftOutAsOf(claim.getDate(), asOf))));
+                && (binding != null || !person.isRetiredAsOf(asOf)));
         if (!counts) return null;
         RoundingMode rounding = claimService.rounding(sheetId, claim, asOf, dated);
         Grade grade = person.gradeOn(claim.getDate(), asOf);
@@ -236,13 +236,12 @@ public class StatementService {
         return new Cancelled(summarise(personId, left), theirs);
     }
 
-    /** Only open and settled claims count toward what is claimed and due; a person's open claims dated
-     *  within one of their holds, or all of them once their retirement date is reached, and a held claim do
-     *  not, unless a statement binds them, nor does a claim deferred on the
+    /** Only open and settled claims count toward what is claimed and due; a person's open claims, once
+     *  their retirement date is reached, do not, unless a statement binds them (a hold leaves them in), nor does a claim deferred on the
      *  sheet's today, as on the screen. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
                 || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today))));
+                        && (claim.isBound() || !person.isRetiredBy(today)));
     }
 }
