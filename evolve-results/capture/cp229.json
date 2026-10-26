@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "874296b0f0b7f1545b7b62a90d87885d675f4c6a",
+  "reset_sha": "",
+  "preagent_sha": "efc68b0407a8a818506b6877302aaef14f2ffd07",
+  "prev_sha": "efc68b0407a8a818506b6877302aaef14f2ffd07",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.5644257999999995,
+    "input_tokens": 104,
+    "output_tokens": 30541,
+    "cache_read_tokens": 4634989,
+    "cache_creation_tokens": 128274,
+    "num_turns": 53,
+    "duration_ms": 839593,
+    "duration_api_ms": 293367,
+    "model": "claude-opus-5-5",
+    "session_id": "24b7cd90-eb25-4220-9f5c-1b4c69bed60e",
+    "stop_reason": "success",
+    "result_text": "Grades can now be added to a sheet. `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- The Grades section has a new entry (`grade-add-code`) and button (`grade-add`). The typed code is trimmed and must be one to three capital letters that the sheet doesn't already have. Anything else shows `grade-error` and changes nothing.\n- An accepted grade writes `GRADE_ADDED sheet=<id> by=<user> grade=<code>` to the audit file.\n- Every sheet still has A, B and C. Added grades belong to one sheet, follow it when the sheet is cloned, and show up in every grade select, the summary, the consolidated table, the rates and the rate calendar.\n\n**Server**\n- The fixed A/B/C list in the Java code (`Grade`) is now a general grade code. The stored grade columns are converted by `GradeConverter`.\n- A new migration, `V102__sheet_grade`, creates a table of each sheet's added grades. It also widens the existing grade columns to three letters and drops the database checks that only allowed A, B or C.\n- Adding a person or rate, editing, bulk grading, merging, retiring, imports and the default-grade setting now all reject a grade the sheet doesn't have.\n\n**Decisions you may want to revisit**\n- **Grades ignore the as-of view.** The test expects an added grade to appear even when viewing a date before it was added. So the new table is left out of the sheet's history and has no foreign key to the sheet row, because the as-of restore deletes and re-inserts that row.\n- **Settings stay A/B/C only.** The per-grade settings fields (terms, grace, clerk limit, proof threshold) are text fields rather than selects, so I didn't extend them. The default-grade setting does accept added grades.\n- **Consolidated table:** it lists the current sheet's grades. A grade that exists only on a child sheet is counted on the server but not shown on screen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.5644257999999995,
+        "num_turns": 53,
+        "duration_ms": 839593,
+        "duration_api_ms": 293367,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
