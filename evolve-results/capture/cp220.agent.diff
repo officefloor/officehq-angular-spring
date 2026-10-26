@@ -1,0 +1,267 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8caca0f3..e666c73a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -477,7 +477,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+                   }
+                 </td>
+                 <td>
+-                  <app-person-plans [personId]="p.id" [personName]="p.name" />
++                  <app-person-plans [personId]="p.id" [personName]="p.name" (edited)="pasted($event)" />
+                 </td>
+                 <td>
+                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+index dd275862..50807421 100644
+--- a/src/main/frontend/src/app/features/plans/person-plans.ts
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -1,7 +1,8 @@
+-import { Component, computed, effect, inject, input, signal } from '@angular/core';
++import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+ import { FigurePipe } from '../../core/figure.pipe';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
++import { ClaimView } from '../claims/claims-api';
+ import { Plans } from './plans-api';
+ 
+ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+@@ -69,6 +70,9 @@ export class PersonPlans {
+   readonly personId = input.required<number>();
+   readonly personName = input.required<string>();
+ 
++  /** The DRAFT claims a change of a plan's amount gave the new amount. */
++  readonly edited = output<ClaimView[]>();
++
+   protected readonly plans = computed(() => this.store.plans().filter((p) => p.personId === this.personId()));
+ 
+   protected readonly form = new FormGroup({
+@@ -135,8 +139,11 @@ export class PersonPlans {
+     }
+     this.pausing.set(planId);
+     try {
+-      await this.store.changeAmount(sheet.id, planId, amount);
+-      if (this.session.sheet()?.id === sheet.id) this.amounts.update((a) => ({ ...a, [planId]: '' }));
++      const edited = await this.store.changeAmount(sheet.id, planId, amount);
++      if (edited) {
++        this.amounts.update((a) => ({ ...a, [planId]: '' }));
++        this.edited.emit(edited);
++      }
+     } catch {
+       if (this.session.sheet()?.id === sheet.id) {
+         this.rowError.set({ planId, message: 'The amount could not be changed.' });
+diff --git a/src/main/frontend/src/app/features/plans/plans-api.ts b/src/main/frontend/src/app/features/plans/plans-api.ts
+index ad4b620b..8e632992 100644
+--- a/src/main/frontend/src/app/features/plans/plans-api.ts
++++ b/src/main/frontend/src/app/features/plans/plans-api.ts
+@@ -39,6 +39,13 @@ export interface PlanFields {
+   sheet: string | null;
+ }
+ 
++/** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
++ *  oldest first (on the sheet its claims are made on). */
++export interface AmountView {
++  plan: PlanView;
++  claims: ClaimView[];
++}
++
+ /** What a generate made: how many claims, the claims oldest first, and the sheet's plans then. */
+ export interface GenerateView {
+   generated: number;
+@@ -75,9 +82,9 @@ export class PlansApi {
+   }
+ 
+   /** Change a plan's amount on the sheet's today: refused for an amount not above 0.00 with up to two
+-   *  decimals. */
+-  changeAmount(sheetId: string, planId: number, amount: string): Promise<PlanView> {
+-    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheetId)}/${planId}/amount`, { amount }));
++   *  decimals. The claims it generated that are still DRAFT take the new amount too. */
++  changeAmount(sheetId: string, planId: number, amount: string): Promise<AmountView> {
++    return firstValueFrom(this.http.post<AmountView>(`${this.url(sheetId)}/${planId}/amount`, { amount }));
+   }
+ 
+   /** Make every plan's claims due by the sheet's today. */
+@@ -126,11 +133,13 @@ export class Plans {
+     this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+   }
+ 
+-  /** Change the amount of a plan of the active sheet. */
+-  async changeAmount(sheetId: string, planId: number, amount: string): Promise<void> {
+-    const changed = await this.api.changeAmount(sheetId, planId, amount);
+-    if (this.session.sheet()?.id !== sheetId) return;
++  /** Change the amount of a plan of the active sheet: the DRAFT claims it generated on this sheet that
++   *  took the new amount, or null once another sheet is loaded. */
++  async changeAmount(sheetId: string, planId: number, amount: string): Promise<ClaimView[] | null> {
++    const { plan: changed, claims } = await this.api.changeAmount(sheetId, planId, amount);
++    if (this.session.sheet()?.id !== sheetId) return null;
+     this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
++    return changed.sheet ? [] : claims;
+   }
+ 
+   /** Generate the plans' claims: the store's plans replace those shown. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 19d1b6ff..50ed4a9f 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -65,6 +65,12 @@ public class Plan {
+     @Column(name = "plan_date", nullable = false)
+     private Set<LocalDate> generated = new HashSet<>();
+ 
++    /** The ids of the claims it has made. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
++    @Column(name = "claim_id", nullable = false)
++    private Set<Long> claimIds = new HashSet<>();
++
+     /** Its pauses, oldest first; one is still open while the plan is paused. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+@@ -122,8 +128,15 @@ public class Plan {
+         return generated.contains(date);
+     }
+ 
+-    void markGenerated(LocalDate date) {
++    /** Mark the date as having its claim, the claim with the id. */
++    void markGenerated(LocalDate date, Long claimId) {
+         generated.add(date);
++        claimIds.add(claimId);
++    }
++
++    /** The ids of the claims it has made, lowest first. */
++    List<Long> claimIds() {
++        return claimIds.stream().sorted().toList();
+     }
+ 
+     /** Whether the plan is paused now. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 9d3bd5d3..989b1840 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -51,6 +51,11 @@ public class PlanController {
+     public record AmountForm(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
+     }
+ 
++    /** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
++     *  oldest first. */
++    public record AmountView(PlanView plan, List<ClaimView> claims) {
++    }
++
+     /** How many claims a generate made, the claims, oldest first, and the sheet's plans as they are then. */
+     public record GenerateView(int generated, List<ClaimView> claims, List<PlanView> plans) {
+     }
+@@ -97,11 +102,12 @@ public class PlanController {
+ 
+     /** Change the plan's amount from the sheet's today. */
+     @PostMapping("/{planId}/amount")
+-    public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
++    public AmountView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid AmountForm form) {
+         String id = sheetId.trim();
+-        return PlanView.of(service.changeAmount(id, SignedInUser.name(user), planId, form.amount()),
+-                service.today(id));
++        PlanService.AmountChange change = service.changeAmount(id, SignedInUser.name(user), planId, form.amount());
++        return new AmountView(PlanView.of(change.plan(), service.today(id)),
++                change.edited().stream().map(ClaimView::of).toList());
+     }
+ 
+     /** Make the plans' claims due by the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index de20ba63..5a1e3d40 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -10,7 +10,9 @@ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.setting.Role;
+@@ -34,13 +36,14 @@ public class PlanService {
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final ClaimService claims;
++    private final ClaimRepository claimRows;
+     private final Audit audit;
+     private final SettingService settings;
+     private final SheetParentRepository parents;
+     private final TransactionTemplate transaction;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
+-            ClaimService claims, Audit audit, SettingService settings, SheetParentRepository parents,
++            ClaimService claims, ClaimRepository claimRows, Audit audit, SettingService settings, SheetParentRepository parents,
+             PlatformTransactionManager transactions) {
+         this.parents = parents;
+         this.plans = plans;
+@@ -48,6 +51,7 @@ public class PlanService {
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+         this.claims = claims;
++        this.claimRows = claimRows;
+         this.audit = audit;
+         this.settings = settings;
+         this.transaction = new TransactionTemplate(transactions);
+@@ -115,9 +119,36 @@ public class PlanService {
+     }
+ 
+     /** Change the plan's amount on the sheet's today, for the claims generated from then on: refused for an
+-     *  amount not above 0.00 or with more than two decimals. */
+-    @Transactional
+-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++     *  amount not above 0.00 or with more than two decimals. The claims it generated that are still DRAFT
++     *  then take the new amount too, oldest first, each edited on its own as the claim form would edit it
++     *  (its date, note, reference and tags as they are): one the form refuses keeps its amount. */
++    public AmountChange changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++        Plan plan = transaction.execute((status) -> changePlanAmount(sheetId, user, planId, amount));
++        String claimSheet = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
++        List<Claim> edited = new ArrayList<>();
++        for (Long claimId : plan.claimIds()) {
++            try {
++                Claim claim = transaction.execute((status) -> {
++                    Claim draft = claimRows.findByIdAndSheetId(claimId, claimSheet).orElse(null);
++                    if (draft == null || draft.getStatus() != ClaimStatus.DRAFT
++                            || draft.getAmount().compareTo(plan.getAmount()) == 0) return null;
++                    return claims.update(claimSheet, user, claimId, plan.getAmount(), draft.getDate(), draft.getNote(),
++                            draft.getCorrects(), draft.getRef(), String.join(",", draft.getTags()));
++                });
++                if (claim != null) edited.add(claim);
++            } catch (ResponseStatusException refused) {
++                // The claim form refuses the edit: the claim keeps its amount.
++            }
++        }
++        return new AmountChange(plan, edited);
++    }
++
++    /** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
++     *  oldest first. */
++    public record AmountChange(Plan plan, List<Claim> edited) {
++    }
++
++    private Plan changePlanAmount(String sheetId, String user, long planId, BigDecimal amount) {
+         sheets.load(sheetId);
+         sheetRows.findForUpdate(sheetId);
+         Plan plan = plans.findForUpdate(planId).filter((p) -> p.getSheetId().equals(sheetId))
+@@ -173,7 +204,7 @@ public class PlanService {
+         }
+         Claim claim = claims.add(target != null ? target : sheetId, user, personId, plan.getAmount(), date, "",
+                 null, null, null);
+-        plan.markGenerated(date);
++        plan.markGenerated(date, claim.getId());
+         plans.saveAndFlush(plan);
+         return claim;
+     }
+diff --git a/src/main/resources/db/migration/V100__plan_claim.sql b/src/main/resources/db/migration/V100__plan_claim.sql
+new file mode 100644
+index 00000000..21b72cbf
+--- /dev/null
++++ b/src/main/resources/db/migration/V100__plan_claim.sql
+@@ -0,0 +1,8 @@
++-- The claims a plan has generated, each by its id (on the plan's sheet, or the descendant sheet it names),
++-- so a change of the plan's amount can reach those still DRAFT. Claims generated before this was kept
++-- are not listed.
++CREATE TABLE person_plan_claim (
++    plan_id  BIGINT NOT NULL REFERENCES person_plan (id) ON DELETE CASCADE,
++    claim_id BIGINT NOT NULL,
++    PRIMARY KEY (plan_id, claim_id)
++);
