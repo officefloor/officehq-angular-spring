@@ -1,0 +1,64 @@
+{
+  "checkpoint": 217,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp217_shared-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts.\nShow the holders on the claim as <name> <share>, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts.\nShow the holders on the claim as <name> <share>, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "447e393c6b6d4c7f4d4b0c785f03c8e49cfcacc8",
+  "reset_sha": "",
+  "preagent_sha": "599c9e108aa22a0211b13945472e68bcf69a516b",
+  "prev_sha": "599c9e108aa22a0211b13945472e68bcf69a516b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6491495999999999,
+    "input_tokens": 68,
+    "output_tokens": 17819,
+    "cache_read_tokens": 2446128,
+    "cache_creation_tokens": 100409,
+    "num_turns": 36,
+    "duration_ms": 432386,
+    "duration_api_ms": 213606,
+    "model": "claude-opus-5-5",
+    "session_id": "0901f768-0a6c-48d2-ba07-4d39686955e1",
+    "stop_reason": "success",
+    "result_text": "Claim sharing is in, and `bin/e2e` passes: all 4 tests in the spec, including the audit-line checks.\n\n**What it does**\n- **On each claim:** there's now a person select, a share-percent field and a Share button. Holders show in `claim-shares` as `Ben 33.33, Cam 33.33`, in the order the shares were given.\n- **Refusals:** the server refuses a share of 0.00 or less, a share with more than two decimals, the claim's own person, a person who already holds a share, a total over 100.00, and a SETTLED, VOID or DELETED claim. A refusal writes nothing and the claim's error message appears.\n- **Audit:** a successful share writes `CLAIM_SHARED ... person=\u2026 amount=\u2026 date=\u2026 [number=\u2026] with=<person> share=<share>`, then the usual `ROLLUP`/`TOTALS` lines for whatever moved.\n- **Due-totals:** each holder gets the claim's due (late charges included) \u00d7 share \u00f7 100, rounded half to even. The claim's own person counts the due less all the holders' parts. A holder whose due-total would otherwise be n/a (no rate for their grade) shows their part instead, as Cam does in the test. The claim's own `claim-due` still shows the full figure.\n- **Storage:** shares live in a new `claim_share` table, added by migration `V97__claim_share.sql`. The as-of history keeps it with no extra code, because the table references `claim`.\n\n**Where the changes are**\n- **Server:** the new `ClaimShare` class, a `share` method in `ClaimService`, a `POST /claims/{id}/shares` endpoint in `ClaimController`, and a `shares` list on the claim's data.\n- **Rollup:** `Rollup.snapshot` now works out every claim's parts before it sets anyone's due-total, since a holder can be listed before the claim's own person.\n- **Screen:** the people screen works out due-totals itself, so `people.ts` repeats the same arithmetic.\n\n**Limits**\n- **Overdue-totals:** a holder's overdue-total doesn't include their parts. The request only covers due-totals.\n- **Copies:** copying a claim to another sheet doesn't carry its shares, because the people there have different ids.\n- **Removing a holder:** nothing changes a share if its holder is later merged or removed.\n\nSay if you want any of these covered.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6491495999999999,
+        "num_turns": 36,
+        "duration_ms": 432386,
+        "duration_api_ms": 213606,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp217.agent.jsonl",
+  "agent_diff_file": "cp217.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
