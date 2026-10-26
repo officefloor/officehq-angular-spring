@@ -97,6 +97,13 @@ public class Claim {
     private LocalDate dueBy;
 
     /**
+     * The date the claim is deferred until; null for one never deferred. While the sheet's today is before it an
+     * OPEN claim is deferred (see {@link #isDeferredOn}).
+     */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
+    /**
      * The claim's place in the list, newest first: the next place when it is added or moved to another person. The
      * store gives it; a move takes the next through {@link ClaimRepository#relist}.
      */
@@ -127,6 +134,23 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /**
+     * Whether the claim is deferred on the date: OPEN and deferred until a date after it. A deferred claim counts in
+     * no total, is not overdue, cannot be settled and is left unbound by a statement; from its date on it is an OPEN
+     * claim like any other.
+     */
+    public boolean isDeferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public LocalDate getRoundsOn() {

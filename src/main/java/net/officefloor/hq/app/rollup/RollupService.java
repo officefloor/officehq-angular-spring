@@ -76,9 +76,10 @@ public class RollupService {
         BigDecimal dueTotal = ZERO;
         BigDecimal overdueSum = ZERO;
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it
+            // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it;
+            // nor does one deferred on the sheet's today
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
-                    .filter(c -> p.countsLive(c)).toList();
+                    .filter(c -> p.countsLive(c, today)).toList();
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
@@ -164,9 +165,10 @@ public class RollupService {
                 c.isCorrection() ? null : sheet.floorOn(c.getDate()));
     }
 
-    /** Whether a claim is overdue: open (or pending), and due by a date before the sheet's today. */
+    /** Whether a claim is overdue: open (or pending), not deferred, and due by a date before the sheet's today. */
     private static boolean isOverdue(Claim c, LocalDate today) {
-        return c.getStatus().isOpen() && today != null && c.getDueBy() != null && c.getDueBy().isBefore(today);
+        return c.getStatus().isOpen() && today != null && !c.isDeferredOn(today) && c.getDueBy() != null
+                && c.getDueBy().isBefore(today);
     }
 
     private static String text(BigDecimal value) {

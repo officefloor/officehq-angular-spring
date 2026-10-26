@@ -31,16 +31,17 @@ public class ClaimController {
      * when it was settled, or null while its due is live. Opened-by is the user who opened it, or null. Stated is
      * whether its person's last statement binds it, to the stated due (null for n/a). Corrects is the number of the
      * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
-     * the date of the claim it corrects. Log is its status log, oldest first.
+     * the date of the claim it corrects. Deferred-until is the date it was deferred until, or null; it is deferred
+     * while it is OPEN and the sheet's today is before that date. Log is its status log, oldest first.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundsOn, LocalDate dueBy, List<LogLineView> log) {
+            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, List<LogLineView> log) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getLog().stream().map(LogLineView::of).toList());
+                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getLog().stream().map(LogLineView::of).toList());
         }
     }
 
@@ -171,6 +172,18 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody ReassignForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.reassign(user, sheetId, id, form.personId()));
+    }
+
+    /** The date an open claim is to be deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    @PostMapping("/claims/{id}/defer")
+    public ClaimView defer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody DeferForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.defer(user, sheetId, id, form.until()));
     }
 
     @PostMapping("/claims/{id}/void")

@@ -88,7 +88,7 @@ public class PeriodService {
     @Transactional
     public Period close(String by, String sheetId, Long id) {
         // the sheet stays locked until the transaction ends, so no claim in the period changes while it closes
-        sheets.lock(sheetId);
+        LocalDate today = sheets.lock(sheetId).getToday();
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
         if (period.isClosed()) {
@@ -103,7 +103,7 @@ public class PeriodService {
         }
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !person.countsLive(c) || !period.contains(c.getDate())) {
+            if (person == null || !person.countsLive(c, today) || !period.contains(c.getDate())) {
                 continue;
             }
             BigDecimal figure = claimService.due(sheetId, person, c);

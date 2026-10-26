@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -372,12 +372,13 @@ export class People {
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
-  // dated within one of their person's holds that no statement binds.
+  // dated within one of their person's holds that no statement binds, and the deferred ones.
   protected readonly liveClaims = computed(() => {
+    const today = this.session.sheetToday();
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
     const held = (c: Claim) =>
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
-    return this.claims().filter((c) => counts(c) && !(isOpen(c) && !isBound(c) && held(c)));
+    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && held(c)));
   });
   protected readonly liveBy = computed(() => {
     const by = new Map<number, Claim[]>();

@@ -64,7 +64,7 @@ public class StatementService {
 
     /**
      * Takes a statement for the person: records their due-total now (late charges included) and binds each of their claims that counts to
-     * the figure it has now; a claim that does not count (as an open one dated within a hold) is freed (live again).
+     * the figure it has now; a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
      */
     @Transactional
     public Summary take(String by, String sheetId, Long personId) {
@@ -80,7 +80,7 @@ public class StatementService {
         grades.add(person.gradeOn(today));
         int count = 0;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
-            if (!person.countsLive(c)) {
+            if (!person.countsLive(c, today)) {
                 c.unbind();
                 continue;
             }

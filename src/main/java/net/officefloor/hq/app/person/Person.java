@@ -126,10 +126,11 @@ public class Person {
 
     /**
      * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
-     * within a hold that no statement binds.
+     * within a hold that no statement binds, and one deferred on the sheet's today.
      */
-    public boolean countsLive(Claim claim) {
-        return claim.getStatus().counts() && !(claim.getStatus().isOpen() && !claim.isBound()
+    public boolean countsLive(Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && !claim.isDeferredOn(today)
+                && !(claim.getStatus().isOpen() && !claim.isBound()
                 && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
     }
 
