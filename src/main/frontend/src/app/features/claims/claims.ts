@@ -132,6 +132,8 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
+  private submitting = false;
   // Each claim's refused status change, by claim id.
   protected readonly rowErrors = signal<Record<number, string>>({});
 
@@ -181,6 +183,7 @@ export class Claims {
 
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -197,6 +200,7 @@ export class Claims {
     const form = { amount, date: date || null, note: this.note().trim() };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const editing = this.editingId();
+    this.submitting = true;
     try {
       const claim =
         editing === null
@@ -206,6 +210,8 @@ export class Claims {
       this.reset();
     } catch {
       this.error.set(editing === null ? 'Could not add that claim.' : 'Could not save that claim.');
+    } finally {
+      this.submitting = false;
     }
   }
 }

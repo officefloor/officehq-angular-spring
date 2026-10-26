@@ -9,6 +9,8 @@ interface Person {
   id: number;
   name: string;
   grade: string;
+  // Raised by the store on each save; an edit made from an older version is refused.
+  version: number;
 }
 
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
@@ -97,6 +99,10 @@ export class People {
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   protected readonly editingId = signal<number | null>(null);
+  // The version of the person the open editor loaded.
+  private readonly editingVersion = signal(0);
+  // A submit in flight: a second submit before it answers is ignored, so it stores one record.
+  private submitting = false;
   protected readonly error = signal<string | null>(null);
   // Every claim on the sheet, newest first.
   protected readonly claims = signal<Claim[]>([]);
@@ -151,6 +157,7 @@ export class People {
 
   protected edit(p: Person): void {
     this.editingId.set(p.id);
+    this.editingVersion.set(p.version);
     this.name.set(p.name);
     this.grade.set(p.grade);
     this.error.set(null);
@@ -173,6 +180,7 @@ export class People {
 
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -187,22 +195,47 @@ export class People {
     }
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people`;
     const editing = this.editingId();
+    this.submitting = true;
     try {
       if (editing === null) {
         const added = await firstValueFrom(this.http.post<Person>(base, form));
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await firstValueFrom(this.http.put<Person>(`${base}/${editing}`, form));
+        const edit = { ...form, version: this.editingVersion() };
+        const saved = await firstValueFrom(this.http.put<Person>(`${base}/${editing}`, edit));
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (err) {
+      if (err instanceof HttpErrorResponse && err.status === 412 && editing !== null) {
+        await this.reloadEditing(base, editing);
+        return;
+      }
       if (err instanceof HttpErrorResponse && err.status === 409) {
         this.error.set('That name is already in use on this sheet.');
         return;
       }
       this.error.set(editing === null ? 'Could not add that person.' : 'Could not save that person.');
+    } finally {
+      this.submitting = false;
     }
+  }
+
+  /** After a save refused for a stale version: show the person as stored now, with the editor kept open on it. */
+  private async reloadEditing(base: string, id: number): Promise<void> {
+    const message = 'Someone else has saved this person since you opened it. The current values are shown.';
+    try {
+      const current = (await firstValueFrom(this.http.get<Person[]>(base))).find((p) => p.id === id);
+      if (current && this.editingId() === id) {
+        this.people.update((list) => list.map((p) => (p.id === id ? current : p)));
+        this.editingVersion.set(current.version);
+        this.name.set(current.name);
+        this.grade.set(current.grade);
+      }
+    } catch {
+      // the error below still tells the person the save was refused
+    }
+    if (this.editingId() === id) this.error.set(message);
   }
 
   private async fetch(sheet: string): Promise<void> {

@@ -22,15 +22,20 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade) {
+    public record PersonView(Long id, String name, String grade, long version) {
         static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getGrade());
+            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion());
         }
     }
 
     /** A person's fields as the form submits them; the name is stored without surrounding spaces. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
+    /** An edit of a person: its fields and the version of the person the editor loaded. */
+    public record PersonEdit(@NotBlank @Size(max = 200) String name,
+            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
     }
 
     private final PersonService service;
@@ -57,8 +62,8 @@ public class PersonController {
     @PutMapping("/{id}")
     public PersonView update(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @Valid @RequestBody PersonForm form,
+            @PathVariable Long id, @Valid @RequestBody PersonEdit form,
             @SessionAttribute(SessionController.USER) String user) {
-        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade()));
+        return PersonView.of(service.update(user, sheetId, id, form.version(), form.name(), form.grade()));
     }
 }

@@ -187,6 +187,8 @@ export class Rates {
   protected readonly pct = signal('');
   protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
+  // A submit in flight: a second submit before it answers is ignored, so it stores one rate.
+  private submitting = false;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
@@ -194,6 +196,7 @@ export class Rates {
 
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -211,10 +214,13 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd.');
       return;
     }
+    this.submitting = true;
     try {
       await this.store.set(sheet, this.grade(), pct, from || null);
     } catch {
       this.error.set('Could not set that rate.');
+    } finally {
+      this.submitting = false;
     }
   }
 }
