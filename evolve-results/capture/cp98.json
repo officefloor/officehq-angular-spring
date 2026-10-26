@@ -1,0 +1,64 @@
+{
+  "checkpoint": 98,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp98_settle-batches",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "078a531a70c92bd4183979115f9c8b9b89691450",
+  "reset_sha": "",
+  "preagent_sha": "98723b52b950cdcf619600409e737a4b5d475f4e",
+  "prev_sha": "98723b52b950cdcf619600409e737a4b5d475f4e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4751964000000002,
+    "input_tokens": 78,
+    "output_tokens": 16100,
+    "cache_read_tokens": 2459062,
+    "cache_creation_tokens": 82634,
+    "num_turns": 39,
+    "duration_ms": 761516,
+    "duration_api_ms": 224365,
+    "model": "claude-opus-5-5",
+    "session_id": "d306cd34-5f66-444f-a755-bc3ee6def74c",
+    "stop_reason": "success",
+    "result_text": "Settle batches are working and all 4 tests in `bin/e2e` pass.\n\n**What the change does**\n- **Stored data:** a new migration `V60__settle_batch.sql` adds a last-batch counter to each sheet (`sheet.last_settle_batch`, starting at 0) and a batch number to each claim (`claim.settle_batch`, empty for none).\n- **Server:** when a bulk settle settles at least one claim (a claim that goes to PENDING counts), it takes the sheet's next batch number and stamps it on every claim it settled. This works the same way as the existing claim numbering, so two people settling at once never get the same number. A bulk settle that settles nothing uses up no number. A claim settled one at a time gets no batch number. The claim's batch number and the sheet's last batch are now sent to the screen.\n- **Screen:** each claim row has a Batch column (`claim-batch`), and beside the bulk settle button is \"Last batch: N\" (`bulk-settle-batch`), blank until there has been one. Both update right after a bulk settle and when the sheet is re-loaded.\n\n**One choice the request didn't cover:** if a steward rejects a PENDING claim (so it goes back to OPEN), I clear its batch number, because it is no longer settled. A PENDING claim that is approved later keeps its number. No test checks this either way, so say if you want it kept instead.\n\n**Two existing bugs I had to fix to get scenario 2 passing.** Neither comes from this change:\n1. **Delegated users couldn't edit claims.** The page itself blocked anyone set as a viewer, even when a steward had delegated to them, so the edit never reached the server. The server already allows a delegated viewer. I removed that check in `claims.ts` (for the editor and for the in-row amount edit). Plain viewers are still refused, now by the server, and an archived sheet is still refused on the page.\n2. **Missing `for=` on `SNAPSHOT` audit lines.** The spec expects these lines to end with `for=<steward>` when a delegated user changes today, but `Audit.java` deliberately left `SNAPSHOT` out. I followed the spec and updated the comment there; `ROLLUP`, `TOTALS` and `ALERT` still never carry `for=`.\n\nScenario 2 took about 1.1 minutes, much longer than the others. It still passes; I didn't look into why.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4751964000000002,
+        "num_turns": 39,
+        "duration_ms": 761516,
+        "duration_api_ms": 224365,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp98.agent.jsonl",
+  "agent_diff_file": "cp98.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
