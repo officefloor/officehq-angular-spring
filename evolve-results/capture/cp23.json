@@ -1,0 +1,64 @@
+{
+  "checkpoint": 23,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp23_roles-and-clerk-limit",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet's settings assign a role to a user name: clerk (the default for any name) or steward\n(ROLE_SET user=<name> role=<role>). The sheet also has a clerk limit (two decimals; blank means no\nlimit; SETTING_CHANGED key=clerk-limit value=<limit>). A clerk can settle a claim only when its\ndue is at or below the limit; above it, settling is refused with an error on the claim. A claim\nwhose due is n/a is within any limit. Stewards settle anything. The opener still cannot settle\ntheir own claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet's settings assign a role to a user name: clerk (the default for any name) or steward\n(ROLE_SET user=<name> role=<role>). The sheet also has a clerk limit (two decimals; blank means no\nlimit; SETTING_CHANGED key=clerk-limit value=<limit>). A clerk can settle a claim only when its\ndue is at or below the limit; above it, settling is refused with an error on the claim. A claim\nwhose due is n/a is within any limit. Stewards settle anything. The opener still cannot settle\ntheir own claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9cf8a943c47460da2d191ca1937ceeacdd0d0f69",
+  "reset_sha": "",
+  "preagent_sha": "2b8393b9a066d5926020dc2f08f36444d12e7908",
+  "prev_sha": "2b8393b9a066d5926020dc2f08f36444d12e7908",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0451728,
+    "input_tokens": 34,
+    "output_tokens": 14035,
+    "cache_read_tokens": 900164,
+    "cache_creation_tokens": 73038,
+    "num_turns": 19,
+    "duration_ms": 168895,
+    "duration_api_ms": 118937,
+    "model": "claude-opus-5-5",
+    "session_id": "f4189f77-b004-43a4-bf3e-e4a978c88d6b",
+    "stop_reason": "success",
+    "result_text": "Clerks can now only settle claims whose due is at or below the sheet's clerk limit, and stewards can settle anything. `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Stored data** (new migration `V18__roles_clerk_limit.sql`): a `sheet_role` table holds each user name's role on a sheet, and the database only accepts `clerk` or `steward`. A name with no row is a clerk. The sheet gets a `clerk_limit` column, where empty means no limit.\n- **Server** (new `settings` package): you can read the settings and roles and set the clerk limit or a user's role. Each change writes its audit line: `ROLE_SET \u2026 user=<name> role=<role>` and `SETTING_CHANGED \u2026 key=clerk-limit value=<limit>`. A role other than clerk or steward is refused and writes nothing to the audit file.\n- **Settling**: in `ClaimService.changeStatus`, the check runs on the due the claim would be settled at. That is the due its person's latest statement fixed for it, if there is one, otherwise the due at the current rate. The check passes if there is no limit, the due is n/a, the due is at or below the limit, or the user is a steward. Otherwise it refuses, nothing is saved and no audit line is written. The existing rule that the opener can't settle their own claim is unchanged.\n- **Front end** (new `features/settings/settings.ts`, shown on the home screen): a clerk-limit form showing the limit in force, a role form, and a table of roles, all using the test IDs the spec expects. The claim row shows a clear error when a settle is refused for being over the limit.\n\n**Behaviours to know about**\n- Saving the limit at its current value still writes a `SETTING_CHANGED` line; one of the tests expects this.\n- Clearing the limit writes `value=` with nothing after it. The request didn't say how a blank limit should appear in the audit line, so I chose that.\n- The settings form has no from-date field (the test helper skips it when it's missing), so the limit always applies straight away.\n- Role names are matched exactly as typed, so `Vic` and `vic` count as different users.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0451728,
+        "num_turns": 19,
+        "duration_ms": 168895,
+        "duration_api_ms": 118937,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp23.agent.jsonl",
+  "agent_diff_file": "cp23.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
