@@ -135,6 +135,15 @@ public class ClaimController {
     public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to void together, and the reason they are voided with; none while the sheet's
+     *  list of void reasons is empty. */
+    public record BulkVoidForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @Size(max = 100) String reason) {
+    }
+
+    /** What a bulk void did: the claims it voided, and how many were voided and refused. */
+    public record BulkVoidView(int voided, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final BulkChangeService bulk;
 
@@ -249,6 +258,17 @@ public class ClaimController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkRedateForm form) {
         BulkChangeService.Result result = bulk.redate(sheetId.trim(), SignedInUser.name(user), form.ids(), form.date());
         return new BulkRedateView(result.changed().size(), result.refused(),
+                result.changed().stream().map(ClaimView::of).toList());
+    }
+
+    /** Void the selected claims together in list order, each as its own void would; each that cannot be
+     *  voided is left as it is. */
+    @PostMapping("/claims/void")
+    public BulkVoidView voidSelected(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkVoidForm form) {
+        BulkChangeService.Result result = bulk.voidSelected(sheetId.trim(), SignedInUser.name(user), form.ids(),
+                form.reason());
+        return new BulkVoidView(result.changed().size(), result.refused(),
                 result.changed().stream().map(ClaimView::of).toList());
     }
 

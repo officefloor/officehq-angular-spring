@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Opens, settles, moves or re-dates selected claims together. Each is changed on its own, as its own button would,
+/** Opens, settles, moves, re-dates or voids selected claims together. Each is changed on its own, as its own button would,
  *  so one that cannot be changed is left as it is and the others still change; a bulk settle is the
  *  exception: it settles all of them or none. */
 @Service
@@ -80,6 +80,12 @@ public class BulkChangeService {
      *  cannot be re-dated is refused. An id not of the sheet is refused. */
     public Result redate(String sheetId, String user, Collection<Long> ids, LocalDate date) {
         return each(sheetId, user, ids, id -> service.redate(sheetId, user, id, date));
+    }
+
+    /** Void the claims of these ids in list order, each by the rules of voiding one (with the reason,
+     *  while the sheet has void reasons); one that cannot be voided is refused. An id not of the sheet is refused. */
+    public Result voidSelected(String sheetId, String user, Collection<Long> ids, String reason) {
+        return each(sheetId, user, ids, id -> service.voidClaim(sheetId, user, id, reason));
     }
 
     private Result change(String sheetId, String user, Collection<Long> ids, ClaimStatus next) {

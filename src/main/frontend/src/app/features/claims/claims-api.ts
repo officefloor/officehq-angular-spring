@@ -179,6 +179,13 @@ export interface BulkReassignView {
 
 /** What re-dating selected claims together did: how many were re-dated and refused, and the claims
  *  re-dated, in the order they were re-dated. */
+/** What a bulk void did: the claims it voided, in list order, and how many were voided and refused. */
+export interface BulkVoidView {
+  voided: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 export interface BulkRedateView {
   redated: number;
   refused: number;
@@ -475,6 +482,13 @@ export class ClaimsApi {
   /** Re-date the claims of these ids together in list order; each that cannot be re-dated is left as it is. */
   redateSelected(sheetId: string, ids: readonly number[], date: string): Promise<BulkRedateView> {
     return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheetId)}/claims/redate`, { ids, date }));
+  }
+
+  /** Void the claims of these ids together in list order, with the reason (blank: none); each that
+   *  cannot be voided is left as it is. */
+  voidSelected(sheetId: string, ids: readonly number[], reason: string): Promise<BulkVoidView> {
+    return firstValueFrom(this.http.post<BulkVoidView>(`${this.url(sheetId)}/claims/void`,
+      { ids, reason: reason === '' ? null : reason }));
   }
 
   /** Add a draft claim per line of name,amount,date,note, in order; refused as a whole, adding
