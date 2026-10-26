@@ -59,7 +59,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
       [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()"
-      [myReviewsCount]="myReviewsCount()" />
+      [myReviewsCount]="myReviewsCount()" [watchedDueTotal]="watchedDueTotal()" />
     <app-consolidated [ownPeople]="treeFigures()" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
     <app-tree-search />
     <app-duplicates />
@@ -687,6 +687,9 @@ export class People {
     const dues = this.dueCents();
     return money(led.reduce((t, c) => t + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
+  /** The due-totals of the people the signed-in user watches, added up, skipping those that are n/a. */
+  protected readonly watchedDueTotal = computed(() =>
+    money(this.people().filter((p) => p.watched).reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)));
   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
   protected readonly sheetDueTotal = computed(() => {
     const figures: number[] = [];

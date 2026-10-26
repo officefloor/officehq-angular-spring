@@ -5,7 +5,7 @@ import { StatusSummary } from './summary';
 // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
 // each status as the summary counts them, the sheet's due-total and overdue-total, and
 // the signed-in user's own when a person on the sheet has their name or alias, and their crew total
-// when that person leads a crew, and how many REVIEW claims are assigned to the signed-in user.
+// when that person leads a crew, and how many REVIEW claims are assigned to the signed-in user, and the due-totals of the people they watch added up.
 @Component({
   selector: 'app-sheet-header',
   imports: [FigurePipe],
@@ -30,6 +30,8 @@ import { StatusSummary } from './summary';
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</dd>
         <dt>My reviews</dt>
         <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
+        <dt>Watched due</dt>
+        <dd data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</dd>
       </dl>
     </section>
   `,
@@ -46,4 +48,6 @@ export class SheetHeader {
   readonly myCrewDueTotal = input.required<string>();
   /** How many REVIEW claims are assigned to the signed-in user. */
   readonly myReviewsCount = input.required<number>();
+  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
+  readonly watchedDueTotal = input.required<string>();
 }
