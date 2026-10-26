@@ -1,0 +1,378 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8ab3216a..3cca6a76 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -49,6 +49,22 @@ export function keepsFigure(c: Claim): boolean {
+   return c.settledDue !== null || (c.stated && c.statedDue !== null);
+ }
+ 
++/** The date (yyyy-mm-dd) the given number of days after the date. */
++export function addDays(date: string, days: number): string {
++  const [y, m, d] = date.split('-').map(Number);
++  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
++}
++
++/** The date a claim is due by: its date plus the sheet's terms. */
++export function dueByOf(c: Claim, terms: number): string {
++  return addDays(c.date, terms);
++}
++
++/** Whether a claim is overdue: open, and due by a date before the sheet's today. */
++export function overdue(c: Claim, terms: number, today: string | null): boolean {
++  return c.status === 'OPEN' && today !== null && dueByOf(c, terms) < today;
++}
++
+ const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
+ 
+ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+@@ -99,7 +115,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
+       <thead>
+         <tr>
+-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
++          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
+           <th scope="col"><span class="visually-hidden">Actions</span></th>
+         </tr>
+       </thead>
+@@ -111,6 +127,8 @@ export function claimedTotal(claims: readonly Claim[]): string {
+             <td data-testid="claim-date">{{ c.date }}</td>
+             <td data-testid="claim-note">{{ c.note }}</td>
+             <td data-testid="claim-due">{{ figureOf(c, rates(), settings.floor()) ?? 'n/a' }}</td>
++            <td data-testid="claim-due-by">{{ dueByOf(c, settings.terms()) }}</td>
++            <td data-testid="claim-overdue">{{ overdue(c, settings.terms(), session.sheetToday()) ? 'yes' : 'no' }}</td>
+             <td data-testid="claim-status">{{ c.status }}</td>
+             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+@@ -143,7 +161,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+ })
+ export class Claims {
+   private readonly http = inject(HttpClient);
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
+   private readonly periods = inject(PeriodStore);
+   protected readonly settings = inject(SettingsStore);
+ 
+@@ -167,6 +185,8 @@ export class Claims {
+   protected readonly rowErrors = signal<Record<number, string>>({});
+ 
+   protected readonly figureOf = figureOf;
++  protected readonly dueByOf = dueByOf;
++  protected readonly overdue = overdue;
+ 
+   protected value(e: Event): string {
+     return (e.target as HTMLInputElement).value;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 13ea7e17..cfa59826 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
++import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure, overdue } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
+ import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+@@ -101,11 +101,14 @@ interface StatementView {
+ 
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
++      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+ 
+       <table>
+         <thead>
+           <tr>
+             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
++            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+@@ -118,6 +121,8 @@ interface StatementView {
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
++              <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
++              <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-statement-count">{{ statementsBy().get(p.id)?.count ?? 0 }}</td>
+               <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) }}</td>
+               <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
+@@ -251,6 +256,30 @@ export class People {
+       .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor) }));
+   });
+   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
++  // The claims counted live that are overdue: open and due by a date before the sheet's today.
++  protected readonly overdueClaims = computed(() => {
++    const terms = this.settings.terms();
++    const today = this.session.sheetToday();
++    return this.liveClaims().filter((c) => overdue(c, terms, today));
++  });
++  protected readonly overdueBy = computed(() => {
++    const by = new Map<number, Claim[]>();
++    for (const c of this.overdueClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
++    return by;
++  });
++  // Each person's overdue-total: the sum of their overdue claims' figures, skipping n/a.
++  protected readonly overdueTotalBy = computed(() => {
++    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
++    const rates = this.rates.rates();
++    const floor = this.settings.floor();
++    const by = new Map<number, string>();
++    for (const [id, list] of this.overdueBy()) {
++      const own = rates.get(grades.get(id) ?? '') ?? [];
++      by.set(id, sumSkippingNa(list.map((c) => figureOf(c, own, floor))));
++    }
++    return by;
++  });
++  protected readonly overdueTotal = computed(() => sumSkippingNa([...this.overdueTotalBy().values()]));
+ 
+   constructor() {
+     // Re-read the people from the store each time a sheet is loaded.
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index c7362f86..f4907667 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -13,6 +13,8 @@ interface SettingsView {
+   clerkLimit: string | null;
+   // The least a claim's live due can be, with two decimals.
+   floor: string;
++  // The days a claim has to be settled in: its due-by is its date plus these.
++  terms: number;
+ }
+ 
+ export const ROLES = ['clerk', 'steward'];
+@@ -22,8 +24,13 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+ /** The floor a sheet starts with. */
+ export const DEFAULT_FLOOR = '1.00';
+ 
++/** The terms a sheet starts with, in days. */
++export const DEFAULT_TERMS = 14;
++
++const DAYS = /^\d{1,5}$/;
++
+ // The active sheet's settings: the role set for each user name (any other name is a clerk), the clerk limit and
+-// the floor.
++// the floor and the terms.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsStore {
+   private readonly http = inject(HttpClient);
+@@ -32,12 +39,14 @@ export class SettingsStore {
+   readonly roles = signal<readonly RoleView[]>([]);
+   readonly clerkLimit = signal<string | null>(null);
+   readonly floor = signal<string>(DEFAULT_FLOOR);
++  readonly terms = signal<number>(DEFAULT_TERMS);
+ 
+   /** Re-read the sheet's settings from the store. */
+   async load(sheet: string): Promise<void> {
+     this.roles.set([]);
+     this.clerkLimit.set(null);
+     this.floor.set(DEFAULT_FLOOR);
++    this.terms.set(DEFAULT_TERMS);
+     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+     const [roles, settings] = await Promise.all([
+       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
+@@ -47,6 +56,7 @@ export class SettingsStore {
+       this.roles.set(roles);
+       this.clerkLimit.set(settings.clerkLimit);
+       this.floor.set(settings.floor);
++      this.terms.set(settings.terms);
+     }
+   }
+ 
+@@ -72,9 +82,16 @@ export class SettingsStore {
+     );
+     if (this.session.sheetId() === sheet) this.floor.set(s.floor);
+   }
++
++  async setTerms(sheet: string, value: number): Promise<void> {
++    const s = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/terms`, { value }),
++    );
++    if (this.session.sheetId() === sheet) this.terms.set(s.terms);
++  }
+ }
+ 
+-// The sheet's settings: the clerk limit, the floor, and the role each user name has.
++// The sheet's settings: the clerk limit, the floor, the terms, and the role each user name has.
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -97,6 +114,14 @@ export class SettingsStore {
+           [value]="floor()"
+           (input)="floor.set(value($event)); floorChanged = true; settingsError.set(null)"
+         />
++        <label for="setting-terms">Terms (days a claim is due by after its date)</label>
++        <input
++          id="setting-terms"
++          data-testid="setting-terms"
++          inputmode="numeric"
++          [value]="terms()"
++          (input)="terms.set(value($event)); termsChanged = true; settingsError.set(null)"
++        />
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -104,6 +129,7 @@ export class SettingsStore {
+       </form>
+       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
+       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floor() }}</strong></p>
++      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
+ 
+       <form (submit)="saveRole($event)" aria-label="Set role">
+         <label for="role-user">User name</label>
+@@ -156,9 +182,11 @@ export class Settings {
+   protected readonly roles = ROLES;
+   protected readonly limit = signal('');
+   protected readonly floor = signal('');
++  protected readonly terms = signal('');
+   // Which settings were typed into since the last save; a save stores only those.
+   protected limitChanged = false;
+   protected floorChanged = false;
++  protected termsChanged = false;
+   protected readonly user = signal('');
+   protected readonly role = signal('');
+   protected readonly settingsError = signal<string | null>(null);
+@@ -199,6 +227,11 @@ export class Settings {
+       this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    const terms = this.terms().trim();
++    if (this.termsChanged && !DAYS.test(terms)) {
++      this.settingsError.set('Enter terms as a whole number of days, 0 or more.');
++      return;
++    }
+     this.submitting = true;
+     try {
+       if (this.limitChanged) {
+@@ -209,6 +242,10 @@ export class Settings {
+         await this.store.setFloor(sheet, floor);
+         this.floorChanged = false;
+       }
++      if (this.termsChanged) {
++        await this.store.setTerms(sheet, Number(terms));
++        this.termsChanged = false;
++      }
+     } catch {
+       this.settingsError.set('Could not save the settings.');
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 2d6b62ac..3a283c40 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.settings;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+@@ -28,12 +30,12 @@ public class SettingsController {
+ 
+     /**
+      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
+-     * the floor carries two decimals.
++     * the floor carries two decimals, and the terms are whole days.
+      */
+-    public record SettingsView(String clerkLimit, String floor) {
++    public record SettingsView(String clerkLimit, String floor, int terms) {
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+-                    sheet.getFloor().toPlainString());
++                    sheet.getFloor().toPlainString(), sheet.getTerms());
+         }
+     }
+ 
+@@ -45,6 +47,10 @@ public class SettingsController {
+     public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
+     }
+ 
++    /** The terms as the form submits them: a whole number of days, 0 or more. */
++    public record TermsForm(@NotNull @Min(0) @Max(99999) Integer value) {
++    }
++
+     public record RoleView(String user, String role) {
+         static RoleView of(SheetRole r) {
+             return new RoleView(r.getUser(), r.getRole());
+@@ -82,6 +88,13 @@ public class SettingsController {
+         return SettingsView.of(service.setFloor(user, sheetId, form.value()));
+     }
+ 
++    @PutMapping("/settings/terms")
++    public SettingsView setTerms(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody TermsForm form, @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setTerms(user, sheetId, form.value()));
++    }
++
+     /** The roles set on the sheet, by user name; a name not listed is a clerk. */
+     @GetMapping("/roles")
+     public List<RoleView> roles(
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index b725e081..2a554844 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** A sheet's settings: the role each user name has, and the clerk limit. */
++/** A sheet's settings: the role each user name has, the clerk limit, the floor and the terms. */
+ @Service
+ public class SettingsService {
+ 
+@@ -76,6 +76,16 @@ public class SettingsService {
+         return saved;
+     }
+ 
++    /** Sets the sheet's terms: the days after a claim's date it is due by. */
++    @Transactional
++    public Sheet setTerms(String by, String sheetId, int terms) {
++        Sheet sheet = sheets.lock(sheetId);
++        sheet.setTerms(terms);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
++        return saved;
++    }
++
+     /**
+      * Sets the sheet's floor: the least a claim's live due can be. Settled, stated and closed-period figures keep
+      * what they were; the live figures it moves are rolled up.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index e175eba9..d860fa52 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -31,6 +31,10 @@ public class Sheet {
+     @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
+     private BigDecimal floor = new BigDecimal("1.00");
+ 
++    /** The days a claim has to be settled in: its due-by is its date plus these. */
++    @Column(name = "terms", nullable = false)
++    private int terms = 14;
++
+     protected Sheet() {
+     }
+ 
+@@ -71,4 +75,12 @@ public class Sheet {
+     public void setFloor(BigDecimal floor) {
+         this.floor = floor;
+     }
++
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V20__sheet_terms.sql b/src/main/resources/db/migration/V20__sheet_terms.sql
+new file mode 100644
+index 00000000..114b37d0
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__sheet_terms.sql
+@@ -0,0 +1,2 @@
++-- The days a claim has to be settled in: its due-by is its date plus these; it starts at 14.
++ALTER TABLE sheet ADD COLUMN terms INT DEFAULT 14 NOT NULL CHECK (terms >= 0);

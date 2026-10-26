@@ -1,0 +1,64 @@
+{
+  "checkpoint": 25,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp25_due-by-and-overdue",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has terms: a number of days (settings, SETTING_CHANGED key=terms value=<days>), 14\nunless changed. A claim's due-by is its date plus the terms in force. A claim is overdue when it\nis OPEN and its due-by is before the sheet's today. Show due-by and overdue yes/no on each claim,\nand per person and for the sheet an overdue count and overdue-total (the due of the overdue\nclaims that count).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has terms: a number of days (settings, SETTING_CHANGED key=terms value=<days>), 14\nunless changed. A claim's due-by is its date plus the terms in force. A claim is overdue when it\nis OPEN and its due-by is before the sheet's today. Show due-by and overdue yes/no on each claim,\nand per person and for the sheet an overdue count and overdue-total (the due of the overdue\nclaims that count).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3374331593223db2d535fd36f05652d29b4f3e14",
+  "reset_sha": "",
+  "preagent_sha": "1a891ad24a3ec68ae362d17f8e7520fdfeffbe5d",
+  "prev_sha": "1a891ad24a3ec68ae362d17f8e7520fdfeffbe5d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8258488000000002,
+    "input_tokens": 26,
+    "output_tokens": 8488,
+    "cache_read_tokens": 561644,
+    "cache_creation_tokens": 67957,
+    "num_turns": 16,
+    "duration_ms": 188954,
+    "duration_api_ms": 73938,
+    "model": "claude-opus-5-5",
+    "session_id": "5b7233ce-62a3-4a9f-81ae-c310aab4d192",
+    "stop_reason": "success",
+    "result_text": "The sheet now has terms, and each claim shows when it's due and whether it's overdue. Per person and for the whole sheet there's an overdue count and an overdue total. `bin/e2e` passes all 4 tests.\n\n**Stored data and server**\n- A new migration, `V20__sheet_terms.sql`, adds a `terms` column to the sheet. It's a whole number of days, 0 or more, and starts at 14.\n- The settings view now includes `terms`. The new `PUT /api/sheets/{id}/settings/terms` saves it and writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=terms value=<days>` to the audit file.\n- Changing terms writes no ROLLUP or TOTALS lines, because neither of those figures depends on terms.\n\n**Front end**\n- **Settings:** a terms field (`setting-terms`) and the value in force (`setting-terms-current`). A save is refused with `settings-error` unless the value is a whole number of days. The server caps it at 99999.\n- **Claim rows:** `claim-due-by` is the claim's date plus the terms. `claim-overdue` says yes when the claim is OPEN and its due-by is before the sheet's today.\n- **Person rows and sheet totals:** `person-overdue-count` and `person-overdue-total`, plus `rollup-overdue-count` and `rollup-overdue-total`.\n\n**Which claims count:** I read \"the overdue claims that count\" as the claims the existing claimed and due totals already include. So a held person's open claims are left out of the overdue figures. Each claim adds the same due amount it shows, and claims whose due is n/a are skipped.\n\n**Decision for you:** a held person's open claim past its due-by still shows \"overdue: yes\" on its own row, but isn't counted in any total. The tests pass either way. If you'd rather such claims show \"no\", it's a one-line change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8258488000000002,
+        "num_turns": 16,
+        "duration_ms": 188954,
+        "duration_api_ms": 73938,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp25.agent.jsonl",
+  "agent_diff_file": "cp25.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
