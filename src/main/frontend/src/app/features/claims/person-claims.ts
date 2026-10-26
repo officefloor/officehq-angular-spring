@@ -29,7 +29,7 @@ function capReached(e: unknown): boolean {
     && e.error.message.startsWith('The person already has ');
 }
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected', resettle: 're-settled',
-  delete: 'deleted', restore: 'restored' };
+  delete: 'deleted', restore: 'restored', review: 'reviewed' };
 
 // One person's claims, newest first, with one form to add a claim or edit one.
 @Component({
@@ -132,6 +132,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Comment claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+          <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
+            [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
@@ -459,6 +461,8 @@ export class PersonClaims {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden && (action === 'approve' || action === 'reject')
           ? `Only a steward who did not open or last edit this claim can ${action} it.`
+          : forbidden && action === 'review'
+          ? 'Only a steward can review this claim.'
           : forbidden && action === 'resettle'
           ? 'Only a steward can re-settle this claim.'
           : forbidden && action === 'void' && claim.status === 'SETTLED'

@@ -80,6 +80,10 @@ public class SettingService implements ActingFor {
      *  no value means none. */
     public static final String NOTE_THRESHOLD = "note-threshold";
 
+    /** The key of the review threshold: a claim whose due is above the one in force on its date goes to
+     *  REVIEW when opened, for a steward to review; no value means none. Dated. */
+    public static final String REVIEW_THRESHOLD = "review-threshold";
+
     /** The key of the grace days: once the sheet's today is changed to after an open period's to-date plus
      *  these days, the period is closed; no value means off. Not dated. */
     public static final String GRACE_DAYS = "grace-days";
@@ -675,6 +679,20 @@ public class SettingService implements ActingFor {
     public BigDecimal setNoteThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         BigDecimal value = threshold == null ? null : threshold.setScale(2);
         record(sheetId, user, NOTE_THRESHOLD, value == null ? "" : value.toPlainString(), from);
+        return value;
+    }
+
+    /** The review threshold in force on the date, with two decimals, or null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThreshold(String sheetId, LocalDate date) {
+        return dated(sheetId).reviewThresholdOn(date);
+    }
+
+    /** Record the sheet's review threshold, kept to two decimals, from a date; null clears it from then. */
+    @Transactional
+    public BigDecimal setReviewThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        BigDecimal value = threshold == null ? null : threshold.setScale(2);
+        record(sheetId, user, REVIEW_THRESHOLD, value == null ? "" : value.toPlainString(), from);
         return value;
     }
 

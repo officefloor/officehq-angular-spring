@@ -252,6 +252,13 @@ public class ClaimController {
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
 
+    /** Review a claim waiting for review, opening it; only a steward may. */
+    @PostMapping("/claims/{id}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return ClaimView.of(service.review(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
     /** Approve a pending claim, settling it. */
     @PostMapping("/claims/{id}/approve")
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,

@@ -297,15 +297,18 @@ public class ClaimService {
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, person, claim, dueNow);
-        if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, due(sheetId, person, claim));
+        BigDecimal dueOpening = next == ClaimStatus.OPEN ? due(sheetId, person, claim) : null;
+        if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, dueOpening);
         if (next == ClaimStatus.OPEN) refuseIfCapped(sheetId, claim);
+        // Opened with a due above the review threshold, it waits for a steward's review, with no number yet.
+        if (next == ClaimStatus.OPEN && isAboveReviewThreshold(sheetId, claim, dueOpening)) next = ClaimStatus.REVIEW;
         // Settled one at a time until a bulk settle marks it with its batch.
         if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
         if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
         claim.setStatus(next);
-        if (next == ClaimStatus.OPEN) claim.setOpenedBy(user);
+        if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) claim.setOpenedBy(user);
         // A voided claim keeps its number, which is never given to another claim.
         claim.setNumber(number);
         if (next == ClaimStatus.SETTLED) claim.setSettledDue(dueNow);
@@ -634,6 +637,34 @@ public class ClaimService {
         return saved;
     }
 
+    /** Review a REVIEW claim: it is OPEN, given the next number; who opened it stays as it was. Refused
+     *  unless the user is a steward of the sheet, and for a claim that is not REVIEW or whose due-by is
+     *  inside a closed period. */
+    @Transactional
+    public Claim review(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reviews a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not waiting for review.");
+        }
+        refuseIfCapped(sheetId, claim);
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        claim.setNumber(nextNumber(sheetId, claim));
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_REVIEWED", user, person, saved, null, "");
+        recordChange("CLAIM_OPENED", user, person, saved);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Re-settle a SETTLED claim: its due is frozen again at what it would be today as an open claim
      *  bound by no statement (today's rates, grades, floor and late charge). Refused unless the user is
      *  a steward of the sheet, and for a claim that is not SETTLED or is dated inside a closed period. */
@@ -716,11 +747,11 @@ public class ClaimService {
     /** The permission matrix's action for each status a claim is moved to by opening, settling or voiding it. */
     private static final Map<ClaimStatus, String> ACTIONS = Map.of(
             ClaimStatus.OPEN, "open", ClaimStatus.SETTLED, "settle", ClaimStatus.PENDING, "settle",
-            ClaimStatus.VOID, "void");
+            ClaimStatus.VOID, "void", ClaimStatus.REVIEW, "open");
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED", ClaimStatus.PENDING, "CLAIM_PENDING",
-            ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED");
+            ClaimStatus.SETTLED, "CLAIM_SETTLED", ClaimStatus.VOID, "CLAIM_VOIDED", ClaimStatus.REVIEW, "CLAIM_REVIEW");
 
     private static String text(BigDecimal due) {
         return due == null ? "n/a" : due.toPlainString();
@@ -770,6 +801,14 @@ public class ClaimService {
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
                             + "; add a proof before it is settled.");
         }
+    }
+
+    /** Whether a claim being opened with the due given goes to REVIEW: its due is above the review
+     *  threshold in force on its date (a due of n/a, or no threshold, does not). */
+    private boolean isAboveReviewThreshold(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null) return false;
+        BigDecimal threshold = settings.reviewThreshold(sheetId, claim.getDate());
+        return threshold != null && due.compareTo(threshold) > 0;
     }
 
     /** Refuse opening a claim with an empty note whose due is above the sheet's note threshold in force

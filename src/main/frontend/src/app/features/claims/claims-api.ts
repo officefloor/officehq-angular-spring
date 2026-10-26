@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { RateView, dueCents, rateInForce } from '../rates/rates-api';
 
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore' | 'review';
 
 /** An amount as a form takes it: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -351,7 +351,9 @@ export class ClaimsApi {
   /** Move a claim to its next status: refused when its status does not allow it, and settling or
    *  approving is refused (403) to the user who opened or last edited the claim; approving and rejecting (with a
    *  reason) a PENDING claim, and re-settling a SETTLED one, are refused (403) to all but a steward. A DRAFT
-   *  is deleted, and a DELETED claim restored as a DRAFT only on the sheet's today it was deleted. */
+   *  is deleted, and a DELETED claim restored as a DRAFT only on the sheet's today it was deleted. Opening a
+   *  claim whose due is above the review threshold leaves it REVIEW, which a steward's review makes OPEN
+   *  (refused, 403, to all but a steward). */
   act(sheetId: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' || action === 'void' ? { reason: reason ?? '' } : {};
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/${action}`, body));

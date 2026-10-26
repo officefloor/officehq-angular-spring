@@ -28,7 +28,7 @@ import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } f
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
 import { ImportPeople } from './import-people';

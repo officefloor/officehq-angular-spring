@@ -142,6 +142,11 @@ function settled(control: AbstractControl): void {
         <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" />
         <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+        <label for="setting-review-threshold">Review threshold (a claim due above it goes to review when opened; blank: none)</label>
+        <input id="setting-review-threshold" data-testid="setting-review-threshold" formControlName="reviewThreshold" inputmode="decimal" />
+        <label for="setting-review-threshold-from">Review threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
+        <input id="setting-review-threshold-from" data-testid="setting-review-threshold-from" formControlName="reviewThresholdFrom" />
+        <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
         <label for="setting-grace-days">Grace days (days after an open period's to-date before a change of today closes it; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
         <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
@@ -260,6 +265,7 @@ export class Settings {
   protected readonly cap = computed(() => this.now('cap'));
   protected readonly proofThreshold = computed(() => this.now('proof-threshold'));
   protected readonly noteThreshold = computed(() => this.now('note-threshold'));
+  protected readonly reviewThreshold = computed(() => this.now('review-threshold'));
   protected readonly graceDays = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
@@ -289,6 +295,8 @@ export class Settings {
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+    reviewThreshold: new FormControl('', { nonNullable: true }),
+    reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
@@ -412,7 +420,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -420,6 +428,7 @@ export class Settings {
       { label: 'terms', control: termsFrom }, { label: 'late percent', control: latePctFrom },
       { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
       { label: 'note threshold', control: noteThresholdFrom },
+      { label: 'review threshold', control: reviewThresholdFrom },
       ...GRADES.map((g) => ({ label: `terms of grade ${g}`, control: this.gradeTermsFromForm.controls[g] })),
       ...GRADES.map((g) => ({ label: `grace of grade ${g}`, control: this.gradeGraceFromForm.controls[g] })),
       ...GRADES.map((g) => ({ label: `proof threshold of grade ${g}`, control: this.gradeProofThresholdFromForm.controls[g] })),
@@ -443,6 +452,7 @@ export class Settings {
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
+    const reviewThresholdValue = reviewThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     const entryDateValue = entryDate.value.trim();
     const potValue = pot.value.trim();
@@ -512,6 +522,10 @@ export class Settings {
     }
     if (dirty(noteThreshold, noteThresholdFrom) && noteThresholdValue !== '' && !MONEY.test(noteThresholdValue)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (dirty(reviewThreshold, reviewThresholdFrom) && reviewThresholdValue !== '' && !MONEY.test(reviewThresholdValue)) {
+      this.settingsError.set('Type a review threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (changed(graceDays) && graceDaysValue !== '' && (!DAYS.test(graceDaysValue) || Number(graceDaysValue) > 36500)) {
@@ -628,6 +642,13 @@ export class Settings {
           fromOf(noteThresholdFrom));
         settled(noteThreshold);
         settled(noteThresholdFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      if (dirty(reviewThreshold, reviewThresholdFrom)) {
+        const settings = await this.api.setReviewThreshold(sheet.id, reviewThresholdValue === '' ? null : reviewThresholdValue,
+          fromOf(reviewThresholdFrom));
+        settled(reviewThreshold);
+        settled(reviewThresholdFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
       if (changed(graceDays)) {

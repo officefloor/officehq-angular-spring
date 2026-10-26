@@ -119,6 +119,11 @@ export class SettingsApi {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/note-threshold`, { value, from }));
   }
 
+  /** Record the review threshold from a date (null: the sheet's today); null clears it from then, leaving none. */
+  setReviewThreshold(sheetId: string, value: string | null, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/review-threshold`, { value, from }));
+  }
+
   /** Record the floor from a date (null: the sheet's today). */
   setFloor(sheetId: string, value: string, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value, from }));

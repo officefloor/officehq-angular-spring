@@ -97,6 +97,11 @@ public class SettingController {
             LocalDate from) {
     }
 
+    /** The review threshold as entered; none means no threshold. */
+    public record ReviewThresholdForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
+    }
+
     /** The floor as entered. */
     public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
             LocalDate from) {
@@ -297,6 +302,15 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid NoteThresholdForm form) {
         String id = sheetId.trim();
         service.setNoteThreshold(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
+    }
+
+    /** Set the sheet's review threshold, or clear it. */
+    @PutMapping("/settings/review-threshold")
+    public SettingsView setReviewThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ReviewThresholdForm form) {
+        String id = sheetId.trim();
+        service.setReviewThreshold(id, SignedInUser.name(user), form.value(), form.from());
         return view(id);
     }
 
