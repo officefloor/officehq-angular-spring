@@ -2,7 +2,7 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { DashboardApi, DashboardView } from './dashboard-api';
 
-// A steward's dashboard over the sheet: how many claims are PENDING, how many are in REVIEW, and how many
+// A steward's dashboard over the sheet and all its descendants: how many claims are PENDING, how many are in REVIEW, and how many
 // are overdue and count. A user who is not a steward sees the cells empty. Re-read each time a sheet is
 // loaded; while the screen shows the sheet as of a date, as it stood then, for the role the user had then.
 @Component({

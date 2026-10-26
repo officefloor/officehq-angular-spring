@@ -76,7 +76,7 @@ public class ConsolidatedService {
      *  the end of that day: only within a transaction that is rolled back (the as-of view's). */
     @Transactional(readOnly = true)
     public Descendants descendantsOf(String sheetId, LocalDate asOf) {
-        Set<String> found = asOf == null ? descendantsNow(sheetId) : descendantsAsOf(sheetId, asOf);
+        Set<String> found = descendantSheets(sheetId, asOf);
         int peopleCount = 0;
         BigDecimal due = BigDecimal.ZERO;
         BigDecimal overdue = BigDecimal.ZERO;
@@ -141,6 +141,12 @@ public class ConsolidatedService {
         }
         gradeDue.forEach((grade, total) -> totals.put(grade.name(), text(total)));
         return totals;
+    }
+
+    /** The sheet's descendants, nearest first: as the store holds them now, or with the date, as every sheet
+     *  of the tree stood at the end of that day (only within the as-of view's rolled back transaction). */
+    Set<String> descendantSheets(String sheetId, LocalDate asOf) {
+        return asOf == null ? descendantsNow(sheetId) : descendantsAsOf(sheetId, asOf);
     }
 
     private Set<String> descendantsNow(String sheetId) {
