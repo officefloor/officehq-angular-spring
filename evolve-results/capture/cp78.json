@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "73770e65470a2da7589d599a2f8650d5c90ce07e",
+  "reset_sha": "",
+  "preagent_sha": "11ee6352d55479e8e41a23398149fde083debaa8",
+  "prev_sha": "11ee6352d55479e8e41a23398149fde083debaa8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6103862,
+    "input_tokens": 6,
+    "output_tokens": 484,
+    "cache_read_tokens": 118610,
+    "cache_creation_tokens": 2487,
+    "num_turns": 2,
+    "duration_ms": 6904,
+    "duration_api_ms": 50933,
+    "model": "claude-opus-5-5",
+    "session_id": "0c9dc942-8497-4c72-bb7d-e2d1ce84f436",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows their due split into three age buckets, and all 4 tests in `bin/e2e` pass.\n\nThe three new columns are `person-aged-0-30`, `person-aged-31-60` and `person-aged-61`:\n- **Which claims:** only OPEN and PENDING claims that already count toward the person's due total, so claims that are on hold or deferred are left out the same way.\n- **Age:** the days from the claim's date to the sheet's today. A claim dated after today goes in 0\u201330.\n- **Amount:** each claim adds the same due it contributes to the person's due total, including any late charge and floor.\n\nThe whole change is in `src/main/frontend/src/app/features/people/people.ts`. The buckets are worked out in the browser, the same way the person's due total already is, so the stored data, the server and the audit file are unchanged. One case the tests don't cover: if the sheet has a cap, the buckets show the due before the cap is applied, so they can add up to more than the capped due total.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6103862,
+        "num_turns": 2,
+        "duration_ms": 6904,
+        "duration_api_ms": 50933,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
