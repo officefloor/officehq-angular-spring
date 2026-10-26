@@ -13,10 +13,13 @@ export interface PeriodView {
   // A closed period keeps the due-total fixed when it was closed; no claim dated in it can change.
   closed: boolean;
   closedTotal: string | null;
+  // Each person's due-total fixed when it was closed, by person id; empty while it is open.
+  closedPersonTotals: Record<string, string>;
 }
 
-/** A counted claim's date and the figure it totals (null for n/a). */
+/** A counted claim's person, date and the figure it totals (null for n/a). */
 export interface DatedFigure {
+  personId: number;
   date: string;
   figure: string | null;
 }
@@ -34,21 +37,39 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
 }
 
 /**
- * Each period's due-total, by period id: a closed one's fixed total, else the figures of the counted claims dated
- * in it, skipping n/a.
+ * The person's due-total for each period, by period id: a closed one's figure fixed for them when it was closed
+ * (0.00 for a person added since), else the figures of their counted claims dated in it, skipping n/a.
  */
-export function periodDueTotals(
+export function personPeriodDueTotals(
   periods: readonly PeriodView[],
+  personId: number,
   figures: readonly DatedFigure[],
 ): Map<number, string> {
   const by = new Map<number, (string | null)[]>();
   for (const p of periods) by.set(p.id, []);
   for (const f of figures) {
+    if (f.personId !== personId) continue;
     const p = periodOn(periods, f.date);
     if (p) by.get(p.id)?.push(f.figure);
   }
-  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
-  return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
+  return new Map(
+    periods.map((p) => [
+      p.id,
+      p.closed ? (p.closedPersonTotals[personId] ?? '0.00') : sumSkippingNa(by.get(p.id) ?? []),
+    ]),
+  );
+}
+
+/** Each period's due-total, by period id: the sum of the people's due-totals for it. */
+export function periodDueTotals(
+  periods: readonly PeriodView[],
+  figures: readonly DatedFigure[],
+): Map<number, string> {
+  // everyone with a figure for some period: a counted claim, or one fixed when a period closed
+  const people = new Set(figures.map((f) => f.personId));
+  for (const p of periods) for (const id of Object.keys(p.closedPersonTotals)) people.add(Number(id));
+  const each = [...people].map((id) => personPeriodDueTotals(periods, id, figures));
+  return new Map(periods.map((p) => [p.id, sumSkippingNa(each.map((m) => m.get(p.id) ?? null))]));
 }
 
 // The periods of the active sheet, by from-date.

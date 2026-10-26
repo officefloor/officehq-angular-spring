@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, overdue } from '../claims/claims';
-import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
+import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
@@ -170,6 +170,9 @@ interface StatementView {
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th>
+            @for (pd of periods.list(); track pd.id) {
+              <th scope="col">Due in {{ pd.name }}</th>
+            }
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -191,6 +194,11 @@ interface StatementView {
               <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
+              @for (pd of periods.list(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
+                  {{ periodDueBy().get(p.id)?.get(pd.id) ?? '0.00' }}
+                </td>
+              }
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -284,7 +292,7 @@ export class People {
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
   private readonly settings = inject(SettingsStore);
-  private readonly periods = inject(PeriodStore);
+  protected readonly periods = inject(PeriodStore);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -396,7 +404,7 @@ export class People {
     for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
     return by;
   });
-  // Every claim counted live: its date and the figure it totals, for the periods' due-totals.
+  // Every claim counted live: its person, its date and the figure it totals, for the periods' due-totals.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.rates();
@@ -404,8 +412,15 @@ export class People {
     const late = this.settings.lateness();
     return this.liveClaims().map((c) => {
       const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
-      return { date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
+      return { personId: c.personId, date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
     });
+  });
+  // Each person's due-total for each period, by person id then period id: a closed period's figure fixed for them
+  // when it closed, else their counted claims' figures dated in it, skipping n/a.
+  protected readonly periodDueBy = computed(() => {
+    const periods = this.periods.list();
+    const figures = this.countedFigures();
+    return new Map(this.people().map((p) => [p.id, personPeriodDueTotals(periods, p.id, figures)]));
   });
   // Each person as the summary counts them: grade today, due-total and whether retired.
   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {

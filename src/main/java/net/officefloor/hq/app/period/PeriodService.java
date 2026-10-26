@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -80,7 +81,8 @@ public class PeriodService {
     }
 
     /**
-     * Closes the period, fixing its due-total now: the figures of the counted claims dated in it, skipping n/a.
+     * Closes the period, fixing each person's due-total for it now (the figures of their counted claims dated in
+     * it, skipping n/a) and its own, the sum of those.
      * Refused when it is already closed.
      */
     @Transactional
@@ -94,7 +96,11 @@ public class PeriodService {
         }
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        // every person on the sheet now gets a figure, 0.00 when none of their counted claims is dated in it
+        Map<Long, BigDecimal> personTotals = new HashMap<>();
+        for (Long personId : byId.keySet()) {
+            personTotals.put(personId, BigDecimal.ZERO.setScale(2));
+        }
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
             if (person == null || !person.countsLive(c) || !period.contains(c.getDate())) {
@@ -102,10 +108,11 @@ public class PeriodService {
             }
             BigDecimal figure = claimService.due(sheetId, person, c);
             if (figure != null) {
-                total = total.add(figure);
+                personTotals.merge(person.getId(), figure, BigDecimal::add);
             }
         }
-        period.close(total);
+        BigDecimal total = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        period.close(total, personTotals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString());

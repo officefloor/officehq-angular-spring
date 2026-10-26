@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,11 +24,17 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    /** A period as the screen shows it; a closed one carries the due-total fixed when it was closed. */
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal) {
+    /**
+     * A period as the screen shows it; a closed one carries the due-total fixed when it was closed, and each person's
+     * then, by person id.
+     */
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
+            Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
+            Map<Long, String> personTotals = new TreeMap<>();
+            p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString());
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals);
         }
     }
 
