@@ -1,7 +1,8 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim, Claims, claimedTotal } from '../claims/claims';
 
 interface Person {
   id: number;
@@ -14,6 +15,7 @@ const GRADES = ['A', 'B', 'C'];
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
+  imports: [Claims],
   template: `
     <section aria-label="People">
       <h2>People</h2>
@@ -48,19 +50,33 @@ const GRADES = ['A', 'B', 'C'];
         }
       </form>
 
+      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+          </tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+              </td>
+              <td>
+                <app-claims
+                  [personId]="p.id"
+                  [personName]="p.name"
+                  [claims]="claimsBy().get(p.id) ?? []"
+                  (saved)="claimSaved($event)"
+                />
               </td>
             </tr>
           }
@@ -79,6 +95,19 @@ export class People {
   protected readonly grade = signal('A');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  // Every claim on the sheet, newest first.
+  protected readonly claims = signal<Claim[]>([]);
+  protected readonly claimsBy = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
+  });
+  protected readonly claimedBy = computed(() => {
+    const by = new Map<number, string>();
+    for (const [id, list] of this.claimsBy()) by.set(id, claimedTotal(list));
+    return by;
+  });
+  protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
 
   constructor() {
     // Re-read the people from the store each time a sheet is loaded.
@@ -87,6 +116,7 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.people.set([]);
+        this.claims.set([]);
         this.reset();
         if (id) void this.fetch(id);
       });
@@ -102,6 +132,14 @@ export class People {
     this.name.set(p.name);
     this.grade.set(p.grade);
     this.error.set(null);
+  }
+
+  protected claimSaved(saved: Claim): void {
+    this.claims.update((list) =>
+      list.some((c) => c.id === saved.id)
+        ? list.map((c) => (c.id === saved.id ? saved : c))
+        : [saved, ...list],
+    );
   }
 
   protected reset(): void {
@@ -147,11 +185,16 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const list = await firstValueFrom(
-        this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
-      );
+      const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+      const [list, claims] = await Promise.all([
+        firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
+        firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
+      ]);
       // a later load may have moved to another sheet while this one was in flight
-      if (this.session.sheetId() === sheet) this.people.set(list);
+      if (this.session.sheetId() === sheet) {
+        this.claims.set(claims);
+        this.people.set(list);
+      }
     } catch {
       this.error.set('Could not load the people.');
     }
