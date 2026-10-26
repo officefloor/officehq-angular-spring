@@ -22,6 +22,9 @@ interface SettingsView {
   cap: string | null;
   // Every value recorded for the dated settings, each from its from-date.
   dated: DatedSetting[];
+  // The permission matrix as set, by action: the roles that may take it, comma separated; an action not listed keeps
+  // the standing rule.
+  permissions: Record<string, string>;
 }
 
 /**
@@ -39,6 +42,22 @@ interface DatedSetting {
 export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | `terms-${string}`;
 
 export const ROLES = ['clerk', 'steward'];
+
+/** The actions of the permission matrix, with the roles that may take each while none are set (the standing rule). */
+export const PERMISSIONS: readonly { action: string; standing: string }[] = [
+  { action: 'open', standing: 'clerk,steward' },
+  { action: 'settle', standing: 'clerk,steward' },
+  { action: 'void', standing: 'clerk,steward' },
+  { action: 'reassign', standing: 'steward' },
+  { action: 'close', standing: 'clerk,steward' },
+  { action: 'reopen', standing: 'steward' },
+];
+
+/** Roles typed as a comma separated list, trimmed and each listed once; blank for none typed. */
+function normalRoles(typed: string): string {
+  const roles = typed.split(',').map((r) => r.trim());
+  return typed.trim() ? [...new Set(roles)].join(',') : '';
+}
 
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
@@ -72,7 +91,7 @@ function valueOn(dated: readonly DatedSetting[], key: string, date: string | nul
 
 // The active sheet's settings: the role set for each user name (any other name is a clerk); the clerk limit, the
 // floor, the terms (the sheet's and each grade's), the late percent and the cap, each recorded from a from-date;
-// the policy date and the period numbering from.
+// the policy date and the period numbering from; and the permission matrix.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -105,6 +124,8 @@ export class SettingsStore {
   readonly policyDate = signal<string | null>(null);
   /** The period numbering from as set; null when blank (off). */
   readonly periodNumberingFrom = signal<string | null>(null);
+  /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
+  readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
    * What an overdue claim's late charge follows: the sheet's today and the late percent in force on the claim's
    * date; and the policy date in force (the sheet's today when blank), which decides how live figures round.
@@ -121,6 +142,7 @@ export class SettingsStore {
     this.dated.set([]);
     this.policyDate.set(null);
     this.periodNumberingFrom.set(null);
+    this.permissions.set({});
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -136,6 +158,7 @@ export class SettingsStore {
     this.dated.set(s.dated);
     this.policyDate.set(s.policyDate);
     this.periodNumberingFrom.set(s.periodNumberingFrom);
+    this.permissions.set(s.permissions ?? {});
   }
 
   async setRole(sheet: string, user: string, role: string): Promise<void> {
@@ -169,6 +192,17 @@ export class SettingsStore {
   async setPolicyDate(sheet: string, value: string | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/policy-date`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  /** Set the roles that may take the action, comma separated; null (blank) for the standing rule. */
+  async setPermission(sheet: string, action: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/permissions/${encodeURIComponent(action)}`,
+        { value },
+      ),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -347,6 +381,20 @@ export class SettingsStore {
           (input)="setFrom('proof-threshold', value($event))"
           (change)="setFrom('proof-threshold', value($event))"
         />
+        <fieldset>
+          <legend>Permissions (roles that may take each action, comma separated; blank for the standing rule)</legend>
+          @for (p of permissionActions; track p.action) {
+            <label [for]="'setting-perm-' + p.action">{{ p.action }} (standing: {{ p.standing }})</label>
+            <input
+              [id]="'setting-perm-' + p.action"
+              [attr.data-testid]="'setting-perm-' + p.action"
+              [value]="perms()[p.action] ?? ''"
+              (input)="setPermField(p.action, value($event))"
+              (keydown.delete)="permsChanged.add(p.action); settingsError.set(null)"
+              (keydown.backspace)="permsChanged.add(p.action); settingsError.set(null)"
+            />
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -372,6 +420,15 @@ export class SettingsStore {
         Proof threshold in force:
         <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
       </p>
+      @for (p of permissionActions; track p.action) {
+        <p>
+          Roles that may {{ p.action }}:
+          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ store.permissions()[p.action] ?? '' }}</strong>
+          @if (store.permissions()[p.action] === undefined) {
+            (standing rule: {{ p.standing }})
+          }
+        </p>
+      }
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -423,6 +480,9 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
+  protected readonly permissionActions = PERMISSIONS;
+  // The roles typed for each action of the permission matrix, by action.
+  protected readonly perms = signal<Readonly<Record<string, string>>>({});
   protected readonly limit = signal('');
   protected readonly floor = signal('');
   protected readonly terms = signal('');
@@ -445,6 +505,7 @@ export class Settings {
   protected periodNumberingFromChanged = false;
   protected capChanged = false;
   protected proofThresholdChanged = false;
+  protected readonly permsChanged = new Set<string>();
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -475,6 +536,12 @@ export class Settings {
   protected setGradeTermsField(grade: string, v: string): void {
     this.gradeTerms.update((t) => ({ ...t, [grade]: v }));
     this.gradeTermsChanged.add(grade);
+    this.settingsError.set(null);
+  }
+
+  protected setPermField(action: string, v: string): void {
+    this.perms.update((p) => ({ ...p, [action]: v }));
+    this.permsChanged.add(action);
     this.settingsError.set(null);
   }
 
@@ -575,6 +642,15 @@ export class Settings {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const perms = new Map<string, string>();
+    for (const a of this.permsChanged) {
+      const typed = (this.perms()[a] ?? '').trim();
+      if (typed && typed.split(',').some((r) => !ROLES.includes(r.trim()))) {
+        this.settingsError.set(`List the roles that may ${a} as clerk, steward or both, separated by commas, or leave it blank.`);
+        return;
+      }
+      perms.set(a, normalRoles(typed));
+    }
     const keys: DatedKey[] = [];
     if (this.limitChanged) keys.push('clerk-limit');
     if (this.floorChanged) keys.push('floor');
@@ -630,6 +706,11 @@ export class Settings {
       if (this.proofThresholdChanged) {
         await this.store.setDated(sheet, 'proof-threshold', proofThreshold || null, from.get('proof-threshold') ?? null);
         this.proofThresholdChanged = this.proofThreshold().trim() !== proofThreshold;
+      }
+      for (const [a, roles] of perms) {
+        await this.store.setPermission(sheet, a, roles || null);
+        // roles typed while it was saving stay to be saved
+        if (normalRoles(this.perms()[a] ?? '') === roles) this.permsChanged.delete(a);
       }
     } catch {
       this.resubmit = false;

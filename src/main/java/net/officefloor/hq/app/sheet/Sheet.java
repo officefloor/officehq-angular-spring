@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -14,7 +15,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
@@ -51,6 +54,16 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
+
+    /**
+     * The permission matrix as set: for an action, the roles that may take it, comma separated. An action not listed
+     * keeps the standing rule.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action_name")
+    @Column(name = "roles")
+    private Map<String, String> permissions = new HashMap<>();
 
     /** The date claims round by: one before it rounds half up, one on or after it half to even; null for today. */
     @Column(name = "policy_date")
@@ -147,6 +160,20 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate on) {
         return inForce(PROOF_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
+    public Map<String, String> getPermissions() {
+        return Map.copyOf(permissions);
+    }
+
+    /** Sets the roles that may take the action, comma separated; null (blank) for the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
     }
 
     public LocalDate getPolicyDate() {

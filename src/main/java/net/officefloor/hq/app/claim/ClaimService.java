@@ -118,6 +118,13 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
         Claim claim = lockedClaim(sheetId, id);
+        switch (next) {
+            case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
+            case SETTLED -> settings.refuseUnlessMay(sheetId, by, "settle");
+            case VOID -> settings.refuseUnlessMay(sheetId, by, "void");
+            default -> {
+            }
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         // settling is the step from OPEN; a pending claim is settled by approving it
         if (!claim.getStatus().canMoveTo(next) || next == ClaimStatus.PENDING
@@ -298,16 +305,14 @@ public class ClaimService {
     }
 
     /**
-     * A steward moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
+     * A user whose role may reassign (a steward by the standing rule) moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
      * loses any figure a statement bound it to (it is live again until its new person's next statement), and is
-     * listed as its new person's newest claim. Refused unless the user is a steward, for a settled or voided claim,
+     * listed as its new person's newest claim. Refused unless the user's role may reassign, for a settled or voided claim,
      * to the person it is already with, in a closed period, and when it is dated after the new person's retirement.
      */
     @Transactional
     public Claim reassign(String by, String sheetId, Long id, Long toPersonId) {
-        if (!settings.isSteward(sheetId, by)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can move a claim.");
-        }
+        settings.refuseUnlessMay(sheetId, by, "reassign");
         Claim claim = lockedClaim(sheetId, id);
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot move.");

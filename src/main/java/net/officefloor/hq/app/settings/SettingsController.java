@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -37,10 +38,10 @@ public class SettingsController {
      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
      * when blank (off); and every value recorded for the dated settings, from which the screen works out the one in
-     * force on any date.
+     * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, String cap, List<DatedSettingView> dated) {
+            LocalDate periodNumberingFrom, String cap, List<DatedSettingView> dated, Map<String, String> permissions) {
         static SettingsView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -49,7 +50,8 @@ public class SettingsController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(DatedSettingView::of)
                             .sorted(Comparator.comparing(DatedSettingView::key).thenComparing(DatedSettingView::from))
-                            .toList());
+                            .toList(),
+                    sheet.getPermissions());
         }
     }
 
@@ -99,6 +101,13 @@ public class SettingsController {
     /** The late percent as the form submits it: 0.00 or more with up to two decimals; from the date, or null for today. */
     public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal value,
             LocalDate from) {
+    }
+
+    /**
+     * A permission as the form submits it: the roles that may take the action, comma separated, or null (blank) for
+     * the standing rule.
+     */
+    public record PermissionForm(@Size(max = 100) String value) {
     }
 
     /** The policy date as the form submits it: a date, or null for blank (the sheet's today). */
@@ -212,6 +221,14 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ProofThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setProofThreshold(user, sheetId, form.value(), form.from()));
+    }
+
+    @PutMapping("/settings/permissions/{action}")
+    public SettingsView setPermission(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @NotBlank @Size(max = 20) String action, @Valid @RequestBody PermissionForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setPermission(user, sheetId, action, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

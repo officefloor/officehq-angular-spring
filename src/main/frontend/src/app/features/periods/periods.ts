@@ -225,8 +225,13 @@ export class Periods {
     }
     try {
       await this.store.close(sheet, p.id);
-    } catch {
-      this.setRowError(p.id, 'Could not close that period.');
+    } catch (err) {
+      this.setRowError(
+        p.id,
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Your role may not close a period on this sheet.'
+          : 'Could not close that period.',
+      );
     }
   }
 
@@ -244,7 +249,7 @@ export class Periods {
       this.setRowError(
         p.id,
         err instanceof HttpErrorResponse && err.status === 403
-          ? 'Only a steward can reopen a period.'
+          ? 'Your role may not reopen a period on this sheet.'
           : 'Could not reopen that period.',
       );
     }

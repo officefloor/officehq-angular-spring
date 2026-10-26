@@ -433,6 +433,8 @@ export class Claims {
       const err =
         action === 'settle' && deferred(c, this.session.sheetToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
+          : (action === 'open' || action === 'settle' || action === 'void') && forbidden
+          ? `Your role may not ${action} a claim on this sheet.`
           : action === 'settle' && opener
           ? 'You opened this claim, so another user must settle it.'
           : (action === 'approve' || action === 'reject') && forbidden
@@ -509,7 +511,7 @@ export class Claims {
     this.clearRowError(id);
   }
 
-  /** A steward moves the claim to the chosen person; a settled or voided claim cannot move. */
+  /** A user whose role may reassign (a steward by the standing rule) moves the claim to the chosen person; a settled or voided claim cannot move. */
   protected async reassign(c: Claim): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
@@ -536,7 +538,7 @@ export class Claims {
       const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       this.setRowError(
         c.id,
-        forbidden ? 'Only a steward can move a claim.' : `This ${c.status} claim cannot be moved to that person.`,
+        forbidden ? 'Your role may not move a claim on this sheet.' : `This ${c.status} claim cannot be moved to that person.`,
       );
     }
   }

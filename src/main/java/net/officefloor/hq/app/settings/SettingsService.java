@@ -3,7 +3,9 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -18,10 +20,19 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * A sheet's settings: the role each user name has; the clerk limit, the floor, the terms (the sheet's and each
  * grade's), the late percent and the cap, each recorded from a from-date; the policy date and the period numbering
- * from.
+ * from; and the permission matrix, the roles that may take each action.
  */
 @Service
 public class SettingsService {
+
+    /** The actions of the permission matrix, with the roles that may take each while none are set. */
+    public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+            "open", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+            "settle", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+            "void", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+            "reassign", List.of(SheetRole.STEWARD),
+            "close", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+            "reopen", List.of(SheetRole.STEWARD));
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRepository;
@@ -67,6 +78,47 @@ public class SettingsService {
         }
         audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + by + " user=" + user + " role=" + role);
         return saved;
+    }
+
+    /**
+     * Sets the roles that may take the action, a comma separated list of clerk and steward; blank (null) for the
+     * standing rule. Refused for an action not in the matrix or a role that is neither. Not dated.
+     */
+    @Transactional
+    public Sheet setPermission(String by, String sheetId, String action, String roles) {
+        if (!STANDING_PERMISSIONS.containsKey(action)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such action.");
+        }
+        String value = null;
+        if (roles != null && !roles.isBlank()) {
+            List<String> listed = Arrays.stream(roles.split(",", -1)).map(String::strip).toList();
+            if (listed.stream().anyMatch(r -> !SheetRole.CLERK.equals(r) && !SheetRole.STEWARD.equals(r))) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "List the roles as clerk, steward or both, separated by commas.");
+            }
+            value = String.join(",", listed.stream().distinct().toList());
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setPermission(action, value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=perm-" + action + " value="
+                + (value == null ? "" : value));
+        return saved;
+    }
+
+    /** Whether the user's role may take the action on the sheet: as the matrix sets it, else the standing rule. */
+    @Transactional(readOnly = true)
+    public boolean may(String sheetId, String user, String action) {
+        String set = sheets.load(sheetId).getPermissions().get(action);
+        List<String> allowed = set == null ? STANDING_PERMISSIONS.get(action) : List.of(set.split(","));
+        return allowed.contains(roleOf(sheetId, user));
+    }
+
+    /** Refuses the user the action when their role may not take it on the sheet. */
+    public void refuseUnlessMay(String sheetId, String user, String action) {
+        if (!may(sheetId, user, action)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
+        }
     }
 
     /** Records the sheet's clerk limit (null for no limit) from the date; null for the sheet's today. */
