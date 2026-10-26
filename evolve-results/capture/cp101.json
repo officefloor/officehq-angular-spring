@@ -1,0 +1,64 @@
+{
+  "checkpoint": 101,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp101_audit-viewer",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6b23e1f3c43922648ab7937dbdbdd39994b941bb",
+  "reset_sha": "",
+  "preagent_sha": "b454b4a0273df81c4067bd684d8fa79d82f9de1a",
+  "prev_sha": "b454b4a0273df81c4067bd684d8fa79d82f9de1a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46330720000000003,
+    "input_tokens": 26,
+    "output_tokens": 5792,
+    "cache_read_tokens": 410736,
+    "cache_creation_tokens": 33152,
+    "num_turns": 14,
+    "duration_ms": 329420,
+    "duration_api_ms": 78044,
+    "model": "claude-opus-5-5",
+    "session_id": "a784cb39-e65b-414c-9c0a-b2b246dde486",
+    "stop_reason": "success",
+    "result_text": "The audit viewer is on the main screen now, and `bin/e2e` passes all 4 tests.\n\n**How it behaves**\n- There's a filter box (`audit-filter`), a show button (`audit-show`), and each line it lists is an `audit-line`.\n- With the filter blank, you get every line in the audit file for the current sheet, word for word, newest first.\n- With a name typed in, you only get lines where `name=` or `person=` equals that name. The match ignores case and spaces around the name, the same way person names are compared elsewhere, so ` ada ` finds Ada's lines.\n- It only reads the audit file. Nothing is stored anywhere else, and using the viewer adds no lines to the file.\n- Loading a sheet empties the list. If the file can't be read, it shows an error (`audit-error`).\n\n**What changed**\n- **Server:** I added `lines(sheetId, name)` to `Audit.java`, which picks out the sheet's lines and applies the name filter. A new `audit/AuditController.java` serves them at `GET /api/sheets/{sheetId}/audit?name=\u2026`.\n- **Front end:** a new `features/audit-viewer/audit-viewer.ts` component, placed below the people list in `home.ts`.\n\nThe stored data and its schema didn't need to change, because the viewer works straight from the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46330720000000003,
+        "num_turns": 14,
+        "duration_ms": 329420,
+        "duration_api_ms": 78044,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp101.agent.jsonl",
+  "agent_diff_file": "cp101.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
