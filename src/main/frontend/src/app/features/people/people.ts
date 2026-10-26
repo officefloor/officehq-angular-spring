@@ -298,6 +298,24 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         @if (bulkRetireError()) {
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
+        <p>
+          <label for="bulk-hold-from">Hold the selected people from</label>
+          <input id="bulk-hold-from" type="date" data-testid="bulk-hold-from" #bulkHoldFrom
+            (input)="bulkHoldError.set('')" aria-describedby="bulk-hold-from-hint" />
+          <span id="bulk-hold-from-hint">Blank: the sheet's today</span>
+          <label for="bulk-hold-to">to</label>
+          <input id="bulk-hold-to" type="date" data-testid="bulk-hold-to" #bulkHoldTo
+            (input)="bulkHoldError.set('')" aria-describedby="bulk-hold-to-hint" />
+          <span id="bulk-hold-to-hint">Blank: no end</span>
+          <button type="button" data-testid="bulk-hold" (click)="holdSelected(bulkHoldFrom, bulkHoldTo)"
+            [disabled]="bulkHolding()">Hold the selected people</button>
+          @if (bulkHeld() !== null) {
+            Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong>
+          }
+        </p>
+        @if (bulkHoldError()) {
+          <p role="alert" data-testid="person-error">{{ bulkHoldError() }}</p>
+        }
         <app-compare-sheet [grades]="gradeSummary()" />
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLate]="reviewLateCount()" [pendingLate]="pendingLateCount()" />
         <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
@@ -1016,6 +1034,11 @@ export class People {
   /** How many the last bulk retire retired; cleared while the next one runs. */
   protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkRetireError = signal('');
+  /** Whether the selected people are being held. */
+  protected readonly bulkHolding = signal(false);
+  /** How many the last bulk hold held; cleared while the next one runs. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldError = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -1056,6 +1079,8 @@ export class People {
       this.bulkGradeError.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set('');
+      this.bulkHeld.set(null);
+      this.bulkHoldError.set('');
       this.snapshotsCompared.set(null);
       if (sheet) void this.reload(sheet.id);
     });
@@ -2018,6 +2043,7 @@ export class People {
   protected selectPerson(id: number, on: boolean): void {
     this.bulkGradeError.set('');
     this.bulkRetireError.set('');
+    this.bulkHoldError.set('');
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
       if (on) next.add(id);
@@ -2034,6 +2060,7 @@ export class People {
     this.bulkGraded.set(null);
     this.bulkGradeError.set('');
     this.bulkRetireError.set('');
+    this.bulkHoldError.set('');
     this.personError.set(null);
     const grade = gradeSelect.value as Grade;
     const from = fromInput.value.trim();
@@ -2068,6 +2095,7 @@ export class People {
     this.bulkRetired.set(null);
     this.bulkRetireError.set('');
     this.bulkGradeError.set('');
+    this.bulkHoldError.set('');
     this.personError.set(null);
     const from = fromInput.value.trim();
     if (from !== '' && !DATE.test(from)) {
@@ -2086,6 +2114,42 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) this.bulkRetireError.set('The selected people could not be retired.');
     } finally {
       this.bulkRetiring.set(false);
+    }
+  }
+
+  /** Hold the selected people from the from-date (blank: the sheet's today) to the to-date (blank: no
+   *  end), in list order, each as the row's hold would. */
+  protected async holdSelected(fromInput: HTMLInputElement, toInput: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.bulkHolding()) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set('');
+    this.bulkGradeError.set('');
+    this.bulkRetireError.set('');
+    this.personError.set(null);
+    const from = fromInput.value.trim();
+    const to = toInput.value.trim();
+    if ((from !== '' && !DATE.test(from)) || (to !== '' && !DATE.test(to))) {
+      this.bulkHoldError.set('Enter the hold dates as yyyy-mm-dd, or leave them blank.');
+      return;
+    }
+    if (to !== '' && to < (from !== '' ? from : sheet.today)) {
+      this.bulkHoldError.set('A hold cannot end before it starts.');
+      return;
+    }
+    this.bulkHolding.set(true);
+    try {
+      const result = await this.api.holdSelected(sheet.id, [...this.selectedPeople()],
+        from === '' ? null : from, to === '' ? null : to);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      const held = new Map(result.people.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => held.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkHeld.set(result.held);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.bulkHoldError.set('The selected people could not be held.');
+    } finally {
+      this.bulkHolding.set(false);
     }
   }
 

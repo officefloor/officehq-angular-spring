@@ -154,6 +154,15 @@ public class PersonController {
     public record BulkRetireView(List<PersonView> people, int retired) {
     }
 
+    /** The people selected to be held together, from the from-date (none: the sheet's today) to the
+     *  to-date (none: no end). */
+    public record BulkHoldForm(@NotNull List<@NotNull Long> ids, LocalDate from, LocalDate to) {
+    }
+
+    /** What a bulk hold did: the people it held, and how many. */
+    public record BulkHoldView(List<PersonView> people, int held) {
+    }
+
     /** The import box's text: lines of name,grade,terms,contact. */
     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -166,6 +175,7 @@ public class PersonController {
     private final ImportPeopleService imports;
     private final BulkGradeService bulkGrade;
     private final BulkRetireService bulkRetire;
+    private final BulkHoldService bulkHold;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetService sheets;
@@ -173,8 +183,9 @@ public class PersonController {
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, MergeService merges,
             TransferService transfers, SheetService sheets, ImportPeopleService imports, BulkRetireService bulkRetire,
-            Rollup rollup) {
+            BulkHoldService bulkHold, Rollup rollup) {
         this.rollup = rollup;
+        this.bulkHold = bulkHold;
         this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
@@ -254,6 +265,14 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkRetireForm form) {
         List<Person> retired = bulkRetire.retire(sheetId.trim(), SignedInUser.name(user), form.ids(), form.from());
         return new BulkRetireView(retired.stream().map(p -> view(p, user)).toList(), retired.size());
+    }
+
+    /** Hold the selected people together, each in list order as the row's hold would. */
+    @PostMapping("/hold")
+    public BulkHoldView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid BulkHoldForm form) {
+        List<Person> held = bulkHold.hold(sheetId.trim(), SignedInUser.name(user), form.ids(), form.from(), form.to());
+        return new BulkHoldView(held.stream().map(p -> view(p, user)).toList(), held.size());
     }
 
     /** Swap a person with the one above them in the list ("up") or below them ("down"). */

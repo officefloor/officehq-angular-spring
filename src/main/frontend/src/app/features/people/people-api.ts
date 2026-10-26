@@ -128,6 +128,12 @@ export interface BulkRetireView {
   retired: number;
 }
 
+/** What a bulk hold did: the people it held, in list order, and how many. */
+export interface BulkHoldView {
+  people: PersonView[];
+  held: number;
+}
+
 /** What the quick-add bar sends: a person's name and a claim's amount. */
 export interface QuickAddForm {
   name: string;
@@ -191,6 +197,12 @@ export class PeopleApi {
    *  row's retire would. */
   retireSelected(sheetId: string, ids: number[], from: string | null): Promise<BulkRetireView> {
     return firstValueFrom(this.http.post<BulkRetireView>(`${this.url(sheetId)}/retire`, { ids, from }));
+  }
+
+  /** Hold the people of these ids from a from-date (null: the sheet's today) to a to-date (null: no
+   *  end), each in list order as the row's hold would. */
+  holdSelected(sheetId: string, ids: number[], from: string | null, to: string | null): Promise<BulkHoldView> {
+    return firstValueFrom(this.http.post<BulkHoldView>(`${this.url(sheetId)}/hold`, { ids, from, to }));
   }
 
   /** Swap the person with the one above (up) or below (down) them in the list; refused with 409 for
