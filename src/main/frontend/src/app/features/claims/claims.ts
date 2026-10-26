@@ -49,6 +49,22 @@ export function keepsFigure(c: Claim): boolean {
   return c.settledDue !== null || (c.stated && c.statedDue !== null);
 }
 
+/** The date (yyyy-mm-dd) the given number of days after the date. */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** The date a claim is due by: its date plus the sheet's terms. */
+export function dueByOf(c: Claim, terms: number): string {
+  return addDays(c.date, terms);
+}
+
+/** Whether a claim is overdue: open, and due by a date before the sheet's today. */
+export function overdue(c: Claim, terms: number, today: string | null): boolean {
+  return c.status === 'OPEN' && today !== null && dueByOf(c, terms) < today;
+}
+
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
 
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -99,7 +115,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -111,6 +127,8 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-due">{{ figureOf(c, rates(), settings.floor()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due-by">{{ dueByOf(c, settings.terms()) }}</td>
+            <td data-testid="claim-overdue">{{ overdue(c, settings.terms(), session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
@@ -143,7 +161,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
 })
 export class Claims {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
   protected readonly settings = inject(SettingsStore);
 
@@ -167,6 +185,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
 
   protected readonly figureOf = figureOf;
+  protected readonly dueByOf = dueByOf;
+  protected readonly overdue = overdue;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

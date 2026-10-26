@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -101,11 +101,14 @@ interface StatementView {
 
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
+      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
 
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
@@ -118,6 +121,8 @@ interface StatementView {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
+              <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-statement-count">{{ statementsBy().get(p.id)?.count ?? 0 }}</td>
               <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) }}</td>
               <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
@@ -251,6 +256,30 @@ export class People {
       .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor) }));
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
+  // The claims counted live that are overdue: open and due by a date before the sheet's today.
+  protected readonly overdueClaims = computed(() => {
+    const terms = this.settings.terms();
+    const today = this.session.sheetToday();
+    return this.liveClaims().filter((c) => overdue(c, terms, today));
+  });
+  protected readonly overdueBy = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.overdueClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
+  });
+  // Each person's overdue-total: the sum of their overdue claims' figures, skipping n/a.
+  protected readonly overdueTotalBy = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const rates = this.rates.rates();
+    const floor = this.settings.floor();
+    const by = new Map<number, string>();
+    for (const [id, list] of this.overdueBy()) {
+      const own = rates.get(grades.get(id) ?? '') ?? [];
+      by.set(id, sumSkippingNa(list.map((c) => figureOf(c, own, floor))));
+    }
+    return by;
+  });
+  protected readonly overdueTotal = computed(() => sumSkippingNa([...this.overdueTotalBy().values()]));
 
   constructor() {
     // Re-read the people from the store each time a sheet is loaded.

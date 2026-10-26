@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, and the clerk limit. */
+/** A sheet's settings: the role each user name has, the clerk limit, the floor and the terms. */
 @Service
 public class SettingsService {
 
@@ -73,6 +73,16 @@ public class SettingsService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=clerk-limit value="
                 + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
+    /** Sets the sheet's terms: the days after a claim's date it is due by. */
+    @Transactional
+    public Sheet setTerms(String by, String sheetId, int terms) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setTerms(terms);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
         return saved;
     }
 

@@ -13,6 +13,8 @@ interface SettingsView {
   clerkLimit: string | null;
   // The least a claim's live due can be, with two decimals.
   floor: string;
+  // The days a claim has to be settled in: its due-by is its date plus these.
+  terms: number;
 }
 
 export const ROLES = ['clerk', 'steward'];
@@ -22,8 +24,13 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 /** The floor a sheet starts with. */
 export const DEFAULT_FLOOR = '1.00';
 
+/** The terms a sheet starts with, in days. */
+export const DEFAULT_TERMS = 14;
+
+const DAYS = /^\d{1,5}$/;
+
 // The active sheet's settings: the role set for each user name (any other name is a clerk), the clerk limit and
-// the floor.
+// the floor and the terms.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -32,12 +39,14 @@ export class SettingsStore {
   readonly roles = signal<readonly RoleView[]>([]);
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal<string>(DEFAULT_FLOOR);
+  readonly terms = signal<number>(DEFAULT_TERMS);
 
   /** Re-read the sheet's settings from the store. */
   async load(sheet: string): Promise<void> {
     this.roles.set([]);
     this.clerkLimit.set(null);
     this.floor.set(DEFAULT_FLOOR);
+    this.terms.set(DEFAULT_TERMS);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -47,6 +56,7 @@ export class SettingsStore {
       this.roles.set(roles);
       this.clerkLimit.set(settings.clerkLimit);
       this.floor.set(settings.floor);
+      this.terms.set(settings.terms);
     }
   }
 
@@ -72,9 +82,16 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.floor.set(s.floor);
   }
+
+  async setTerms(sheet: string, value: number): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/terms`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.terms.set(s.terms);
+  }
 }
 
-// The sheet's settings: the clerk limit, the floor, and the role each user name has.
+// The sheet's settings: the clerk limit, the floor, the terms, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -97,6 +114,14 @@ export class SettingsStore {
           [value]="floor()"
           (input)="floor.set(value($event)); floorChanged = true; settingsError.set(null)"
         />
+        <label for="setting-terms">Terms (days a claim is due by after its date)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); termsChanged = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -104,6 +129,7 @@ export class SettingsStore {
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floor() }}</strong></p>
+      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -156,9 +182,11 @@ export class Settings {
   protected readonly roles = ROLES;
   protected readonly limit = signal('');
   protected readonly floor = signal('');
+  protected readonly terms = signal('');
   // Which settings were typed into since the last save; a save stores only those.
   protected limitChanged = false;
   protected floorChanged = false;
+  protected termsChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -199,6 +227,11 @@ export class Settings {
       this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals.');
       return;
     }
+    const terms = this.terms().trim();
+    if (this.termsChanged && !DAYS.test(terms)) {
+      this.settingsError.set('Enter terms as a whole number of days, 0 or more.');
+      return;
+    }
     this.submitting = true;
     try {
       if (this.limitChanged) {
@@ -208,6 +241,10 @@ export class Settings {
       if (this.floorChanged) {
         await this.store.setFloor(sheet, floor);
         this.floorChanged = false;
+      }
+      if (this.termsChanged) {
+        await this.store.setTerms(sheet, Number(terms));
+        this.termsChanged = false;
       }
     } catch {
       this.settingsError.set('Could not save the settings.');

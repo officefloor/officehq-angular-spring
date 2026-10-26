@@ -2,6 +2,8 @@ package net.officefloor.hq.app.settings;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -28,12 +30,12 @@ public class SettingsController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
-     * the floor carries two decimals.
+     * the floor carries two decimals, and the terms are whole days.
      */
-    public record SettingsView(String clerkLimit, String floor) {
+    public record SettingsView(String clerkLimit, String floor, int terms) {
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms());
         }
     }
 
@@ -43,6 +45,10 @@ public class SettingsController {
 
     /** The floor as the form submits it: 0.00 or more with up to two decimals. */
     public record FloorForm(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
+    }
+
+    /** The terms as the form submits them: a whole number of days, 0 or more. */
+    public record TermsForm(@NotNull @Min(0) @Max(99999) Integer value) {
     }
 
     public record RoleView(String user, String role) {
@@ -80,6 +86,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody FloorForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setFloor(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/terms")
+    public SettingsView setTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody TermsForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setTerms(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */
