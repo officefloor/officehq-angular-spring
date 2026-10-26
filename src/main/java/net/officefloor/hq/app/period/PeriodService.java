@@ -14,7 +14,10 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -94,6 +97,29 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
+        return close(by, sheetId, period, today, "");
+    }
+
+    /**
+     * Once the sheet's today is changed while it has grace days, closes every open period whose to-date plus them is
+     * before the new today, by to-date, each as a close by hand would.
+     */
+    @EventListener
+    @Transactional
+    public void autoClose(TodayChanged change) {
+        Sheet sheet = change.sheet();
+        Integer graceDays = sheet.getGraceDays();
+        if (graceDays == null) {
+            return;
+        }
+        LocalDate today = sheet.getToday();
+        for (Period period : periods.findBySheetIdAndClosedFalseAndToBeforeOrderByToAsc(sheet.getId(),
+                today.minusDays(graceDays))) {
+            close(change.by(), sheet.getId(), period, today, " auto=yes");
+        }
+    }
+
+    private Period close(String by, String sheetId, Period period, LocalDate today, String auditSuffix) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // every person on the sheet now gets a figure, 0.00 when none of their counted claims is dated in it
@@ -115,7 +141,7 @@ public class PeriodService {
         period.close(total, personTotals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + total.toPlainString() + auditSuffix);
         return saved;
     }
 

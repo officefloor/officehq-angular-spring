@@ -9,6 +9,9 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
 
     List<Period> findBySheetIdOrderByFromAsc(String sheetId);
 
+    /** The sheet's open periods whose to-date is before the date, by to-date. */
+    List<Period> findBySheetIdAndClosedFalseAndToBeforeOrderByToAsc(String sheetId, LocalDate date);
+
     Optional<Period> findByIdAndSheetId(Long id, String sheetId);
 
     /** Whether a closed period of the sheet contains the date. */

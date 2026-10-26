@@ -73,6 +73,13 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /**
+     * The days after its to-date an open period is left open: once its to-date plus these is before the sheet's
+     * today, it is closed. Null (blank) for off.
+     */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {
     }
 
@@ -190,6 +197,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 
     /** The due-total (null for n/a, which is not capped) held to the cap when it is above it. */

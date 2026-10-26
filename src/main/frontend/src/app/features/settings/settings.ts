@@ -19,6 +19,8 @@ interface SettingsView {
   policyDate: string | null;
   // The date from which claims opened are numbered within their period; null when blank: off.
   periodNumberingFrom: string | null;
+  // The days after its to-date an open period is left open once the sheet's today passes it; null when blank: off.
+  graceDays: number | null;
   cap: string | null;
   // Every value recorded for the dated settings, each from its from-date.
   dated: DatedSetting[];
@@ -93,7 +95,7 @@ function valueOn(dated: readonly DatedSetting[], key: string, date: string | nul
 
 // The active sheet's settings: the role set for each user name (any other name is a clerk); the clerk limit, the
 // floor, the terms (the sheet's and each grade's), the late percent and the cap, each recorded from a from-date;
-// the policy date and the period numbering from; and the permission matrix.
+// the policy date, the period numbering from and the grace days; and the permission matrix.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -126,6 +128,8 @@ export class SettingsStore {
   readonly policyDate = signal<string | null>(null);
   /** The period numbering from as set; null when blank (off). */
   readonly periodNumberingFrom = signal<string | null>(null);
+  /** The grace days as set; null when blank (off). */
+  readonly graceDays = signal<number | null>(null);
   /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
   readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
@@ -144,6 +148,7 @@ export class SettingsStore {
     this.dated.set([]);
     this.policyDate.set(null);
     this.periodNumberingFrom.set(null);
+    this.graceDays.set(null);
     this.permissions.set({});
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
@@ -160,6 +165,7 @@ export class SettingsStore {
     this.dated.set(s.dated);
     this.policyDate.set(s.policyDate);
     this.periodNumberingFrom.set(s.periodNumberingFrom);
+    this.graceDays.set(s.graceDays);
     this.permissions.set(s.permissions ?? {});
   }
 
@@ -215,11 +221,18 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
+
+  async setGraceDays(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/grace-days`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
 }
 
 // The sheet's settings: the clerk limit, the floor, the terms, the late percent and the cap, each saved from a from-date
 // (blank for the sheet's today) and shown as in force on the sheet's today; the policy date, the period numbering
-// from, and the role each user name has.
+// from, the grace days, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -345,6 +358,16 @@ export class SettingsStore {
           (keydown.delete)="periodNumberingFromChanged = true; settingsError.set(null)"
           (keydown.backspace)="periodNumberingFromChanged = true; settingsError.set(null)"
         />
+        <label for="setting-grace-days">Grace days (open periods this many days past their end close when today moves; blank for off)</label>
+        <input
+          id="setting-grace-days"
+          data-testid="setting-grace-days"
+          inputmode="numeric"
+          [value]="graceDays()"
+          (input)="graceDays.set(value($event)); graceDaysChanged = true; settingsError.set(null)"
+          (keydown.delete)="graceDaysChanged = true; settingsError.set(null)"
+          (keydown.backspace)="graceDaysChanged = true; settingsError.set(null)"
+        />
         <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
         <input
           id="setting-cap"
@@ -417,6 +440,7 @@ export class SettingsStore {
         Period numbering from:
         <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
       </p>
+      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ store.graceDays() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
       <p>
         Proof threshold in force:
@@ -492,6 +516,7 @@ export class Settings {
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
+  protected readonly graceDays = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   // The from-date typed for each dated setting, by key; blank for the sheet's today.
@@ -505,6 +530,7 @@ export class Settings {
   protected latePctChanged = false;
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
+  protected graceDaysChanged = false;
   protected capChanged = false;
   protected proofThresholdChanged = false;
   protected readonly permsChanged = new Set<string>();
@@ -634,6 +660,11 @@ export class Settings {
       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
       return;
     }
+    const graceDays = this.graceDays().trim();
+    if (this.graceDaysChanged && graceDays && !DAYS.test(graceDays)) {
+      this.settingsError.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
     const cap = this.cap().trim();
     if (this.capChanged && cap && !LIMIT.test(cap)) {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
@@ -700,6 +731,10 @@ export class Settings {
       if (this.periodNumberingFromChanged) {
         await this.store.setPeriodNumberingFrom(sheet, periodNumberingFrom || null);
         this.periodNumberingFromChanged = this.periodNumberingFrom().trim() !== periodNumberingFrom;
+      }
+      if (this.graceDaysChanged) {
+        await this.store.setGraceDays(sheet, graceDays ? Number(graceDays) : null);
+        this.graceDaysChanged = this.graceDays().trim() !== graceDays;
       }
       if (this.capChanged) {
         await this.store.setDated(sheet, 'cap', cap || null, from.get('cap') ?? null);

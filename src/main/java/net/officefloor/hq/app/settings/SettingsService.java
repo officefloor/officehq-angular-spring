@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * A sheet's settings: the role each user name has; the clerk limit, the floor, the terms (the sheet's and each
  * grade's), the late percent and the cap, each recorded from a from-date; the policy date and the period numbering
- * from; and the permission matrix, the roles that may take each action.
+ * from; the grace days; and the permission matrix, the roles that may take each action.
  */
 @Service
 public class SettingsService {
@@ -184,6 +184,20 @@ public class SettingsService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
                 + (from == null ? "" : from.toString()));
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's grace days (null for blank: off): once the sheet's today is changed, every open period whose
+     * to-date plus them is before the new today is closed. Not dated.
+     */
+    @Transactional
+    public Sheet setGraceDays(String by, String sheetId, Integer days) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setGraceDays(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
+                + (days == null ? "" : days.toString()));
         return saved;
     }
 
