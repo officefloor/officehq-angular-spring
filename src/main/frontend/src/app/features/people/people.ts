@@ -312,6 +312,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                 <td data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) | figure }}</td>
                 @for (q of periods(); track q.id) {
                   <td [attr.data-testid]="'person-period-' + q.name + '-due-total'">{{ (personPeriodDue(p.id, q.id)) | figure }}</td>
+                  <td [attr.data-testid]="'person-period-' + q.name + '-carried'">{{ personPeriodCarried(p.id, q.id) | figure }}</td>
                 }
                 @if (cols.shown('excess')) {
                   <td data-testid="person-excess">{{ excess(p) | figure }}</td>
@@ -682,6 +683,29 @@ export class People {
     }
     for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
       for (const [id, of] of by) of.set(period.id, cents(period.closedPersonTotals[id] ?? '0.00'));
+    }
+    return by;
+  });
+  /** Per person, per period id, the carried figure: the dues of their claims that count, belonging to a
+   *  period ending before this one starts, that were still open (PENDING included) at its end by their
+   *  status log. */
+  private readonly personCarriedCents = computed(() => {
+    const by = new Map<number, Map<number, number>>(
+      this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const own = periodOf(this.periods(), c.dueBy);
+      const person = byId.get(c.personId);
+      if (own === null || person === undefined) continue;
+      const later = this.periods().filter((q) => own.to < q.from);
+      if (later.length === 0) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
+      if (due === null) continue;
+      const of = by.get(person.id)!;
+      for (const q of later) {
+        const status = statusAsOf(c, q.to);
+        if ((status === 'OPEN' || status === 'PENDING') && this.countsAt(c, q.to)) of.set(q.id, (of.get(q.id) ?? 0) + due);
+      }
     }
     return by;
   });
@@ -1108,6 +1132,11 @@ export class People {
     } finally {
       this.retiring.set(null);
     }
+  }
+
+  /** The person's carried figure for the period, with two decimals. */
+  protected personPeriodCarried(personId: number, periodId: number): string {
+    return money(this.personCarriedCents().get(personId)?.get(periodId) ?? 0);
   }
 
   /** The person's due-total for the period, with two decimals. */
