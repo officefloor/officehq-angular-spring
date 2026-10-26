@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -99,6 +101,25 @@ public class PersonService {
         audit.recordOnCommit(record("PERSON_EDITED", by, saved, today)
                 + (termsChanged ? " terms=" + (terms != null ? terms : "") : ""));
         rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * Gives each of the people a grade from the from-date (missing: the sheet's today), in list order, exactly as
+     * saving each one's edit with that grade would, all or none: one that is not a person of the sheet refuses them
+     * all. The people as saved, in list order.
+     */
+    @Transactional
+    public List<Person> bulkGrade(String by, String sheetId, Set<Long> ids, String grade, LocalDate from) {
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        }
+        List<Person> saved = new ArrayList<>();
+        for (Person p : chosen) {
+            saved.add(update(by, sheetId, p.getId(), p.getVersion(), p.getName(), grade, from, p.getTerms()));
+        }
         return saved;
     }
 

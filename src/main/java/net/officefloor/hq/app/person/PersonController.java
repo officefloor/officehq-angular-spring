@@ -4,11 +4,13 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -88,6 +90,15 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
+    /** A grade to give the people with the ids together, from its from-date (missing: the sheet's today). */
+    public record BulkGradeForm(@NotEmpty Set<Long> ids, @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
+    /** The people a bulk grade changed, in list order. */
+    public record BulkGradeView(List<PersonView> graded) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -145,6 +156,17 @@ public class PersonController {
             @PathVariable Long id, @RequestBody HoldForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
+    }
+
+    /** Gives the people the grade from the from-date together, in list order, as each one's edit would. */
+    @PostMapping("/bulk-grade")
+    public BulkGradeView bulkGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkGradeForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        List<Person> graded = service.bulkGrade(user, sheetId, form.ids(), form.grade(), form.from());
+        LocalDate today = service.today(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today)).toList());
     }
 
     /** The person as listed on the sheet's today. */

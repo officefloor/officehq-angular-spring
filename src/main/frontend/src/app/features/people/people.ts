@@ -190,10 +190,39 @@ interface StatementView {
         }
       </div>
 
+      <div role="group" aria-label="Selected people">
+        <label for="bulk-grade">Grade for selected people</label>
+        <select
+          id="bulk-grade"
+          data-testid="bulk-grade"
+          [value]="bulkGrade()"
+          (change)="bulkGrade.set(value($event)); bulkGradeError.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">Grade from</label>
+        <input
+          type="date"
+          id="bulk-grade-from"
+          data-testid="bulk-grade-from"
+          [value]="bulkGradeFrom()"
+          (input)="bulkGradeFrom.set(value($event)); bulkGradeError.set(null)"
+        />
+        <button type="button" data-testid="bulk-grade-apply" (click)="applyBulkGrade()">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          <p role="status">Changed: <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
+        }
+        @if (bulkGradeError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </div>
+
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
@@ -207,6 +236,15 @@ interface StatementView {
         <tbody>
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="person-select"
+                  [attr.aria-label]="'Select ' + p.name"
+                  [checked]="selectedPeople().has(p.id)"
+                  (change)="selectPerson(p.id, checked($event))"
+                />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -409,6 +447,14 @@ export class People {
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
+  // The people selected for a bulk grade, by id; the grade and from-date (blank: the sheet's today) it gives them,
+  // and how many the last one changed (none while one runs).
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  protected readonly bulkGrade = signal('A');
+  protected readonly bulkGradeFrom = signal('');
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkGradeError = signal<string | null>(null);
+  private bulkGrading = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
   // dated within one of their person's holds, or whose person's retirement date today has reached, that no statement
   // binds, and the deferred ones.
@@ -608,6 +654,11 @@ export class People {
         this.pasteText.set('');
         this.pasteAdded.set(null);
         this.pasteError.set(null);
+        this.selectedPeople.set(new Set());
+        this.bulkGrade.set('A');
+        this.bulkGradeFrom.set('');
+        this.bulkGraded.set(null);
+        this.bulkGradeError.set(null);
         if (id) void this.fetch(id);
       });
     });
@@ -924,6 +975,65 @@ export class People {
     }
   }
 
+  protected selectPerson(id: number, checked: boolean): void {
+    this.bulkGradeError.set(null);
+    this.selectedPeople.update((selected) => {
+      const next = new Set(selected);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Gives the selected people the chosen grade from the typed date (blank: the sheet's today) together: the store
+   * saves each one's edit in list order, as the person form would, all or none. Shows how many were changed.
+   */
+  protected async applyBulkGrade(): Promise<void> {
+    if (this.bulkGrading) return;
+    this.bulkGraded.set(null);
+    this.bulkGradeError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    const grade = this.bulkGrade();
+    const from = this.bulkGradeFrom().trim();
+    if (ids.length === 0) {
+      this.bulkGradeError.set('Select at least one person to grade.');
+      return;
+    }
+    if (!GRADES.includes(grade)) {
+      this.bulkGradeError.set('Choose a grade of A, B or C.');
+      return;
+    }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.bulkGradeError.set('Enter the grade from-date as yyyy-mm-dd.');
+      return;
+    }
+    this.bulkGrading = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ graded: Person[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/bulk-grade`, {
+          ids,
+          grade,
+          from: from || null,
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const byId = new Map(result.graded.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editingId();
+      if (editing !== null && byId.has(editing)) this.editingVersion.set(byId.get(editing)!.version);
+      this.selectedPeople.set(new Set());
+      this.bulkGradeFrom.set('');
+      this.bulkGraded.set(result.graded.length);
+    } catch {
+      this.bulkGradeError.set('Could not grade the selected people; none were changed.');
+    } finally {
+      this.bulkGrading = false;
+    }
+  }
+
   protected reset(): void {
     this.editingId.set(null);
     this.name.set('');
@@ -1099,6 +1209,9 @@ export class People {
         this.patrons.set(patrons);
         this.watched.set(new Set(watched));
         this.people.set(list);
+        // a selected person no longer on the sheet stays out of the next bulk grade
+        const people = new Set(list.map((p) => p.id));
+        this.selectedPeople.update((selected) => new Set([...selected].filter((id) => people.has(id))));
       }
     } catch {
       this.error.set('Could not load the people.');
