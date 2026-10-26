@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    225
+  ],
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "request": {
+    "spec": "A grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0f60a1f78a3489b3f81ca27f785cce0d04217d9c",
+  "reset_sha": "",
+  "preagent_sha": "3ffb581d4412c7be6db9e32c3a7104ffde888a75",
+  "prev_sha": "3ffb581d4412c7be6db9e32c3a7104ffde888a75",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5054382000000001,
+    "input_tokens": 30,
+    "output_tokens": 5307,
+    "cache_read_tokens": 503051,
+    "cache_creation_tokens": 37321,
+    "num_turns": 15,
+    "duration_ms": 340362,
+    "duration_api_ms": 89606,
+    "model": "claude-opus-5-5",
+    "session_id": "cc277e4a-e1da-4ca0-8b9d-0dd893f02125",
+    "stop_reason": "success",
+    "result_text": "A grade merge is now retroactive. `bin/e2e` builds and runs the app, and all 4 tests in the spec pass.\n\n**What changed** (server only, no schema or front-end changes):\n- **`Person.java`**: a new `regrade(from, into)` method changes every grade record a person has on the merged grade to the other grade, whatever its from-date.\n- **`GradeService.merge`**: each person is first moved exactly as before, which writes the same `PERSON_EDITED` and rollup audit lines. After that, `regrade` rewrites all their older grade records and the person is saved again. The merge's overall rollup then records the extra change, which is the second `ROLLUP`/`TOTALS` pair the test expects.\n\nFrom then on, all of a moved person's claims use the other grade's rates, terms and thresholds. Frozen figures and figures bound by a statement are still worked out by the existing code, so they stay as they were.\n\n**Decision for you:** I left each rewritten record's \"made on\" date as it was. As a result, a statement viewed \"as of\" a date before the merge now shows the merged person on the new grade, not the old one. The other option is to stamp the merge date on the rewritten records, as editing a grade already does. I didn't, because for a person's first grade record that would leave no grade at all in any as-of view before the merge. Getting both right would need a new column marking which records a merge replaced, plus a migration. I can add that if as-of views must show the old grade.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5054382000000001,
+        "num_turns": 15,
+        "duration_ms": 340362,
+        "duration_api_ms": 89606,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp232.agent.jsonl",
+  "agent_diff_file": "cp232.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

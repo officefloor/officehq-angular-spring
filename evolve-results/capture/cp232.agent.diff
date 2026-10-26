@@ -1,0 +1,50 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/GradeService.java b/src/main/java/net/officefloor/hq/app/person/GradeService.java
+index 120584c9..4dd0b8e1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/GradeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/GradeService.java
+@@ -97,7 +97,9 @@ public class GradeService {
+     }
+ 
+     /** Merge a grade into another: everyone whose grade in force on the sheet's today is the merged grade
+-     *  is given the other from the sheet's today, in list order, each as the person form would edit them.
++     *  is given the other from the sheet's today, in list order, each as the person form would edit them;
++     *  then every grade of theirs on the merged grade, whatever its from-date, becomes the other, so all
++     *  their claims use the other grade's rates, terms and thresholds.
+      *  Refused unless the user is a steward of the sheet, for the same grade twice, and for a retired
+      *  grade to merge into; a person who cannot be edited refuses the whole merge. After the people's
+      *  own lines, the figures the merge as a whole moved. The people changed. */
+@@ -123,7 +125,10 @@ public class GradeService {
+         List<Person> changed = new ArrayList<>();
+         for (Person person : people.findInListOrder(sheetId)) {
+             if (person.gradeOn(today) != from) continue;
+-            changed.add(persons.grade(sheetId, user, person.getId(), person.getVersion(), into));
++            Person moved = persons.grade(sheetId, user, person.getId(), person.getVersion(), into);
++            // Retroactive: every grade of theirs on the merged grade becomes the other, whatever its date.
++            if (moved.regrade(from, into)) moved = people.saveAndFlush(moved);
++            changed.add(moved);
+         }
+         rollup.recordChanges(user, before);
+         return changed;
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index a5912d6d..7bca100c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -245,6 +245,18 @@ public class Person {
+         grades.add(new PersonGrade(grade, from, madeOn));
+     }
+ 
++    /** Make every grade the person was given that is the one grade the other, whatever its from-date, so
++     *  the other is in force wherever the one was. Whether any grade changed. */
++    public boolean regrade(Grade from, Grade into) {
++        boolean changed = false;
++        for (PersonGrade g : grades) {
++            if (g.getGrade() != from) continue;
++            g.setGrade(into, g.getMadeOn());
++            changed = true;
++        }
++        return changed;
++    }
++
+     public LocalDate getRetiredFrom() {
+         return retiredFrom;
+     }
