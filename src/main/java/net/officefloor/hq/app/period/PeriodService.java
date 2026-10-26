@@ -44,11 +44,13 @@ public class PeriodService {
     private final SettingService settings;
     private final PoolRepository pools;
     private final CrewRepository crews;
+    private final RolloverRepository rollovers;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
             ClaimRepository claims, ClaimService claimService, PersonRepository people, SettingService settings,
-            PoolRepository pools, CrewRepository crews, Audit audit) {
+            PoolRepository pools, CrewRepository crews, RolloverRepository rollovers, Audit audit) {
+        this.rollovers = rollovers;
         this.settings = settings;
         this.pools = pools;
         this.crews = crews;
@@ -99,10 +101,11 @@ public class PeriodService {
     /** Generate one period per calendar month from the from-date's month to the to-date's month, each
      *  from the first to the last day of its month and named yyyy-mm; a blank date is the sheet's today.
      *  A month whose name is in use on the sheet, or whose days overlap one of its periods, is left out.
-     *  Refused when the to-date is before the from-date. The periods made, in date order. */
+     *  Refused when the to-date is before the from-date. The periods made, in date order; a viewer makes none. */
     @Transactional
     public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
         sheets.load(sheetId);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
         sheetRows.findForUpdate(sheetId);
         LocalDate today = sheets.today(sheetId);
         LocalDate start = from == null ? today : from;
@@ -267,7 +270,8 @@ public class PeriodService {
     /** Roll a fiscal year over: generate the next fiscal year's twelve monthly periods as
      *  {@link #generateFiscalYear} does, then add to each person's opening balance for the new year's first
      *  period their open figure at the end of the old year's last period: the due of their claims that
-     *  count, belonging to a period of the old year, and OPEN or PENDING at that period's end. Refused unless
+     *  count, belonging to a period of the old year, and OPEN or PENDING at that period's end; none when the
+     *  year has been rolled over already and that rollover is not undone. Refused unless
      *  the user acts as a steward, and when the old year has no periods. The periods made, in date order. */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -300,22 +304,61 @@ public class PeriodService {
         }
 
         List<Period> made = generateMonths(sheetId, user, first.plusMonths(12), first.plusMonths(23));
+        Rollover rollover = new Rollover(sheetId, year, user, today);
+        made.forEach((p) -> rollover.getPeriodIds().add(p.getId()));
         LocalDate newFrom = first.plusMonths(12).atDay(1);
         LocalDate newTo = first.plusMonths(23).atEndOfMonth();
         Period opening = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
                 .filter((p) -> !p.getFrom().isBefore(newFrom) && !p.getTo().isAfter(newTo)).findFirst().orElse(null);
-        if (opening != null) {
+        // A year rolled over already, and not undone, has carried its open figures; they are not carried twice.
+        boolean carried = rollovers.existsBySheetIdAndYearAndUndoneFalse(sheetId, year);
+        if (opening != null && !carried) {
             for (Person person : listed) {
                 BigDecimal amount = open.get(person.getId());
                 if (amount == null || amount.signum() == 0) continue;
                 opening.addOpening(person.getId(), amount);
+                rollover.getOpenings().merge(person.getId(), amount.setScale(2), BigDecimal::add);
                 audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                         + " period=" + opening.getName() + " amount=" + amount.setScale(2).toPlainString());
             }
             periods.saveAndFlush(opening);
+            rollover.setOpeningPeriodId(opening.getId());
         }
+        rollovers.saveAndFlush(rollover);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
         return made;
+    }
+
+    /** Undo the sheet's last rollover: remove the periods it generated and take back the opening balances it
+     *  added. Refused unless the user made it, and on the sheet's today it was made on; when it is undone
+     *  already, there is none, or a claim belongs to (is due by a date in) a period it generated. */
+    @Transactional
+    public void undoRollover(String sheetId, String user) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        Rollover rollover = rollovers.findFirstBySheetIdOrderByIdDesc(sheetId).filter((r) -> !r.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no rollover to undo."));
+        if (!rollover.getMadeBy().equals(user) || settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who rolled the year over may undo it.");
+        }
+        if (!rollover.getMadeOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A rollover can be undone only on the day it was made.");
+        }
+        List<Period> generated = periods.findAllById(rollover.getPeriodIds());
+        List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
+        if (all.stream().anyMatch((c) -> generated.stream().anyMatch((p) -> p.contains(c.getDueBy())))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim belongs to a period the rollover generated.");
+        }
+        if (rollover.getOpeningPeriodId() != null && !rollover.getPeriodIds().contains(rollover.getOpeningPeriodId())) {
+            periods.findByIdAndSheetId(rollover.getOpeningPeriodId(), sheetId).ifPresent((opening) -> {
+                rollover.getOpenings().forEach(opening::takeBackOpening);
+                periods.saveAndFlush(opening);
+            });
+        }
+        periods.deleteAll(generated);
+        rollover.undo();
+        rollovers.saveAndFlush(rollover);
+        audit.recordOnCommit("ROLLOVER_UNDONE sheet=" + sheetId + " by=" + user + " fy=FY" + rollover.getYear());
     }
 
     /** Reopen a closed or soft-closed period, making its due-total and its pool members' cuts live again. Refused when the sheet's permission

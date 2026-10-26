@@ -130,6 +130,15 @@ public class PeriodController {
         return new RolloverView(made, service.list(sheet).stream().map(PeriodView::of).toList());
     }
 
+    /** Undo the sheet's last rollover, on the day it was made, by the steward who made it; the sheet's periods now. */
+    @PostMapping("/rollover/undo")
+    public List<PeriodView> undoRollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        service.undoRollover(sheet, SignedInUser.name(user));
+        return service.list(sheet).stream().map(PeriodView::of).toList();
+    }
+
     /** Generate the four calendar quarters of a year, leaving out those whose name is in use or whose days
      *  overlap a period; the periods made. */
     @PostMapping("/generate-quarters")

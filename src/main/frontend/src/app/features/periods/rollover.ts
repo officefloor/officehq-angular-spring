@@ -6,6 +6,12 @@ import { PeriodView, PeriodsApi } from './periods-api';
 
 const YEAR = /^\d{4}$/;
 
+/** The server's reason for a refusal, with a leading space; blank when it gave none. */
+function reasonOf(e: unknown): string {
+  return e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
+    ? ' ' + e.error.message : '';
+}
+
 // A steward's year-end rollover: generates the next fiscal year's twelve monthly periods and carries each
 // person's open figure at the end of the typed year into the new year's first period as opening balances.
 @Component({
@@ -16,6 +22,7 @@ const YEAR = /^\d{4}$/;
       <label for="rollover-year">Fiscal year to roll over (yyyy, the calendar year it starts in)</label>
       <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
       <button type="submit" data-testid="rollover" [disabled]="saving()">Roll year over</button>
+      <button type="button" data-testid="rollover-undo" [disabled]="saving()" (click)="undo()">Undo last rollover</button>
       @if (made() !== null) {
         <p role="status">Periods made: <span data-testid="rollover-made">{{ made() }}</span></p>
       }
@@ -51,6 +58,25 @@ export class Rollover {
     });
   }
 
+  /** Undo the sheet's last rollover; refused, with the reason, unless the steward who made it does so on the same today. */
+  protected async undo(): Promise<void> {
+    if (this.saving()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.error.set('');
+    this.made.set(null);
+    this.saving.set(true);
+    try {
+      const periods = await this.api.undoRollover(sheet.id);
+      if (this.session.sheet()?.id === sheet.id) this.rolled.emit(periods);
+    } catch (e) {
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.error.set('The rollover was not undone.' + reasonOf(e));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   protected async submit(): Promise<void> {
     if (this.saving()) return;
     const sheet = this.session.sheet();
@@ -71,9 +97,7 @@ export class Rollover {
       }
     } catch (e) {
       if (this.session.sheet()?.id !== sheet.id) return;
-      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
-        ? ' ' + e.error.message : '';
-      this.error.set('The year was not rolled over.' + reason);
+      this.error.set('The year was not rolled over.' + reasonOf(e));
     } finally {
       this.saving.set(false);
     }
