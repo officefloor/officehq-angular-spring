@@ -835,7 +835,10 @@ export class PersonClaims {
       const conflict = e instanceof HttpErrorResponse && e.status === 409;
       const uncorrected = e instanceof HttpErrorResponse && e.status === 422;
       const editing = id === null ? undefined : this.claims().find((c) => c.id === id);
-      if (refUsed(e)) {
+      if (this.session.sheet()?.archived) {
+        // Nothing on an archived sheet can be changed: the refusal belongs to the form, editor open or not.
+        this.error.set('The sheet is archived: nothing on it can be changed.');
+      } else if (refUsed(e)) {
         // The reference is another claim's on the sheet; the editor, if open, stays open.
         this.error.set(`The reference '${form.ref}' is already used on this sheet.`);
       } else if (locked && editing) {

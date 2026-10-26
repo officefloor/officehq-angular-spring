@@ -22,6 +22,7 @@ import { SheetRounding } from '../settings/sheet-rounding';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
 
@@ -42,7 +43,7 @@ import { PersonPlans } from '../plans/person-plans';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, SheetHeader, Consolidated, TreeSearch, PoolsList, PersonPlans, GeneratePlans],
+  imports: [ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, PersonPlans, GeneratePlans],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -241,6 +242,7 @@ import { PersonPlans } from '../plans/person-plans';
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+        <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
         <table data-testid="people-list">
           <thead>
             <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Change grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -702,6 +704,27 @@ export class People {
     const change = new Map(byStart.map((p, i) => [p.id, i === 0 ? '' : money(dueOf(p.id) - dueOf(byStart[i - 1].id))]));
     return this.periods().map((p) => ({ name: p.name, dueTotal: money(dueOf(p.id)), change: change.get(p.id) ?? '' }));
   });
+  /** Each period's classic due-total: the figures as shown now of the claims due by a date in it that
+   *  count by their status now (countsLive), skipping those that are n/a; for a closed or soft-closed
+   *  period, the figure fixed when it was closed. */
+  protected readonly classicPeriodSummary = computed<ClassicPeriodSummary[]>(() => {
+    const totals = new Map<number, number>(this.periods().map((q) => [q.id, 0]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const period = periodOf(this.periods(), c.dueBy);
+      const person = byId.get(c.personId);
+      if (period === null || period.closed || period.softClosed || person === undefined || !this.countsLive(c)) continue;
+      const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
+      if (due !== null) totals.set(period.id, totals.get(period.id)! + due);
+    }
+    for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
+      totals.set(period.id, this.people().reduce((t, p) => t + cents(period.closedPersonTotals[p.id] ?? '0.00'), 0));
+    }
+    return this.periods().map((q) => ({ name: q.name, dueTotal: money(totals.get(q.id) ?? 0) }));
+  });
+  /** Everyone's due-total added up, skipping the people whose due-total is n/a, not trimmed. */
+  protected readonly classicDueTotal = computed(() =>
+    money(this.people().reduce((t, p) => t + (this.dueCentsOf(p) ?? 0), 0)));
   /** How many of the sheet's claims have each status. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })));
