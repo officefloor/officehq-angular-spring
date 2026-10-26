@@ -28,6 +28,9 @@ export interface PeriodView {
   personOpenings: Record<string, string>;
   /** Whether a steward has locked the period: a locked period cannot be reopened. */
   locked: boolean;
+  /** Each pool member's cut fixed when the period was closed or soft-closed, with two decimals, by member
+   *  key, by pool id (a crew's negated); a pool that showed no cuts then is missing. Empty while it is open. */
+  closedPoolCuts: Record<string, Record<string, string>>;
 }
 
 /** What pasting opening balances did: how many lines went through, and the sheet's periods now. */

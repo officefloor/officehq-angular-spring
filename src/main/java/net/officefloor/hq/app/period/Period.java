@@ -14,8 +14,10 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** One of the sheet's periods: a name unique on the sheet and a from and to date, both inclusive. */
 @Entity
@@ -70,6 +72,11 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
+
+    /** Every pool member's cut fixed when the period was closed or soft-closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    private Set<PeriodPoolCut> closedPoolCuts = new HashSet<>();
 
     /** Each person's opening balance for the period, by person id: part of their carried figure for it. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -159,6 +166,23 @@ public class Period {
         return closedPersonCarried;
     }
 
+    /** Each pool member's cut fixed when the period was closed or soft-closed, by member key, by pool id (a
+     *  crew's negated); a pool that showed no cuts then is missing; empty while it is open. */
+    public Map<Long, Map<String, BigDecimal>> getClosedPoolCuts() {
+        Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
+        for (PeriodPoolCut c : closedPoolCuts) {
+            byPool.computeIfAbsent(c.getPoolId(), (id) -> new HashMap<>()).put(c.getMemberKey(), c.getCut());
+        }
+        return byPool;
+    }
+
+    /** Fix every pool member's cut for the period, by member key, by pool id, as worked out now. */
+    public void fixPoolCuts(Map<Long, Map<String, BigDecimal>> cuts) {
+        closedPoolCuts.clear();
+        cuts.forEach((poolId, members) -> members.forEach((key, cut) ->
+                closedPoolCuts.add(new PeriodPoolCut(poolId, key, cut))));
+    }
+
     public Map<Long, BigDecimal> getPersonOpenings() {
         return personOpenings;
     }
@@ -202,6 +226,7 @@ public class Period {
         this.closedTotal = null;
         this.closedPersonTotals.clear();
         this.closedPersonCarried.clear();
+        this.closedPoolCuts.clear();
     }
 
     /** Whether the date falls within this period, both ends inclusive. */

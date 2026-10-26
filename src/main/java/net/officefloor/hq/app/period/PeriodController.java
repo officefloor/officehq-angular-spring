@@ -30,10 +30,13 @@ public class PeriodController {
     /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
      *  it is closed, whether it is soft-closed and, once closed or soft-closed, the due-total fixed then (null while open) and each person's
      *  due-total and carried figure fixed then, by person id (empty while open), its cap on each person's open claims (null for none),
-     *  each person's opening balance for it, by person id (a person missing has none), and whether it is locked. */
+     *  each person's opening balance for it, by person id (a person missing has none), whether it is locked, and
+     *  each pool member's cut fixed when it was closed or soft-closed, by member key, by pool id (a crew's
+     *  negated; a pool that showed no cuts then is missing; empty while open). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked,
+            Map<Long, Map<String, String>> closedPoolCuts) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
@@ -41,10 +44,16 @@ public class PeriodController {
             period.getClosedPersonCarried().forEach((id, carried) -> personCarried.put(id, carried.toPlainString()));
             Map<Long, String> openings = new TreeMap<>();
             period.getPersonOpenings().forEach((id, amount) -> openings.put(id, amount.toPlainString()));
+            Map<Long, Map<String, String>> poolCuts = new TreeMap<>();
+            period.getClosedPoolCuts().forEach((poolId, cuts) -> {
+                Map<String, String> shown = new TreeMap<>();
+                cuts.forEach((key, cut) -> shown.put(key, cut.setScale(2).toPlainString()));
+                poolCuts.put(poolId, shown);
+            });
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
-                    personTotals, period.getCap(), personCarried, openings, period.isLocked());
+                    personTotals, period.getCap(), personCarried, openings, period.isLocked(), poolCuts);
         }
     }
 

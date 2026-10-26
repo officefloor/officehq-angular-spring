@@ -15,8 +15,11 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCuts;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -39,12 +42,16 @@ public class PeriodService {
     private final ClaimService claimService;
     private final PersonRepository people;
     private final SettingService settings;
+    private final PoolRepository pools;
+    private final CrewRepository crews;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
             ClaimRepository claims, ClaimService claimService, PersonRepository people, SettingService settings,
-            Audit audit) {
+            PoolRepository pools, CrewRepository crews, Audit audit) {
         this.settings = settings;
+        this.pools = pools;
+        this.crews = crews;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -240,6 +247,9 @@ public class PeriodService {
         }
         if (soft) period.softClose(total, personTotals, personCarried);
         else period.close(total, personTotals, personCarried);
+        // Every pool member's cut for the period is fixed as it stands now, the sheet's today as it is.
+        period.fixPoolCuts(PoolCuts.of(pools.findBySheetIdOrderByIdAsc(sheetId),
+                crews.findBySheetIdOrderByIdAsc(sheetId), people.findInListOrder(sheetId), settings.pot(sheetId), today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));
@@ -308,7 +318,7 @@ public class PeriodService {
         return made;
     }
 
-    /** Reopen a closed or soft-closed period, making its due-total live again. Refused when the sheet's permission
+    /** Reopen a closed or soft-closed period, making its due-total and its pool members' cuts live again. Refused when the sheet's permission
      *  matrix does not allow the user's role to reopen (by default, only a steward), or the period is not closed. */
     @Transactional
     public Period reopen(String sheetId, String user, long id) {

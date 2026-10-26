@@ -110,6 +110,8 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
 // For every period whose to-date is on or before the sheet's today, each member also shows their cut as it
 // stood at the end of that period: worked out as above from the pools, their members, the pot and the holds
 // as the sheet held them then, with the period's to-date as the sheet's today; empty when there was none.
+// A closed or soft-closed period (ended or not) instead shows the cuts fixed when it was closed, until it is
+// reopened.
 @Component({
   selector: 'app-pool-row',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -177,7 +179,8 @@ export class PoolRow {
   readonly crew = input(false);
   /** Each member's cut, with two decimals, by member key; null for an unbalanced pool or no pot. */
   readonly cuts = input.required<ReadonlyMap<string, string> | null>();
-  /** The periods whose to-date is on or before the sheet's today, in date order. */
+  /** The periods whose to-date is on or before the sheet's today, or that are closed or soft-closed, in
+   *  date order. */
   readonly ended = input.required<PeriodView[]>();
   /** Each member's cut as it stood at the end of each of those periods, with two decimals, by member key,
    *  by period id; none for a period when the pool showed no cuts then (or is not yet read). */
@@ -293,6 +296,11 @@ function totalCents(members: readonly MemberRow[]): number {
   return members.reduce((t, m) => (!m.inForce ? t : t + cents(m.share)), 0);
 }
 
+/** Whether the period's cuts are fixed: it is closed or soft-closed. */
+function fixed(q: PeriodView): boolean {
+  return q.closed || q.softClosed;
+}
+
 /** Each pool's cuts by member key, by pool id: null for an unbalanced pool or one with no pot. A pool that
  *  is a member of none has the sheet's pot; one that is a member of another has its cut there. */
 function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot: string | null,
@@ -399,10 +407,16 @@ export class PoolsList {
 
   protected readonly noPastCuts: ReadonlyMap<number, ReadonlyMap<string, string> | null> = new Map();
 
-  /** The periods whose to-date is on or before the sheet's today, in date order. */
+  /** The periods whose to-date is on or before the sheet's today, or that are closed or soft-closed, in
+   *  date order. */
   protected readonly ended = computed(() => {
     const today = this.session.sheet()?.today;
-    return today === undefined ? [] : this.periods().filter((q) => q.to <= today);
+    return today === undefined ? [] : this.periods().filter((q) => q.to <= today || fixed(q));
+  });
+
+  /** The ended periods that are open, whose cuts are worked out from the sheet as it stood at their end. */
+  private readonly live = computed(() => this.ended().filter((q) => !fixed(q)), {
+    equal: (a, b) => a.length === b.length && a.every((q, i) => q.id === b[i].id && q.to === b[i].to),
   });
 
   /** Each pool's cuts at the end of each ended period, by pool id and then period id, as last read. */
@@ -410,11 +424,21 @@ export class PoolsList {
   /** Counts the readings of the history, so only the latest is shown. */
   private historyReads = 0;
 
-  /** Each pool's cuts at the end of each ended period, with two decimals, by member key, by period id, by
-   *  pool id. */
-  protected readonly pastCuts = computed(() => new Map([...this.history()].map(([poolId, byPeriod]) =>
-    [poolId, new Map([...byPeriod].map(([periodId, cuts]) =>
-      [periodId, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))]))])));
+  /** Each pool's cuts for each ended period, with two decimals, by member key, by period id, by pool id: those
+   *  fixed when a closed or soft-closed period was closed, otherwise those at the end of the period. */
+  protected readonly pastCuts = computed(() => {
+    const out = new Map<number, Map<number, ReadonlyMap<string, string> | null>>([...this.history()].map(([poolId, byPeriod]) =>
+      [poolId, new Map([...byPeriod].map(([periodId, cuts]) =>
+        [periodId, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))]))]));
+    for (const q of this.ended().filter(fixed)) {
+      for (const p of this.all()) {
+        if (!out.has(p.id)) out.set(p.id, new Map());
+        const cuts = q.closedPoolCuts?.[String(p.id)];
+        out.get(p.id)?.set(q.id, cuts ? new Map(Object.entries(cuts)) : null);
+      }
+    }
+    return out;
+  });
 
   /** The sheet's pools and then its crews as pools. */
   protected readonly all = computed(() => poolsWithCrews(this.store.pools(), this.crews.crews()));
@@ -436,7 +460,7 @@ export class PoolsList {
       // Re-read on each load of the sheet as well as on a change of its periods or its today.
       this.session.loaded();
       const sheetId = this.session.sheet()?.id;
-      const ended = this.ended();
+      const ended = this.live();
       untracked(() => {
         if (sheetId !== shownSheet) this.history.set(new Map());
         shownSheet = sheetId;
