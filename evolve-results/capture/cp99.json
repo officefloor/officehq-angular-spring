@@ -1,0 +1,64 @@
+{
+  "checkpoint": 99,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp99_person-contact",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "892836d2aff3dcc23c5f0f921e8b6eacdea07ef3",
+  "reset_sha": "",
+  "preagent_sha": "4dea5ab108d34ca04d370ac816169db1efacf32d",
+  "prev_sha": "4dea5ab108d34ca04d370ac816169db1efacf32d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6586506,
+    "input_tokens": 30,
+    "output_tokens": 8933,
+    "cache_read_tokens": 564553,
+    "cache_creation_tokens": 45870,
+    "num_turns": 16,
+    "duration_ms": 245821,
+    "duration_api_ms": 78475,
+    "model": "claude-opus-5-5",
+    "session_id": "1a9c7f2a-7cba-4207-ba34-c3c868fbadcc",
+    "stop_reason": "success",
+    "result_text": "People now have a contact, and all 4 tests pass when run with `bin/e2e`.\n\n**How it behaves**\n- **Stored form:** surrounding spaces are removed and the text is lower-cased, so `\" Ada@X \"` is saved and shown as `ada@x`. A blank contact counts as none.\n- **Duplicates:** a contact another person on the same sheet already has is refused with the form error, and nothing is saved or audited. Editing a person and keeping their own contact is not a conflict.\n- **Audit:** `PERSON_ADDED` ends with `contact=<contact>` when one was given. `PERSON_EDITED` ends with `contact=<contact>` only when the contact changed, and `contact=` when it was cleared.\n\n**What changed**\n- **Database:** a new migration, `V61__person_contact.sql`, adds a `contact` column with a unique index on sheet and contact. This backs up the duplicate check if two people save the same contact at once.\n- **Server:**\n  - `Person.java` has the new field.\n  - `PersonRepository.java` has the duplicate lookups.\n  - `PersonService.java` adds the contact to add and edit. Bulk grading keeps each person's contact as it is.\n  - `PersonController.java` takes `contact` on the add and edit forms and returns it with each person.\n- **Front end** (`people.ts`): a Contact field on the person form (`person-form-contact`) and a Contact column on each row (`person-contact`). It is filled in when you open the editor and reset when you add the next person.\n\n**Wording change:** the person form's error for a refused name or contact now reads \"That name or contact is already in use on this sheet.\" It used to say \"That name is already in use\u2026\", and the screen can't tell which of the two caused the refusal.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6586506,
+        "num_turns": 16,
+        "duration_ms": 245821,
+        "duration_api_ms": 78475,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp99.agent.jsonl",
+  "agent_diff_file": "cp99.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
