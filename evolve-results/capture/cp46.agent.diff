@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a139e5ff..df2c1452 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -46,7 +46,7 @@ export interface ClaimLogLine {
+ // or reject (OPEN again).
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
++type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void';
+ 
+ /** Only open, pending and settled claims count toward what is claimed and due. */
+ export function counts(c: Claim): boolean {
+@@ -233,6 +233,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
+               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
+                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
++              <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">
++                Re-settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
++              </button>
+               <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">
+                 Approve<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
+@@ -384,9 +387,11 @@ export class Claims {
+           ? 'You opened this claim, so another user must settle it.'
+           : (action === 'approve' || action === 'reject') && forbidden
+             ? 'Only a steward can approve or reject a pending claim.'
+-            : action === 'approve' && opener
+-              ? 'You opened this claim, so another steward must approve it.'
+-              : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
++            : action === 'resettle' && forbidden
++              ? 'Only a steward can re-settle a claim.'
++              : action === 'approve' && opener
++                ? 'You opened this claim, so another steward must approve it.'
++                : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+       this.setRowError(c.id, err);
+     }
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 97e1d76a..c7e03327 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -135,6 +135,13 @@ public class ClaimController {
+         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+     }
+ 
++    @PostMapping("/claims/{id}/resettle")
++    public ClaimView resettle(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
++        return ClaimView.of(service.resettle(user, sheetId, id));
++    }
++
+     /** A steward's reason for rejecting a pending claim. */
+     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dc85c357..ee250efb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -187,6 +187,34 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * A steward re-settles a settled claim: its due is frozen again at the figure it would have today as an open
++     * claim bound by no statement (today's rates, grades and floor, with the late charge it has gained by today; a
++     * correction gains none). Refused unless the user is a steward, unless it is settled, and in a closed period.
++     */
++    @Transactional
++    public Claim resettle(String by, String sheetId, Long id) {
++        if (!settings.isSteward(sheetId, by)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim.");
++        }
++        Claim claim = lockedClaim(sheetId, id);
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled.");
++        }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Person person = person(sheetId, claim.getPersonId());
++        BigDecimal old = claim.getSettledDue();
++        BigDecimal live = liveDue(sheetId, person, claim);
++        BigDecimal fixed = claim.isCorrection() ? live : withLateCharge(live, claim, sheets.load(sheetId));
++        claim.setSettledDue(fixed);
++        logStatus(by, sheetId, person, claim);
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("CLAIM_RESETTLED", by, person, saved) + " old=" + text(old) + " new="
++                + text(fixed));
++        rollup.recordChanges(by, sheetId, before);
++        return saved;
++    }
++
+     /**
+      * A steward rejects a pending claim with a reason: it is open again, bound again by its person's last statement
+      * when that included it. Refused unless it is pending, unless the user is a steward, without a reason, and in a
+@@ -410,6 +438,10 @@ public class ClaimService {
+         return date != null ? date : sheets.load(sheetId).getToday();
+     }
+ 
++    private static String text(BigDecimal value) {
++        return value == null ? "n/a" : value.toPlainString();
++    }
++
+     private static BigDecimal scaled(BigDecimal amount) {
+         return amount.setScale(2, RoundingMode.UNNECESSARY);
+     }

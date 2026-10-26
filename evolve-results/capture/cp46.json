@@ -1,0 +1,64 @@
+{
+  "checkpoint": 46,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp46_re-settle",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c20020d4b89cd3c829a819007c0e36b71850946c",
+  "reset_sha": "",
+  "preagent_sha": "f4a2ec5db6f3c1cff06b98d086edc8fe089c1551",
+  "prev_sha": "f4a2ec5db6f3c1cff06b98d086edc8fe089c1551",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6291488,
+    "input_tokens": 28,
+    "output_tokens": 5060,
+    "cache_read_tokens": 558944,
+    "cache_creation_tokens": 52006,
+    "num_turns": 15,
+    "duration_ms": 114832,
+    "duration_api_ms": 51541,
+    "model": "claude-opus-5-5",
+    "session_id": "627b8ae4-e024-4722-95bd-a94e9be555a6",
+    "stop_reason": "success",
+    "result_text": "Stewards can now re-settle a SETTLED claim, and all 4 tests in `bin/e2e` pass.\n\n**Server**\n- **Service:** `ClaimService.resettle` (`src/main/java/net/officefloor/hq/app/claim/ClaimService.java`) does the work.\n- **Refusals:** it refuses a user who isn't a steward, a claim that isn't SETTLED, and a claim dated in a closed period. A refusal writes nothing to the store or the audit file.\n- **New figure:** it recalculates the claim as an open claim that no statement binds. That means the rate table, grades and floor as they stand now, plus any late charge built up by the sheet's today. Corrections get no late charge, the same as when they are first settled.\n- **Recording:** it stores the new figure and adds a SETTLED line to the status log. It writes `CLAIM_RESETTLED \u2026 number=N old=<previous> new=<new>`, followed by the usual ROLLUP/TOTALS lines when the totals change.\n- **Endpoint:** `POST /api/sheets/{sheetId}/claims/{id}/resettle`, in `ClaimController.java`.\n\n**Front end**\n- A \"Re-settle\" button (`claim-resettle`) on each claim row uses the existing row action handler. A refusal shows in `claim-error`, with a steward-only message when the server rejects the user for not being a steward.\n\nNo stored-data or schema change was needed.\n\nThree behaviours the request didn't specify:\n- **Who opened the claim:** a steward can re-settle a claim they opened themselves; only first-time settling blocks the opener.\n- **Clerk limit:** it doesn't apply, because only stewards can re-settle.\n- **No rate in force:** if no rate applies, the new figure is `n/a` and the claim's due goes back to live, matching what settling does now.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6291488,
+        "num_turns": 15,
+        "duration_ms": 114832,
+        "duration_api_ms": 51541,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp46.agent.jsonl",
+  "agent_diff_file": "cp46.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
