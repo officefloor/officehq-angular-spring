@@ -143,6 +143,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim's review to; none until one is assigned. */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when it has none. */
     @Column(name = "ref")
     private String ref;
@@ -278,6 +282,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
+        copy.reviewAssignee = reviewAssignee;
         for (ClaimHold line : holds) copy.holds.add(new ClaimHold(line.getOn(), line.isHeld()));
         copy.tags = tags;
         copy.voidReason = voidReason;
@@ -588,6 +593,14 @@ public class Claim {
     /** The claim's shares added up, as a percent of its due. */
     public BigDecimal sharedPct() {
         return shares.stream().map(ClaimShare::getShare).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void setReviewAssignee(String reviewAssignee) {
+        this.reviewAssignee = reviewAssignee;
     }
 
     /** Hold the claim, or release it, while the sheet's today is the date given. */

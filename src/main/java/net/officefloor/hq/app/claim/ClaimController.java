@@ -43,14 +43,16 @@ public class ClaimController {
      *  Lines are its lines, in the order they were added. Edited by is who last edited it, or null when
      *  it never was. Settle batch is the number of the bulk settle batch that settled it, or null when it
      *  was settled one at a time or never. Waived is whether a steward waived its late charge. Held is
-     *  whether the claim is held. Shares are its shares, in the order they were given. */
+     *  whether the claim is held. Shares are its shares, in the order they were given. Review assignee is
+     *  the user a steward assigned its review to, or null. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue,
             String openedBy, boolean stated, String statedDue, String corrects, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer settleBatch, List<LineView> lines,
-            boolean waived, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares) {
+            boolean waived, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares,
+            String reviewAssignee) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -64,7 +66,8 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(),
                     claim.isWaived(), claim.getProofs(ProofKind.RECEIPT), claim.getProofs(ProofKind.PHOTO),
-                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList());
+                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList(),
+                    claim.getReviewAssignee());
         }
     }
 
@@ -380,6 +383,17 @@ public class ClaimController {
     public ClaimView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return ClaimView.of(service.toggleHold(sheetId.trim(), SignedInUser.name(user), id));
+    }
+
+    /** The user a claim's review is assigned to. */
+    public record ReviewAssignForm(@Size(max = 100) String user) {
+    }
+
+    /** Assign a REVIEW claim's review to a user; only a steward may. */
+    @PostMapping("/claims/{id}/review-assignee")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @Valid @RequestBody ReviewAssignForm form) {
+        return ClaimView.of(service.assignReview(sheetId.trim(), SignedInUser.name(user), id, form.user()));
     }
 
     /** The person a claim is shared with, and their share as a percent of its due. */

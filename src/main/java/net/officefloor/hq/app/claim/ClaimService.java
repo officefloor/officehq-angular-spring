@@ -580,6 +580,29 @@ public class ClaimService {
         return saved;
     }
 
+    /** Assign a REVIEW claim's review to a user name, writing REVIEW_ASSIGNED with the user. Refused
+     *  unless the user is a steward of the sheet, for a blank user name, and for a claim that is not REVIEW. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long id, String assignee) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward assigns a review.");
+        }
+        if (assignee == null || assignee.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Type the user to assign the review to.");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not waiting for review.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setReviewAssignee(assignee.trim());
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("REVIEW_ASSIGNED", user, person, saved, saved.getNumber(), " user=" + saved.getReviewAssignee());
+        return saved;
+    }
+
     /** Share a claim with another person on the sheet, writing CLAIM_SHARED with the holder and their
      *  share: the holder's due-total counts the claim's due times their share divided by 100, rounded half
      *  to even, and the claim's own person's the rest. Refused for a share not more than 0.00 or with

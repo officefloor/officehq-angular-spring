@@ -58,7 +58,8 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
-      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()" />
+      [myDueTotal]="me() === null ? '' : personDueTotal(me()!)" [myOverdueTotal]="me() === null ? '' : money(overdueOf(me()!.id).cents)" [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()" />
     <app-consolidated [ownPeople]="treeFigures()" [ownGrades]="gradeSummary()" [ownStatuses]="statusSummary()" />
     <app-tree-search />
     <app-duplicates />
@@ -670,6 +671,12 @@ export class People {
     const key = (name: string) => name.trim().toLowerCase();
     const mine = key(user);
     return this.people().find((p) => key(p.name) === mine || p.aliases.some((a) => key(a) === mine)) ?? null;
+  });
+  /** How many REVIEW claims on the sheet are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim();
+    if (!user) return 0;
+    return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee === user).length;
   });
   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
   protected readonly myCrewDueTotal = computed(() => {

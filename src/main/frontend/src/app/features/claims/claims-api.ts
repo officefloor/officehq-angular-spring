@@ -118,6 +118,8 @@ export interface ClaimView {
   held: boolean;
   /** The claim's shares, in the order they were given. */
   shares: ClaimShare[];
+  /** The user a steward assigned the claim's review to; null until one is assigned. */
+  reviewAssignee: string | null;
 }
 
 /** A share of a claim: the person on the sheet holding it and their percent of its due (two decimals). */
@@ -476,6 +478,12 @@ export class ClaimsApi {
    *  holding a share, shares totalling more than 100.00, and a settled, void or deleted claim. */
   share(sheetId: string, id: number, personId: number, share: string): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/shares`, { personId, share }));
+  }
+
+  /** Assign a REVIEW claim's review to a user: refused (403) to all but a steward, and refused for a
+   *  blank user and a claim in any other status. */
+  assignReview(sheetId: string, id: number, user: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/review-assignee`, { user }));
   }
 
   /** Hold an open or pending claim, or release a held one: refused for a claim in any other status. */

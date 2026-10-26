@@ -111,6 +111,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
+          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
           <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
@@ -198,6 +199,11 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Waive late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <button type="button" data-testid="claim-hold" (click)="toggleHold(c)" [attr.aria-pressed]="c.held"
             [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
+          <label [for]="'claim-review-user-' + c.id">Review by</label>
+          <input #reviewUser [id]="'claim-review-user-' + c.id" data-testid="claim-review-user"
+            (input)="clearClaimError(c)" />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c, reviewUser)"
+            [attr.aria-label]="'Assign the review of claim of ' + c.amount + ' on ' + c.date">Assign review</button>
           <label [for]="'claim-share-select-' + c.id">Share with</label>
           <select #shareWith [id]="'claim-share-select-' + c.id" data-testid="claim-share-select"
             (change)="clearClaimError(c)">
@@ -815,6 +821,33 @@ export class PersonClaims {
           : claim.waived
             ? 'This claim\'s late charge is already waived.'
             : 'Only an OPEN or PENDING claim can have its late charge waived.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Assign a REVIEW claim's review to the user typed; a blank user is refused, and the store refuses
+   *  anyone but a steward and a claim in any other status. */
+  protected async assignReview(claim: ClaimView, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    const user = input.value.trim();
+    if (user === '') {
+      this.claimError.set({ id: claim.id, message: 'Type the user to assign the review to.' });
+      return;
+    }
+    try {
+      const assigned = await this.api.assignReview(sheet.id, claim.id, user);
+      if (this.session.sheet()?.id === sheet.id) {
+        input.value = '';
+        this.changed.emit(assigned);
+      }
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can assign a review.'
+          : 'Only a REVIEW claim can have its review assigned.';
         this.claimError.set({ id: claim.id, message });
       }
     }
