@@ -23,6 +23,15 @@ export interface PeriodView {
   /** Each person's carried figure fixed when the period was closed or soft-closed, with two decimals, by
    *  person id; empty while it is open. A person missing from it (added after the close) has 0.00. */
   closedPersonCarried: Record<string, string>;
+  /** Each person's opening balance for the period, with two decimals, by person id: part of their carried
+   *  figure for it. A person missing from it has none. */
+  personOpenings: Record<string, string>;
+}
+
+/** What pasting opening balances did: how many lines went through, and the sheet's periods now. */
+export interface OpeningsView {
+  added: number;
+  periods: PeriodView[];
 }
 
 export interface PeriodForm {
@@ -69,6 +78,13 @@ export class PeriodsApi {
    *  generator does: the periods made. */
   generateFiscalYear(sheetId: string, year: number): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-fy`, { year }));
+  }
+
+  /** Add each pasted line of name,period,amount to the person's opening balance for the period, all or
+   *  none: refused when any line names no person or period on the sheet, or its amount is not 0.00 or more
+   *  with two decimals. */
+  pasteOpenings(sheetId: string, text: string): Promise<OpeningsView> {
+    return firstValueFrom(this.http.post<OpeningsView>(`${this.url(sheetId)}/openings`, { text }));
   }
 
   /** Close a period, fixing its due-total: refused when it is already closed. */

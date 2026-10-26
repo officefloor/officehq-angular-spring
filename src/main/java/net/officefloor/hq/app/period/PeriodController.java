@@ -29,19 +29,22 @@ public class PeriodController {
 
     /** What the screen shows of a period: its name and its from and to dates, both inclusive, whether
      *  it is closed, whether it is soft-closed and, once closed or soft-closed, the due-total fixed then (null while open) and each person's
-     *  due-total and carried figure fixed then, by person id (empty while open), and its cap on each person's open claims (null for none). */
+     *  due-total and carried figure fixed then, by person id (empty while open), its cap on each person's open claims (null for none),
+     *  and each person's opening balance for it, by person id (a person missing has none). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
-            Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             Map<Long, String> personCarried = new TreeMap<>();
             period.getClosedPersonCarried().forEach((id, carried) -> personCarried.put(id, carried.toPlainString()));
+            Map<Long, String> openings = new TreeMap<>();
+            period.getPersonOpenings().forEach((id, amount) -> openings.put(id, amount.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
-                    personTotals, period.getCap(), personCarried);
+                    personTotals, period.getCap(), personCarried, openings);
         }
     }
 

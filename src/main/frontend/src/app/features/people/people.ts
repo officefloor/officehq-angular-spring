@@ -35,6 +35,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 import { QuickAdd } from './quick-add';
 import { PasteClaims } from '../claims/paste-claims';
+import { ImportOpenings } from '../periods/import-openings';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
 import { TreeSearch } from '../summary/tree-search';
@@ -48,7 +49,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -106,6 +107,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         </form>
         <app-quick-add (added)="quickAdded($event)" />
         <app-paste-claims (added)="pasted($event)" />
+        <app-import-openings (pasted)="periods.set($event)" />
         <app-generate-plans (generated)="pasted($event)" />
         <app-import-people (added)="imported($event)" />
         <label>
@@ -716,7 +718,8 @@ export class People {
   });
   /** Per person, per period id, the carried figure: the dues of their claims that count, belonging to a
    *  period ending before this one starts, that were still open (PENDING included) at its end by their
-   *  status log; for a closed or soft-closed period, the figure fixed when it was closed (0 for a person added since). */
+   *  status log, with their opening balance for it; for a closed or soft-closed period, the figure fixed when it was
+   *  closed (0 for a person added since). */
   private readonly personCarriedCents = computed(() => {
     const by = new Map<number, Map<number, number>>(
       this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
@@ -734,6 +737,9 @@ export class People {
         const status = statusAsOf(c, q.to);
         if ((status === 'OPEN' || status === 'PENDING') && this.countsAt(c, q.to)) of.set(q.id, (of.get(q.id) ?? 0) + due);
       }
+    }
+    for (const period of this.periods()) {
+      for (const [id, of] of by) of.set(period.id, (of.get(period.id) ?? 0) + cents(period.personOpenings[id] ?? '0.00'));
     }
     for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
       for (const [id, of] of by) of.set(period.id, cents(period.closedPersonCarried[id] ?? '0.00'));
