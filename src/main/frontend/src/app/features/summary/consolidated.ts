@@ -7,9 +7,9 @@ import { ConsolidatedApi, DescendantsView } from './consolidated-api';
 // The consolidated figures over the sheet and all its descendants (the sheets naming it as their
 // parent, then theirs, and so on): the number of people, and each sheet's due-total and overdue-total
 // as that sheet shows it, added up. The sheet's own figures are those it shows; its descendants' are
-// re-read each time a sheet is loaded. A sheet with no children shows its own figures. The consolidated
-// figures are always those of now: while the screen shows the sheet as of a date, its own figures are
-// read live with its descendants'.
+// re-read each time a sheet is loaded. A sheet with no children shows its own figures. While the screen
+// shows the sheet as of a date, the consolidated figures are as of that date too: every sheet of the
+// tree as it stood at the end of that day, with that date as its today.
 @Component({
   selector: 'app-consolidated',
   imports: [FigurePipe],
@@ -38,13 +38,9 @@ export class Consolidated {
   /** The loaded sheet's descendants' figures; null until read (or when the read failed). */
   private readonly descendants = signal<DescendantsView | null>(null);
 
-  /** The sheet's own figures as of now: those it shows, or while it is shown as of a date, those read live. */
-  private readonly own = computed(() => {
-    const live = this.descendants();
-    return this.session.asOf() !== null && live !== null
-      ? { peopleCount: live.ownPeopleCount, dueTotal: live.ownDueTotal, overdueTotal: live.ownOverdueTotal }
-      : { peopleCount: this.ownPeopleCount(), dueTotal: this.ownDueTotal(), overdueTotal: this.ownOverdueTotal() };
-  });
+  /** The sheet's own figures, as it shows them. */
+  private readonly own = computed(() =>
+    ({ peopleCount: this.ownPeopleCount(), dueTotal: this.ownDueTotal(), overdueTotal: this.ownOverdueTotal() }));
 
   protected readonly peopleCount = computed(() => this.own().peopleCount + (this.descendants()?.peopleCount ?? 0));
   protected readonly dueTotal = computed(() =>

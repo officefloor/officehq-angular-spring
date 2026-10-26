@@ -60,6 +60,13 @@ public class Period {
     @Column(name = "total", nullable = false)
     private Map<Long, BigDecimal> closedPersonTotals = new HashMap<>();
 
+    /** Each person's carried figure fixed when the period was closed or soft-closed, by person id; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false)
+    private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
+
     /** How many OPEN or PENDING claims a person may have in the period; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -129,32 +136,39 @@ public class Period {
         return closedPersonTotals;
     }
 
-    /** Close the period, fixing its due-total and each person's due-total for it, by person id. */
-    public void close(BigDecimal total, Map<Long, BigDecimal> personTotals) {
-        fix(total, personTotals);
+    public Map<Long, BigDecimal> getClosedPersonCarried() {
+        return closedPersonCarried;
+    }
+
+    /** Close the period, fixing its due-total and each person's due-total and carried figure for it, by person id. */
+    public void close(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+        fix(total, personTotals, personCarried);
         this.closed = true;
     }
 
     /** Soft-close the period, fixing its figures as a close does while its claims can still change. */
-    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals) {
-        fix(total, personTotals);
+    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+        fix(total, personTotals, personCarried);
         this.softClosed = true;
     }
 
-    private void fix(BigDecimal total, Map<Long, BigDecimal> personTotals) {
+    private void fix(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = total;
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
+        this.closedPersonCarried.clear();
+        this.closedPersonCarried.putAll(personCarried);
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** Reopen the period: its due-total and carried figures are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
+        this.closedPersonCarried.clear();
     }
 
     /** Whether the date falls within this period, both ends inclusive. */

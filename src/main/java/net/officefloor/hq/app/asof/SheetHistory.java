@@ -117,6 +117,18 @@ public class SheetHistory {
         return today.isEmpty() ? null : today.get(0);
     }
 
+    /** The sheets naming the sheet as their parent, as the store holds them within the caller's transaction. */
+    public List<String> childrenOf(String parent) {
+        return jdbc.queryForList("SELECT child_id FROM sheet_parent WHERE parent_id = ? ORDER BY child_id",
+                String.class, parent);
+    }
+
+    /** Whether the child names the parent as its parent, within the caller's transaction. */
+    public boolean namesParent(String child, String parent) {
+        return !jdbc.queryForList("SELECT parent_id FROM sheet_parent WHERE child_id = ? AND parent_id = ?",
+                String.class, child, parent).isEmpty();
+    }
+
     /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
      *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
      *  back on. Only for a transaction that is rolled back afterwards. */

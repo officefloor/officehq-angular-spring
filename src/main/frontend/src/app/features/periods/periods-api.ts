@@ -20,6 +20,9 @@ export interface PeriodView {
   closedPersonTotals: Record<string, string>;
   /** How many OPEN or PENDING claims each person may have in the period; null for no cap. */
   cap: number | null;
+  /** Each person's carried figure fixed when the period was closed or soft-closed, with two decimals, by
+   *  person id; empty while it is open. A person missing from it (added after the close) has 0.00. */
+  closedPersonCarried: Record<string, string>;
 }
 
 export interface PeriodForm {

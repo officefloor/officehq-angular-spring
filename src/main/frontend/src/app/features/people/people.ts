@@ -688,7 +688,7 @@ export class People {
   });
   /** Per person, per period id, the carried figure: the dues of their claims that count, belonging to a
    *  period ending before this one starts, that were still open (PENDING included) at its end by their
-   *  status log. */
+   *  status log; for a closed or soft-closed period, the figure fixed when it was closed (0 for a person added since). */
   private readonly personCarriedCents = computed(() => {
     const by = new Map<number, Map<number, number>>(
       this.people().map((p) => [p.id, new Map(this.periods().map((q) => [q.id, 0]))]));
@@ -706,6 +706,9 @@ export class People {
         const status = statusAsOf(c, q.to);
         if ((status === 'OPEN' || status === 'PENDING') && this.countsAt(c, q.to)) of.set(q.id, (of.get(q.id) ?? 0) + due);
       }
+    }
+    for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
+      for (const [id, of] of by) of.set(period.id, cents(period.closedPersonCarried[id] ?? '0.00'));
     }
     return by;
   });

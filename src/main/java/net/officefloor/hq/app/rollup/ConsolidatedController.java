@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.rollup;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import net.officefloor.hq.app.asof.AsOf;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,10 +25,12 @@ public class ConsolidatedController {
         this.search = search;
     }
 
-    /** The figures of the sheet's descendants added up; the screen adds its own to consolidate them. */
+    /** The figures of the sheet's descendants added up; the screen adds its own to consolidate them. Read
+     *  from a screen set to an as-of date, every sheet of the tree as it stood at the end of that day. */
     @GetMapping("/{id}/descendants")
-    public ConsolidatedService.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
-        return service.descendantsOf(id.trim());
+    public ConsolidatedService.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String id,
+            HttpServletRequest request) {
+        return service.descendantsOf(id.trim(), AsOf.of(request).orElse(null));
     }
 
     /** The people over the sheet's tree whose name or an alias contains the text, case ignored. */

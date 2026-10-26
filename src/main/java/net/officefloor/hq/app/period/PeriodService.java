@@ -138,7 +138,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
-     *  due by a date in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
+     *  due by a date in it that were open or settled at the end of its last day (by their status logs), skipping those that are n/a and the unbound open claims dated within a hold of their person, and the claims deferred on the sheet's today; and each person's carried figure for it: the figures as shown now of their claims counted so that belong to a period ending before it starts and were still open (PENDING included) at its end. A soft-closed period is closed with its figures fixed afresh. Refused when the period is already closed, or the sheet's permission matrix does not allow the user's role to close. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // Locked as claim changes lock it, so no claim in the period changes while it is closed.
@@ -190,7 +190,12 @@ public class PeriodService {
         LocalDate today = sheets.today(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         Map<Long, BigDecimal> personTotals = new HashMap<>();
-        for (Long personId : peopleById.keySet()) personTotals.put(personId, BigDecimal.ZERO.setScale(2));
+        Map<Long, BigDecimal> personCarried = new HashMap<>();
+        for (Long personId : peopleById.keySet()) {
+            personTotals.put(personId, BigDecimal.ZERO.setScale(2));
+            personCarried.put(personId, BigDecimal.ZERO.setScale(2));
+        }
+        List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = peopleById.get(claim.getPersonId());
             if (person == null) continue;
@@ -200,15 +205,22 @@ public class PeriodService {
             boolean bound = claim.isStated() && then != ClaimStatus.PENDING;
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
                     || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isLeftOut(claim.getDate(), today))));
-            if (!counts || !period.contains(claim.getDueBy())) continue;
+            if (!counts) continue;
+            // Carried: still open at the end of this period, belonging to a period ending before it starts.
+            boolean carried = then.isOpen() && all.stream()
+                    .anyMatch((p) -> p.contains(claim.getDueBy()) && p.getTo().isBefore(period.getFrom()));
+            if (!carried && !period.contains(claim.getDueBy())) continue;
             BigDecimal due = claimService.due(sheetId, person, claim);
-            if (due != null) {
+            if (due == null) continue;
+            if (carried) {
+                personCarried.merge(person.getId(), due, BigDecimal::add);
+            } else {
                 total = total.add(due);
                 personTotals.merge(person.getId(), due, BigDecimal::add);
             }
         }
-        if (soft) period.softClose(total, personTotals);
-        else period.close(total, personTotals);
+        if (soft) period.softClose(total, personTotals, personCarried);
+        else period.close(total, personTotals, personCarried);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));

@@ -17,15 +17,14 @@ export interface DescendantsView {
   ownOverdueTotal: string;
 }
 
-// The figures of a sheet's descendants, and its own, as the store holds them now: read live even while
-// the screen shows the sheet as of a date.
+// The figures of a sheet's descendants, and its own: while the screen shows the sheet as of a date, every
+// sheet of the tree as it stood at the end of that day.
 @Injectable({ providedIn: 'root' })
 export class ConsolidatedApi {
   private readonly http = inject(HttpClient);
 
   descendants(sheetId: string): Promise<DescendantsView> {
-    return firstValueFrom(this.http.get<DescendantsView>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`,
-      { context: new HttpContext().set(LIVE_READ, true) }));
+    return firstValueFrom(this.http.get<DescendantsView>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
   }
 }
 
