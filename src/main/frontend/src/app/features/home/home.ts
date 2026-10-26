@@ -44,6 +44,23 @@ import { Delegation } from '../delegation/delegation';
           <button type="submit" data-testid="sheet-today-save">Set today</button>
         </form>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+
+        <p>As of: <strong data-testid="sheet-asof">{{ session.sheetAsOf() ?? '' }}</strong></p>
+        <form (submit)="setAsOf($event)" aria-label="Show the sheet as of a date">
+          <label for="asof-date">Show as of</label>
+          <input
+            id="asof-date"
+            type="date"
+            data-testid="asof-date"
+            [value]="asOfInput()"
+            (input)="asOfInput.set(value($event)); asOfError.set(null)"
+          />
+          <button type="submit" data-testid="asof-set">Set as of</button>
+          <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+          @if (asOfError(); as err) {
+            <p role="alert" data-testid="asof-error">{{ err }}</p>
+          }
+        </form>
         @if (todayError(); as err) {
           <p role="alert" data-testid="sheet-error">{{ err }}</p>
         }
@@ -79,6 +96,10 @@ export class Home {
   protected readonly todayInput = signal('');
   // The sheet's own error: a refused today change or archive.
   protected readonly todayError = signal<string | null>(null);
+
+  protected readonly asOfInput = signal('');
+  // The as-of entry's own error: a date that is not one, or a sheet that could not be shown as of it.
+  protected readonly asOfError = signal<string | null>(null);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -126,6 +147,30 @@ export class Home {
       await this.session.setToday(today);
     } catch {
       this.todayError.set('Could not change the date.');
+    }
+  }
+
+  protected async setAsOf(e: Event): Promise<void> {
+    e.preventDefault();
+    this.asOfError.set(null);
+    const date = this.asOfInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Enter a date as yyyy-mm-dd.');
+      return;
+    }
+    try {
+      await this.session.setAsOf(date);
+    } catch {
+      this.asOfError.set('Could not show the sheet as of that date.');
+    }
+  }
+
+  protected async clearAsOf(): Promise<void> {
+    this.asOfError.set(null);
+    try {
+      await this.session.setAsOf(null);
+    } catch {
+      this.asOfError.set('Could not show the sheet as it stands.');
     }
   }
 

@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.asof.AsOfContext;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -50,8 +51,14 @@ public class Audit {
         this.onBehalf = onBehalf;
     }
 
-    /** Append one audit record. Tests assert the exact line(s) in the file. */
+    /**
+     * Append one audit record. Tests assert the exact line(s) in the file. A request answered as of a date changes
+     * nothing, so it writes none.
+     */
     public synchronized void record(String entry) {
+        if (AsOfContext.active()) {
+            return;
+        }
         try {
             Path parent = file.toAbsolutePath().getParent();
             if (parent != null) {

@@ -1,0 +1,15 @@
+import { HttpInterceptorFn } from '@angular/common/http';
+import { Injectable, inject, signal } from '@angular/core';
+
+// The date this user's screen shows the sheet as of (yyyy-mm-dd), or null for as it stands now. It belongs to the
+// screen: other users are unaffected.
+@Injectable({ providedIn: 'root' })
+export class AsOf {
+  readonly date = signal<string | null>(null);
+}
+
+// Sends the as-of date with every request, so the server answers as of it and refuses every change.
+export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
+  const date = inject(AsOf).date();
+  return next(date ? req.clone({ setHeaders: { 'X-As-Of': date } }) : req);
+};

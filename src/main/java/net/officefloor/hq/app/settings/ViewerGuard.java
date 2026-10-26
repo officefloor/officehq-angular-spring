@@ -45,7 +45,7 @@ public class ViewerGuard implements HandlerInterceptor {
     }
 
     /** The sheet the request is on: its sheetId path variable, or the id of a /api/sheets/{id} path. */
-    private static String sheetId(HttpServletRequest request) {
+    public static String sheetId(HttpServletRequest request) {
         @SuppressWarnings("unchecked")
         Map<String, String> vars = (Map<String, String>) request
                 .getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);

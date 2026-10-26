@@ -786,6 +786,8 @@ export class People {
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
       this.statements.update((list) => [...list.filter((s) => s.personId !== p.id), taken.statement]);
     } catch {
+      // a date typed for a refused statement does not carry into the next one
+      this.statementAsOfs.update(({ [p.id]: _, ...rest }) => rest);
       this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not take a statement for this person.' }));
     }
   }

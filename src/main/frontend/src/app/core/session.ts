@@ -1,11 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { AsOf } from './as-of';
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
+  private readonly asOf = inject(AsOf);
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
@@ -15,6 +17,9 @@ export class Session {
   readonly sheetArchived = signal(false);
   // Counts sheet loads, so a view re-reads the store even when the same id is loaded again.
   readonly loads = signal(0);
+  // The date the screen shows the sheet as of, or null: while set, every figure is as the sheet stood at the end of
+  // it, the date stands in for the sheet's today, and every change is refused.
+  readonly sheetAsOf = this.asOf.date.asReadonly();
 
   async signIn(name: string): Promise<void> {
     const u = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
@@ -29,6 +34,13 @@ export class Session {
     this.sheetToday.set(s.today);
     this.sheetArchived.set(s.archived);
     this.loads.update((n) => n + 1);
+  }
+
+  // Shows the sheet as of the date (null: as it stands now), re-read from the store.
+  async setAsOf(date: string | null): Promise<void> {
+    this.asOf.date.set(date);
+    const id = this.sheetId();
+    if (id) await this.loadSheet(id);
   }
 
   async setToday(today: string): Promise<void> {
