@@ -27,10 +27,11 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount always carries two decimals. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+            Long number) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
-                    c.getStatus());
+                    c.getStatus(), c.getNumber());
         }
     }
 

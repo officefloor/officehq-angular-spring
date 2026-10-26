@@ -11,6 +11,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  // Given when the claim is opened; null for a draft or voided claim.
+  number: number | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -70,13 +72,14 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
         @for (c of claims(); track c.id) {
           <tr [attr.data-testid]="'claim-row-' + c.id">
+            <td data-testid="claim-number">{{ c.number ?? '' }}</td>
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>

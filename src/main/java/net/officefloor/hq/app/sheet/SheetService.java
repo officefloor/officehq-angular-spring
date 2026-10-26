@@ -27,6 +27,14 @@ public class SheetService {
         return sheets.saveAndFlush(sheet);
     }
 
+    /** Takes the sheet's next claim number; two callers at once never get the same one. */
+    @Transactional
+    public long nextClaimNumber(String id) {
+        load(id);
+        sheets.incrementClaimNumber(id);
+        return sheets.lastClaimNumber(id);
+    }
+
     private Sheet create(String id) {
         try {
             return sheets.saveAndFlush(new Sheet(id));

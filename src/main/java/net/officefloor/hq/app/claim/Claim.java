@@ -39,6 +39,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
+    /** The sheet's number given when the claim is opened; null for a draft or voided claim. */
+    @Column(name = "claim_number")
+    private Long number;
+
     protected Claim() {
     }
 
@@ -92,5 +96,13 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) {
         this.status = status;
+    }
+
+    public Long getNumber() {
+        return number;
+    }
+
+    public void setNumber(Long number) {
+        this.number = number;
     }
 }

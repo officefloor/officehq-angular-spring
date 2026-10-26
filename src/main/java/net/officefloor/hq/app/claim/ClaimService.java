@@ -60,13 +60,21 @@ public class ClaimService {
     /** Moves the claim to the status; a change its status does not allow is refused. */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         if (!claim.getStatus().canMoveTo(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        Long number = claim.getNumber();
         claim.setStatus(next);
+        if (next == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+            claim.setNumber(number);
+        } else if (next == ClaimStatus.VOID) {
+            // the number is cleared, never given to another claim; the audit line still carries it
+            claim.setNumber(null);
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -74,7 +82,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, by, person(sheetId, saved.getPersonId()), saved));
+        audit.recordOnCommit(record(event, by, person(sheetId, saved.getPersonId()), saved, number));
         return saved;
     }
 
@@ -84,8 +92,14 @@ public class ClaimService {
     }
 
     private static String record(String event, String by, Person person, Claim c) {
+        return record(event, by, person, c, c.getNumber());
+    }
+
+    /** The audit line about a claim; one that has a number ends with it. */
+    private static String record(String event, String by, Person person, Claim c, Long number) {
         return event + " sheet=" + c.getSheetId() + " by=" + by + " person=" + person.getName()
-                + " amount=" + c.getAmount().toPlainString() + " date=" + c.getDate();
+                + " amount=" + c.getAmount().toPlainString() + " date=" + c.getDate()
+                + (number != null ? " number=" + number : "");
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
