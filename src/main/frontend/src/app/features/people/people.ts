@@ -417,6 +417,8 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                     [disabled]="stating() === p.id" [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
                   <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
                     [disabled]="stating() === p.id" [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
+                  <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)"
+                    [attr.aria-label]="'Download the statement of ' + p.name + ' as CSV'">Export statement</button>
                   @if (personError()?.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                   }
@@ -1595,6 +1597,15 @@ export class People {
           periodOf(this.periods(), c.dueBy)?.name ?? ''];
       }))];
     this.download('claims.csv', lines);
+  }
+
+  /** Downloads the person's statement: each claim of theirs their last statement bound, oldest first, with
+   *  its number, date, amount, the figure it was bound to (n/a when none) and status. */
+  protected async exportStatement(person: PersonView): Promise<void> {
+    await this.session.settled();
+    this.download('statement.csv', [['number', 'date', 'amount', 'figure', 'status'],
+      ...[...this.claimsOf(person.id)].reverse().filter(isBound)
+        .map((c) => [c.number ?? '', c.date, c.amount, c.statedDue ?? 'n/a', c.status])]);
   }
 
   /** Offers the lines as a CSV file: a field holding a quote, comma or line end is quoted, and each line
