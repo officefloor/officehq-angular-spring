@@ -1,0 +1,64 @@
+{
+  "checkpoint": 210,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp210_score-bands",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bc8871364fc0d6a86d6f3da62abad0c59f343f71",
+  "reset_sha": "",
+  "preagent_sha": "82f8fd78c93da6a4e554a68a6e9d8cd46d47d4e2",
+  "prev_sha": "82f8fd78c93da6a4e554a68a6e9d8cd46d47d4e2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0511568,
+    "input_tokens": 48,
+    "output_tokens": 11657,
+    "cache_read_tokens": 1314164,
+    "cache_creation_tokens": 69374,
+    "num_turns": 25,
+    "duration_ms": 467629,
+    "duration_api_ms": 156694,
+    "model": "claude-opus-5-5",
+    "session_id": "589c4b5e-ccb4-42a8-9cfa-9662dfffe784",
+    "stop_reason": "success",
+    "result_text": "Three of the four tests pass. The fourth, scenario 2, fails on something that has nothing to do with score bands, and I haven't changed the app to get around it.\n\n**What I built:**\n- **Server** (`SettingService.java`, `SettingController.java`): two settings, `score-mid` and `score-high`. They are whole numbers (negatives allowed), not dated, and blank clears them. They are saved as `PUT /settings/score-mid` and `/settings/score-high`, and the settings response now includes `scoreMid` and `scoreHigh`. Each save writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=score-mid value=\u2026` (or `key=score-high`) to the audit file. Sheet settings are already stored generically, so no database migration was needed, and cloning a sheet copies them automatically.\n- **Settings screen** (`settings.ts`, `settings-api.ts`): `setting-score-mid` / `setting-score-high` inputs, with `-current` values next to them. Anything that isn't a whole number is refused with `settings-error`. A new `sheet-score-bands.ts` shares the two thresholds with the people screen.\n- **People table** (`people.ts`): a new Band column, `person-band`. It shows HIGH at or above the high threshold, MID at or above the mid one, LOW otherwise, and nothing while either threshold is blank. It uses the score the table already shows.\n\n**The failure** (`acceptance.spec.ts:1275`): the test retires Ben, checks that Ben's row is gone (line 1060), and then expects Ben's plan row (`plan-row-<id>`) to still be on screen. In this app a plan row only appears inside its person's row, and retired people aren't listed, so it can't be found. Everything before that line passes, including the band check at line 1111. Since scenario 2 never sets the score thresholds, it looks like a mismatch between that test and how plans are already displayed.\n\nGetting it to pass would mean showing retired people's plans somewhere, which is outside this change request. I can do that if you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0511568,
+        "num_turns": 25,
+        "duration_ms": 467629,
+        "duration_api_ms": 156694,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp210.agent.jsonl",
+  "agent_diff_file": "cp210.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
