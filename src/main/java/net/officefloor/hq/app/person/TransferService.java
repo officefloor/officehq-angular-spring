@@ -141,7 +141,7 @@ public class TransferService {
         // their claims and statements follow, and their names become that person's aliases.
         Person arrived;
         if (match == null) {
-            arrived = people.saveAndFlush(from.copyTo(toSheetId));
+            arrived = people.saveAndFlush(from.copyTo(toSheetId, sheets.today(toSheetId)));
             claimService.useTags(toSheetId, arrived.getTags());
         } else {
             arrived = match;
@@ -201,5 +201,32 @@ public class TransferService {
         rollup.recordChanges(user, otherBefore);
         // The request changes this sheet, which is kept as it commits; the other sheet is kept here.
         history.keep(toSheetId);
+    }
+
+    /**
+     * Undo the transfer that brought a person to this sheet: they are transferred back to the sheet they came
+     * from, by exactly the rules of a transfer. Refused unless the user is a steward of this sheet, for a person
+     * who did not arrive by transfer, and on any day after the sheet's today they arrived.
+     */
+    @Transactional
+    public void undo(String sheetId, String user, long id) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a transfer.");
+        }
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (person.getOriginSheetId() == null || person.getArrivedOn() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This person did not arrive by transfer.");
+        }
+        if (!person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A transfer can only be undone on the day the person arrived.");
+        }
+        String name = person.getName();
+        String to = person.getOriginSheetId();
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        transfer(sheetId, user, id, to);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name + " to=" + to);
+        rollup.recordChanges(user, before);
     }
 }

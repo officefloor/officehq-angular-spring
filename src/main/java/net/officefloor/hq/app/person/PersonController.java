@@ -303,6 +303,14 @@ public class PersonController {
         transfers.transfer(sheetId.trim(), SignedInUser.name(user), id, form.to().trim());
     }
 
+    /** Undo the transfer that brought a person to this sheet; they go back to the sheet they came from. */
+    @PostMapping("/{id}/transfer-undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoTransfer(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        transfers.undo(sheetId.trim(), SignedInUser.name(user), id);
+    }
+
     /** Start or stop the signed-in user watching a person. */
     @PutMapping("/{id}/watch")
     public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,

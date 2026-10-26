@@ -96,6 +96,10 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The sheet's today when a transfer brought the person here; null when they did not arrive by transfer. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -115,10 +119,11 @@ public class Person {
     /** A copy of the person for another sheet: their name, every grade they were given (each with its
      *  from-date), terms, contact and aliases; not their holds, nor their retirement. The copy came
      *  from this person's sheet. */
-    public Person copyTo(String otherSheetId) {
+    public Person copyTo(String otherSheetId, LocalDate arrivedOn) {
         Person copy = new Person();
         copy.sheetId = otherSheetId;
         copy.originSheetId = sheetId;
+        copy.arrivedOn = arrivedOn;
         copy.addedOn = addedOn;
         copy.setName(name);
         for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
@@ -381,6 +386,11 @@ public class Person {
     /** Put the person at a place in the list. */
     public void placeAt(long position) {
         this.position = position;
+    }
+
+    /** The sheet's today when a transfer brought the person here, or null when they did not arrive by transfer. */
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
     }
 
     /** The sheet the person was transferred from, or null when they were added on this sheet. */

@@ -438,6 +438,8 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                     placeholder="Sheet id" (input)="clearPersonError(p.id)" />
                   <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)"
                     [disabled]="transferring() === p.id" [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
+                  <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
+                    [disabled]="transferring() === p.id" [attr.aria-label]="'Undo the transfer of ' + p.name">Undo transfer</button>
                 </td>
               </tr>
             }
@@ -1051,6 +1053,27 @@ export class People {
       if (this.session.sheet()?.id === sheet.id) {
         this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward can transfer people.' : 'The person could not be transferred.' });
+      }
+    } finally {
+      this.transferring.set(null);
+    }
+  }
+
+  /** Undo the transfer that brought the person to this sheet, then re-read the sheet as a transfer does. */
+  protected async undoTransfer(person: PersonView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.transferring() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.transferring.set(person.id);
+    try {
+      await this.api.undoTransfer(sheet.id, person.id);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      await Promise.all([this.reload(sheet.id), this.pools.refresh(sheet.id), this.crews.refresh(sheet.id)]);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can undo a transfer.' : 'The transfer could not be undone.' });
       }
     } finally {
       this.transferring.set(null);
