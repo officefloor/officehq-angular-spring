@@ -268,7 +268,7 @@ public class ClaimService {
                     "A claim can only be deferred to a date after the sheet's today.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        claim.setDeferredUntil(until);
+        claim.setDeferredUntil(until, today);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_DEFERRED", by, person(sheetId, saved.getPersonId()), saved) + " until="
                 + until);

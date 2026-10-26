@@ -111,6 +111,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The sheet's today when the claim was deferred; null for one never deferred, or before that was kept. */
+    @Column(name = "deferred_on")
+    private LocalDate deferredOn;
+
     /** Whether the claim was added while its period was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -156,8 +160,19 @@ public class Claim {
         return deferredUntil;
     }
 
-    public void setDeferredUntil(LocalDate deferredUntil) {
+    /** Defers the claim until the date, while the sheet's today is the made-on date. */
+    public void setDeferredUntil(LocalDate deferredUntil, LocalDate madeOn) {
         this.deferredUntil = deferredUntil;
+        this.deferredOn = madeOn;
+    }
+
+    /**
+     * Whether the claim was deferred at the end of the day: OPEN then, deferred while the sheet's today was on or
+     * before the day, until a date after it.
+     */
+    public boolean isDeferredAsOf(LocalDate day) {
+        return statusAtEndOf(day) == ClaimStatus.OPEN && deferredUntil != null
+                && (deferredOn == null || !deferredOn.isAfter(day)) && day.isBefore(deferredUntil);
     }
 
     /**
@@ -360,6 +375,20 @@ public class Claim {
         for (ClaimLogEntry e : log) {
             if (e.getOn() == null || !e.getOn().isAfter(day)) {
                 then = e.getStatus();
+            }
+        }
+        return then;
+    }
+
+    /**
+     * The due its status log records at the end of the day: that of the last line logged on or before it; null when
+     * there is none.
+     */
+    public BigDecimal dueLoggedAtEndOf(LocalDate day) {
+        BigDecimal then = null;
+        for (ClaimLogEntry e : log) {
+            if (e.getOn() == null || !e.getOn().isAfter(day)) {
+                then = e.getDue();
             }
         }
         return then;

@@ -242,6 +242,14 @@ interface StatementView {
                 >
                   Watch<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'statement-asof-' + p.id">Statement as of<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="date"
+                  [id]="'statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  [value]="statementAsOfs()[p.id] ?? ''"
+                  (input)="setStatementAsOf(p.id, value($event))"
+                />
                 <button type="button" data-testid="person-statement" (click)="takeStatement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
@@ -345,6 +353,8 @@ export class People {
   );
   // Each row's retire-from date as typed, by person id; blank takes the sheet's today.
   protected readonly retireDates = signal<Record<number, string>>({});
+  // The date typed beside each row's statement button, by person id: blank takes the statement now.
+  protected readonly statementAsOfs = signal<Record<number, string>>({});
   // Each row's hold from- and to-dates as typed, by person id; a blank from-date takes the sheet's today, a blank
   // to-date puts a hold with no end.
   protected readonly holdFroms = signal<Record<number, string>>({});
@@ -588,6 +598,7 @@ export class People {
         this.patronErrors.set({});
         this.rowErrors.set({});
         this.retireDates.set({});
+        this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
         this.reset();
@@ -612,6 +623,11 @@ export class People {
 
   protected setRetireDate(id: number, date: string): void {
     this.retireDates.update((d) => ({ ...d, [id]: date }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  protected setStatementAsOf(id: number, date: string): void {
+    this.statementAsOfs.update((d) => ({ ...d, [id]: date }));
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
@@ -746,17 +762,26 @@ export class People {
     return s === undefined ? '' : (s.dueTotal ?? 'n/a');
   }
 
-  /** Takes a statement for the person: binds their counting claims to their figures now. */
+  /**
+   * Takes a statement for the person: binds their counting claims to their figures now, or as they stood at the end
+   * of the typed date (on or before the sheet's today).
+   */
   protected async takeStatement(p: Person): Promise<void> {
     this.clearRowErrors(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const asOf = (this.statementAsOfs()[p.id] ?? '').trim();
+    if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Enter the statement date as yyyy-mm-dd.' }));
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`;
     try {
       const taken = await firstValueFrom(
-        this.http.post<{ statement: StatementView; claims: Claim[] }>(url, null),
+        this.http.post<{ statement: StatementView; claims: Claim[] }>(url, { asOf: asOf || null }),
       );
       if (this.session.sheetId() !== sheet) return;
+      this.statementAsOfs.update(({ [p.id]: _, ...rest }) => rest);
       const byId = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
       this.statements.update((list) => [...list.filter((s) => s.personId !== p.id), taken.statement]);

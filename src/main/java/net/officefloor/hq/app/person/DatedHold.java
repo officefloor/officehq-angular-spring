@@ -14,12 +14,26 @@ public class DatedHold {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The sheet's today when the hold was put; null: before that was kept. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected DatedHold() {
     }
 
     public DatedHold(LocalDate from, LocalDate to) {
+        this(from, to, null);
+    }
+
+    public DatedHold(LocalDate from, LocalDate to, LocalDate madeOn) {
         this.from = from;
         this.to = to;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the hold was put while the sheet's today was on or before the day. */
+    public boolean madeBy(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 
     public LocalDate getFrom() {

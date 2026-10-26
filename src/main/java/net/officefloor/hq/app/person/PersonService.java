@@ -54,13 +54,13 @@ public class PersonService {
      */
     @Transactional
     public Person add(String by, String sheetId, String name, String grade, Integer terms) {
-        sheets.load(sheetId);
+        LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
-        Person person = new Person(sheetId, trimmed, grade);
+        Person person = new Person(sheetId, trimmed, grade, today);
         person.setTerms(terms);
         Person added = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", by, added, today(sheetId))
@@ -91,7 +91,7 @@ public class PersonService {
         }
         person.setName(trimmed);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
-            person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
+            person.recordGrade(grade, gradeFrom != null ? gradeFrom : today, today);
         }
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
         person.setTerms(terms);
@@ -105,11 +105,12 @@ public class PersonService {
     /** Retires the person from the date; a missing date takes the sheet's today. Their claims keep counting. */
     @Transactional
     public Person retire(String by, String sheetId, Long id, LocalDate from) {
-        LocalDate on = from != null ? from : sheets.load(sheetId).getToday();
+        LocalDate today = sheets.load(sheetId).getToday();
+        LocalDate on = from != null ? from : today;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
-        person.setRetiredFrom(on);
+        person.setRetiredFrom(on, today);
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
                 + " from=" + on);
@@ -124,14 +125,15 @@ public class PersonService {
      */
     @Transactional
     public Person hold(String by, String sheetId, Long id, LocalDate from, LocalDate to) {
-        LocalDate on = from != null ? from : sheets.load(sheetId).getToday();
+        LocalDate today = sheets.load(sheetId).getToday();
+        LocalDate on = from != null ? from : today;
         if (to != null && to.isBefore(on)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
-        person.addHold(on, to);
+        person.addHold(on, to, today);
         Person saved = save(person);
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
                 + " from=" + on);

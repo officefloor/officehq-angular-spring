@@ -47,6 +47,14 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The sheet's today when the person was added; null: before that was kept. */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
+
+    /** The sheet's today when the retirement date was set; null: before that was kept, or not retired. */
+    @Column(name = "retired_on")
+    private LocalDate retiredOn;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
@@ -59,9 +67,45 @@ public class Person {
     }
 
     public Person(String sheetId, String name, String grade) {
+        this(sheetId, name, grade, null);
+    }
+
+    /** A person added while the sheet's today was the date. */
+    public Person(String sheetId, String name, String grade, LocalDate addedOn) {
         this.sheetId = sheetId;
         this.name = name;
-        this.grades.add(new DatedGrade(grade, null));
+        this.addedOn = addedOn;
+        this.grades.add(new DatedGrade(grade, null, addedOn));
+    }
+
+    /**
+     * The person as they stood at the end of the day, for figures taken as of it: only the grades, holds and
+     * retirement recorded while the sheet's today was on or before the day. Not to be saved.
+     */
+    public Person asOf(LocalDate day) {
+        Person then = new Person();
+        then.id = id;
+        then.sheetId = sheetId;
+        then.name = name;
+        then.terms = terms;
+        then.addedOn = addedOn;
+        then.version = version;
+        grades.stream().filter(g -> g.madeBy(day)).forEach(then.grades::add);
+        if (then.grades.isEmpty()) {
+            // the first grade they were given stands for them
+            grades.stream().filter(g -> g.getFrom() == null).forEach(then.grades::add);
+        }
+        holds.stream().filter(h -> h.madeBy(day)).forEach(then.holds::add);
+        if (retiredOn == null || !retiredOn.isAfter(day)) {
+            then.retiredFrom = retiredFrom;
+            then.retiredOn = retiredOn;
+        }
+        return then;
+    }
+
+    /** Whether the person had been added by the end of the day: added while the sheet's today was on or before it. */
+    public boolean addedBy(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 
     public Long getId() {
@@ -94,9 +138,9 @@ public class Person {
     }
 
     /** Records the grade from the date, replacing one already recorded from that same date; the others are kept. */
-    public void recordGrade(String grade, LocalDate from) {
+    public void recordGrade(String grade, LocalDate from, LocalDate madeOn) {
         grades.removeIf(g -> Objects.equals(g.getFrom(), from));
-        grades.add(new DatedGrade(grade, from));
+        grades.add(new DatedGrade(grade, from, madeOn));
     }
 
     /** The person's own terms in days: a claim of theirs is due by its date plus these; null for none. */
@@ -113,8 +157,10 @@ public class Person {
         return retiredFrom;
     }
 
-    public void setRetiredFrom(LocalDate retiredFrom) {
+    /** Retires the person from the date, set while the sheet's today was the made-on date. */
+    public void setRetiredFrom(LocalDate retiredFrom, LocalDate madeOn) {
         this.retiredFrom = retiredFrom;
+        this.retiredOn = madeOn;
     }
 
     /** A person with a retirement date set is retired at once, whatever the date. */
@@ -138,8 +184,8 @@ public class Person {
     }
 
     /** Puts a hold on the person from the date to the date (null: with no end); the ones already put are kept. */
-    public void addHold(LocalDate from, LocalDate to) {
-        holds.add(new DatedHold(from, to));
+    public void addHold(LocalDate from, LocalDate to, LocalDate madeOn) {
+        holds.add(new DatedHold(from, to, madeOn));
     }
 
     /**

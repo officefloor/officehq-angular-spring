@@ -18,12 +18,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateService {
 
     private final RateRepository rates;
+    private final RateChangeRepository changes;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
+    public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets, RollupService rollup,
+            Audit audit) {
         this.rates = rates;
+        this.changes = changes;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -41,7 +44,7 @@ public class RateService {
      */
     @Transactional
     public Rate set(String by, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
-        sheets.load(sheetId);
+        LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2, RoundingMode.UNNECESSARY);
         Rate rate = rates.findExact(sheetId, grade, from).orElseGet(() -> new Rate(sheetId, grade, from, scaled));
@@ -54,6 +57,7 @@ public class RateService {
             // another user set this grade's rate for this from-date at the same moment
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That rate was just set by someone else.");
         }
+        changes.saveAndFlush(new RateChange(saved, today));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + by + " grade=" + grade
                 + " rate=" + saved.getPct().toPlainString() + (from != null ? " from=" + from : "")
                 + (to != null ? " to=" + to : ""));

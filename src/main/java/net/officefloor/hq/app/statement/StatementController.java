@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.SessionAttribute;
@@ -33,8 +34,12 @@ public class StatementController {
             }
             return new StatementView(s.personId(), s.count(),
                     s.last().getDueTotal() == null ? null : s.last().getDueTotal().toPlainString(),
-                    s.last().getTakenOn());
+                    s.last().getDate());
         }
+    }
+
+    /** What a statement is taken with: the date it is taken as of (null or missing: now). */
+    public record TakeRequest(LocalDate asOf) {
     }
 
     /** A statement just taken, with all the person's claims as it left them. */
@@ -59,8 +64,10 @@ public class StatementController {
     @PostMapping("/people/{personId}/statement")
     public TakenView take(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long personId, @SessionAttribute(SessionController.USER) String user) {
-        StatementView taken = StatementView.of(service.take(user, sheetId, personId));
+            @PathVariable Long personId, @RequestBody(required = false) TakeRequest request,
+            @SessionAttribute(SessionController.USER) String user) {
+        LocalDate asOf = request == null ? null : request.asOf();
+        StatementView taken = StatementView.of(service.take(user, sheetId, personId, asOf));
         List<ClaimView> theirs = claims.list(sheetId).stream().filter(c -> c.getPersonId().equals(personId))
                 .map(ClaimView::of).toList();
         return new TakenView(taken, theirs);

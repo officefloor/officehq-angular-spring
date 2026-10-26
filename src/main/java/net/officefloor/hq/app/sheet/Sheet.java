@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -54,6 +55,12 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
+
+    /** Every value recorded for the dated settings, in the order recorded, with the sheet's today then. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_setting_change", joinColumns = @JoinColumn(name = "sheet_id"))
+    @OrderColumn(name = "pos")
+    private List<SettingChange> settingChanges = new ArrayList<>();
 
     /**
      * The permission matrix as set: for an action, the roles that may take it, comma separated. An action not listed
@@ -118,6 +125,38 @@ public class Sheet {
     public void record(String key, LocalDate from, String value) {
         settings.removeIf(s -> s.getKey().equals(key) && s.getFrom().equals(from));
         settings.add(new DatedSetting(key, from, value));
+        settingChanges.add(new SettingChange(key, from, value, today));
+    }
+
+    /**
+     * The sheet as it stood at the end of the day, for figures taken as of it: the day stands in for its today, and
+     * its dated settings are the values recorded while its today was on or before the day (for each key and from-date
+     * the last one so recorded). Not to be saved.
+     */
+    public Sheet asOf(LocalDate day) {
+        Sheet then = new Sheet();
+        then.id = id;
+        then.createdAt = createdAt;
+        then.today = day;
+        then.permissions.putAll(permissions);
+        then.policyDate = policyDate;
+        then.periodNumberingFrom = periodNumberingFrom;
+        then.graceDays = graceDays;
+        then.archived = archived;
+        // a value recorded before changes were kept stands as it is
+        for (DatedSetting s : settings) {
+            if (settingChanges.stream()
+                    .noneMatch(c -> c.getKey().equals(s.getKey()) && c.getFrom().equals(s.getFrom()))) {
+                then.settings.add(s);
+            }
+        }
+        for (SettingChange c : settingChanges) {
+            if (c.madeBy(day)) {
+                then.settings.removeIf(s -> s.getKey().equals(c.getKey()) && s.getFrom().equals(c.getFrom()));
+                then.settings.add(new DatedSetting(c.getKey(), c.getFrom(), c.getValue()));
+            }
+        }
+        return then;
     }
 
     /** The value recorded for the setting with the latest from-date on or before the date; empty with none. */
