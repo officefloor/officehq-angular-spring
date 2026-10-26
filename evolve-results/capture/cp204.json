@@ -1,0 +1,70 @@
+{
+  "checkpoint": 204,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    110,
+    201
+  ],
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "request": {
+    "spec": "The trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "97ac3b99c23d3a5a49a5f9525e0c283cd1244d28",
+  "reset_sha": "",
+  "preagent_sha": "194abfbdf4500a6ed1d5d1f703473251baffcced",
+  "prev_sha": "194abfbdf4500a6ed1d5d1f703473251baffcced",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7709851999999995,
+    "input_tokens": 92,
+    "output_tokens": 21507,
+    "cache_read_tokens": 2987066,
+    "cache_creation_tokens": 92883,
+    "num_turns": 47,
+    "duration_ms": 639810,
+    "duration_api_ms": 233833,
+    "model": "claude-opus-5-5",
+    "session_id": "2b99dbf6-ae29-44af-9aaf-a1bc42e533b7",
+    "stop_reason": "success",
+    "result_text": "The consolidation change is done, but `bin/e2e` still fails: 3 of 4 tests pass, and scenario 2 fails on a plan-pause check that has nothing to do with consolidation. I left that one alone on purpose (details below).\n\n**What changed**\n- **Server** (`rollup/ConsolidatedService.java`): the consolidation response now also includes each descendant person's due-total, overdue-total and name keys (their name and aliases, lower-cased and trimmed, the way names are compared). The existing fields are unchanged.\n- **Front end** (`summary/consolidated.ts`, `consolidated-api.ts`, `people/people.ts`): the consolidated figures are now worked out over everyone in the tree \u2014 the sheet's own people plus its descendants'.\n  - **Due-total and overdue-total:** each person's figure is added up across the whole tree, leaving out the single highest and the single lowest once when three or more people have a figure. People whose due-total is n/a are skipped.\n  - **People count:** people whose name or alias matches count as one person, and the matching carries through chains (A matches B, B matches C \u2192 one person). In the first test, child-sheet \"Ada\" (alias \"Addie\") and parent-sheet \"Ada\" count once, giving 5.\n\n**One other bug fix, needed by scenario 3:** changing a person's grade inline wrongly wrote `terms=20` into the `PERSON_EDITED` audit line when that person had dated terms. `PersonService.update` now records terms only when their base terms or the terms in force today actually change. Scenario 3 passes with this fix.\n\n**The remaining failure** (`acceptance.spec.ts:1256`): a monthly plan (day 31, ending 2026-04-30) is paused on 2026-04-05, while it is still paused. The test expects its next dates to show `2026-04-30`; the app shows nothing. The app's documented rule (in `V92__plan_pause.sql`, `PlanPause` and `plans-api.ts`) says a plan date on or after the pause day and before it's resumed is skipped, so 2026-04-30 is skipped. I checked this against the running app, so it isn't caused by this change. The consolidated checks in that scenario all pass before it reaches this point.\n\nMaking the test pass would mean changing how paused plans work, which is outside this request and goes against the documented rule. If you want the test's behaviour (an open pause doesn't hide next dates), tell me and I'll make that change.\n\nI briefly added a debug spec (`e2e/specs/zz-debug.spec.ts`) to look into the plan issue and have deleted it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7709851999999995,
+        "num_turns": 47,
+        "duration_ms": 639810,
+        "duration_api_ms": 233833,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp204.agent.jsonl",
+  "agent_diff_file": "cp204.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
