@@ -13,6 +13,8 @@ export interface Claim {
   status: ClaimStatus;
   // Given when the claim is opened; null for a draft or voided claim.
   number: number | null;
+  // The due fixed when the claim was settled; null while its due is live.
+  settledDue: string | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -83,7 +85,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ dueOn(c.amount, rate()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rate()) ?? 'n/a' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">

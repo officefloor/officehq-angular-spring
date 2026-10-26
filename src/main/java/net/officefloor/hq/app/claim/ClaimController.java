@@ -26,12 +26,15 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** A claim as the screen shows it; the amount always carries two decimals. */
+    /**
+     * A claim as the screen shows it; the amount always carries two decimals. The settled due is the figure fixed
+     * when it was settled, or null while its due is live.
+     */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number) {
+            Long number, String settledDue) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
-                    c.getStatus(), c.getNumber());
+                    c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString());
         }
     }
 

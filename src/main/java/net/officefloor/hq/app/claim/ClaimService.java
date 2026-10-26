@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,12 +21,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -75,6 +80,15 @@ public class ClaimService {
             // the number is cleared, never given to another claim; the audit line still carries it
             claim.setNumber(null);
         }
+        Person person = person(sheetId, claim.getPersonId());
+        String due = null;
+        if (next == ClaimStatus.SETTLED) {
+            // the due is fixed at the rate the person's grade has now; with no rate it stays live
+            BigDecimal fixed = rates.findBySheetIdAndGrade(sheetId, person.getGrade()).map(Rate::getPct)
+                    .map(pct -> dueOn(claim.getAmount(), pct)).orElse(null);
+            claim.setSettledDue(fixed);
+            due = fixed == null ? "n/a" : fixed.toPlainString();
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -82,7 +96,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, by, person(sheetId, saved.getPersonId()), saved, number));
+        audit.recordOnCommit(record(event, by, person, saved, number) + (due != null ? " due=" + due : ""));
         return saved;
     }
 
@@ -100,6 +114,11 @@ public class ClaimService {
         return event + " sheet=" + c.getSheetId() + " by=" + by + " person=" + person.getName()
                 + " amount=" + c.getAmount().toPlainString() + " date=" + c.getDate()
                 + (number != null ? " number=" + number : "");
+    }
+
+    /** The due on an amount at a rate: amount times rate divided by 100, rounded half up to two decimals. */
+    private static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
+        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
