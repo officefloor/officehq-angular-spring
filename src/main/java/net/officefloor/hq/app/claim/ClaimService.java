@@ -931,7 +931,8 @@ public class ClaimService {
 
     /** What is due on the claim now: the due fixed when it was settled, else the greater of the floor in
      *  force on its date and its figure with the late charge on top while it is open and overdue (the charge
-     *  is never bound by a statement; a correction has no floor); null when the figure is n/a. */
+     *  while no statement binds it; a bound claim's due is the figure the statement bound, as it was shown; a
+     *  correction has no floor); null when the figure is n/a. */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         return LateCharge.dueOf(claim, figure(sheetId, person, claim), settings.floor(sheetId, claim.getDate()),
                 sheets.today(sheetId), grace(sheetId, person, claim),
@@ -943,8 +944,8 @@ public class ClaimService {
         return settings.dated(sheetId).graceOn(person.gradeOn(claim.getDate()), claim.getDate());
     }
 
-    /** The figure under the claim's due, before any late charge and floor: the due fixed when it was settled, else the figure
-     *  its person's last statement bound it to (a PENDING claim included), else its live due;
+    /** The figure under the claim's due: the due fixed when it was settled, else the due as shown that
+     *  its person's last statement bound it to (a PENDING claim included), else its live rate figure, before any late charge and floor;
      *  null when that is n/a. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();

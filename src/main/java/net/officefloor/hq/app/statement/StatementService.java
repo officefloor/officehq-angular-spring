@@ -89,7 +89,7 @@ public class StatementService {
     }
 
     /** Take the person's statement: record their due-total now, bind each of their counting claims to
-     *  the figure it shows now, and leave every other claim of theirs unbound. Taken as of a date (asOf),
+     *  the due it shows now, late charge and floor included (a claim already bound keeps its bound due), and leave every other claim of theirs unbound. Taken as of a date (asOf),
      *  it does so with their claims as they stood at the end of that date: every change made while the
      *  sheet's today was on or before it counts, every later one does not, and the date stands in for the
      *  sheet's today in every figure. Refused for a date after the sheet's today, and one before the
@@ -123,7 +123,7 @@ public class StatementService {
             counting++;
             if (stood.due() != null) total = total.add(stood.due());
             if (stood.keptFigure()) keptFigure = true;
-            claim.bind(stood.figure(), today);
+            claim.bind(stood.due(), today);
         }
         // As the screen shows it: n/a when no rate of the grade in force on the statement's date is in force
         // then and no claim keeps a figure; held to the sheet's cap.
@@ -140,15 +140,15 @@ public class StatementService {
                 theirs);
     }
 
-    /** How a counting claim stood for a statement: the figure it binds (before late charge and floor; null:
-     *  n/a), its due, and whether it keeps a figure should the grade's rate be n/a. */
+    /** How a counting claim stood for a statement: its figure (before late charge and floor; null: n/a), its
+     *  due as shown, which the statement binds, and whether it keeps a figure should the grade's rate be n/a. */
     private record Stood(BigDecimal figure, BigDecimal due, boolean keptFigure) {
     }
 
     /** How the claim stands now; null when it does not count. */
     private Stood stoodNow(String sheetId, Person person, Claim claim, LocalDate today) {
         if (!counts(person, claim, today)) return null;
-        // The statement binds the rate figure, before late charge and floor; the due-total it records is the due.
+        // The statement binds the due as shown, late charge and floor included; the due-total it records is their sum.
         BigDecimal figure = claimService.figure(sheetId, person, claim);
         BigDecimal due = claimService.due(sheetId, person, claim);
         boolean kept = claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)
@@ -186,7 +186,7 @@ public class StatementService {
         }
         BigDecimal floor = dated.floorOn(claim.getDate());
         BigDecimal due;
-        if (figure == null || settled != null) {
+        if (figure == null || settled != null || binding != null) {
             due = figure;
         } else if (status.isOpen() && !deferred) {
             due = LateCharge.dueAsOpen(claim, figure, floor, asOf, dated.graceOn(grade, claim.getDate()),

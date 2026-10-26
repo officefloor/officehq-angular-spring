@@ -311,14 +311,15 @@ export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lat
   return charge;
 }
 
-/** What is due on the claim now, in cents: the due fixed when it was settled; else its figure (see
- *  claimFigureCents) with the late charge on it while it is open and overdue, as no statement binds the
- *  charge, and at least `floorCents` (the floor in force on its date), the floor applied last; a correction
+/** What is due on the claim now, in cents: the due fixed when it was settled; else the due as shown that its
+ *  person's last statement bound it to, late charge and floor included; else its figure (see
+ *  claimFigureCents) with the late charge on it while it is open and overdue, and at least `floorCents` (the floor in force on its date), the floor applied last; a correction
  *  has no floor and no charge. Both round as roundsHalfUp decides by the rounding mode and the policy date, `claims` holding the
  *  claim a correction corrects. Null when the figure is n/a. */
 export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness,
   claims: readonly ClaimView[]): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
+  if (isBound(claim)) return claim.statedDue === null ? null : cents(claim.statedDue);
   const halfUp = roundsHalfUp(claim, claims, late.policyDate, late.rounding);
   const figure = claimFigureCents(claim, gradeRates, halfUp);
   if (figure === null) return null;
