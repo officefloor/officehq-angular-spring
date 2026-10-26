@@ -31,6 +31,8 @@ export interface Claim {
   dueBy: string;
   // The date the claim was deferred until; null for one never deferred. See deferred().
   deferredUntil: string | null;
+  // The last sheet's today a reminder was written for the claim; null for one never reminded.
+  remindedOn: string | null;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none.
   proofs: number;
@@ -242,7 +244,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -267,6 +269,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred">{{ deferred(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
+            <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
@@ -337,6 +340,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
               />
               <button type="button" data-testid="claim-split" (click)="split(c)">
                 Split<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-remind" (click)="remind(c)">
+                Remind<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-proof" (click)="addProof(c)">
                 Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
@@ -599,6 +605,32 @@ export class Claims {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot take a proof.`);
+    }
+  }
+
+  /** Writes a reminder for an OPEN or PENDING claim, once per sheet's today. */
+  protected async remind(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!isOpen(c)) {
+      this.setRowError(c.id, `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`);
+      return;
+    }
+    const today = this.session.sheetToday();
+    if (today !== null && c.remindedOn === today) {
+      this.setRowError(c.id, `This claim was already reminded on ${today}.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/remind`;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+    } catch {
+      this.setRowError(c.id, `This ${c.status} claim cannot be reminded.`);
     }
   }
 

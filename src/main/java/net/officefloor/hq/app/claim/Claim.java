@@ -115,6 +115,10 @@ public class Claim {
     @Column(name = "deferred_on")
     private LocalDate deferredOn;
 
+    /** The last sheet's today a reminder was written for the claim; null for one never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** Whether the claim was added while its period was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -154,6 +158,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     public LocalDate getDeferredUntil() {

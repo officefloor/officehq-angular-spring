@@ -33,19 +33,19 @@ public class ClaimController {
      * whether its person's last statement binds it, to the stated due (null for n/a). Corrects is the number of the
      * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
      * the date of the claim it corrects. Deferred-until is the date it was deferred until, or null; it is deferred
-     * while it is OPEN and the sheet's today is before that date. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
+     * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
      * was soft-closed.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, int proofs, String splitFrom, List<LogLineView> log,
+            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
+                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry());
         }
     }
@@ -236,6 +236,13 @@ public class ClaimController {
             @SessionAttribute(SessionController.USER) String user) {
         ClaimService.Split split = service.split(user, sheetId, id, form.amount());
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+    }
+
+    @PostMapping("/claims/{id}/remind")
+    public ClaimView remind(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.remind(user, sheetId, id));
     }
 
     @PostMapping("/claims/{id}/proof")
