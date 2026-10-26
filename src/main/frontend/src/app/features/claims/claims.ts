@@ -1092,6 +1092,8 @@ export class Claims {
     e.preventDefault();
     if (this.submitting) return;
     this.error.set(null);
+    // submitting the form is the next action on the person's claims: an error left on one of their rows goes
+    this.rowErrors.set({});
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const amount = this.amount().trim();

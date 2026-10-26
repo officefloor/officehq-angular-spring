@@ -8,6 +8,7 @@ import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkipping
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
 import { Summary, SummaryPerson } from '../summary/summary';
+import { PoolRoster } from '../pools/pools';
 
 interface Person {
   id: number;
@@ -474,6 +475,7 @@ export class People {
   protected readonly rates = inject(RateStore);
   private readonly settings = inject(SettingsStore);
   protected readonly periods = inject(PeriodStore);
+  private readonly poolRoster = inject(PoolRoster);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -823,6 +825,11 @@ export class People {
   });
 
   constructor() {
+    // The pools offer these people, and count a member retired as soon as they are.
+    effect(() => {
+      const list = this.people().map((p) => ({ id: p.id, name: p.name, retiredFrom: p.retiredFrom }));
+      untracked(() => this.poolRoster.people.set(list));
+    });
     // Re-read the people from the store each time a sheet is loaded.
     effect(() => {
       const id = this.session.sheetId();

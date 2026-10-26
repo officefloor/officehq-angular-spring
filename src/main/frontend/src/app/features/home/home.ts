@@ -7,12 +7,13 @@ import { Delegation } from '../delegation/delegation';
 import { Holidays } from '../holidays/holidays';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
+import { Pools } from '../pools/pools';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, AuditViewer],
+  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -76,6 +77,7 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
         <app-void-reasons />
         <app-claim-templates />
         <app-people />
+        <app-pools />
         <app-audit-viewer />
       }
     } @else {
