@@ -1,0 +1,64 @@
+{
+  "checkpoint": 239,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp239_period-claim-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each period the count of claims belonging to it (VOID and DELETED claims left out).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each period the count of claims belonging to it (VOID and DELETED claims left out).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7b1258a6f9ecb546f9894cb2d6bb6fec4d5b3ce2",
+  "reset_sha": "",
+  "preagent_sha": "2a834f7cf6d667c6c81ce9e5d1cba7d566a9b5cb",
+  "prev_sha": "2a834f7cf6d667c6c81ce9e5d1cba7d566a9b5cb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6087675999999999,
+    "input_tokens": 36,
+    "output_tokens": 5066,
+    "cache_read_tokens": 647438,
+    "cache_creation_tokens": 47227,
+    "num_turns": 19,
+    "duration_ms": 239310,
+    "duration_api_ms": 89684,
+    "model": "claude-opus-5-5",
+    "session_id": "ac2d294e-8867-4894-9767-965864c84424",
+    "stop_reason": "success",
+    "result_text": "Each period row now has a **Claims** column showing how many claims belong to that period, with VOID and DELETED claims left out. All 4 tests in `bin/e2e` pass.\n\n**How \"belongs\" is decided:** a claim belongs to a period when its due-by date falls inside the period, not its claim date. The rest of the app already works this way (period due-totals, closing, rollover), and the test expects it. For example, in the first test a claim dated 2026-03-05 with 10-day terms is due 2026-03-15, so it counts toward P2 (03-11 to 03-20), not P1.\n\n**What changed \u2014 front end only:**\n- `src/main/frontend/src/app/features/people/people.ts`: a new `periodClaimCounts` value that counts the claims belonging to each period from the claims the page has already loaded. It sits next to the existing `periodDueTotals` and works the same way.\n- `src/main/frontend/src/app/features/periods/periods.ts`: a new `claimCounts` input and a `period-claims-count` cell in each period row.\n\nThe server and database are unchanged, because the period due-totals are already worked out on the front end from the loaded claims.\n\nThe count includes every claim on the sheet, whichever person it belongs to. The due-totals, by contrast, skip claims whose person isn't in the loaded people list. The tests don't cover that case, so if a removed or merged person's claims should be left out of the count too, it's a one-line filter.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6087675999999999,
+        "num_turns": 19,
+        "duration_ms": 239310,
+        "duration_api_ms": 89684,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp239.agent.jsonl",
+  "agent_diff_file": "cp239.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

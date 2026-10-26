@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bfaceb83..641b5e6f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -67,7 +67,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+     <app-duplicates />
+     @if (session.sheet()) {
+       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+-      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
++      <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+       <app-pools [people]="people()" [periods]="periods()" />
+       <app-crews [people]="people()" [dues]="dueCents()" />
+       <section aria-labelledby="people-heading">
+@@ -932,6 +932,16 @@ export class People {
+     }
+     return new Map([...totals].map(([id, total]) => [id, money(total)]));
+   });
++  /** Each period's count of the claims belonging to it (due by a date in it), VOID and DELETED ones left out, by period id. */
++  protected readonly periodClaimCounts = computed(() => {
++    const counts = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
++    for (const c of this.claims()) {
++      if (c.status === 'VOID' || c.status === 'DELETED') continue;
++      const period = periodOf(this.periods(), c.dueBy);
++      if (period !== null) counts.set(period.id, (counts.get(period.id) ?? 0) + 1);
++    }
++    return counts;
++  });
+   /** The ids of the people who are active: those with an open (PENDING included) claim that counts,
+    *  dated within the 30 days up to and including the sheet's today. */
+   protected readonly activeIds = computed(() => {
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index e26717c8..426adb47 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -58,7 +58,7 @@ const YEAR = /^\d{4}$/;
+       </form>
+       <table data-testid="periods-list" aria-label="Periods">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of periods(); track p.id) {
+@@ -71,6 +71,7 @@ const YEAR = /^\d{4}$/;
+               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
+               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
++              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" (click)="close(p)"
+                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
+@@ -102,6 +103,8 @@ export class Periods {
+   readonly periods = input.required<PeriodView[]>();
+   /** Each period's due-total with two decimals, by period id. */
+   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
++  /** Each period's count of its claims, VOID and DELETED ones left out, by period id. */
++  readonly claimCounts = input.required<ReadonlyMap<number, number>>();
+   readonly added = output<PeriodView>();
+   /** A period that was closed or reopened. */
+   readonly changed = output<PeriodView>();
