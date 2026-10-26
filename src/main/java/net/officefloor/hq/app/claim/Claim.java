@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A claim a person makes on a sheet: an amount (two decimals), a date, a note and a status. A negative amount is a
@@ -95,6 +102,12 @@ public class Claim {
      */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
+
+    /** The claim's status log, oldest first: a line for each status it has had, from its DRAFT on. */
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id ASC")
+    private List<ClaimLogEntry> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -247,5 +260,14 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public List<ClaimLogEntry> getLog() {
+        return log;
+    }
+
+    /** Logs the status the claim now has: by the user, on the sheet's today, at the due computed now. */
+    public void logStatus(String by, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogEntry(status, by, on, due));
     }
 }

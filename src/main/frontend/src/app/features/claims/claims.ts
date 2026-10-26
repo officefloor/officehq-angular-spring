@@ -29,6 +29,17 @@ export interface Claim {
   roundsOn: string;
   // The date the claim is due by: fixed when it was added, from the terms for its person's grade on its date.
   dueBy: string;
+  // The claim's status log, oldest first: a line for each status it has had, from its DRAFT on.
+  log: ClaimLogLine[];
+}
+
+// A status the claim came to have: who made the change, the sheet's today then, and the claim's due then (null
+// for n/a).
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string | null;
+  due: string | null;
 }
 
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING, for a steward to approve (SETTLED)
@@ -180,7 +191,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -208,6 +219,13 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td data-testid="claim-period">{{ periodName(c.date) }}</td>
             <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+            <td>
+              <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+                @for (l of c.log; track $index) {
+                  <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on ?? '' }} due={{ l.due ?? 'n/a' }}</li>
+                }
+              </ol>
+            </td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>

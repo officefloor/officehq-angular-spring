@@ -74,6 +74,7 @@ public class ClaimService {
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setDueBy(on.plusDays(settings.termsFor(sheetId, person.gradeOn(on))));
+        logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
@@ -156,6 +157,7 @@ public class ClaimService {
             }
         }
         claim.setStatus(next);
+        logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record(event, by, person, saved) + tail);
         rollup.recordChanges(by, sheetId, before);
@@ -177,6 +179,7 @@ public class ClaimService {
         BigDecimal fixed = due(sheetId, person, claim);
         claim.setSettledDue(fixed);
         claim.setStatus(ClaimStatus.SETTLED);
+        logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_APPROVED", by, person, saved) + " due="
                 + (fixed == null ? "n/a" : fixed.toPlainString()));
@@ -198,6 +201,7 @@ public class ClaimService {
         Claim claim = pendingClaim(by, sheetId, id);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(by, sheetId, person(sheetId, claim.getPersonId()), claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_REJECTED", by, person(sheetId, saved.getPersonId()), saved)
                 + " reason=" + why);
@@ -235,6 +239,11 @@ public class ClaimService {
                 + to.getName());
         rollup.recordChanges(by, sheetId, before);
         return saved;
+    }
+
+    /** Logs the status the claim now has: by the user, on the sheet's today, at the due it shows now. */
+    private void logStatus(String by, String sheetId, Person person, Claim claim) {
+        claim.logStatus(by, sheets.load(sheetId).getToday(), due(sheetId, person, claim));
     }
 
     /** The pending claim, locked, for a steward to decide; refused otherwise. */

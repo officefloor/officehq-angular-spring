@@ -31,16 +31,24 @@ public class ClaimController {
      * when it was settled, or null while its due is live. Opened-by is the user who opened it, or null. Stated is
      * whether its person's last statement binds it, to the stated due (null for n/a). Corrects is the number of the
      * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
-     * the date of the claim it corrects.
+     * the date of the claim it corrects. Log is its status log, oldest first.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundsOn, LocalDate dueBy) {
+            LocalDate roundsOn, LocalDate dueBy, List<LogLineView> log) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects(), c.getRoundsOn(), c.getDueBy());
+                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getLog().stream().map(LogLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who made the change, the sheet's today then, and the due then. */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+        public static LogLineView of(ClaimLogEntry e) {
+            return new LogLineView(e.getStatus(), e.getBy(), e.getOn(),
+                    e.getDue() == null ? null : e.getDue().toPlainString());
         }
     }
 
