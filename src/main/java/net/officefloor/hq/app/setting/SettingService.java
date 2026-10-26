@@ -110,6 +110,10 @@ public class SettingService implements ActingFor {
      *  above it is in the HIGH band; no value means blank. Not dated. */
     public static final String SCORE_HIGH = "score-high";
 
+    /** The key of the score log switch: while it is on, changing the sheet's today audits each person's
+     *  score on the day being left; no value means off. Not dated. */
+    public static final String SCORE_LOG = "score-log";
+
     /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
      *  no value means 1 (January). Not dated. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
@@ -537,6 +541,39 @@ public class SettingService implements ActingFor {
     @Transactional
     public Integer setScoreHigh(String sheetId, String user, Integer value) {
         return setWholeSetting(sheetId, user, SCORE_HIGH, value);
+    }
+
+    /** Whether the sheet's score log is on. */
+    @Transactional(readOnly = true)
+    public boolean scoreLog(String sheetId) {
+        return scoreLogOf(settings, sheetId);
+    }
+
+    /** Whether the sheet's score log is on as the store holds it, within the caller's transaction. */
+    public static boolean scoreLogOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, SCORE_LOG).isPresent();
+    }
+
+    /** Turn the sheet's score log on, or off. */
+    @Transactional
+    public boolean setScoreLog(String sheetId, String user, boolean on) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, SCORE_LOG).orElse(null);
+        try {
+            if (!on) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, SCORE_LOG, "on"));
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + SCORE_LOG
+                + " value=" + (on ? "on" : ""));
+        return on;
     }
 
     private Integer wholeSetting(String sheetId, String key) {

@@ -96,6 +96,8 @@ export interface SettingsView {
   scoreMid: number | null;
   /** The high score threshold, a whole number, or null when blank. Not dated. */
   scoreHigh: number | null;
+  /** The score log switch: 'on', or null when off. Not dated. */
+  scoreLog: 'on' | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -235,6 +237,11 @@ export class SettingsApi {
   /** Set the high score threshold; null clears it. */
   setScoreHigh(sheetId: string, value: number | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-high`, { value }));
+  }
+
+  /** Turn the score log on ('on'), or off (null). */
+  setScoreLog(sheetId: string, value: 'on' | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-log`, { value }));
   }
 
   /** Set the escalation gap in days; null clears it, turning escalation off. */

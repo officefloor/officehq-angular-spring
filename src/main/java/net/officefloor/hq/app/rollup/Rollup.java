@@ -45,8 +45,10 @@ public class Rollup {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
-    /** A person's figures; a null due-total is n/a. */
-    record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims,
+     *  skipping n/a) and how many counting claims are overdue make up their score. */
+    record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settled,
+            int overdueCount) {
         boolean sameAs(Figures other) {
             return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal)
                     && same(overdueTotal, other.overdueTotal);
@@ -122,6 +124,8 @@ public class Rollup {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
+            BigDecimal settled = ZERO;
+            int overdueCount = 0;
             boolean keptFigure = false;
             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
             for (Claim claim : theirs) {
@@ -140,6 +144,8 @@ public class Rollup {
                         grace, values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
                 if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
+                if (isOverdue(claim, grace, today)) overdueCount++;
+                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }
@@ -153,7 +159,7 @@ public class Rollup {
             BigDecimal personDue = SettingService.capped((today == null
                     || Rate.inForceInherited(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
                             ? null : due, cap);
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
+            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, settled, overdueCount));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) dues.add(personDue);
             overdues.add(overdue);
@@ -178,11 +184,23 @@ public class Rollup {
         return count;
     }
 
-    /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
+    /** The person's score, as the screen shows it: their settled figures divided by 100, less 5 for each
+     *  overdue claim that counts, rounded half to even to a whole number. */
+    static String score(Figures figures) {
+        return figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
+                .setScale(0, RoundingMode.HALF_EVEN).toPlainString();
+    }
+
+    /** While the sheet's score log is on, audit once the transaction commits each person's score as it
+     *  stood in the snapshot, in the order they were added: the day being left. Then keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
      *  in the order they were added, against the sheet's today: the day being left. */
     public void recordSnapshot(String user, Snapshot before) {
         String prefix = " sheet=" + before.sheetId() + " by=" + user;
         LocalDate day = sheets.findById(before.sheetId()).map(Sheet::getToday).orElse(null);
+        if (SettingService.scoreLogOf(settings, before.sheetId())) {
+            before.people().values().forEach(figures -> audit.recordOnCommit("SCORE" + prefix + " name="
+                    + figures.name() + " score=" + score(figures)));
+        }
         before.people().forEach((id, figures) -> {
             if (day != null) snapshots.save(new PersonSnapshot(before.sheetId(), id, day, figures.dueTotal()));
             audit.recordOnCommit("SNAPSHOT" + prefix + " name=" + figures.name() + " due-total="

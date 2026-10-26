@@ -106,9 +106,10 @@ public class Plan {
         return dates;
     }
 
-    /** Up to the first count plan dates, oldest first, after the date and on or before its end. */
+    /** Up to the first count plan dates by its schedule, oldest first, after the date and on or before its
+     *  end; a pause does not hide them (it only skips them when claims are generated). */
     public List<LocalDate> datesAfter(LocalDate after, int count) {
-        return datesUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
+        return scheduleUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
     }
 
     boolean hasGenerated(LocalDate date) {

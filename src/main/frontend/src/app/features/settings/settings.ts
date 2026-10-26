@@ -193,6 +193,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-score-high">High score threshold (a whole number; a score at or above it is HIGH while both thresholds are set; blank: no bands)</label>
         <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" />
         <p>High score threshold now: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
+        <label for="setting-score-log">Score log (on: changing today logs each person's score on the day being left; blank: off)</label>
+        <input id="setting-score-log" data-testid="setting-score-log" formControlName="scoreLog" />
+        <p>Score log now: <span data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</span></p>
         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
@@ -312,6 +315,7 @@ export class Settings {
   protected readonly reviewSla = signal<number | null>(null);
   protected readonly scoreMid = signal<number | null>(null);
   protected readonly scoreHigh = signal<number | null>(null);
+  protected readonly scoreLog = signal<'on' | null>(null);
   protected readonly parent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal(DEFAULT_FISCAL_START_MONTH);
   protected readonly assigned = signal<RoleView[]>([]);
@@ -349,6 +353,7 @@ export class Settings {
     reviewSla: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
+    scoreLog: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
   });
@@ -444,7 +449,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -486,7 +491,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -530,6 +535,7 @@ export class Settings {
     const reviewSlaValue = reviewSla.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
+    const scoreLogValue = scoreLog.value.trim().toLowerCase();
     const parentValue = parent.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
@@ -651,6 +657,10 @@ export class Settings {
     }
     if (changed(scoreHigh) && scoreHighValue !== '' && !WHOLE.test(scoreHighValue)) {
       this.settingsError.set('Type the high score threshold as a whole number, or leave it blank.');
+      return;
+    }
+    if (changed(scoreLog) && scoreLogValue !== '' && scoreLogValue !== 'on') {
+      this.settingsError.set('Type on for the score log, or leave it blank for off.');
       return;
     }
     if (changed(fiscalStartMonth) && (!MONTH.test(fiscalStartMonthValue) || Number(fiscalStartMonthValue) < 1
@@ -813,6 +823,11 @@ export class Settings {
         settled(scoreHigh);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(scoreLog)) {
+        const settings = await this.api.setScoreLog(sheet.id, scoreLogValue === '' ? null : 'on');
+        settled(scoreLog);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(parent)) {
         const settings = await this.api.setParent(sheet.id, parentValue === '' ? null : parentValue);
         settled(parent);
@@ -871,6 +886,7 @@ export class Settings {
     this.sheetReviewSla.days.set(settings.reviewSla);
     this.scoreMid.set(settings.scoreMid);
     this.scoreHigh.set(settings.scoreHigh);
+    this.scoreLog.set(settings.scoreLog);
     this.sheetScoreBands.mid.set(settings.scoreMid);
     this.sheetScoreBands.high.set(settings.scoreHigh);
     this.parent.set(settings.parent);
