@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.Claim;
 
 /**
  * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
@@ -43,8 +43,9 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<DatedHold> holds = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -108,18 +109,28 @@ public class Person {
         return retiredFrom != null;
     }
 
-    /** Whether the person is on hold: while held, their open (and pending) claims count in no live total. */
+    /** Every hold put on the person, earliest from-date first. */
+    public List<DatedHold> getHolds() {
+        return holds.stream().sorted(Comparator.comparing(DatedHold::getFrom)).toList();
+    }
+
+    /** Whether the person has any hold. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Puts a hold on the person from the date to the date (null: with no end); the ones already put are kept. */
+    public void addHold(LocalDate from, LocalDate to) {
+        holds.add(new DatedHold(from, to));
     }
 
-    /** Whether the claim of the given status counts toward the person's live totals: an open one not while held. */
-    public boolean countsLive(ClaimStatus status) {
-        return status.counts() && !(held && status.isOpen());
+    /**
+     * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
+     * within a hold that no statement binds.
+     */
+    public boolean countsLive(Claim claim) {
+        return claim.getStatus().counts() && !(claim.getStatus().isOpen() && !claim.isBound()
+                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
     }
 
     /** The version of the person as stored, raised on each save. */

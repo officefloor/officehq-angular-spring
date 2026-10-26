@@ -100,16 +100,24 @@ public class PersonService {
         return saved;
     }
 
-    /** Puts the person on hold, or releases them when held. While held, their open claims count in no live total. */
+    /**
+     * Puts a hold on the person from the date (missing: the sheet's today) to the to-date (missing: with no end); the
+     * holds already put are kept, each ending on its to-date. Their open claims dated within a hold, not bound by a
+     * statement, count in no live total. Refused when the to-date is before the from-date.
+     */
     @Transactional
-    public Person toggleHold(String by, String sheetId, Long id) {
+    public Person hold(String by, String sheetId, Long id, LocalDate from, LocalDate to) {
+        LocalDate on = from != null ? from : sheets.load(sheetId).getToday();
+        if (to != null && to.isBefore(on)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
-        person.setHeld(!person.isHeld());
+        person.addHold(on, to);
         Person saved = save(person);
-        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + by
-                + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
+                + " from=" + on);
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

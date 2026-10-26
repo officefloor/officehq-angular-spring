@@ -59,7 +59,7 @@ export function isOpen(c: Claim): boolean {
 }
 
 /** Whether the person's last statement binds the claim's figure: not while it is pending, which shows it live. */
-function isBound(c: Claim): boolean {
+export function isBound(c: Claim): boolean {
   return c.stated && c.status !== 'PENDING';
 }
 

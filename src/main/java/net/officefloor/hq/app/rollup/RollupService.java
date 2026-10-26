@@ -76,9 +76,9 @@ public class RollupService {
         BigDecimal claimedTotal = ZERO;
         BigDecimal dueTotal = ZERO;
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            // while the person is held, their open and pending claims count in no live total
+            // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
-                    .filter(c -> p.countsLive(c.getStatus())).toList();
+                    .filter(c -> p.countsLive(c)).toList();
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             boolean kept = false;

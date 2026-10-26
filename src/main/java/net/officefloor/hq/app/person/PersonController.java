@@ -25,11 +25,18 @@ public class PersonController {
 
     /** A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            LocalDate retiredFrom, boolean held) {
+            LocalDate retiredFrom, boolean held, List<HoldView> holds) {
         public static PersonView of(Person p, LocalDate today) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
-                    p.isHeld());
+                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList());
+        }
+    }
+
+    /** A hold on a person from its from-date to its to-date (null: with no end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+        public static HoldView of(DatedHold h) {
+            return new HoldView(h.getFrom(), h.getTo());
         }
     }
 
@@ -66,6 +73,10 @@ public class PersonController {
 
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
     public record RetireForm(LocalDate from) {
+    }
+
+    /** A hold: the date it starts (missing: the sheet's today) and the date it ends (missing: with no end). */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
     private final PersonService service;
@@ -107,12 +118,13 @@ public class PersonController {
         return view(sheetId, service.retire(user, sheetId, id, form.from()));
     }
 
-    /** Puts the person on hold, or takes them off hold when they are held. */
+    /** Puts a hold on the person, from its from-date to its to-date; the holds already put are kept. */
     @PostMapping("/{id}/hold")
     public PersonView hold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
-        return view(sheetId, service.toggleHold(user, sheetId, id));
+            @PathVariable Long id, @RequestBody HoldForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
     }
 
     /** The person as listed on the sheet's today. */

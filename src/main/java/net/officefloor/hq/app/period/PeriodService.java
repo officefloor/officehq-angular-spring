@@ -97,7 +97,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !person.countsLive(c.getStatus()) || !period.contains(c.getDate())) {
+            if (person == null || !person.countsLive(c) || !period.contains(c.getDate())) {
                 continue;
             }
             BigDecimal figure = claimService.due(sheetId, person, c);
