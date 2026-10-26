@@ -17,6 +17,8 @@ interface Person {
   grades: DatedGrade[];
   // The person's own terms in days, ahead of their grade's and the sheet's; null for none.
   terms: number | null;
+  // The person's contact, without surrounding spaces and lower-cased; null for none.
+  contact: string | null;
   // Raised by the store on each save; an edit made from an older version is refused.
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
@@ -104,6 +106,13 @@ interface StatementView {
           data-testid="person-form-terms"
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
+        />
+        <label for="person-contact">Contact</label>
+        <input
+          id="person-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (input)="contact.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save' }}
@@ -283,7 +292,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Settled total</th><th scope="col">Open total</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
@@ -311,6 +320,7 @@ interface StatementView {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
@@ -472,6 +482,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   // The person's own terms in whole days as typed; blank for none.
   protected readonly terms = signal('');
+  // The person's contact as typed; blank for none.
+  protected readonly contact = signal('');
   protected readonly editingId = signal<number | null>(null);
   // The version of the person the open editor loaded.
   private readonly editingVersion = signal(0);
@@ -1063,6 +1075,7 @@ export class People {
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
+    this.contact.set(p.contact ?? '');
     this.error.set(null);
   }
 
@@ -1249,6 +1262,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.contact.set('');
     this.error.set(null);
   }
 
@@ -1265,7 +1279,13 @@ export class People {
       this.error.set('Enter the terms as a whole number of days, or leave them blank.');
       return;
     }
-    const form = { name: this.name().trim(), grade: this.grade(), terms: termsText === '' ? null : Number(termsText) };
+    const contactText = this.contact().trim().toLowerCase();
+    const form = {
+      name: this.name().trim(),
+      grade: this.grade(),
+      terms: termsText === '' ? null : Number(termsText),
+      contact: contactText === '' ? null : contactText,
+    };
     if (!form.name) {
       this.error.set('Enter a name.');
       return;
@@ -1293,7 +1313,7 @@ export class People {
         return;
       }
       if (err instanceof HttpErrorResponse && err.status === 409) {
-        this.error.set('That name is already in use on this sheet.');
+        this.error.set('That name or contact is already in use on this sheet.');
         return;
       }
       this.error.set(editing === null ? 'Could not add that person.' : 'Could not save that person.');
@@ -1389,6 +1409,7 @@ export class People {
         this.name.set(current.name);
         this.grade.set(this.gradeToday(current));
         this.terms.set(current.terms === null ? '' : String(current.terms));
+        this.contact.set(current.contact ?? '');
       }
     } catch {
       // the error below still tells the person the save was refused

@@ -34,11 +34,12 @@ public class PersonController {
      * terms their own (null: none).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms) {
+            LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact) {
         public static PersonView of(Person p, LocalDate today) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
-                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms());
+                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
+                    p.getContact());
         }
     }
 
@@ -58,19 +59,21 @@ public class PersonController {
 
     /**
      * A person's fields as the form submits them; the name is stored without surrounding spaces, the terms are whole
-     * days, 0 or more, or null for none.
+     * days, 0 or more, or null for none; the contact is stored without surrounding spaces, lower-cased, blank or
+     * null for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms,
+            @Size(max = 200) String contact) {
     }
 
     /**
      * An edit of a person: its fields, the date its grade applies from (missing: the sheet's today) and the version
-     * of the person the editor loaded, and their own terms (null: none).
+     * of the person the editor loaded, their own terms (null: none) and their contact (blank or null: none).
      */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) @Max(99999) Integer terms) {
+            @Min(0) @Max(99999) Integer terms, @Size(max = 200) String contact) {
     }
 
     /** One person named as another's patron. */
@@ -132,7 +135,8 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PersonForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms()));
+        return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms(),
+                form.contact()));
     }
 
     @PutMapping("/{id}")
@@ -142,7 +146,7 @@ public class PersonController {
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId,
                 service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom(),
-                        form.terms()));
+                        form.terms(), form.contact()));
     }
 
     @PostMapping("/{id}/retire")

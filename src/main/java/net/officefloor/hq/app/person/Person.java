@@ -44,6 +44,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, without surrounding spaces and lower-cased; null: none. */
+    @Column(name = "contact")
+    private String contact;
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -150,6 +154,14 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    public void setContact(String contact) {
+        this.contact = contact;
     }
 
     /** The date the person is retired from; null while they are not retired. */
