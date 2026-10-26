@@ -91,6 +91,10 @@ public class Claim {
     @Column(name = "edited_by")
     private String editedBy;
 
+    /** The number of the bulk settle batch that settled the claim (or made it PENDING); null for none. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** The user whose open editor holds the claim, so no one else may edit it; null while none does. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -402,6 +406,14 @@ public class Claim {
 
     public void setEditedBy(String editedBy) {
         this.editedBy = editedBy;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     public String getLockedBy() {

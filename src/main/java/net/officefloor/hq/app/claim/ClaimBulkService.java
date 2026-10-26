@@ -21,6 +21,10 @@ public class ClaimBulkService {
     public record Result(List<Claim> changed, int refused) {
     }
 
+    /** The claims a bulk settle settled or made PENDING, how many it refused, and its batch number (null for none). */
+    public record SettleResult(List<Claim> settled, int refused, Integer batch) {
+    }
+
     private final ClaimService claims;
     private final ClaimRepository repository;
     private final PersonRepository people;
@@ -45,11 +49,19 @@ public class ClaimBulkService {
 
     /**
      * Settles each of the claims that can be settled, in list order, by the rules of settling one claim: one the
-     * clerk limit makes PENDING counts as settled. Each is settled in its own transaction: one that is refused, or is
+     * clerk limit makes PENDING counts as settled. One that settles at least one is the sheet's next batch, and each
+     * claim it settled keeps the batch's number. Each is settled in its own transaction: one that is refused, or is
      * not a claim of the sheet, is left as it is and counted as refused.
      */
-    public Result settle(String by, String sheetId, Set<Long> ids) {
-        return each(by, sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
+    public SettleResult settle(String by, String sheetId, Set<Long> ids) {
+        Result result = each(by, sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
+        if (result.changed().isEmpty()) {
+            return new SettleResult(List.of(), result.refused(), null);
+        }
+        // one that settles at least one claim is the sheet's next batch, each claim it settled keeping its number
+        int batch = claims.numberSettleBatch(sheetId, result.changed().stream().map(Claim::getId).toList());
+        result.changed().forEach(c -> c.setSettleBatch(batch));
+        return new SettleResult(result.changed(), result.refused(), batch);
     }
 
     /**

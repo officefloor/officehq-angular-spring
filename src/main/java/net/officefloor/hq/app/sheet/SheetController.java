@@ -22,9 +22,11 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** A sheet as the screen shows it; lastBatch is the number of its last bulk settle batch, null for none. */
+    public record SheetView(String id, LocalDate today, boolean archived, Integer lastBatch) {
         public static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(),
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
         }
     }
 

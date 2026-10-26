@@ -27,7 +27,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * SYNC) so a test reads the record immediately.
  *
  * A record of a change made by a user acting on behalf of another (see {@link OnBehalf}) ends with for=<that one>,
- * unless it only reports figures (ROLLUP, TOTALS, ALERT, SNAPSHOT).
+ * unless it only reports figures (ROLLUP, TOTALS, ALERT). A SNAPSHOT, written by a change of today the user makes,
+ * carries it too.
  */
 @Service
 public class Audit {
@@ -38,7 +39,7 @@ public class Audit {
     }
 
     /** The records that only report figures, which never carry for=. */
-    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
 
     /** A record's event, sheet and user: its head. */
     private static final Pattern HEAD = Pattern.compile("^(\\S+) sheet=(\\S+) by=(.+?)(?= [a-z][a-z-]*=|$)");

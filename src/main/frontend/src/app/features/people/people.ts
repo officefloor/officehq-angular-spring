@@ -218,6 +218,7 @@ interface StatementView {
           <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
         }
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+        <span>Last batch: <strong data-testid="bulk-settle-batch">{{ session.sheetLastBatch() ?? '' }}</strong></span>
         @if (bulkSettled(); as result) {
           <p role="status">
             Settled: <strong data-testid="bulk-settled">{{ result.settled }}</strong>
@@ -445,7 +446,7 @@ interface StatementView {
 export class People {
   private readonly http = inject(HttpClient);
   private readonly document = inject(DOCUMENT);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
   private readonly settings = inject(SettingsStore);
   protected readonly periods = inject(PeriodStore);
@@ -1115,7 +1116,8 @@ export class People {
 
   /**
    * Settles the selected claims together: the store settles each that can be settled in list order, by the rules
-   * of settling one, and leaves each that cannot as it is; shows how many were settled and how many refused.
+   * of settling one, and leaves each that cannot as it is; shows how many were settled and how many refused. One
+   * that settles at least one is the sheet's next batch, shown as its last.
    */
   protected async bulkSettle(): Promise<void> {
     if (this.bulkSettling) return;
@@ -1127,13 +1129,14 @@ export class People {
     this.bulkSettling = true;
     try {
       const result = await firstValueFrom(
-        this.http.post<{ settled: Claim[]; refused: number }>(
+        this.http.post<{ settled: Claim[]; refused: number; batch: number | null }>(
           `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
           { ids },
         ),
       );
       if (this.session.sheetId() !== sheet) return;
       for (const c of result.settled) this.claimSaved(c);
+      if (result.batch !== null) this.session.sheetLastBatch.set(result.batch);
       this.selectedClaims.set(new Set());
       this.bulkSettled.set({ settled: result.settled.length, refused: result.refused });
     } catch {

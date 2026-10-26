@@ -98,6 +98,10 @@ public class Sheet {
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
+    /** The number of the sheet's last bulk settle batch; 0 for none. Moved on only by the repository. */
+    @Column(name = "last_settle_batch", insertable = false, updatable = false)
+    private int lastSettleBatch;
+
     protected Sheet() {
     }
 
@@ -113,6 +117,10 @@ public class Sheet {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public int getLastSettleBatch() {
+        return lastSettleBatch;
     }
 
     public LocalDate getToday() {
@@ -151,6 +159,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.archived = archived;
+        then.lastSettleBatch = lastSettleBatch;
         // a value recorded before changes were kept stands as it is
         for (DatedSetting s : settings) {
             if (settingChanges.stream()

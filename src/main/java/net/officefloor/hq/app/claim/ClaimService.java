@@ -487,6 +487,22 @@ public class ClaimService {
     }
 
     /**
+     * Numbers the claims a bulk settle settled (or made PENDING) as the sheet's next batch, and returns its number.
+     * Refused with nothing to number: a bulk settle that settles none is no batch.
+     */
+    @Transactional
+    public int numberSettleBatch(String sheetId, List<Long> ids) {
+        if (ids.isEmpty()) {
+            throw new IllegalArgumentException("A batch needs at least one claim.");
+        }
+        int batch = sheets.nextSettleBatch(sheetId);
+        for (Claim claim : claims.findAllById(ids)) {
+            claim.setSettleBatch(batch);
+        }
+        return batch;
+    }
+
+    /**
      * A steward rejects a pending claim with a reason: it is open again, bound again by its person's last statement
      * when that included it. Refused unless it is pending, unless the user is a steward, without a reason, and in a
      * closed period.
@@ -500,6 +516,8 @@ public class ClaimService {
         Claim claim = pendingClaim(by, sheetId, id);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        // open again, it is no longer settled by the batch that made it pending
+        claim.setSettleBatch(null);
         logStatus(by, sheetId, person(sheetId, claim.getPersonId()), claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_REJECTED", by, person(sheetId, saved.getPersonId()), saved)

@@ -15,6 +15,8 @@ export class Session {
   readonly sheetToday = signal<string | null>(null);
   // Whether the active sheet is archived: it stays visible and every change on it is refused.
   readonly sheetArchived = signal(false);
+  // The number of the active sheet's last bulk settle batch, or null when there has been none.
+  readonly sheetLastBatch = signal<number | null>(null);
   // Counts sheet loads, so a view re-reads the store even when the same id is loaded again.
   readonly loads = signal(0);
   // The date the screen shows the sheet as of, or null: while set, every figure is as the sheet stood at the end of
@@ -33,6 +35,7 @@ export class Session {
     this.sheetId.set(s.id);
     this.sheetToday.set(s.today);
     this.sheetArchived.set(s.archived);
+    this.sheetLastBatch.set(s.lastBatch);
     this.loads.update((n) => n + 1);
   }
 
@@ -66,4 +69,5 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  lastBatch: number | null;
 }

@@ -21,4 +21,12 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
     long lastClaimNumber(@Param("id") String id);
+
+    /** Moves the sheet's last settle batch number on by one; the row stays locked until the transaction ends. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE sheet SET last_settle_batch = last_settle_batch + 1 WHERE id = :id", nativeQuery = true)
+    int incrementSettleBatch(@Param("id") String id);
+
+    @Query(value = "SELECT last_settle_batch FROM sheet WHERE id = :id", nativeQuery = true)
+    int lastSettleBatch(@Param("id") String id);
 }

@@ -54,6 +54,8 @@ export interface Claim {
   voidReason: string | null;
   // The claim's comments, in the order they were written.
   comments: ClaimComment[];
+  // The number of the bulk settle batch that settled the claim (or made it PENDING); null for none.
+  batch: number | null;
 }
 
 // A comment on a claim: who wrote it, the sheet's today then, and its text.
@@ -292,7 +294,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -321,6 +323,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
             <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
+            <td data-testid="claim-batch">{{ c.batch ?? '' }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td data-testid="claim-period">{{ periodName(c) }}</td>
@@ -585,7 +588,8 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const user = this.session.user();
-    if (this.session.sheetArchived() || this.settings.roles().some((r) => r.user === user && r.role === 'viewer')) {
+    // a viewer is refused by the store, which knows whether a delegation lets them act
+    if (this.session.sheetArchived()) {
       this.setRowError(c.id, 'Your role may not edit a claim on this sheet.');
       return;
     }
@@ -634,7 +638,8 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const user = this.session.user();
-    if (this.session.sheetArchived() || this.settings.roles().some((r) => r.user === user && r.role === 'viewer')) {
+    // a viewer is refused by the store, which knows whether a delegation lets them act
+    if (this.session.sheetArchived()) {
       this.setRowError(c.id, 'Your role may not edit a claim on this sheet.');
       return;
     }

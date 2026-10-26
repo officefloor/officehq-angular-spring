@@ -57,6 +57,14 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** Takes the sheet's next settle batch number; two callers at once never get the same one. */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        load(id);
+        sheets.incrementSettleBatch(id);
+        return sheets.lastSettleBatch(id);
+    }
+
     private Sheet create(String id) {
         try {
             return sheets.saveAndFlush(new Sheet(id));

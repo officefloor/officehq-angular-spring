@@ -42,14 +42,14 @@ public class ClaimController {
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
-            List<CommentView> comments) {
+            List<CommentView> comments, Integer batch) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.getEditedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
-                    c.getComments().stream().map(CommentView::of).toList());
+                    c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch());
         }
     }
 
@@ -159,7 +159,7 @@ public class ClaimController {
     }
 
     /** The claims a bulk settle settled or made PENDING, in the order it took them, and how many it refused. */
-    public record BulkSettleView(List<ClaimView> settled, int refused) {
+    public record BulkSettleView(List<ClaimView> settled, int refused, Integer batch) {
     }
 
     @PostMapping("/claims/bulk-settle")
@@ -167,8 +167,9 @@ public class ClaimController {
     public BulkSettleView bulkSettle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {
-        ClaimBulkService.Result result = bulk.settle(user, sheetId, form.ids());
-        return new BulkSettleView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+        ClaimBulkService.SettleResult result = bulk.settle(user, sheetId, form.ids());
+        return new BulkSettleView(result.settled().stream().map(ClaimView::of).toList(), result.refused(),
+                result.batch());
     }
 
     /** The claims a bulk move is to move, by id, and the person it moves them to. */
