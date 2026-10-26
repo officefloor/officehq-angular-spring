@@ -12,6 +12,22 @@ export interface RateView {
 
 export const GRADES = ['A', 'B', 'C'];
 
+// A grade a person has from its from-date; null for the first one given, which applies from the beginning of time.
+export interface DatedGrade {
+  grade: string;
+  from: string | null;
+}
+
+/** The grade in force on the date: the one with the latest from-date on or before it; '' with none. */
+export function gradeOn(grades: readonly DatedGrade[], date: string | null): string {
+  let best: DatedGrade | undefined;
+  for (const g of grades) {
+    if (g.from !== null && (date === null || g.from > date)) continue;
+    if (!best || (g.from !== null && (best.from === null || g.from > best.from))) best = g;
+  }
+  return best?.grade ?? '';
+}
+
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 /** Whole cents of a two-decimal value. */

@@ -23,11 +23,20 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
-            boolean held) {
-        public static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), p.getRetiredFrom(),
+    /** A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded. */
+    public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+            LocalDate retiredFrom, boolean held) {
+        public static PersonView of(Person p, LocalDate today) {
+            return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
+                    p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld());
+        }
+    }
+
+    /** A grade a person has from its from-date (null: from the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+        public static GradeView of(DatedGrade g) {
+            return new GradeView(g.getGrade(), g.getFrom());
         }
     }
 
@@ -36,9 +45,12 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }
 
-    /** An edit of a person: its fields and the version of the person the editor loaded. */
+    /**
+     * An edit of a person: its fields, the date its grade applies from (missing: the sheet's today) and the version
+     * of the person the editor loaded.
+     */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version) {
     }
 
     /** One person named as another's patron. */
@@ -66,7 +78,8 @@ public class PersonController {
     @GetMapping
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
-        return service.list(sheetId).stream().map(PersonView::of).toList();
+        LocalDate today = service.today(sheetId);
+        return service.list(sheetId).stream().map(p -> PersonView.of(p, today)).toList();
     }
 
     @PostMapping
@@ -74,7 +87,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PersonForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        return PersonView.of(service.add(user, sheetId, form.name(), form.grade()));
+        return view(sheetId, service.add(user, sheetId, form.name(), form.grade()));
     }
 
     @PutMapping("/{id}")
@@ -82,7 +95,8 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonEdit form,
             @SessionAttribute(SessionController.USER) String user) {
-        return PersonView.of(service.update(user, sheetId, id, form.version(), form.name(), form.grade()));
+        return view(sheetId,
+                service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom()));
     }
 
     @PostMapping("/{id}/retire")
@@ -90,7 +104,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @RequestBody RetireForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        return PersonView.of(service.retire(user, sheetId, id, form.from()));
+        return view(sheetId, service.retire(user, sheetId, id, form.from()));
     }
 
     /** Puts the person on hold, or takes them off hold when they are held. */
@@ -98,7 +112,12 @@ public class PersonController {
     public PersonView hold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
-        return PersonView.of(service.toggleHold(user, sheetId, id));
+        return view(sheetId, service.toggleHold(user, sheetId, id));
+    }
+
+    /** The person as listed on the sheet's today. */
+    private PersonView view(String sheetId, Person person) {
+        return PersonView.of(person, service.today(sheetId));
     }
 
     /** Every patron named on the sheet, in the order they were named. */

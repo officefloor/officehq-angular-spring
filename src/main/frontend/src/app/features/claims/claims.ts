@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
-import { RateView, atLeast, dueOn, rateOn, withPctPer } from '../rates/rates';
+import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, withPctPer } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
 export interface Claim {
@@ -154,7 +154,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ dueOf(c, rates(), settings.floor(), settings.lateness()) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness()) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ dueByOf(c, settings.terms()) }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, settings.terms(), session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
@@ -192,12 +192,13 @@ export class Claims {
   protected readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
   protected readonly settings = inject(SettingsStore);
+  private readonly rateStore = inject(RateStore);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  // Every rate set for the person's grade; a claim's due uses the one in force on its date.
-  readonly rates = input<readonly RateView[]>([]);
+  // Every grade recorded for the person; a claim's due uses the rate in force on its date for the grade in force then.
+  readonly grades = input<readonly DatedGrade[]>([]);
   // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
   readonly retiredFrom = input<string | null>(null);
   readonly saved = output<Claim>();
@@ -213,6 +214,11 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
 
   protected readonly dueOf = dueOf;
+
+  /** Every rate set for the person's grade in force on the date. */
+  protected ratesOn(date: string): readonly RateView[] {
+    return this.rateStore.rates().get(gradeOn(this.grades(), date)) ?? [];
+  }
   protected readonly dueByOf = dueByOf;
   protected readonly overdue = overdue;
 

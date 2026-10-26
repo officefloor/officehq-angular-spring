@@ -35,6 +35,13 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today, which the grade a person is listed with is in force on. */
+    @Transactional
+    public LocalDate today(String sheetId) {
+        return sheets.load(sheetId).getToday();
+    }
+
+    /** Adds the person; the grade they are given first applies from the beginning of time. */
     @Transactional
     public Person add(String by, String sheetId, String name, String grade) {
         sheets.load(sheetId);
@@ -44,14 +51,20 @@ public class PersonService {
             throw nameInUse();
         }
         Person added = save(new Person(sheetId, trimmed, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", by, added));
+        audit.recordOnCommit(record("PERSON_ADDED", by, added, today(sheetId)));
         rollup.recordChanges(by, sheetId, before);
         return added;
     }
 
-    /** Saves an edit made from the given version of the person; refused when it has been saved since. */
+    /**
+     * Saves an edit made from the given version of the person; refused when it has been saved since. The grade is
+     * recorded from the from-date (missing: the sheet's today), keeping the ones already recorded, except that an
+     * edit leaving the grade in force today as it is, with no from-date, records nothing.
+     */
     @Transactional
-    public Person update(String by, String sheetId, Long id, long version, String name, String grade) {
+    public Person update(String by, String sheetId, Long id, long version, String name, String grade,
+            LocalDate gradeFrom) {
+        LocalDate today = today(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
@@ -63,9 +76,11 @@ public class PersonService {
             throw nameInUse();
         }
         person.setName(trimmed);
-        person.setGrade(grade);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
+        }
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", by, saved));
+        audit.recordOnCommit(record("PERSON_EDITED", by, saved, today));
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }
@@ -140,8 +155,10 @@ public class PersonService {
         }
     }
 
-    private static String record(String event, String by, Person p) {
-        return event + " sheet=" + p.getSheetId() + " by=" + by + " name=" + p.getName() + " grade=" + p.getGrade();
+    /** The audit line about a person, with the grade in force on the sheet's today. */
+    private static String record(String event, String by, Person p, LocalDate today) {
+        return event + " sheet=" + p.getSheetId() + " by=" + by + " name=" + p.getName() + " grade="
+                + p.gradeOn(today);
     }
 
     private static ResponseStatusException stale() {

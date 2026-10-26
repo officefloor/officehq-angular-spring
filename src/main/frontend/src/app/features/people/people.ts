@@ -4,13 +4,15 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
-import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
+import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
 interface Person {
   id: number;
   name: string;
+  // The grade in force on the sheet's today when the store answered, and every grade recorded, each from its date.
   grade: string;
+  grades: DatedGrade[];
   // Raised by the store on each save; an edit made from an older version is refused.
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
@@ -63,6 +65,14 @@ interface StatementView {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-grade-from">Grade from</label>
+        <input
+          type="date"
+          id="person-grade-from"
+          data-testid="person-form-grade-from"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save' }}
         </button>
@@ -126,7 +136,7 @@ interface StatementView {
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
@@ -188,7 +198,7 @@ interface StatementView {
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsBy().get(p.id) ?? []"
-                  [rates]="rates.rates().get(p.grade) ?? []"
+                  [grades]="p.grades"
                   [retiredFrom]="p.retiredFrom"
                   (saved)="claimSaved($event)"
                 />
@@ -218,6 +228,8 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   protected readonly name = signal('');
   protected readonly grade = signal('A');
+  // The date the form's grade applies from; blank takes the sheet's today.
+  protected readonly gradeFrom = signal('');
   protected readonly editingId = signal<number | null>(null);
   // The version of the person the open editor loaded.
   private readonly editingVersion = signal(0);
@@ -264,7 +276,8 @@ export class People {
   protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
-  // it is null (n/a), unless a settled or stated claim keeps a figure.
+  // today nor for the grade of any counted claim's date it is null (n/a), unless a settled or stated claim keeps a
+  // figure.
   protected readonly dueBy = computed(() => {
     const by = new Map<number, string | null>();
     const current = this.rates.current();
@@ -273,23 +286,26 @@ export class People {
     const late = this.settings.lateness();
     for (const p of this.people()) {
       const counted = this.liveBy().get(p.id) ?? [];
-      if (!current.has(p.grade) && !counted.some(keepsFigure)) {
+      // the grades whose rate today decides n/a: the one in force today and each counted claim's
+      const grades = [this.gradeToday(p), ...counted.map((c) => gradeOn(p.grades, c.date))];
+      if (!grades.some((g) => current.has(g)) && !counted.some(keepsFigure)) {
         by.set(p.id, null);
         continue;
       }
-      const list = rates.get(p.grade) ?? [];
-      by.set(p.id, sumSkippingNa(counted.map((c) => dueOf(c, list, floor, late))));
+      by.set(p.id, sumSkippingNa(counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late))));
     }
     return by;
   });
   // Every claim counted live: its date and the figure it totals, for the periods' due-totals.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
-    return this.liveClaims()
-      .map((c) => ({ date: c.date, figure: dueOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor, late) }));
+    return this.liveClaims().map((c) => {
+      const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
+      return { date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
+    });
   });
   // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
   protected readonly patronNamesBy = computed(() => {
@@ -328,14 +344,14 @@ export class People {
   });
   // Each person's overdue-total: the sum of their overdue claims' figures, skipping n/a.
   protected readonly overdueTotalBy = computed(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const by = new Map<number, string>();
     for (const [id, list] of this.overdueBy()) {
-      const own = rates.get(grades.get(id) ?? '') ?? [];
-      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, own, floor, late))));
+      const own = grades.get(id) ?? [];
+      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late))));
     }
     return by;
   });
@@ -483,12 +499,18 @@ export class People {
     }
   }
 
+  /** The grade in force for the person on the sheet's today. */
+  protected gradeToday(p: Person): string {
+    return gradeOn(p.grades, this.session.sheetToday());
+  }
+
   protected edit(p: Person): void {
     this.clearRowErrors(p.id);
     this.editingId.set(p.id);
     this.editingVersion.set(p.version);
     this.name.set(p.name);
-    this.grade.set(p.grade);
+    this.grade.set(this.gradeToday(p));
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -504,6 +526,7 @@ export class People {
     this.editingId.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -530,7 +553,7 @@ export class People {
         const added = await firstValueFrom(this.http.post<Person>(base, form));
         this.people.update((list) => [...list, added]);
       } else {
-        const edit = { ...form, version: this.editingVersion() };
+        const edit = { ...form, gradeFrom: this.gradeFrom() || null, version: this.editingVersion() };
         const saved = await firstValueFrom(this.http.put<Person>(`${base}/${editing}`, edit));
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
@@ -602,7 +625,7 @@ export class People {
         this.people.update((list) => list.map((p) => (p.id === id ? current : p)));
         this.editingVersion.set(current.version);
         this.name.set(current.name);
-        this.grade.set(current.grade);
+        this.grade.set(this.gradeToday(current));
       }
     } catch {
       // the error below still tells the person the save was refused

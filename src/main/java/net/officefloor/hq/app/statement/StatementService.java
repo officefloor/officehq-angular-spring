@@ -2,9 +2,11 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -71,6 +73,9 @@ public class StatementService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean kept = false;
+        // the grades whose rate today decides n/a: the one in force today and each counted claim's
+        Set<String> grades = new HashSet<>();
+        grades.add(person.gradeOn(today));
         int count = 0;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
             if (!person.countsLive(c.getStatus())) {
@@ -78,6 +83,7 @@ public class StatementService {
                 continue;
             }
             // a settled or already bound claim keeps its figure even with no rate in force today
+            grades.add(person.gradeOn(c.getDate()));
             kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
             // the statement binds the figure under the late charge; the charge keeps following the sheet's today
             BigDecimal due = claimService.due(sheetId, person, c);
@@ -88,8 +94,8 @@ public class StatementService {
             }
         }
         claims.flush();
-        // as on screen: with no rate in force today for their grade and no kept figure, the due-total is n/a
-        boolean current = rates.findInForce(sheetId, person.getGrade(), today).isPresent();
+        // as on screen: with no rate in force today for any of those grades and no kept figure, the due-total is n/a
+        boolean current = grades.stream().anyMatch(g -> rates.findInForce(sheetId, g, today).isPresent());
         BigDecimal dueTotal = current || kept ? total : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()

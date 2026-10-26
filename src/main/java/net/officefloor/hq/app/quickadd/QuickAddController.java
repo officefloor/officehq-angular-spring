@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,9 +35,11 @@ public class QuickAddController {
     }
 
     private final QuickAddService service;
+    private final PersonService people;
 
-    public QuickAddController(QuickAddService service) {
+    public QuickAddController(QuickAddService service, PersonService people) {
         this.service = service;
+        this.people = people;
     }
 
     @PostMapping
@@ -45,6 +48,6 @@ public class QuickAddController {
             @Valid @RequestBody QuickAddForm form,
             @SessionAttribute(SessionController.USER) String user) {
         QuickAddService.Added added = service.add(user, sheetId, form.name(), form.amount());
-        return new QuickAddView(PersonView.of(added.person()), added.personAdded(), ClaimView.of(added.claim()));
+        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
     }
 }

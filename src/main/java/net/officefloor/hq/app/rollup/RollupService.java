@@ -5,10 +5,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -75,17 +77,21 @@ public class RollupService {
         BigDecimal claimedTotal = ZERO;
         BigDecimal dueTotal = ZERO;
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Rate> list = byGrade.getOrDefault(p.getGrade(), List.of());
             // while the person is held, their open claims count in no live total
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
                     .filter(c -> p.countsLive(c.getStatus())).toList();
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             boolean kept = false;
+            // the grades whose rate today decides n/a: the one in force today and each counted claim's
+            Set<String> grades = new HashSet<>();
+            grades.add(p.gradeOn(today));
             for (Claim c : counted) {
+                grades.add(p.gradeOn(c.getDate()));
                 claimed = claimed.add(c.getAmount());
                 kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
-                BigDecimal figure = figure(c, list, floor);
+                // the claim's rate is the one its person's grade in force on its date has
+                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor);
                 if (c.getStatus() == ClaimStatus.OPEN) {
                     figure = ClaimService.withLateCharge(figure, c.getDate(), sheet);
                 }
@@ -93,8 +99,9 @@ public class RollupService {
                     due = due.add(figure);
                 }
             }
-            // with no rate in force today for their grade and no kept figure, the due-total is n/a
-            if (!kept && (today == null || inForce(list, today) == null)) {
+            // with no rate in force today for any of those grades and no kept figure, the due-total is n/a
+            if (!kept && (today == null || grades.stream()
+                    .allMatch(g -> inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
                 due = null;
             }
             figures.put(p.getId(), new Figures(p.getName(), claimed, due));

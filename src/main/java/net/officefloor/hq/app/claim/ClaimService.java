@@ -146,12 +146,12 @@ public class ClaimService {
     }
 
     /**
-     * The claim's live due: at the rate its person's grade has in force on its date, and at least the sheet's
+     * The claim's live due: at the rate its person's grade in force on its date has in force on that date, and at least the sheet's
      * floor; null (n/a) with none.
      */
     public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
         BigDecimal floor = sheets.load(sheetId).getFloor();
-        return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> floored(dueOn(claim.getAmount(), pct), floor)).orElse(null);
     }
 

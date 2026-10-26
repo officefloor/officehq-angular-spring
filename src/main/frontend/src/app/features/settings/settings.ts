@@ -234,7 +234,10 @@ export class Settings {
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleError = signal<string | null>(null);
-  // A submit in flight: a second submit before it answers is ignored.
+  // A settings submit in flight, and whether another came before it answered: that one runs once it has.
+  private savingSettings = false;
+  private resubmit = false;
+  // A role submit in flight: a second one before it answers is ignored.
   private submitting = false;
 
   constructor() {
@@ -256,7 +259,11 @@ export class Settings {
 
   protected async saveSettings(e: Event): Promise<void> {
     e.preventDefault();
-    if (this.submitting) return;
+    if (this.savingSettings) {
+      // saved once the one in flight answers, so a value typed meanwhile is not lost
+      this.resubmit = true;
+      return;
+    }
     this.settingsError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -280,28 +287,34 @@ export class Settings {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
-    this.submitting = true;
+    this.savingSettings = true;
     try {
       if (this.limitChanged) {
         await this.store.setClerkLimit(sheet, limit || null);
-        this.limitChanged = false;
+        // a value typed while it was saving stays to be saved
+        this.limitChanged = this.limit().trim() !== limit;
       }
       if (this.floorChanged) {
         await this.store.setFloor(sheet, floor);
-        this.floorChanged = false;
+        this.floorChanged = this.floor().trim() !== floor;
       }
       if (this.termsChanged) {
         await this.store.setTerms(sheet, Number(terms));
-        this.termsChanged = false;
+        this.termsChanged = this.terms().trim() !== terms;
       }
       if (this.latePctChanged) {
         await this.store.setLatePct(sheet, latePct);
-        this.latePctChanged = false;
+        this.latePctChanged = this.latePct().trim() !== latePct;
       }
     } catch {
+      this.resubmit = false;
       this.settingsError.set('Could not save the settings.');
     } finally {
-      this.submitting = false;
+      this.savingSettings = false;
+    }
+    if (this.resubmit) {
+      this.resubmit = false;
+      await this.saveSettings(e);
     }
   }
 
