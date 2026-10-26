@@ -519,7 +519,7 @@ export class PersonClaims {
       if (this.session.sheet()?.id === sheet.id) {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;
         const message = forbidden && (action === 'approve' || action === 'reject')
-          ? `Only a steward who did not open or last edit this claim can ${action} it.`
+          ? `Only a steward or the person's approver, not having opened or last edited this claim, can ${action} it.`
           : forbidden && action === 'review'
           ? 'Only a steward can review this claim.'
           : forbidden && action === 'resettle'

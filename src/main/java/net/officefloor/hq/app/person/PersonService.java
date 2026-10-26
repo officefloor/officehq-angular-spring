@@ -423,6 +423,18 @@ public class PersonService {
         return saved;
     }
 
+    /** Name the user who may approve or reject the person's PENDING claims as a steward may (blank: none). */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long id, String approver) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        person.setApprover(approver);
+        Person saved = save(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " user=" + (saved.getApprover() == null ? "" : saved.getApprover()));
+        return saved;
+    }
+
     /** Swap the person with the one above them in the list (up) or below them (down); refused for the
      *  top person moving up and the bottom person moving down. */
     @Transactional

@@ -91,6 +91,8 @@ export interface PersonView {
   snapshots: string[];
   /** The reason of the person's flag while it is in force on the sheet's today, or null. */
   flag: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may, or null. */
+  approver: string | null;
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
@@ -208,6 +210,11 @@ export class PeopleApi {
   /** Flag the person with a reason until a date (null: the sheet's today); a steward only. */
   flag(sheetId: string, id: number, reason: string, until: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/flag`, { reason, until }));
+  }
+
+  /** Name the user who may approve or reject the person's PENDING claims (blank: none). */
+  setApprover(sheetId: string, id: number, user: string): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/approver`, { user }));
   }
 
   /** Put a hold on the person from a date (null: the sheet's today) to a date (null: no end);

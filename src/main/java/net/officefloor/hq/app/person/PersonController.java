@@ -48,11 +48,12 @@ public class PersonController {
      *  sheet's tree; terms their own terms in force on the sheet's today, ownTerms those from the
      *  beginning of time; origin the sheet they were transferred from, null when added here; snapshots
      *  one line per snapshot written for them, oldest first: the day being left and their due-total;
-     *  flag the reason of their flag while it is in force on the sheet's today, else null. */
+     *  flag the reason of their flag while it is in force on the sheet's today, else null; approver the
+     *  user who may approve or reject their PENDING claims as a steward may, else null. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
             List<Long> patronIds, boolean watched, Integer terms, Integer ownTerms, String contact, List<String> aliases, boolean clashing,
-            String origin, List<String> tags, List<String> snapshots, String flag) {
+            String origin, List<String> tags, List<String> snapshots, String flag, String approver) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
             return of(person, List.of(), today, watched, clashing);
@@ -69,13 +70,14 @@ public class PersonController {
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
                     watched, person.termsOn(today), person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheetId(), person.getTags(), List.of(), person.flagOn(today));
+                    person.getOriginSheetId(), person.getTags(), List.of(), person.flagOn(today),
+                    person.getApprover());
         }
 
         /** The same person with these snapshot lines. */
         public PersonView withSnapshots(List<String> lines) {
             return new PersonView(id, name, grade, grades, version, retired, retiredFrom, retirements, held, holds,
-                    patronIds, watched, terms, ownTerms, contact, aliases, clashing, origin, tags, lines, flag);
+                    patronIds, watched, terms, ownTerms, contact, aliases, clashing, origin, tags, lines, flag, approver);
         }
     }
 
@@ -126,6 +128,10 @@ public class PersonController {
 
     /** A flag; no until-date means the sheet's today. */
     public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** The user named as a person's approver; blank names none. */
+    public record ApproverForm(@Size(max = 100) String user) {
     }
 
     /** The people selected to be given a grade together, from the from-date (none: the sheet's today). */
@@ -285,6 +291,13 @@ public class PersonController {
     public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FlagForm form) {
         return view(service.flag(sheetId.trim(), SignedInUser.name(user), id, form.reason(), form.until()), user);
+    }
+
+    /** Name the user who may approve or reject the person's PENDING claims. */
+    @PostMapping("/{id}/approver")
+    public PersonView setApprover(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ApproverForm form) {
+        return view(service.setApprover(sheetId.trim(), SignedInUser.name(user), id, form.user()), user);
     }
 
     /** Name another person on the sheet as one of the person's patrons. */

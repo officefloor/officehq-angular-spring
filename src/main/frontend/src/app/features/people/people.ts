@@ -284,7 +284,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <app-people-columns />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -402,6 +402,14 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                     #flagUntil (input)="clearPersonError(p.id)" />
                   <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)"
                     [disabled]="flagging() === p.id" [attr.aria-label]="'Flag ' + p.name">Flag</button>
+                </td>
+                <td>
+                  <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
+                  <label [for]="'person-approver-input-' + p.id" class="visually-hidden">Approver of {{ p.name }}</label>
+                  <input type="text" [id]="'person-approver-input-' + p.id" data-testid="person-approver-input"
+                    #approverInput (input)="clearPersonError(p.id)" placeholder="User" />
+                  <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput)"
+                    [disabled]="settingApprover() === p.id" [attr.aria-label]="'Set the approver of ' + p.name">Set approver</button>
                 </td>
                 <td>
                   @if (cols.shown('statement-count')) { <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
@@ -563,6 +571,8 @@ export class People {
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The person a hold is being put on. */
   protected readonly holding = signal<number | null>(null);
+  /** The person whose approver is being set. */
+  protected readonly settingApprover = signal<number | null>(null);
   /** The person a flag is being put on. */
   protected readonly flagging = signal<number | null>(null);
   /** The holds of each person, by id. */
@@ -1401,6 +1411,27 @@ export class People {
       }
     } finally {
       this.addingPatron.set(null);
+    }
+  }
+
+  /** Name the row's user as the person's approver (blank: none). */
+  protected async setApprover(person: PersonView, input: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.settingApprover() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.settingApprover.set(person.id);
+    try {
+      const changed = await this.api.setApprover(sheet.id, person.id, input.value.trim());
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+      input.value = '';
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'The approver could not be set.' });
+      }
+    } finally {
+      this.settingApprover.set(null);
     }
   }
 

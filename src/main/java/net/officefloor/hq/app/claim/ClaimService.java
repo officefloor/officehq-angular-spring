@@ -823,8 +823,9 @@ public class ClaimService {
         return saved;
     }
 
-    /** The PENDING claim a steward approves or rejects, locked; refused when it is not PENDING, is
-     *  dated inside a closed period, or the user is not a steward of the sheet. */
+    /** The PENDING claim a steward (or the person's approver) approves or rejects, locked; refused when it
+     *  is not PENDING, is dated inside a closed period, or the user is neither a steward of the sheet nor
+     *  the person's approver. */
     private Claim pending(String sheetId, String user, long id) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -833,8 +834,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim is not waiting for approval.");
         }
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim.");
+        if (settings.roleOf(sheetId, user) != Role.STEWARD
+                && !user.equals(person(sheetId, claim.getPersonId()).getApprover())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward or the person's approver approves or rejects a claim.");
         }
         return claim;
     }

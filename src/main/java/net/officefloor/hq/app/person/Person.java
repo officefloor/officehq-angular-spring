@@ -108,6 +108,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -165,6 +169,7 @@ public class Person {
         copy.tags = tags;
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         getAliases().forEach(copy::addAlias);
         return copy;
     }
@@ -430,5 +435,14 @@ public class Person {
 
     public long getVersion() {
         return version;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    /** Name the user who may approve or reject the person's PENDING claims; blank names none. */
+    public void setApprover(String approver) {
+        this.approver = approver == null || approver.isBlank() ? null : approver.trim();
     }
 }
