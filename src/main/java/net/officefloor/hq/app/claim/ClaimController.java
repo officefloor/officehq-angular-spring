@@ -30,15 +30,17 @@ public class ClaimController {
      * A claim as the screen shows it; the amount always carries two decimals. The settled due is the figure fixed
      * when it was settled, or null while its due is live. Opened-by is the user who opened it, or null. Stated is
      * whether its person's last statement binds it, to the stated due (null for n/a). Corrects is the number of the
-     * claim a correction corrects, or null.
+     * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
+     * the date of the claim it corrects.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects) {
+            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects,
+            LocalDate roundsOn) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects());
+                    c.getCorrects(), c.getRoundsOn());
         }
     }
 

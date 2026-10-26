@@ -66,6 +66,10 @@ public class Claim {
     @Column(name = "corrects")
     private Long corrects;
 
+    /** The date the claim's rounding follows: its own date, or for a correction the date of the claim it corrects. */
+    @Column(name = "rounds_on", nullable = false)
+    private LocalDate roundsOn;
+
     protected Claim() {
     }
 
@@ -74,7 +78,16 @@ public class Claim {
         this.personId = personId;
         this.amount = amount;
         this.date = date;
+        this.roundsOn = date;
         this.note = note;
+    }
+
+    public LocalDate getRoundsOn() {
+        return roundsOn;
+    }
+
+    public void setRoundsOn(LocalDate roundsOn) {
+        this.roundsOn = roundsOn;
     }
 
     /** Whether the claim is a correction: one with a negative amount. Its due has no floor and no late charge. */

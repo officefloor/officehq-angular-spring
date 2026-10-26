@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -30,12 +31,14 @@ public class SettingsController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit carries two decimals, or is null for none, and
-     * the floor carries two decimals, the terms are whole days, and the late percent carries two decimals.
+     * the floor carries two decimals, the terms are whole days, the late percent carries two decimals, and the
+     * policy date is null when blank (the sheet's today).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
+                    sheet.getPolicyDate());
         }
     }
 
@@ -53,6 +56,10 @@ public class SettingsController {
 
     /** The late percent as the form submits it: 0.00 or more with up to two decimals. */
     public record LatePctForm(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal value) {
+    }
+
+    /** The policy date as the form submits it: a date, or null for blank (the sheet's today). */
+    public record PolicyDateForm(LocalDate value) {
     }
 
     public record RoleView(String user, String role) {
@@ -104,6 +111,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody LatePctForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setLatePct(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/policy-date")
+    public SettingsView setPolicyDate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody PolicyDateForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setPolicyDate(user, sheetId, form.value()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */

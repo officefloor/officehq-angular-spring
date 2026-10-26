@@ -24,6 +24,8 @@ export interface Claim {
   statedDue: string | null;
   // The number of the settled claim a correction (a negative amount) corrects; null for any other claim.
   corrects: number | null;
+  // The date the claim's rounding follows: its own, or for a correction the date of the claim it corrects.
+  roundsOn: string;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -41,13 +43,22 @@ export function isCorrection(c: Claim): boolean {
 }
 
 /**
- * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
- * at the rate in force on its date and at least the floor (a correction has none); null (n/a) with none.
+ * Whether the claim's live figures round half up: when the date its rounding follows is before the policy date
+ * (the sheet's today when the setting is blank); else they round half to even.
  */
-export function figureOf(c: Claim, rates: readonly RateView[], floor: string): string | null {
+export function roundsHalfUp(c: Claim, policyDate: string | null): boolean {
+  return policyDate !== null && c.roundsOn < policyDate;
+}
+
+/**
+ * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
+ * at the rate in force on its date and at least the floor (a correction has none), rounded as the policy date
+ * decides for it; null (n/a) with none.
+ */
+export function figureOf(c: Claim, rates: readonly RateView[], floor: string, policyDate: string | null): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (c.stated) return c.statedDue;
-  const due = dueOn(c.amount, rateOn(rates, c.date));
+  const due = dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, policyDate));
   return due === null || isCorrection(c) ? due : atLeast(due, floor);
 }
 
@@ -72,11 +83,15 @@ export function overdue(c: Claim, terms: number, today: string | null): boolean 
   return c.status === 'OPEN' && today !== null && dueByOf(c, terms) < today;
 }
 
-/** What the late charge follows: the sheet's terms, its today and its late percent. */
+/**
+ * What the late charge follows: the sheet's terms, its today and its late percent; and the policy date in force
+ * (the sheet's today when the setting is blank), which decides how a claim's live figures round.
+ */
 export interface Lateness {
   terms: number;
   today: string | null;
   latePct: string;
+  policyDate: string | null;
 }
 
 /** The whole days from one date (yyyy-mm-dd) to another. */
@@ -94,10 +109,10 @@ function daysBetween(from: string, to: string): number {
  * due already holds it. A correction gains no late charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: string, late: Lateness): string | null {
-  const figure = figureOf(c, rates, floor);
+  const figure = figureOf(c, rates, floor, late.policyDate);
   if (figure === null || isCorrection(c) || !overdue(c, late.terms, late.today)) return figure;
   const periods = Math.floor(daysBetween(dueByOf(c, late.terms), late.today!) / 30);
-  return withPctPer(figure, late.latePct, periods);
+  return withPctPer(figure, late.latePct, periods, roundsHalfUp(c, late.policyDate));
 }
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';

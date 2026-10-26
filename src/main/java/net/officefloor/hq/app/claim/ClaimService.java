@@ -68,6 +68,7 @@ public class ClaimService {
         Long corrected = correctedNumber(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setCorrects(corrected);
+        claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
@@ -95,6 +96,7 @@ public class ClaimService {
         claim.setAmount(scaled(amount));
         claim.setCorrects(corrected);
         claim.setDate(on);
+        claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", by, person(sheetId, saved.getPersonId()), saved));
@@ -137,7 +139,7 @@ public class ClaimService {
             BigDecimal figure = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
                     : liveDue(sheetId, person, claim);
             BigDecimal fixed = claim.isCorrection() ? figure
-                    : withLateCharge(figure, claim.getDate(), sheets.load(sheetId));
+                    : withLateCharge(figure, claim, sheets.load(sheetId));
             settings.refuseAboveClerkLimit(sheetId, by, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
@@ -156,12 +158,14 @@ public class ClaimService {
 
     /**
      * The claim's live due: at the rate its person's grade in force on its date has in force on that date, and at least the sheet's
-     * floor (a correction has none); null (n/a) with none.
+     * floor (a correction has none), rounded as the sheet's policy date decides for it; null (n/a) with none.
      */
     public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = claim.isCorrection() ? null : sheets.load(sheetId).getFloor();
+        Sheet sheet = sheets.load(sheetId);
+        BigDecimal floor = claim.isCorrection() ? null : sheet.getFloor();
+        RoundingMode rounding = sheet.roundingOn(claim.getRoundsOn());
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
-                .map(pct -> floored(dueOn(claim.getAmount(), pct), floor)).orElse(null);
+                .map(pct -> floored(dueOn(claim.getAmount(), pct, rounding), floor)).orElse(null);
     }
 
     /** The figure the claim shows and totals: its settled due, else the one a statement bound it to, else live. */
@@ -179,25 +183,26 @@ public class ClaimService {
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figure(sheetId, person, claim);
         return claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection()
-                ? withLateCharge(figure, claim.getDate(), sheets.load(sheetId))
+                ? withLateCharge(figure, claim, sheets.load(sheetId))
                 : figure;
     }
 
     /**
-     * The figure (null for n/a) of a claim dated on the date, with the sheet's late percent of it added for every
-     * full 30 days it is overdue by the sheet's today, rounded like a due. The charge is never bound by a statement:
-     * it keeps following the sheet's today.
+     * The figure (null for n/a) of the claim, with the sheet's late percent of it added for every full 30 days it is
+     * overdue by the sheet's today, rounded like its due. The charge is never bound by a statement: it keeps
+     * following the sheet's today and its policy date.
      */
-    public static BigDecimal withLateCharge(BigDecimal figure, LocalDate date, Sheet sheet) {
+    public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Sheet sheet) {
         if (figure == null || sheet == null || sheet.getToday() == null) {
             return figure;
         }
-        long overdue = ChronoUnit.DAYS.between(date.plusDays(sheet.getTerms()), sheet.getToday());
+        long overdue = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
         long periods = overdue > 0 ? overdue / 30 : 0;
         if (periods == 0 || sheet.getLatePct().signum() == 0) {
             return figure;
         }
-        return figure.add(dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods))));
+        return figure.add(dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)),
+                sheet.roundingOn(claim.getRoundsOn())));
     }
 
     /**
@@ -251,9 +256,18 @@ public class ClaimService {
                 + (number != null ? " number=" + number : "");
     }
 
-    /** The due on an amount at a rate: amount times rate divided by 100, rounded half to even to two decimals. */
-    public static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
-        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /**
+     * The due on an amount at a rate: amount times rate divided by 100, rounded to two decimals the given way (a
+     * negative amount rounds like its positive).
+     */
+    public static BigDecimal dueOn(BigDecimal amount, BigDecimal pct, RoundingMode rounding) {
+        return amount.multiply(pct).movePointLeft(2).setScale(2, rounding);
+    }
+
+    /** The date a claim dated on the date rounds by: that date, or for a correction the corrected claim's date. */
+    private LocalDate roundsOn(String sheetId, Long corrects, LocalDate on) {
+        return corrects == null ? on
+                : claims.findBySheetIdAndNumber(sheetId, corrects).map(Claim::getDate).orElse(on);
     }
 
     /** The due raised to the floor when it is below it. */

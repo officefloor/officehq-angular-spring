@@ -17,6 +17,8 @@ interface SettingsView {
   terms: number;
   // The percent of an overdue claim's figure added for every full 30 days it is overdue, with two decimals.
   latePct: string;
+  // The date claims round by (before it half up, on or after it half to even); null when blank: the sheet's today.
+  policyDate: string | null;
 }
 
 export const ROLES = ['clerk', 'steward'];
@@ -36,8 +38,10 @@ export const DEFAULT_LATE_PCT = '0.00';
 
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 // The active sheet's settings: the role set for each user name (any other name is a clerk), the clerk limit and
-// the floor, the terms and the late percent.
+// the floor, the terms, the late percent and the policy date.
 @Injectable({ providedIn: 'root' })
 export class SettingsStore {
   private readonly http = inject(HttpClient);
@@ -48,11 +52,17 @@ export class SettingsStore {
   readonly floor = signal<string>(DEFAULT_FLOOR);
   readonly terms = signal<number>(DEFAULT_TERMS);
   readonly latePct = signal<string>(DEFAULT_LATE_PCT);
-  /** What an overdue claim's late charge follows: the terms, the sheet's today and the late percent. */
+  /** The policy date as set; null when blank. */
+  readonly policyDate = signal<string | null>(null);
+  /**
+   * What an overdue claim's late charge follows: the terms, the sheet's today and the late percent; and the policy
+   * date in force (the sheet's today when blank), which decides how live figures round.
+   */
   readonly lateness = computed(() => ({
     terms: this.terms(),
     today: this.session.sheetToday(),
     latePct: this.latePct(),
+    policyDate: this.policyDate() ?? this.session.sheetToday(),
   }));
 
   /** Re-read the sheet's settings from the store. */
@@ -62,6 +72,7 @@ export class SettingsStore {
     this.floor.set(DEFAULT_FLOOR);
     this.terms.set(DEFAULT_TERMS);
     this.latePct.set(DEFAULT_LATE_PCT);
+    this.policyDate.set(null);
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
@@ -73,6 +84,7 @@ export class SettingsStore {
       this.floor.set(settings.floor);
       this.terms.set(settings.terms);
       this.latePct.set(settings.latePct);
+      this.policyDate.set(settings.policyDate);
     }
   }
 
@@ -112,9 +124,16 @@ export class SettingsStore {
     );
     if (this.session.sheetId() === sheet) this.latePct.set(s.latePct);
   }
+
+  async setPolicyDate(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/policy-date`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.policyDate.set(s.policyDate);
+  }
 }
 
-// The sheet's settings: the clerk limit, the floor, the terms, the late percent, and the role each user name has.
+// The sheet's settings: the clerk limit, the floor, the terms, the late percent, the policy date, and the role each user name has.
 @Component({
   selector: 'app-settings',
   template: `
@@ -161,6 +180,17 @@ export class SettingsStore {
           (keydown.delete)="latePctChanged = true; settingsError.set(null)"
           (keydown.backspace)="latePctChanged = true; settingsError.set(null)"
         />
+        <label for="setting-policy-date">Policy date (claims before it round half up; blank for the sheet's today)</label>
+        <input
+          id="setting-policy-date"
+          data-testid="setting-policy-date"
+          type="date"
+          [value]="policyDate()"
+          (input)="policyDate.set(value($event)); policyDateChanged = true; settingsError.set(null)"
+          (change)="policyDate.set(value($event)); policyDateChanged = true; settingsError.set(null)"
+          (keydown.delete)="policyDateChanged = true; settingsError.set(null)"
+          (keydown.backspace)="policyDateChanged = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -170,6 +200,7 @@ export class SettingsStore {
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floor() }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days</p>
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong></p>
+      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -224,12 +255,14 @@ export class Settings {
   protected readonly floor = signal('');
   protected readonly terms = signal('');
   protected readonly latePct = signal('');
+  protected readonly policyDate = signal('');
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
   // clearing one that already shows blank (as the clerk limit, for none) still saves it.
   protected limitChanged = false;
   protected floorChanged = false;
   protected termsChanged = false;
   protected latePctChanged = false;
+  protected policyDateChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -287,6 +320,11 @@ export class Settings {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
+    const policyDate = this.policyDate().trim();
+    if (this.policyDateChanged && policyDate && !DATE.test(policyDate)) {
+      this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
+      return;
+    }
     this.savingSettings = true;
     try {
       if (this.limitChanged) {
@@ -305,6 +343,10 @@ export class Settings {
       if (this.latePctChanged) {
         await this.store.setLatePct(sheet, latePct);
         this.latePctChanged = this.latePct().trim() !== latePct;
+      }
+      if (this.policyDateChanged) {
+        await this.store.setPolicyDate(sheet, policyDate || null);
+        this.policyDateChanged = this.policyDate().trim() !== policyDate;
       }
     } catch {
       this.resubmit = false;

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -14,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, the clerk limit, the floor, the terms and the late percent. */
+/** A sheet's settings: the role each user name has, the clerk limit, the floor, the terms, the late percent and the policy date. */
 @Service
 public class SettingsService {
 
@@ -99,6 +100,23 @@ public class SettingsService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
                 + scaled.toPlainString());
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's policy date (null for blank: the sheet's today): a claim rounded by a date before it rounds
+     * half up, one on or after it half to even. Settled and stated figures keep what they were; the live figures it
+     * moves are rolled up.
+     */
+    @Transactional
+    public Sheet setPolicyDate(String by, String sheetId, LocalDate policyDate) {
+        Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=policy-date value="
+                + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

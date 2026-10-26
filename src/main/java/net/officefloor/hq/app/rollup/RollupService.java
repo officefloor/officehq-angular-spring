@@ -91,9 +91,9 @@ public class RollupService {
                 claimed = claimed.add(c.getAmount());
                 kept |= c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
-                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor);
+                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor, sheet);
                 if (c.getStatus() == ClaimStatus.OPEN && !c.isCorrection()) {
-                    figure = ClaimService.withLateCharge(figure, c.getDate(), sheet);
+                    figure = ClaimService.withLateCharge(figure, c, sheet);
                 }
                 if (figure != null) {
                     due = due.add(figure);
@@ -137,9 +137,9 @@ public class RollupService {
 
     /**
      * The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored, unless
-     * it is a correction).
+     * it is a correction), rounded as the sheet's policy date decides for it.
      */
-    private static BigDecimal figure(Claim c, List<Rate> rates, BigDecimal floor) {
+    private static BigDecimal figure(Claim c, List<Rate> rates, BigDecimal floor, Sheet sheet) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
@@ -147,7 +147,7 @@ public class RollupService {
             return c.getStatedDue();
         }
         Rate rate = inForce(rates, c.getDate());
-        return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct()),
+        return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct(), sheet.roundingOn(c.getRoundsOn())),
                 c.isCorrection() ? null : floor);
     }
 

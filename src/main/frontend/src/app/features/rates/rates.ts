@@ -40,27 +40,27 @@ function cents(value: string): bigint {
 
 /**
  * The due on an amount at a rate (both two-decimal strings): amount times rate divided by 100,
- * rounded half to even to two decimals; null (n/a) when there is no rate. Worked in whole numbers
- * so nothing drifts.
+ * rounded half to even (or half up, when asked) to two decimals; null (n/a) when there is no rate.
+ * Worked in whole numbers so nothing drifts.
  */
-export function dueOn(amount: string, pct: string | undefined): string | null {
+export function dueOn(amount: string, pct: string | undefined, halfUp = false): string | null {
   if (pct === undefined) return null;
   const product = cents(amount) * cents(pct);
   // rounded on the size, so a negative amount (a correction) rounds like its positive
   const size = product < 0n ? -product : product;
   let due = size / 10000n;
   const rest = size % 10000n;
-  if (rest > 5000n || (rest === 5000n && due % 2n === 1n)) due += 1n;
+  if (rest > 5000n || (rest === 5000n && (halfUp || due % 2n === 1n))) due += 1n;
   return formatCents(product < 0n ? -due : due);
 }
 
 /**
  * The value with the given percent of it added for each of the periods: value times percent times periods divided
- * by 100, rounded half to even to two decimals and added on top.
+ * by 100, rounded half to even (or half up, when asked) to two decimals and added on top.
  */
-export function withPctPer(value: string, pct: string, periods: number): string {
+export function withPctPer(value: string, pct: string, periods: number, halfUp = false): string {
   if (periods <= 0) return value;
-  return formatCents(cents(value) + cents(dueOn(value, formatCents(cents(pct) * BigInt(periods)))!));
+  return formatCents(cents(value) + cents(dueOn(value, formatCents(cents(pct) * BigInt(periods)), halfUp)!));
 }
 
 /** The two-decimal value, raised to the floor when it is below it. */
